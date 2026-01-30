@@ -6,7 +6,8 @@ import {
   BookMarked, 
   BarChart3, 
   LogOut,
-  Library
+  Library,
+  Sparkles
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -30,6 +31,7 @@ const menuItems = [
   { title: 'Usuários', url: '/usuarios', icon: Users },
   { title: 'Empréstimos', url: '/emprestimos', icon: BookMarked },
   { title: 'Relatórios', url: '/relatorios', icon: BarChart3 },
+  { title: 'Recomendações', url: '/recomendacoes', icon: Sparkles },
 ];
 
 export function AppSidebar() {

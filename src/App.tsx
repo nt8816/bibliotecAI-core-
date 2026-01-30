@@ -12,6 +12,7 @@ import Livros from "./pages/Livros";
 import Usuarios from "./pages/Usuarios";
 import Emprestimos from "./pages/Emprestimos";
 import Relatorios from "./pages/Relatorios";
+import Recomendacoes from "./pages/Recomendacoes";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -63,6 +64,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Relatorios />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/recomendacoes"
+              element={
+                <ProtectedRoute>
+                  <Recomendacoes />
                 </ProtectedRoute>
               }
             />
