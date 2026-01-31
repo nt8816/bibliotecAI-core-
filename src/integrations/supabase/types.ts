@@ -14,6 +14,70 @@ export type Database = {
   }
   public: {
     Tables: {
+      atividades_leitura: {
+        Row: {
+          aluno_id: string
+          created_at: string
+          data_entrega: string | null
+          descricao: string | null
+          id: string
+          livro_id: string
+          pontos_extras: number | null
+          professor_id: string
+          status: string
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          aluno_id: string
+          created_at?: string
+          data_entrega?: string | null
+          descricao?: string | null
+          id?: string
+          livro_id: string
+          pontos_extras?: number | null
+          professor_id: string
+          status?: string
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          aluno_id?: string
+          created_at?: string
+          data_entrega?: string | null
+          descricao?: string | null
+          id?: string
+          livro_id?: string
+          pontos_extras?: number | null
+          professor_id?: string
+          status?: string
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atividades_leitura_aluno_id_fkey"
+            columns: ["aluno_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios_biblioteca"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "atividades_leitura_livro_id_fkey"
+            columns: ["livro_id"]
+            isOneToOne: false
+            referencedRelation: "livros"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "atividades_leitura_professor_id_fkey"
+            columns: ["professor_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios_biblioteca"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       emprestimos: {
         Row: {
           created_at: string
@@ -68,6 +132,30 @@ export type Database = {
           },
         ]
       }
+      escolas: {
+        Row: {
+          created_at: string
+          gestor_id: string | null
+          id: string
+          nome: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          gestor_id?: string | null
+          id?: string
+          nome: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          gestor_id?: string | null
+          id?: string
+          nome?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       livros: {
         Row: {
           ano: string | null
@@ -116,6 +204,140 @@ export type Database = {
         }
         Relationships: []
       }
+      salas_cursos: {
+        Row: {
+          created_at: string
+          escola_id: string
+          id: string
+          nome: string
+          tipo: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          escola_id: string
+          id?: string
+          nome: string
+          tipo?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          escola_id?: string
+          id?: string
+          nome?: string
+          tipo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salas_cursos_escola_id_fkey"
+            columns: ["escola_id"]
+            isOneToOne: false
+            referencedRelation: "escolas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sugestoes_livros: {
+        Row: {
+          aluno_id: string
+          created_at: string
+          id: string
+          lido: boolean
+          livro_id: string
+          mensagem: string | null
+          professor_id: string
+        }
+        Insert: {
+          aluno_id: string
+          created_at?: string
+          id?: string
+          lido?: boolean
+          livro_id: string
+          mensagem?: string | null
+          professor_id: string
+        }
+        Update: {
+          aluno_id?: string
+          created_at?: string
+          id?: string
+          lido?: boolean
+          livro_id?: string
+          mensagem?: string | null
+          professor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sugestoes_livros_aluno_id_fkey"
+            columns: ["aluno_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios_biblioteca"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sugestoes_livros_livro_id_fkey"
+            columns: ["livro_id"]
+            isOneToOne: false
+            referencedRelation: "livros"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sugestoes_livros_professor_id_fkey"
+            columns: ["professor_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios_biblioteca"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tokens_convite: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          criado_por: string
+          escola_id: string
+          expira_em: string
+          id: string
+          role_destino: Database["public"]["Enums"]["app_role"]
+          token: string
+          usado_em: string | null
+          usado_por: string | null
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          criado_por: string
+          escola_id: string
+          expira_em?: string
+          id?: string
+          role_destino: Database["public"]["Enums"]["app_role"]
+          token?: string
+          usado_em?: string | null
+          usado_por?: string | null
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          criado_por?: string
+          escola_id?: string
+          expira_em?: string
+          id?: string
+          role_destino?: Database["public"]["Enums"]["app_role"]
+          token?: string
+          usado_em?: string | null
+          usado_por?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tokens_convite_escola_id_fkey"
+            columns: ["escola_id"]
+            isOneToOne: false
+            referencedRelation: "escolas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -142,9 +364,11 @@ export type Database = {
           cpf: string | null
           created_at: string
           email: string
+          escola_id: string | null
           id: string
           matricula: string | null
           nome: string
+          sala_curso_id: string | null
           telefone: string | null
           tipo: Database["public"]["Enums"]["app_role"]
           turma: string | null
@@ -155,9 +379,11 @@ export type Database = {
           cpf?: string | null
           created_at?: string
           email: string
+          escola_id?: string | null
           id?: string
           matricula?: string | null
           nome: string
+          sala_curso_id?: string | null
           telefone?: string | null
           tipo?: Database["public"]["Enums"]["app_role"]
           turma?: string | null
@@ -168,16 +394,33 @@ export type Database = {
           cpf?: string | null
           created_at?: string
           email?: string
+          escola_id?: string | null
           id?: string
           matricula?: string | null
           nome?: string
+          sala_curso_id?: string | null
           telefone?: string | null
           tipo?: Database["public"]["Enums"]["app_role"]
           turma?: string | null
           updated_at?: string
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "usuarios_biblioteca_escola_id_fkey"
+            columns: ["escola_id"]
+            isOneToOne: false
+            referencedRelation: "escolas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "usuarios_biblioteca_sala_curso_id_fkey"
+            columns: ["sala_curso_id"]
+            isOneToOne: false
+            referencedRelation: "salas_cursos"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
