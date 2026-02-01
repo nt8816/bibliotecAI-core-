@@ -2,7 +2,7 @@ import { useState, useEffect, createContext, useContext, ReactNode } from 'react
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
-type UserRole = 'gestor' | 'professor' | 'aluno';
+type UserRole = 'gestor' | 'professor' | 'aluno' | 'bibliotecaria';
 
 interface AuthContextType {
   user: User | null;
@@ -10,6 +10,9 @@ interface AuthContextType {
   loading: boolean;
   userRole: UserRole | null;
   isGestor: boolean;
+  isProfessor: boolean;
+  isBibliotecaria: boolean;
+  isAluno: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, nome: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -104,6 +107,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const isGestor = userRole === 'gestor';
+  const isProfessor = userRole === 'professor';
+  const isBibliotecaria = userRole === 'bibliotecaria';
+  const isAluno = userRole === 'aluno';
 
   return (
     <AuthContext.Provider value={{
@@ -112,6 +118,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       userRole,
       isGestor,
+      isProfessor,
+      isBibliotecaria,
+      isAluno,
       signIn,
       signUp,
       signOut

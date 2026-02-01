@@ -434,7 +434,9 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_bibliotecaria: { Args: never; Returns: boolean }
       is_gestor: { Args: never; Returns: boolean }
+      is_professor: { Args: never; Returns: boolean }
     }
     Enums: {
       app_role: "gestor" | "professor" | "aluno" | "bibliotecaria"
