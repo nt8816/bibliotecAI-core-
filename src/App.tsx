@@ -12,8 +12,12 @@ import Livros from "./pages/Livros";
 import Usuarios from "./pages/Usuarios";
 import Emprestimos from "./pages/Emprestimos";
 import Relatorios from "./pages/Relatorios";
-import Recomendacoes from "./pages/Recomendacoes";
 import NotFound from "./pages/NotFound";
+import GerenciarTokens from "./pages/GerenciarTokens";
+import Convite from "./pages/Convite";
+import ImportarUsuarios from "./pages/ImportarUsuarios";
+import ExportarRelatorios from "./pages/ExportarRelatorios";
+import ConfiguracaoEscola from "./pages/ConfiguracaoEscola";
 
 const queryClient = new QueryClient();
 
@@ -26,6 +30,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/auth" element={<Auth />} />
+            <Route path="/convite/:token" element={<Convite />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route
               path="/dashboard"
@@ -68,10 +73,34 @@ const App = () => (
               }
             />
             <Route
-              path="/recomendacoes"
+              path="/tokens"
               element={
                 <ProtectedRoute>
-                  <Recomendacoes />
+                  <GerenciarTokens />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/importar-usuarios"
+              element={
+                <ProtectedRoute>
+                  <ImportarUsuarios />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/exportar-relatorios"
+              element={
+                <ProtectedRoute>
+                  <ExportarRelatorios />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/configuracao-escola"
+              element={
+                <ProtectedRoute>
+                  <ConfiguracaoEscola />
                 </ProtectedRoute>
               }
             />
