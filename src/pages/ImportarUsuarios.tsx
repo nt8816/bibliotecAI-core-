@@ -293,23 +293,31 @@ export default function ImportarUsuarios() {
             {/* Preview Table */}
             {usuarios.length > 0 && (
               <div className="space-y-4">
+                <Alert className="border-primary bg-primary/10">
+                  <CheckCircle className="w-4 h-4 text-primary" />
+                  <AlertDescription className="flex items-center justify-between">
+                    <span className="font-medium">
+                      {usuarios.length} usuários encontrados. Clique no botão para importar.
+                    </span>
+                    <Button onClick={importarUsuarios} disabled={importing} size="lg" className="ml-4">
+                      {importing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Importando...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-4 h-4 mr-2" />
+                          Importar Todos Agora
+                        </>
+                      )}
+                    </Button>
+                  </AlertDescription>
+                </Alert>
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold">
-                    {usuarios.length} usuários encontrados
+                    Prévia dos dados
                   </h3>
-                  <Button onClick={importarUsuarios} disabled={importing}>
-                    {importing ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Importando...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                        Importar Todos
-                      </>
-                    )}
-                  </Button>
                 </div>
                 
                 <div className="border rounded-lg overflow-hidden">

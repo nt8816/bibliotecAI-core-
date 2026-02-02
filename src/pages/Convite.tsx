@@ -63,7 +63,7 @@ export default function Convite() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!tokenInfo) return;
+    if (!token) return;
 
     if (senha !== confirmarSenha) {
       toast({
@@ -86,50 +86,28 @@ export default function Convite() {
     setSubmitting(true);
 
     try {
-      // 1. Create user in Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password: senha,
-        options: {
-          emailRedirectTo: `${window.location.origin}/`,
-          data: { nome },
+      // Use edge function to register via invite
+      const { data, error } = await supabase.functions.invoke('registrar-via-convite', {
+        body: {
+          token,
+          nome,
+          email,
+          senha,
         },
       });
 
-      if (authError) throw authError;
+      if (error) throw error;
 
-      if (authData.user) {
-        // 2. Mark token as used
-        await supabase
-          .from('tokens_convite')
-          .update({
-            usado_por: authData.user.id,
-            usado_em: new Date().toISOString(),
-          })
-          .eq('id', tokenInfo.id);
-
-        // 3. Update user role
-        await supabase
-          .from('user_roles')
-          .update({ role: tokenInfo.role_destino })
-          .eq('user_id', authData.user.id);
-
-        // 4. Update usuarios_biblioteca with escola_id and tipo
-        await supabase
-          .from('usuarios_biblioteca')
-          .update({ 
-            escola_id: tokenInfo.escola_id,
-            tipo: tokenInfo.role_destino,
-          })
-          .eq('user_id', authData.user.id);
-
-        toast({
-          title: 'Cadastro realizado!',
-          description: 'Sua conta foi criada com sucesso. Verifique seu e-mail para confirmar.',
-        });
-
-        navigate('/auth');
+      if (!data.success) {
+        throw new Error(data.error || 'Erro ao registrar');
       }
+
+      toast({
+        title: 'Cadastro realizado!',
+        description: `Sua conta foi criada com sucesso como ${getRoleLabel(data.role)}.`,
+      });
+
+      navigate('/auth');
     } catch (error: any) {
       console.error('Error during signup:', error);
       toast({
