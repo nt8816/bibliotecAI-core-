@@ -48,8 +48,11 @@ export default function Livros() {
   const [formData, setFormData] = useState(emptyLivro);
   const [saving, setSaving] = useState(false);
   
-  const { isGestor } = useAuth();
+  const { isGestor, isBibliotecaria } = useAuth();
   const { toast } = useToast();
+  
+  // Gestor ou Bibliotecária podem gerenciar livros
+  const canManageBooks = isGestor || isBibliotecaria;
 
   useEffect(() => {
     fetchLivros();
@@ -186,7 +189,7 @@ export default function Livros() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              {isGestor && (
+              {canManageBooks && (
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                   <DialogTrigger asChild>
                     <Button onClick={() => handleOpenDialog()}>
@@ -307,7 +310,7 @@ export default function Livros() {
                     <TableHead>Editora</TableHead>
                     <TableHead>Ano</TableHead>
                     <TableHead>Status</TableHead>
-                    {isGestor && <TableHead className="text-right">Ações</TableHead>}
+                    {canManageBooks && <TableHead className="text-right">Ações</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -324,7 +327,7 @@ export default function Livros() {
                           {livro.disponivel ? 'Disponível' : 'Emprestado'}
                         </Badge>
                       </TableCell>
-                      {isGestor && (
+                      {canManageBooks && (
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button
