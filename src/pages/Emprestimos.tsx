@@ -51,8 +51,11 @@ export default function Emprestimos() {
   const [selectedUsuario, setSelectedUsuario] = useState('');
   const [saving, setSaving] = useState(false);
   
-  const { isGestor } = useAuth();
+  const { isGestor, isBibliotecaria } = useAuth();
   const { toast } = useToast();
+  
+  // Gestor ou Bibliotecária podem gerenciar empréstimos
+  const canManageLoans = isGestor || isBibliotecaria;
 
   useEffect(() => {
     fetchData();
@@ -210,7 +213,7 @@ export default function Emprestimos() {
             <TableHead>Devolução Prevista</TableHead>
             {!showDevolucao && <TableHead>Devolução Real</TableHead>}
             <TableHead>Status</TableHead>
-            {showDevolucao && isGestor && <TableHead className="text-right">Ações</TableHead>}
+            {showDevolucao && canManageLoans && <TableHead className="text-right">Ações</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -242,7 +245,7 @@ export default function Emprestimos() {
                 </TableCell>
               )}
               <TableCell>{getStatusBadge(emprestimo)}</TableCell>
-              {showDevolucao && isGestor && (
+              {showDevolucao && canManageLoans && (
                 <TableCell className="text-right">
                   <Button
                     size="sm"
@@ -270,7 +273,7 @@ export default function Emprestimos() {
               <BookMarked className="w-5 h-5" />
               Gerenciamento de Empréstimos
             </CardTitle>
-            {isGestor && (
+            {canManageLoans && (
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
                   <Button>
