@@ -12,7 +12,8 @@ import {
   Download,
   School,
   GraduationCap,
-  Lightbulb
+  Lightbulb,
+  ClipboardList
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -36,7 +37,7 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
   const location = useLocation();
-  const { signOut, user, userRole, isGestor } = useAuth();
+  const { signOut, user, userRole, isGestor, isProfessor } = useAuth();
 
   const handleSignOut = async () => {
     await signOut();
@@ -71,7 +72,10 @@ export function AppSidebar() {
       return [
         ...commonItems,
         { title: 'Livros', url: '/livros', icon: BookOpen },
-        { title: 'Empréstimos', url: '/emprestimos', icon: BookMarked },
+        { title: 'Meus Alunos', url: '/professor/alunos', icon: GraduationCap },
+        { title: 'Sugestões de Livros', url: '/professor/sugestoes', icon: Lightbulb },
+        { title: 'Atividades', url: '/professor/atividades', icon: ClipboardList },
+        { title: 'Relatórios de Leitura', url: '/professor/relatorios', icon: BarChart3 },
       ];
     }
 

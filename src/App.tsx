@@ -19,6 +19,12 @@ import ImportarUsuarios from "./pages/ImportarUsuarios";
 import ExportarRelatorios from "./pages/ExportarRelatorios";
 import ConfiguracaoEscola from "./pages/ConfiguracaoEscola";
 
+// Professor pages
+import MeusAlunos from "./pages/professor/MeusAlunos";
+import SugestoesLivros from "./pages/professor/SugestoesLivros";
+import AtividadesLeitura from "./pages/professor/AtividadesLeitura";
+import RelatoriosLeitura from "./pages/professor/RelatoriosLeitura";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -101,6 +107,39 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <ConfiguracaoEscola />
+                </ProtectedRoute>
+              }
+            />
+            {/* Professor Routes */}
+            <Route
+              path="/professor/alunos"
+              element={
+                <ProtectedRoute>
+                  <MeusAlunos />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/professor/sugestoes"
+              element={
+                <ProtectedRoute>
+                  <SugestoesLivros />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/professor/atividades"
+              element={
+                <ProtectedRoute>
+                  <AtividadesLeitura />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/professor/relatorios"
+              element={
+                <ProtectedRoute>
+                  <RelatoriosLeitura />
                 </ProtectedRoute>
               }
             />
