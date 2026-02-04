@@ -325,12 +325,12 @@ export default function AtividadesLeitura() {
                 </CardDescription>
               </div>
               <div className="flex gap-2">
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <Select value={filterStatus || "all"} onValueChange={(v) => setFilterStatus(v === "all" ? "" : v)}>
                   <SelectTrigger className="w-[150px]">
                     <SelectValue placeholder="Filtrar status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todos</SelectItem>
+                    <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="pendente">Pendente</SelectItem>
                     <SelectItem value="em_andamento">Em Andamento</SelectItem>
                     <SelectItem value="concluido">Concluído</SelectItem>
