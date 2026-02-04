@@ -164,12 +164,12 @@ export default function RelatoriosLeitura() {
               </div>
               <div className="space-y-2">
                 <Label>Turma</Label>
-                <Select value={filterTurma} onValueChange={setFilterTurma}>
+                <Select value={filterTurma || "all"} onValueChange={(v) => setFilterTurma(v === "all" ? "" : v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Todas as turmas" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todas as turmas</SelectItem>
+                    <SelectItem value="all">Todas as turmas</SelectItem>
                     {turmas.map(turma => (
                       <SelectItem key={turma} value={turma}>{turma}</SelectItem>
                     ))}
