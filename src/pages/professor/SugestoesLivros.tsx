@@ -453,12 +453,15 @@ export default function SugestoesLivros() {
                 </div>
                 <div className="space-y-2">
                   <Label>Turma (opcional - deixe vazio para todos os alunos)</Label>
-                  <Select value={selectedTurma} onValueChange={setSelectedTurma}>
+                  <Select
+                    value={selectedTurma || 'all'}
+                    onValueChange={(v) => setSelectedTurma(v === 'all' ? '' : v)}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Todas as turmas" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Todas as turmas</SelectItem>
+                      <SelectItem value="all">Todas as turmas</SelectItem>
                       {turmas.map(turma => (
                         <SelectItem key={turma} value={turma}>
                           {turma} ({usuarios.filter(u => u.turma === turma).length} alunos)
