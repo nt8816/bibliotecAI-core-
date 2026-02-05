@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { BarChart3, BookOpen, TrendingUp, Filter, Calendar, GraduationCap } from 'lucide-react';
 import { format, parseISO, isWithinInterval, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -54,6 +56,21 @@ export default function RelatoriosLeitura() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Realtime subscription para sincronização automática
+  const handleRealtimeChange = useCallback(() => {
+    fetchData();
+  }, []);
+
+  useRealtimeSubscription({
+    table: 'emprestimos',
+    onChange: handleRealtimeChange,
+  });
+
+  useRealtimeSubscription({
+    table: 'usuarios_biblioteca',
+    onChange: handleRealtimeChange,
+  });
 
   const fetchData = async () => {
     try {

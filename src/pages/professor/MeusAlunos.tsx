@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { Search, Users, GraduationCap } from 'lucide-react';
 import { Database } from '@/integrations/supabase/types';
 
@@ -31,6 +32,16 @@ export default function MeusAlunos() {
   useEffect(() => {
     fetchUsuarios();
   }, []);
+
+  // Realtime subscription para sincronização automática
+  const handleRealtimeChange = useCallback(() => {
+    fetchUsuarios();
+  }, []);
+
+  useRealtimeSubscription({
+    table: 'usuarios_biblioteca',
+    onChange: handleRealtimeChange,
+  });
 
   const fetchUsuarios = async () => {
     try {

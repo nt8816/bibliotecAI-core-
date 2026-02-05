@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { Lightbulb, Send, Users, BookOpen, Sparkles, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -66,6 +67,26 @@ export default function SugestoesLivros() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Realtime subscription para sincronização automática
+  const handleRealtimeChange = useCallback(() => {
+    fetchData();
+  }, []);
+
+  useRealtimeSubscription({
+    table: 'sugestoes_livros',
+    onChange: handleRealtimeChange,
+  });
+
+  useRealtimeSubscription({
+    table: 'livros',
+    onChange: handleRealtimeChange,
+  });
+
+  useRealtimeSubscription({
+    table: 'usuarios_biblioteca',
+    onChange: handleRealtimeChange,
+  });
 
   const fetchData = async () => {
     try {
