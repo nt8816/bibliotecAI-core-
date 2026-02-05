@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Pencil, Trash2, Search, Users } from 'lucide-react';
 import { Database } from '@/integrations/supabase/types';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
 type AppRole = Database['public']['Enums']['app_role'];
 
@@ -52,6 +54,16 @@ export default function Usuarios() {
   useEffect(() => {
     fetchUsuarios();
   }, []);
+
+  // Realtime subscription para sincronização automática
+  const handleRealtimeChange = useCallback(() => {
+    fetchUsuarios();
+  }, []);
+
+  useRealtimeSubscription({
+    table: 'usuarios_biblioteca',
+    onChange: handleRealtimeChange,
+  });
 
   const fetchUsuarios = async () => {
     try {

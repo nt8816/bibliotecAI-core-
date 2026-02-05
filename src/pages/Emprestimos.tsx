@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Plus, BookMarked, CheckCircle, AlertTriangle } from 'lucide-react';
 import { format, isPast } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
 interface Emprestimo {
   id: string;
@@ -60,6 +62,21 @@ export default function Emprestimos() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Realtime subscription para sincronização automática
+  const handleRealtimeChange = useCallback(() => {
+    fetchData();
+  }, []);
+
+  useRealtimeSubscription({
+    table: 'emprestimos',
+    onChange: handleRealtimeChange,
+  });
+
+  useRealtimeSubscription({
+    table: 'livros',
+    onChange: handleRealtimeChange,
+  });
 
   const fetchData = async () => {
     try {

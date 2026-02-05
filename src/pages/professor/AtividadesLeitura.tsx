@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { ClipboardList, Plus, Pencil, Trash2, CheckCircle, Clock, Star } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -69,6 +70,26 @@ export default function AtividadesLeitura() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Realtime subscription para sincronização automática
+  const handleRealtimeChange = useCallback(() => {
+    fetchData();
+  }, []);
+
+  useRealtimeSubscription({
+    table: 'atividades_leitura',
+    onChange: handleRealtimeChange,
+  });
+
+  useRealtimeSubscription({
+    table: 'livros',
+    onChange: handleRealtimeChange,
+  });
+
+  useRealtimeSubscription({
+    table: 'usuarios_biblioteca',
+    onChange: handleRealtimeChange,
+  });
 
   const fetchData = async () => {
     try {

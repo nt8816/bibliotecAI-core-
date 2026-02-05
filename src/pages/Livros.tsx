@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Pencil, Trash2, Search, BookOpen } from 'lucide-react';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
 interface Livro {
   id: string;
@@ -57,6 +59,16 @@ export default function Livros() {
   useEffect(() => {
     fetchLivros();
   }, []);
+
+  // Realtime subscription para sincronização automática
+  const handleRealtimeChange = useCallback(() => {
+    fetchLivros();
+  }, []);
+
+  useRealtimeSubscription({
+    table: 'livros',
+    onChange: handleRealtimeChange,
+  });
 
   const fetchLivros = async () => {
     try {
