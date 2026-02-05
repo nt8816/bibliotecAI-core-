@@ -101,13 +101,18 @@ export function AppSidebar() {
   const menuItems = getMenuItems();
 
   const getRoleBadge = () => {
+    // If userRole is still loading/null, show a loading indicator
+    if (!userRole) {
+      return { label: 'Carregando...', className: 'bg-muted/50 text-muted-foreground animate-pulse' };
+    }
+    
     const badges: Record<string, { label: string; className: string }> = {
       gestor: { label: 'Gestor', className: 'bg-primary/20 text-primary' },
       professor: { label: 'Professor', className: 'bg-info/20 text-info' },
       bibliotecaria: { label: 'Bibliotecária', className: 'bg-secondary/20 text-secondary' },
       aluno: { label: 'Aluno', className: 'bg-muted text-muted-foreground' },
     };
-    return badges[userRole || 'aluno'] || badges.aluno;
+    return badges[userRole] || badges.aluno;
   };
 
   return (
