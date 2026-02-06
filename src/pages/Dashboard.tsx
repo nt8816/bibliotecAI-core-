@@ -35,67 +35,35 @@ export default function Dashboard() {
   }, []);
 
   const fetchData = async () => {
-    try {
-      // Fetch book count
-      const { count: livrosCount } = await supabase
-        .from('livros')
-        .select('*', { count: 'exact', head: true });
+    // Run all queries in parallel, handle individual failures gracefully
+    const [livrosResult, usuariosResult, emprestimosAtivosResult, atrasadosResult, emprestimosRecentesResult] = await Promise.allSettled([
+      supabase.from('livros').select('*', { count: 'exact', head: true }),
+      supabase.from('usuarios_biblioteca').select('*', { count: 'exact', head: true }),
+      supabase.from('emprestimos').select('*', { count: 'exact', head: true }).eq('status', 'ativo'),
+      supabase.from('emprestimos').select('*', { count: 'exact', head: true }).eq('status', 'ativo').lt('data_devolucao_prevista', new Date().toISOString()),
+      supabase.from('emprestimos').select(`id, data_emprestimo, data_devolucao_real, status, livros(titulo), usuarios_biblioteca(nome)`).order('created_at', { ascending: false }).limit(5),
+    ]);
 
-      // Fetch user count
-      const { count: usuariosCount } = await supabase
-        .from('usuarios_biblioteca')
-        .select('*', { count: 'exact', head: true });
+    setStats({
+      totalLivros: livrosResult.status === 'fulfilled' ? (livrosResult.value.count || 0) : 0,
+      totalUsuarios: usuariosResult.status === 'fulfilled' ? (usuariosResult.value.count || 0) : 0,
+      emprestimosAtivos: emprestimosAtivosResult.status === 'fulfilled' ? (emprestimosAtivosResult.value.count || 0) : 0,
+      emprestimosAtrasados: atrasadosResult.status === 'fulfilled' ? (atrasadosResult.value.count || 0) : 0,
+    });
 
-      // Fetch active loans
-      const { count: emprestimosAtivosCount } = await supabase
-        .from('emprestimos')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'ativo');
-
-      // Fetch overdue loans
-      const { count: atrasadosCount } = await supabase
-        .from('emprestimos')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'ativo')
-        .lt('data_devolucao_prevista', new Date().toISOString());
-
-      setStats({
-        totalLivros: livrosCount || 0,
-        totalUsuarios: usuariosCount || 0,
-        emprestimosAtivos: emprestimosAtivosCount || 0,
-        emprestimosAtrasados: atrasadosCount || 0,
-      });
-
-      // Fetch recent activities
-      const { data: emprestimosRecentes } = await supabase
-        .from('emprestimos')
-        .select(`
-          id,
-          data_emprestimo,
-          data_devolucao_real,
-          status,
-          livros(titulo),
-          usuarios_biblioteca(nome)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      if (emprestimosRecentes) {
-        const atividadesFormatadas = emprestimosRecentes.map((emp: any) => ({
-          id: emp.id,
-          tipo: emp.data_devolucao_real ? 'devolucao' : 'emprestimo',
-          descricao: emp.data_devolucao_real
-            ? `${emp.usuarios_biblioteca?.nome || 'Usuário'} devolveu "${emp.livros?.titulo || 'Livro'}"`
-            : `${emp.usuarios_biblioteca?.nome || 'Usuário'} emprestou "${emp.livros?.titulo || 'Livro'}"`,
-          data: emp.data_devolucao_real || emp.data_emprestimo,
-        })) as AtividadeRecente[];
-        setAtividades(atividadesFormatadas);
-      }
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-    } finally {
-      setLoading(false);
+    if (emprestimosRecentesResult.status === 'fulfilled' && emprestimosRecentesResult.value.data) {
+      const atividadesFormatadas = emprestimosRecentesResult.value.data.map((emp: any) => ({
+        id: emp.id,
+        tipo: emp.data_devolucao_real ? 'devolucao' : 'emprestimo',
+        descricao: emp.data_devolucao_real
+          ? `${emp.usuarios_biblioteca?.nome || 'Usuário'} devolveu "${emp.livros?.titulo || 'Livro'}"`
+          : `${emp.usuarios_biblioteca?.nome || 'Usuário'} emprestou "${emp.livros?.titulo || 'Livro'}"`,
+        data: emp.data_devolucao_real || emp.data_emprestimo,
+      })) as AtividadeRecente[];
+      setAtividades(atividadesFormatadas);
     }
+
+    setLoading(false);
   };
 
   const statCards = [
