@@ -48,6 +48,7 @@ export default function MeusAlunos() {
       const { data, error } = await supabase
         .from('usuarios_biblioteca')
         .select('id, nome, tipo, matricula, turma, email')
+        .eq('tipo', 'aluno')
         .order('nome');
 
       if (error) throw error;
@@ -103,15 +104,14 @@ export default function MeusAlunos() {
     return matchesSearch && matchesTurma;
   });
 
-  // Count by type
-  const alunosCount = usuarios.filter(u => u.tipo === 'aluno').length;
-  const professoresCount = usuarios.filter(u => u.tipo === 'professor').length;
+  // Count
+  const alunosCount = usuarios.length;
 
   return (
     <MainLayout title="Meus Alunos">
       <div className="space-y-6">
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center gap-4">
@@ -134,19 +134,6 @@ export default function MeusAlunos() {
                 <div>
                   <p className="text-sm text-muted-foreground">Turmas</p>
                   <p className="text-2xl font-bold">{turmas.length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-secondary/10 flex items-center justify-center">
-                  <Users className="w-6 h-6 text-secondary" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Professores</p>
-                  <p className="text-2xl font-bold">{professoresCount}</p>
                 </div>
               </div>
             </CardContent>
