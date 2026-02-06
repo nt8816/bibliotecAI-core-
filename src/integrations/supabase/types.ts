@@ -167,6 +167,7 @@ export type Database = {
           editora: string | null
           id: string
           local: string | null
+          sinopse: string | null
           titulo: string
           tombo: string | null
           updated_at: string
@@ -182,6 +183,7 @@ export type Database = {
           editora?: string | null
           id?: string
           local?: string | null
+          sinopse?: string | null
           titulo: string
           tombo?: string | null
           updated_at?: string
@@ -197,6 +199,7 @@ export type Database = {
           editora?: string | null
           id?: string
           local?: string | null
+          sinopse?: string | null
           titulo?: string
           tombo?: string | null
           updated_at?: string
