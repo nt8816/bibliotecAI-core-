@@ -8,12 +8,10 @@ import {
   LogOut,
   Library,
   Link as LinkIcon,
-  Upload,
   Download,
   School,
   GraduationCap,
   Lightbulb,
-  ClipboardList
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -43,7 +41,6 @@ export function AppSidebar() {
     await signOut();
   };
 
-  // Define menu items based on user role
   const getMenuItems = () => {
     const commonItems = [
       { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
@@ -73,8 +70,7 @@ export function AppSidebar() {
         ...commonItems,
         { title: 'Livros', url: '/livros', icon: BookOpen },
         { title: 'Meus Alunos', url: '/professor/alunos', icon: GraduationCap },
-        { title: 'Sugestões de Livros', url: '/professor/sugestoes', icon: Lightbulb },
-        { title: 'Atividades', url: '/professor/atividades', icon: ClipboardList },
+        { title: 'Sugestões e Atividades', url: '/professor/painel', icon: Lightbulb },
         { title: 'Relatórios de Leitura', url: '/professor/relatorios', icon: BarChart3 },
       ];
     }
@@ -90,22 +86,15 @@ export function AppSidebar() {
   const gestorMenuItems = [
     { title: 'Configuração da Escola', url: '/configuracao-escola', icon: School },
     { title: 'Tokens de Convite', url: '/tokens', icon: LinkIcon },
-    { title: 'Importar Usuários', url: '/importar-usuarios', icon: Upload },
     { title: 'Exportar Relatórios', url: '/exportar-relatorios', icon: Download },
   ];
-
-  const bibliotecaMenuItems = userRole === 'bibliotecaria' ? [
-    { title: 'Importar Usuários', url: '/importar-usuarios', icon: Upload },
-  ] : [];
 
   const menuItems = getMenuItems();
 
   const getRoleBadge = () => {
-    // If userRole is still loading/null, show a loading indicator
     if (!userRole) {
       return { label: 'Carregando...', className: 'bg-muted/50 text-muted-foreground animate-pulse' };
     }
-    
     const badges: Record<string, { label: string; className: string }> = {
       gestor: { label: 'Gestor', className: 'bg-primary/20 text-primary' },
       professor: { label: 'Professor', className: 'bg-info/20 text-info' },
@@ -116,10 +105,7 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar 
-      className="border-r-0"
-      collapsible="icon"
-    >
+    <Sidebar className="border-r-0" collapsible="icon">
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-sidebar-accent flex items-center justify-center">
@@ -135,19 +121,13 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="p-2">
-        {/* Main Menu */}
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
-                    <NavLink 
-                      to={item.url} 
-                      end 
-                      className="sidebar-link"
-                      activeClassName="sidebar-link-active"
-                    >
+                    <NavLink to={item.url} end className="sidebar-link" activeClassName="sidebar-link-active">
                       <item.icon className="w-5 h-5" />
                       {!collapsed && <span className="font-medium">{item.title}</span>}
                     </NavLink>
@@ -158,7 +138,6 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Gestor Admin Menu */}
         {isGestor && (
           <SidebarGroup>
             {!collapsed && <SidebarGroupLabel className="text-sidebar-foreground/60">Administração</SidebarGroupLabel>}
@@ -167,38 +146,7 @@ export function AppSidebar() {
                 {gestorMenuItems.map((item) => (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild>
-                      <NavLink 
-                        to={item.url} 
-                        end 
-                        className="sidebar-link"
-                        activeClassName="sidebar-link-active"
-                      >
-                        <item.icon className="w-5 h-5" />
-                        {!collapsed && <span className="font-medium">{item.title}</span>}
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* Bibliotecaria Admin Menu */}
-        {userRole === 'bibliotecaria' && bibliotecaMenuItems.length > 0 && (
-          <SidebarGroup>
-            {!collapsed && <SidebarGroupLabel className="text-sidebar-foreground/60">Gestão</SidebarGroupLabel>}
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {bibliotecaMenuItems.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild>
-                      <NavLink 
-                        to={item.url} 
-                        end 
-                        className="sidebar-link"
-                        activeClassName="sidebar-link-active"
-                      >
+                      <NavLink to={item.url} end className="sidebar-link" activeClassName="sidebar-link-active">
                         <item.icon className="w-5 h-5" />
                         {!collapsed && <span className="font-medium">{item.title}</span>}
                       </NavLink>
@@ -214,9 +162,7 @@ export function AppSidebar() {
       <SidebarFooter className="p-4 border-t border-sidebar-border">
         {!collapsed && user && (
           <div className="mb-3 px-2 space-y-2">
-            <Badge className={getRoleBadge().className}>
-              {getRoleBadge().label}
-            </Badge>
+            <Badge className={getRoleBadge().className}>{getRoleBadge().label}</Badge>
             <p className="text-sm text-sidebar-foreground/70 truncate">{user.email}</p>
           </div>
         )}

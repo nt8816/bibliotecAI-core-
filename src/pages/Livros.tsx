@@ -8,13 +8,17 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Pencil, Trash2, Search, BookOpen, Sparkles, Loader2, Info } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, BookOpen, Sparkles, Loader2, Info, Download } from 'lucide-react';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface Livro {
   id: string;
@@ -57,7 +61,6 @@ async function buscarSinopseOpenLibrary(titulo: string, autor: string): Promise<
     const book = data.docs[0];
     let sinopse = '';
 
-    // Try to get description from work details
     if (book.key) {
       try {
         const workRes = await fetch(`https://openlibrary.org${book.key}.json`);
@@ -109,27 +112,16 @@ export default function Livros() {
     fetchLivros();
   }, []);
 
-  useRealtimeSubscription({
-    table: 'livros',
-    onChange: handleRealtimeChange,
-  });
+  useRealtimeSubscription({ table: 'livros', onChange: handleRealtimeChange });
 
   const fetchLivros = async () => {
     try {
-      const { data, error } = await supabase
-        .from('livros')
-        .select('*')
-        .order('titulo');
-
+      const { data, error } = await supabase.from('livros').select('*').order('titulo');
       if (error) throw error;
       setLivros(data || []);
     } catch (error) {
       console.error('Error fetching books:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Erro',
-        description: 'Não foi possível carregar os livros.',
-      });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível carregar os livros.' });
     } finally {
       setLoading(false);
     }
@@ -139,16 +131,9 @@ export default function Livros() {
     if (livro) {
       setEditingLivro(livro);
       setFormData({
-        area: livro.area,
-        tombo: livro.tombo || '',
-        autor: livro.autor,
-        titulo: livro.titulo,
-        vol: livro.vol || '',
-        edicao: livro.edicao || '',
-        local: livro.local || '',
-        editora: livro.editora || '',
-        ano: livro.ano || '',
-        disponivel: livro.disponivel,
+        area: livro.area, tombo: livro.tombo || '', autor: livro.autor, titulo: livro.titulo,
+        vol: livro.vol || '', edicao: livro.edicao || '', local: livro.local || '',
+        editora: livro.editora || '', ano: livro.ano || '', disponivel: livro.disponivel,
         sinopse: livro.sinopse || '',
       });
     } else {
@@ -167,37 +152,21 @@ export default function Livros() {
     setBuscandoSinopse(true);
     try {
       const resultado = await buscarSinopseOpenLibrary(formData.titulo, formData.autor);
-
       if (resultado) {
         const updates: Partial<typeof emptyLivro> = {};
-
-        if (resultado.sinopse) {
-          updates.sinopse = resultado.sinopse;
-        }
-        // Only fill empty fields with auto data
+        if (resultado.sinopse) updates.sinopse = resultado.sinopse;
         if (!formData.autor && resultado.autoData.autor) updates.autor = resultado.autoData.autor;
         if (!formData.ano && resultado.autoData.ano) updates.ano = resultado.autoData.ano;
         if (!formData.editora && resultado.autoData.editora) updates.editora = resultado.autoData.editora;
 
         if (Object.keys(updates).length > 0) {
           setFormData(prev => ({ ...prev, ...updates }));
-          toast({
-            title: 'Dados encontrados!',
-            description: resultado.sinopse
-              ? 'Sinopse e dados preenchidos automaticamente.'
-              : 'Alguns dados foram preenchidos, mas a sinopse não foi encontrada. Você pode digitá-la manualmente.',
-          });
+          toast({ title: 'Dados encontrados!', description: resultado.sinopse ? 'Sinopse e dados preenchidos automaticamente.' : 'Alguns dados foram preenchidos, mas a sinopse não foi encontrada.' });
         } else {
-          toast({
-            title: 'Sem resultados',
-            description: 'Nenhuma informação adicional encontrada. Preencha a sinopse manualmente.',
-          });
+          toast({ title: 'Sem resultados', description: 'Nenhuma informação adicional encontrada.' });
         }
       } else {
-        toast({
-          title: 'Não encontrado',
-          description: 'Livro não encontrado na base. Preencha a sinopse manualmente.',
-        });
+        toast({ title: 'Não encontrado', description: 'Livro não encontrado na base. Preencha manualmente.' });
       }
     } catch {
       toast({ variant: 'destructive', title: 'Erro', description: 'Falha na busca. Tente novamente.' });
@@ -223,7 +192,6 @@ export default function Livros() {
         if (error) throw error;
         toast({ title: 'Sucesso', description: 'Livro cadastrado com sucesso.' });
       }
-
       setIsDialogOpen(false);
       fetchLivros();
     } catch (error: any) {
@@ -235,7 +203,6 @@ export default function Livros() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir este livro?')) return;
-
     try {
       const { error } = await supabase.from('livros').delete().eq('id', id);
       if (error) throw error;
@@ -244,6 +211,43 @@ export default function Livros() {
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Erro', description: error.message || 'Não foi possível excluir o livro.' });
     }
+  };
+
+  const handleExportarExcel = () => {
+    const headers = ['Título', 'Autor', 'Área', 'Tombo', 'Editora', 'Ano', 'Edição', 'Volume', 'Local', 'Disponível', 'Sinopse'];
+    const data = livros.map(l => [
+      l.titulo, l.autor, l.area, l.tombo || '-', l.editora || '-', l.ano || '-',
+      l.edicao || '-', l.vol || '-', l.local || '-', l.disponivel ? 'Sim' : 'Não', l.sinopse || '-',
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+    const colWidths = headers.map((h, i) => ({ wch: Math.max(h.length, ...data.map(r => String(r[i] || '').length).slice(0, 50)) + 2 }));
+    ws['!cols'] = colWidths;
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Acervo');
+    XLSX.writeFile(wb, 'acervo_livros.xlsx');
+    toast({ title: 'Exportado!', description: 'Arquivo acervo_livros.xlsx baixado.' });
+  };
+
+  const handleExportarPDF = () => {
+    const doc = new jsPDF('landscape');
+    doc.setFontSize(18);
+    doc.text('BibliotecAI - Acervo de Livros', 14, 22);
+    doc.setFontSize(11);
+    doc.setTextColor(100);
+    doc.text(`Total: ${livros.length} livros | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
+
+    const headers = ['Título', 'Autor', 'Área', 'Tombo', 'Editora', 'Ano', 'Disponível'];
+    const data = livros.map(l => [
+      l.titulo, l.autor, l.area, l.tombo || '-', l.editora || '-', l.ano || '-', l.disponivel ? 'Sim' : 'Não',
+    ]);
+
+    autoTable(doc, {
+      head: [headers], body: data, startY: 40,
+      styles: { fontSize: 8 }, headStyles: { fillColor: [88, 86, 214] },
+    });
+
+    doc.save('acervo_livros.pdf');
+    toast({ title: 'Exportado!', description: 'Arquivo acervo_livros.pdf baixado.' });
   };
 
   const filteredLivros = livros.filter((livro) =>
@@ -271,6 +275,21 @@ export default function Livros() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="icon">
+                    <Download className="w-4 h-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-40 p-2" align="end">
+                  <Button variant="ghost" size="sm" className="w-full justify-start" onClick={handleExportarExcel}>
+                    Excel (.xlsx)
+                  </Button>
+                  <Button variant="ghost" size="sm" className="w-full justify-start" onClick={handleExportarPDF}>
+                    PDF (.pdf)
+                  </Button>
+                </PopoverContent>
+              </Popover>
               {canManageBooks && (
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                   <DialogTrigger asChild>
@@ -281,123 +300,60 @@ export default function Livros() {
                   </DialogTrigger>
                   <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                      <DialogTitle>
-                        {editingLivro ? 'Editar Livro' : 'Novo Livro'}
-                      </DialogTitle>
+                      <DialogTitle>{editingLivro ? 'Editar Livro' : 'Novo Livro'}</DialogTitle>
                     </DialogHeader>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
                       <div className="space-y-2">
                         <Label htmlFor="titulo">Título *</Label>
-                        <Input
-                          id="titulo"
-                          value={formData.titulo}
-                          onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
-                        />
+                        <Input id="titulo" value={formData.titulo} onChange={(e) => setFormData({ ...formData, titulo: e.target.value })} />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="autor">Autor</Label>
-                        <Input
-                          id="autor"
-                          value={formData.autor}
-                          onChange={(e) => setFormData({ ...formData, autor: e.target.value })}
-                        />
+                        <Input id="autor" value={formData.autor} onChange={(e) => setFormData({ ...formData, autor: e.target.value })} />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="area">Área</Label>
-                        <Input
-                          id="area"
-                          value={formData.area}
-                          onChange={(e) => setFormData({ ...formData, area: e.target.value })}
-                        />
+                        <Input id="area" value={formData.area} onChange={(e) => setFormData({ ...formData, area: e.target.value })} />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="tombo">Tombo</Label>
-                        <Input
-                          id="tombo"
-                          value={formData.tombo || ''}
-                          onChange={(e) => setFormData({ ...formData, tombo: e.target.value })}
-                        />
+                        <Input id="tombo" value={formData.tombo || ''} onChange={(e) => setFormData({ ...formData, tombo: e.target.value })} />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="editora">Editora</Label>
-                        <Input
-                          id="editora"
-                          value={formData.editora || ''}
-                          onChange={(e) => setFormData({ ...formData, editora: e.target.value })}
-                        />
+                        <Input id="editora" value={formData.editora || ''} onChange={(e) => setFormData({ ...formData, editora: e.target.value })} />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="ano">Ano</Label>
-                        <Input
-                          id="ano"
-                          value={formData.ano || ''}
-                          onChange={(e) => setFormData({ ...formData, ano: e.target.value })}
-                        />
+                        <Input id="ano" value={formData.ano || ''} onChange={(e) => setFormData({ ...formData, ano: e.target.value })} />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="edicao">Edição</Label>
-                        <Input
-                          id="edicao"
-                          value={formData.edicao || ''}
-                          onChange={(e) => setFormData({ ...formData, edicao: e.target.value })}
-                        />
+                        <Input id="edicao" value={formData.edicao || ''} onChange={(e) => setFormData({ ...formData, edicao: e.target.value })} />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="vol">Volume</Label>
-                        <Input
-                          id="vol"
-                          value={formData.vol || ''}
-                          onChange={(e) => setFormData({ ...formData, vol: e.target.value })}
-                        />
+                        <Input id="vol" value={formData.vol || ''} onChange={(e) => setFormData({ ...formData, vol: e.target.value })} />
                       </div>
                       <div className="space-y-2 md:col-span-2">
                         <Label htmlFor="local">Local</Label>
-                        <Input
-                          id="local"
-                          value={formData.local || ''}
-                          onChange={(e) => setFormData({ ...formData, local: e.target.value })}
-                        />
+                        <Input id="local" value={formData.local || ''} onChange={(e) => setFormData({ ...formData, local: e.target.value })} />
                       </div>
-
-                      {/* Sinopse section */}
                       <div className="space-y-2 md:col-span-2">
                         <div className="flex items-center justify-between">
                           <Label htmlFor="sinopse">Sinopse</Label>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={handleBuscarSinopse}
-                            disabled={buscandoSinopse || !formData.titulo.trim()}
-                            className="gap-1.5 text-xs"
-                          >
-                            {buscandoSinopse ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Sparkles className="w-3.5 h-3.5" />
-                            )}
+                          <Button type="button" variant="outline" size="sm" onClick={handleBuscarSinopse} disabled={buscandoSinopse || !formData.titulo.trim()} className="gap-1.5 text-xs">
+                            {buscandoSinopse ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                             {buscandoSinopse ? 'Buscando...' : 'Buscar sinopse'}
                           </Button>
                         </div>
-                        <Textarea
-                          id="sinopse"
-                          placeholder="Digite a sinopse do livro ou use o botão acima para buscar automaticamente..."
-                          className="min-h-[120px] resize-y"
-                          value={formData.sinopse || ''}
-                          onChange={(e) => setFormData({ ...formData, sinopse: e.target.value })}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          A busca usa a Open Library para encontrar sinopses automaticamente. Caso não encontre, preencha manualmente.
-                        </p>
+                        <Textarea id="sinopse" placeholder="Digite a sinopse ou use o botão acima..." className="min-h-[120px] resize-y" value={formData.sinopse || ''} onChange={(e) => setFormData({ ...formData, sinopse: e.target.value })} />
+                        <p className="text-xs text-muted-foreground">A busca usa a Open Library para encontrar sinopses automaticamente.</p>
                       </div>
                     </div>
                     <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                        Cancelar
-                      </Button>
-                      <Button onClick={handleSave} disabled={saving}>
-                        {saving ? 'Salvando...' : 'Salvar'}
-                      </Button>
+                      <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                      <Button onClick={handleSave} disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</Button>
                     </div>
                   </DialogContent>
                 </Dialog>
@@ -483,7 +439,6 @@ export default function Livros() {
             </div>
           )}
 
-          {/* Sinopse expandida dialog */}
           {sinopseExpandida && (
             <Dialog open={!!sinopseExpandida} onOpenChange={() => setSinopseExpandida(null)}>
               <DialogContent className="max-w-lg">
