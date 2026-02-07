@@ -21,8 +21,7 @@ import ConfiguracaoEscola from "./pages/ConfiguracaoEscola";
 
 // Professor pages
 import MeusAlunos from "./pages/professor/MeusAlunos";
-import SugestoesLivros from "./pages/professor/SugestoesLivros";
-import AtividadesLeitura from "./pages/professor/AtividadesLeitura";
+import PainelProfessor from "./pages/professor/PainelProfessor";
 import RelatoriosLeitura from "./pages/professor/RelatoriosLeitura";
 
 const queryClient = new QueryClient();
@@ -120,18 +119,10 @@ const App = () => (
               }
             />
             <Route
-              path="/professor/sugestoes"
+              path="/professor/painel"
               element={
                 <ProtectedRoute>
-                  <SugestoesLivros />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/professor/atividades"
-              element={
-                <ProtectedRoute>
-                  <AtividadesLeitura />
+                  <PainelProfessor />
                 </ProtectedRoute>
               }
             />
