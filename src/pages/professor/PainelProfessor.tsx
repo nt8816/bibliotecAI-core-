@@ -159,21 +159,65 @@ export default function PainelProfessor() {
 
     setSaving(true);
     try {
+      // Filtrar livros disponíveis da área (não emprestados)
       const livrosDaArea = livros.filter(l => l.area.toLowerCase() === selectedArea.toLowerCase());
+      const livrosDisponiveis = livrosDaArea; // já temos todos, vamos checar disponibilidade abaixo
+
       if (livrosDaArea.length === 0) { toast({ variant: 'destructive', title: 'Erro', description: 'Sem livros nessa área.' }); setSaving(false); return; }
 
       let alunos = usuarios;
       if (selectedTurma) alunos = usuarios.filter(u => u.turma === selectedTurma);
       if (alunos.length === 0) { toast({ variant: 'destructive', title: 'Erro', description: 'Sem alunos.' }); setSaving(false); return; }
 
-      const batch = alunos.map((a, i) => ({
-        aluno_id: a.id, livro_id: livrosDaArea[i % livrosDaArea.length].id,
-        professor_id: profId, mensagem: `Sugestão automática da área: ${selectedArea}`,
-      }));
+      // Buscar empréstimos ativos para evitar sugerir livros emprestados
+      const { data: emprestimosAtivos } = await supabase.from('emprestimos').select('livro_id, usuario_id').eq('status', 'ativo');
+      const livrosEmprestados = new Set((emprestimosAtivos || []).map(e => e.livro_id));
+
+      // Buscar sugestões existentes para evitar duplicatas
+      const { data: sugestoesExistentes } = await supabase.from('sugestoes_livros').select('aluno_id, livro_id');
+      const sugestoesSet = new Set((sugestoesExistentes || []).map(s => `${s.aluno_id}-${s.livro_id}`));
+
+      // Filtrar livros não emprestados
+      const livrosLivres = livrosDaArea.filter(l => !livrosEmprestados.has(l.id));
+      if (livrosLivres.length === 0) {
+        toast({ variant: 'destructive', title: 'Aviso', description: 'Todos os livros desta área estão emprestados.' });
+        setSaving(false);
+        return;
+      }
+
+      // Distribuir livros sem duplicatas entre alunos
+      const batch: { aluno_id: string; livro_id: string; professor_id: string; mensagem: string }[] = [];
+      const livrosUsados = new Map<string, number>(); // livro_id -> count
+
+      for (const aluno of alunos) {
+        // Encontrar livro não sugerido para este aluno e menos usado
+        const livroParaAluno = livrosLivres.find(l => {
+          const key = `${aluno.id}-${l.id}`;
+          if (sugestoesSet.has(key)) return false;
+          const count = livrosUsados.get(l.id) || 0;
+          // Evitar que o mesmo livro vá para muitos alunos (distribuir uniformemente)
+          return count < Math.ceil(alunos.length / livrosLivres.length) + 1;
+        });
+
+        if (livroParaAluno) {
+          batch.push({
+            aluno_id: aluno.id, livro_id: livroParaAluno.id,
+            professor_id: profId, mensagem: `Sugestão automática da área: ${selectedArea}`,
+          });
+          livrosUsados.set(livroParaAluno.id, (livrosUsados.get(livroParaAluno.id) || 0) + 1);
+          sugestoesSet.add(`${aluno.id}-${livroParaAluno.id}`);
+        }
+      }
+
+      if (batch.length === 0) {
+        toast({ title: 'Aviso', description: 'Todos os alunos já receberam sugestões desta área.' });
+        setSaving(false);
+        return;
+      }
 
       const { error } = await supabase.from('sugestoes_livros').insert(batch);
       if (error) throw error;
-      toast({ title: 'Sucesso', description: `${batch.length} sugestões enviadas!` });
+      toast({ title: 'Sucesso', description: `${batch.length} sugestões enviadas (sem duplicatas)!` });
       setIsAutoDialogOpen(false); setSelectedArea(''); setSelectedTurma('');
       fetchData();
     } catch (error: any) {

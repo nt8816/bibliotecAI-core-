@@ -78,7 +78,7 @@ export function AppSidebar() {
     // Aluno
     return [
       ...commonItems,
-      { title: 'Livros', url: '/livros', icon: BookOpen },
+      { title: 'Meu Painel', url: '/aluno/painel', icon: BookOpen },
       { title: 'Meus Empréstimos', url: '/emprestimos', icon: BookMarked },
     ];
   };
