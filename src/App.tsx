@@ -24,6 +24,9 @@ import MeusAlunos from "./pages/professor/MeusAlunos";
 import PainelProfessor from "./pages/professor/PainelProfessor";
 import RelatoriosLeitura from "./pages/professor/RelatoriosLeitura";
 
+// Aluno pages
+import PainelAluno from "./pages/aluno/PainelAluno";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -131,6 +134,15 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <RelatoriosLeitura />
+                </ProtectedRoute>
+              }
+            />
+            {/* Aluno Routes */}
+            <Route
+              path="/aluno/painel"
+              element={
+                <ProtectedRoute>
+                  <PainelAluno />
                 </ProtectedRoute>
               }
             />

@@ -78,6 +78,51 @@ export type Database = {
           },
         ]
       }
+      avaliacoes_livros: {
+        Row: {
+          created_at: string
+          id: string
+          livro_id: string
+          nota: number
+          resenha: string | null
+          updated_at: string
+          usuario_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          livro_id: string
+          nota: number
+          resenha?: string | null
+          updated_at?: string
+          usuario_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          livro_id?: string
+          nota?: number
+          resenha?: string | null
+          updated_at?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "avaliacoes_livros_livro_id_fkey"
+            columns: ["livro_id"]
+            isOneToOne: false
+            referencedRelation: "livros"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "avaliacoes_livros_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios_biblioteca"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       emprestimos: {
         Row: {
           created_at: string
@@ -156,6 +201,42 @@ export type Database = {
         }
         Relationships: []
       }
+      lista_desejos: {
+        Row: {
+          created_at: string
+          id: string
+          livro_id: string
+          usuario_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          livro_id: string
+          usuario_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          livro_id?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lista_desejos_livro_id_fkey"
+            columns: ["livro_id"]
+            isOneToOne: false
+            referencedRelation: "livros"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lista_desejos_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios_biblioteca"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       livros: {
         Row: {
           ano: string | null
@@ -207,6 +288,56 @@ export type Database = {
         }
         Relationships: []
       }
+      preferencias_aluno: {
+        Row: {
+          autores_favoritos: string[] | null
+          created_at: string
+          formatos_preferidos: string[] | null
+          frequencia_leitura: string | null
+          generos_favoritos: string[] | null
+          id: string
+          idiomas: string[] | null
+          nivel_leitura: string | null
+          ultimos_livros: string[] | null
+          updated_at: string
+          usuario_id: string
+        }
+        Insert: {
+          autores_favoritos?: string[] | null
+          created_at?: string
+          formatos_preferidos?: string[] | null
+          frequencia_leitura?: string | null
+          generos_favoritos?: string[] | null
+          id?: string
+          idiomas?: string[] | null
+          nivel_leitura?: string | null
+          ultimos_livros?: string[] | null
+          updated_at?: string
+          usuario_id: string
+        }
+        Update: {
+          autores_favoritos?: string[] | null
+          created_at?: string
+          formatos_preferidos?: string[] | null
+          frequencia_leitura?: string | null
+          generos_favoritos?: string[] | null
+          id?: string
+          idiomas?: string[] | null
+          nivel_leitura?: string | null
+          ultimos_livros?: string[] | null
+          updated_at?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "preferencias_aluno_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: true
+            referencedRelation: "usuarios_biblioteca"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       salas_cursos: {
         Row: {
           created_at: string
@@ -238,6 +369,54 @@ export type Database = {
             columns: ["escola_id"]
             isOneToOne: false
             referencedRelation: "escolas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      solicitacoes_emprestimo: {
+        Row: {
+          created_at: string
+          id: string
+          livro_id: string
+          mensagem: string | null
+          resposta: string | null
+          status: string
+          updated_at: string
+          usuario_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          livro_id: string
+          mensagem?: string | null
+          resposta?: string | null
+          status?: string
+          updated_at?: string
+          usuario_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          livro_id?: string
+          mensagem?: string | null
+          resposta?: string | null
+          status?: string
+          updated_at?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "solicitacoes_emprestimo_livro_id_fkey"
+            columns: ["livro_id"]
+            isOneToOne: false
+            referencedRelation: "livros"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "solicitacoes_emprestimo_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios_biblioteca"
             referencedColumns: ["id"]
           },
         ]

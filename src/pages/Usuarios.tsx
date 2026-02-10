@@ -14,7 +14,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Plus, Pencil, Trash2, Search, Users, Upload, FileSpreadsheet, FileText, AlertCircle, CheckCircle, Loader2, Download } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { Database } from '@/integrations/supabase/types';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import * as XLSX from 'xlsx';
@@ -96,6 +99,11 @@ export default function Usuarios() {
   };
 
   const handleOpenDialog = (usuario?: Usuario) => {
+    // Bibliotecária não pode editar gestor
+    if (usuario && isBibliotecaria && !isGestor && usuario.tipo === 'gestor') {
+      toast({ variant: 'destructive', title: 'Sem permissão', description: 'Você não pode editar informações do gestor.' });
+      return;
+    }
     if (usuario) {
       setEditingUsuario(usuario);
       setFormData({
@@ -107,6 +115,30 @@ export default function Usuarios() {
       setFormData(emptyUsuario);
     }
     setIsDialogOpen(true);
+  };
+
+  const handleExportarUsuariosExcel = () => {
+    const headers = ['Nome', 'Email', 'Tipo', 'Matrícula', 'CPF', 'Turma', 'Telefone'];
+    const data = filteredUsuarios.map(u => [u.nome, u.email, getTipoLabel(u.tipo), u.matricula || '-', u.cpf || '-', u.turma || '-', u.telefone || '-']);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Usuários');
+    XLSX.writeFile(wb, 'usuarios.xlsx');
+    toast({ title: 'Exportado!', description: 'Arquivo usuarios.xlsx baixado.' });
+  };
+
+  const handleExportarUsuariosPDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text('BibliotecAI - Usuários', 14, 22);
+    doc.setFontSize(11);
+    doc.setTextColor(100);
+    doc.text(`Total: ${filteredUsuarios.length} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
+    const headers = ['Nome', 'Email', 'Tipo', 'Matrícula', 'Turma', 'Telefone'];
+    const data = filteredUsuarios.map(u => [u.nome, u.email, getTipoLabel(u.tipo), u.matricula || '-', u.turma || '-', u.telefone || '-']);
+    autoTable(doc, { head: [headers], body: data, startY: 40, styles: { fontSize: 8 }, headStyles: { fillColor: [88, 86, 214] } });
+    doc.save('usuarios.pdf');
+    toast({ title: 'Exportado!', description: 'Arquivo usuarios.pdf baixado.' });
   };
 
   const handleSave = async () => {
@@ -300,6 +332,17 @@ export default function Usuarios() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="icon">
+                      <Download className="w-4 h-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-40 p-2" align="end">
+                    <Button variant="ghost" size="sm" className="w-full justify-start" onClick={handleExportarUsuariosExcel}>Excel (.xlsx)</Button>
+                    <Button variant="ghost" size="sm" className="w-full justify-start" onClick={handleExportarUsuariosPDF}>PDF (.pdf)</Button>
+                  </PopoverContent>
+                </Popover>
                 {canManageUsers && (
                   <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
@@ -395,9 +438,12 @@ export default function Usuarios() {
                         {canManageUsers && (
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(usuario)}>
-                                <Pencil className="w-4 h-4" />
-                              </Button>
+                              {/* Bibliotecária não pode editar gestor */}
+                              {!(isBibliotecaria && !isGestor && usuario.tipo === 'gestor') && (
+                                <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(usuario)}>
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
+                              )}
                               {isGestor && (
                                 <Button variant="ghost" size="icon" onClick={() => handleDelete(usuario.id)}>
                                   <Trash2 className="w-4 h-4 text-destructive" />
