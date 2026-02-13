@@ -126,7 +126,7 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md" translate="no">
         <CardHeader className="text-center">
           <div className="mx-auto w-16 h-16 rounded-full bg-primary flex items-center justify-center mb-4">
             <Library className="w-8 h-8 text-primary-foreground" />
