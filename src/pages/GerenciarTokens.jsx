@@ -150,7 +150,7 @@ export default function GerenciarTokens() {
   };
 
   const copiarLink = async (token) => {
-    const link = `${window.location.origin}/#/convite/${token}`;
+    const link = `${window.location.origin}/convite/${token}`;
 
     try {
       if (navigator?.clipboard?.writeText) {

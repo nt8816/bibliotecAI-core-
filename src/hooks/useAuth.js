@@ -2,11 +2,13 @@ import { jsx as _jsx } from "react/jsx-runtime";
 import { useState, useEffect, createContext, useContext } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 const AuthContext = createContext(undefined);
+const rolePriority = ['super_admin', 'gestor', 'bibliotecaria', 'professor', 'aluno'];
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [session, setSession] = useState(null);
     const [loading, setLoading] = useState(true);
     const [userRole, setUserRole] = useState(null);
+    const [roles, setRoles] = useState([]);
     useEffect(() => {
         // Set up auth state listener FIRST
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -20,6 +22,7 @@ export function AuthProvider({ children }) {
             }
             else {
                 setUserRole(null);
+                setRoles([]);
             }
         });
         // THEN check for existing session
@@ -38,15 +41,15 @@ export function AuthProvider({ children }) {
             const { data, error } = await supabase
                 .from('user_roles')
                 .select('role')
-                .eq('user_id', userId)
-                .maybeSingle();
+                .eq('user_id', userId);
             if (error) {
                 console.error('Error fetching user role:', error);
                 return;
             }
-            if (data) {
-                setUserRole(data.role);
-            }
+            const userRoles = [...new Set((data || []).map((item) => item.role))];
+            setRoles(userRoles);
+            const pickedRole = rolePriority.find((role) => userRoles.includes(role)) || null;
+            setUserRole(pickedRole);
         }
         catch (error) {
             console.error('Error fetching user role:', error);
@@ -79,15 +82,18 @@ export function AuthProvider({ children }) {
     const isProfessor = userRole === 'professor';
     const isBibliotecaria = userRole === 'bibliotecaria';
     const isAluno = userRole === 'aluno';
+    const isSuperAdmin = userRole === 'super_admin';
     return (_jsx(AuthContext.Provider, { value: {
             user,
             session,
             loading,
             userRole,
+            roles,
             isGestor,
             isProfessor,
             isBibliotecaria,
             isAluno,
+            isSuperAdmin,
             signIn,
             signUp,
             signOut
