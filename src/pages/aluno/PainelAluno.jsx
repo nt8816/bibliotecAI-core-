@@ -17,6 +17,10 @@ import {
   Send,
   Sparkles,
   Star,
+  Medal,
+  Flame,
+  Gift,
+  Crown,
   Trash2,
   Trophy,
   Volume2,
@@ -32,6 +36,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -411,6 +416,75 @@ export default function PainelAluno() {
 
     return itens.slice(0, 8);
   }, [atrasos, atividadesComEntrega, novidades]);
+
+  const leiturasRecentes = useMemo(() => {
+    const seteDiasAtras = new Date();
+    seteDiasAtras.setDate(seteDiasAtras.getDate() - 6);
+    return emprestimos.filter((e) => {
+      if (e.status !== 'devolvido') return false;
+      const dataRef = e.data_devolucao_real || e.updated_at || e.created_at;
+      return dataRef && new Date(dataRef) >= seteDiasAtras;
+    }).length;
+  }, [emprestimos]);
+
+  const pontosExperiencia = useMemo(() => {
+    const baseLeituras = livrosLidos * 35;
+    const baseAvaliacoes = avaliacoes.length * 15;
+    const baseAtividades = entregas.filter((e) => e.status === 'aprovada').length * 25;
+    return baseLeituras + baseAvaliacoes + baseAtividades + Number(pontosGanhos || 0);
+  }, [avaliacoes.length, entregas, livrosLidos, pontosGanhos]);
+
+  const nivelAtual = useMemo(() => Math.max(1, Math.floor(pontosExperiencia / 150) + 1), [pontosExperiencia]);
+
+  const xpNivelAtual = useMemo(() => (nivelAtual - 1) * 150, [nivelAtual]);
+  const xpProximoNivel = useMemo(() => nivelAtual * 150, [nivelAtual]);
+  const progressoNivel = useMemo(() => {
+    const progresso = ((pontosExperiencia - xpNivelAtual) / (xpProximoNivel - xpNivelAtual)) * 100;
+    return Math.max(0, Math.min(100, progresso));
+  }, [pontosExperiencia, xpNivelAtual, xpProximoNivel]);
+
+  const selos = useMemo(
+    () => [
+      {
+        id: 'primeiro-livro',
+        nome: 'Primeiro Livro',
+        descricao: 'Concluiu sua primeira leitura.',
+        desbloqueado: livrosLidos >= 1,
+        icon: BookOpen,
+      },
+      {
+        id: 'leitor-bronze',
+        nome: 'Leitor Bronze',
+        descricao: 'Leu pelo menos 5 livros.',
+        desbloqueado: livrosLidos >= 5,
+        icon: Medal,
+      },
+      {
+        id: 'maratona',
+        nome: 'Maratona da Semana',
+        descricao: 'Leu 3+ livros nos últimos 7 dias.',
+        desbloqueado: leiturasRecentes >= 3,
+        icon: Flame,
+      },
+      {
+        id: 'autor-da-comunidade',
+        nome: 'Autor da Comunidade',
+        descricao: 'Publicou sua primeira avaliação.',
+        desbloqueado: avaliacoes.length >= 1,
+        icon: Sparkles,
+      },
+      {
+        id: 'top-atividades',
+        nome: 'Top das Atividades',
+        descricao: 'Aprovou 5 atividades.',
+        desbloqueado: entregas.filter((e) => e.status === 'aprovada').length >= 5,
+        icon: Trophy,
+      },
+    ],
+    [avaliacoes.length, entregas, leiturasRecentes, livrosLidos],
+  );
+
+  const selosConquistados = useMemo(() => selos.filter((s) => s.desbloqueado), [selos]);
 
   const filteredLivros = useMemo(
     () =>
@@ -797,6 +871,32 @@ export default function PainelAluno() {
   return (
     <MainLayout title="Meu Painel">
       <div className="space-y-4 sm:space-y-6">
+        <Card className="relative overflow-hidden student-gamify-hero border-primary/20">
+          <div className="student-gamify-orb student-gamify-orb-a" />
+          <div className="student-gamify-orb student-gamify-orb-b" />
+          <CardContent className="relative p-4 sm:p-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-primary/80">Jornada de leitura</p>
+                <h2 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
+                  <Crown className="w-5 h-5 text-warning" /> Nível {nivelAtual}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {pontosExperiencia} XP acumulado • faltam {Math.max(0, xpProximoNivel - pontosExperiencia)} XP para o próximo nível
+                </p>
+              </div>
+              <div className="rounded-xl border bg-background/80 px-3 py-2 text-sm flex items-center gap-2 student-achievement-chip">
+                <Gift className="w-4 h-4 text-primary" />
+                <span>{selosConquistados.length >= 3 ? 'Presente liberado!' : 'Conquiste 3 selos para liberar presente'}</span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Progress value={progressoNivel} className="h-3" />
+              <p className="text-xs text-muted-foreground">{Math.round(progressoNivel)}% do nível atual</p>
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
           <Card>
             <CardContent className="p-4">
@@ -854,6 +954,40 @@ export default function PainelAluno() {
             </CardContent>
           </Card>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Medal className="w-4 h-4" />
+              Selos e conquistas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {selos.map((selo) => (
+                <div
+                  key={selo.id}
+                  className={`rounded-xl border p-3 transition-all ${
+                    selo.desbloqueado ? 'bg-primary/5 border-primary/30 student-badge-unlocked' : 'bg-muted/40'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${selo.desbloqueado ? 'bg-primary/15' : 'bg-muted'}`}>
+                      <selo.icon className={`w-5 h-5 ${selo.desbloqueado ? 'text-primary' : 'text-muted-foreground'}`} />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">{selo.nome}</p>
+                      <p className="text-xs text-muted-foreground">{selo.descricao}</p>
+                      <Badge variant={selo.desbloqueado ? 'outline' : 'secondary'} className="mt-2">
+                        {selo.desbloqueado ? 'Desbloqueado' : 'Em progresso'}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

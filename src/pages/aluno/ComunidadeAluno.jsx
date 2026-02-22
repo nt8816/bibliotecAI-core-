@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { AudioLines, Filter, Heart, ImagePlus, MessageSquare, Plus, Send, Sparkles, X } from 'lucide-react';
+import { AudioLines, Filter, Heart, ImagePlus, MessageSquare, Pencil, Plus, Send, Sparkles, Trash2, X } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -66,7 +66,7 @@ async function fileToDataUrl(file) {
 }
 
 export default function ComunidadeAluno() {
-  const { user } = useAuth();
+  const { user, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
   const { toast } = useToast();
 
   const [alunoId, setAlunoId] = useState(null);
@@ -80,6 +80,7 @@ export default function ComunidadeAluno() {
   const [enabled, setEnabled] = useState(ENABLE_OPTIONAL_STUDENT_FEATURES);
 
   const [postDialogOpen, setPostDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState('todos');
 
   const [postTipo, setPostTipo] = useState('resenha');
@@ -91,6 +92,9 @@ export default function ComunidadeAluno() {
   const [imageDataUrls, setImageDataUrls] = useState([]);
   const [selectedImageUrl, setSelectedImageUrl] = useState('');
   const [rankingEscolas, setRankingEscolas] = useState([]);
+  const [postEmEdicao, setPostEmEdicao] = useState(null);
+  const [editTitulo, setEditTitulo] = useState('');
+  const [editConteudo, setEditConteudo] = useState('');
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -331,15 +335,103 @@ export default function ComunidadeAluno() {
     }
   };
 
+  const podeGerenciarPost = useCallback(
+    (post) => isGestor || isBibliotecaria || isSuperAdmin || post?.autor_id === alunoId,
+    [alunoId, isBibliotecaria, isGestor, isSuperAdmin],
+  );
+
+  const podeEditarPost = useCallback((post) => post?.autor_id === alunoId, [alunoId]);
+
+  const abrirEdicao = (post) => {
+    if (!podeEditarPost(post)) return;
+    setPostEmEdicao(post);
+    setEditTitulo(safeText(post?.titulo, ''));
+    setEditConteudo(safeText(post?.conteudo, ''));
+    setEditDialogOpen(true);
+  };
+
+  const salvarEdicaoPost = async () => {
+    if (!postEmEdicao?.id) return;
+
+    const tituloLimpo = editTitulo.trim();
+    const conteudoLimpo = editConteudo.trim();
+
+    if (!conteudoLimpo) {
+      toast({
+        variant: 'destructive',
+        title: 'Conteúdo obrigatório',
+        description: 'Escreva algo antes de salvar.',
+      });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('comunidade_posts')
+        .update({
+          titulo: tituloLimpo || null,
+          conteudo: conteudoLimpo,
+        })
+        .eq('id', postEmEdicao.id);
+
+      if (error) throw error;
+
+      setEditDialogOpen(false);
+      setPostEmEdicao(null);
+      setEditTitulo('');
+      setEditConteudo('');
+      toast({ title: 'Post atualizado com sucesso.' });
+      await fetchData();
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao editar',
+        description: error?.message || 'Não foi possível editar o post.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const apagarPost = async (post) => {
+    if (!podeGerenciarPost(post)) return;
+
+    const ok = window.confirm('Deseja apagar este post da comunidade?');
+    if (!ok) return;
+
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('comunidade_posts').delete().eq('id', post.id);
+      if (error) throw error;
+
+      toast({ title: 'Post apagado com sucesso.' });
+      await fetchData();
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao apagar',
+        description: error?.message || 'Não foi possível apagar o post.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const isGestao = isGestor || isBibliotecaria || isSuperAdmin;
+
   return (
-    <MainLayout title="Comunidade do Aluno">
+    <MainLayout title={isGestao ? 'Comunidade Escolar' : 'Comunidade do Aluno'}>
       <div className="space-y-4 sm:space-y-6 pb-20">
         <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/10 via-info/10 to-warning/10 p-4 sm:p-6">
           <div className="absolute right-4 top-4 opacity-30">
             <Sparkles className="w-10 h-10" />
           </div>
           <h2 className="text-xl sm:text-2xl font-bold">Comunidade de Leitura</h2>
-          <p className="text-sm text-muted-foreground mt-1">Compartilhe resenhas, dicas, sugestões e recomendações de audiobooks.</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Compartilhe resenhas, dicas, sugestões e recomendações de audiobooks.
+            {isGestao ? ' Você também pode moderar publicações da comunidade.' : ''}
+          </p>
         </div>
 
         {!enabled && (
@@ -453,6 +545,18 @@ export default function ComunidadeAluno() {
                       <Button variant="ghost" size="sm" onClick={() => handleCompartilharPost(post)} disabled={!enabled}>
                         Compartilhar
                       </Button>
+                      {podeEditarPost(post) && (
+                        <Button variant="ghost" size="sm" onClick={() => abrirEdicao(post)} disabled={!enabled || saving}>
+                          <Pencil className="w-4 h-4 mr-1" />
+                          Editar
+                        </Button>
+                      )}
+                      {podeGerenciarPost(post) && (
+                        <Button variant="ghost" size="sm" onClick={() => apagarPost(post)} disabled={!enabled || saving}>
+                          <Trash2 className="w-4 h-4 mr-1 text-destructive" />
+                          Apagar
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -581,6 +685,52 @@ export default function ComunidadeAluno() {
               </Button>
               <Button onClick={handleCriarPost} disabled={saving || !enabled}>
                 <Send className="w-4 h-4 mr-2" /> {saving ? 'Publicando...' : 'Publicar'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editDialogOpen}
+        onOpenChange={(open) => {
+          setEditDialogOpen(open);
+          if (!open) {
+            setPostEmEdicao(null);
+            setEditTitulo('');
+            setEditConteudo('');
+          }
+        }}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-4 h-4" /> Editar publicação
+            </DialogTitle>
+            <DialogDescription>Atualize o conteúdo do seu post.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Título</Label>
+              <Input value={editTitulo} onChange={(e) => setEditTitulo(e.target.value)} placeholder="Título (opcional)" />
+            </div>
+            <div className="space-y-2">
+              <Label>Conteúdo</Label>
+              <Textarea
+                rows={5}
+                value={editConteudo}
+                onChange={(e) => setEditConteudo(e.target.value)}
+                placeholder="Atualize sua publicação..."
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={salvarEdicaoPost} disabled={saving}>
+                <Send className="w-4 h-4 mr-2" />
+                {saving ? 'Salvando...' : 'Salvar alterações'}
               </Button>
             </div>
           </div>

@@ -22,13 +22,13 @@ import Convite from './pages/Convite';
 import ConfiguracaoEscola from './pages/ConfiguracaoEscola';
 import AdminTenants from './pages/AdminTenants';
 import OnboardingGestor from './pages/OnboardingGestor';
+import ComunidadeAluno from './pages/aluno/ComunidadeAluno';
 
 import MeusAlunos from './pages/professor/MeusAlunos';
 import PainelProfessor from './pages/professor/PainelProfessor';
 import RelatoriosLeitura from './pages/professor/RelatoriosLeitura';
 
 import PainelAluno from './pages/aluno/PainelAluno';
-import ComunidadeAluno from './pages/aluno/ComunidadeAluno';
 
 const queryClient = new QueryClient();
 
@@ -48,6 +48,14 @@ function AppRoutes() {
       <Route path="/auth" element={<Auth />} />
       <Route path="/convite/:token" element={<Convite />} />
       <Route path="/onboarding/:token" element={<OnboardingGestor />} />
+      <Route
+        path="/comunidade"
+        element={(
+          <ProtectedRoute>
+            <ComunidadeAluno />
+          </ProtectedRoute>
+        )}
+      />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
       <Route

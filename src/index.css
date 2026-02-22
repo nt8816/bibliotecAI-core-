@@ -279,12 +279,82 @@
   }
 }
 
+@layer components {
+  .student-gamify-hero {
+    background:
+      radial-gradient(circle at 0% 0%, hsl(var(--primary) / 0.2), transparent 46%),
+      radial-gradient(circle at 100% 100%, hsl(var(--warning) / 0.16), transparent 44%),
+      hsl(var(--card));
+  }
+
+  .student-gamify-orb {
+    @apply absolute rounded-full pointer-events-none blur-2xl;
+    animation: studentFloat 6s ease-in-out infinite;
+  }
+
+  .student-gamify-orb-a {
+    width: 180px;
+    height: 180px;
+    top: -40px;
+    right: -20px;
+    background: hsl(var(--primary) / 0.25);
+  }
+
+  .student-gamify-orb-b {
+    width: 130px;
+    height: 130px;
+    bottom: -30px;
+    left: -18px;
+    background: hsl(var(--warning) / 0.24);
+    animation-delay: -2s;
+  }
+
+  .student-achievement-chip {
+    animation: studentPulse 2.8s ease-in-out infinite;
+  }
+
+  .student-badge-unlocked {
+    animation: studentPopIn 360ms ease-out;
+  }
+}
+
 @keyframes authFloat {
   0%, 100% {
     transform: translateY(0px) translateX(0px);
   }
   50% {
     transform: translateY(-16px) translateX(10px);
+  }
+}
+
+@keyframes studentFloat {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px);
+  }
+  50% {
+    transform: translateY(-10px) translateX(8px);
+  }
+}
+
+@keyframes studentPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0.1);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 0 8px hsl(var(--primary) / 0);
+  }
+}
+
+@keyframes studentPopIn {
+  0% {
+    transform: scale(0.97);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
   }
 }
 
@@ -384,7 +454,10 @@
   .auth-login-card,
   .auth-logo-wrap,
   .auth-login-button,
-  .auth-login-form .auth-field {
+  .auth-login-form .auth-field,
+  .student-gamify-orb,
+  .student-achievement-chip,
+  .student-badge-unlocked {
     animation: none !important;
   }
 

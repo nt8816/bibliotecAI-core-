@@ -57,6 +57,7 @@ export function AppSidebar() {
         { title: 'Usuários', url: '/usuarios', icon: Users },
         { title: 'Empréstimos', url: '/emprestimos', icon: BookMarked },
         { title: 'Relatórios', url: '/relatorios', icon: BarChart3 },
+        { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
       ];
     }
 
@@ -66,6 +67,7 @@ export function AppSidebar() {
         { title: 'Livros', url: '/livros', icon: BookOpen },
         { title: 'Usuários', url: '/usuarios', icon: Users },
         { title: 'Empréstimos', url: '/emprestimos', icon: BookMarked },
+        { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
       ];
     }
 
