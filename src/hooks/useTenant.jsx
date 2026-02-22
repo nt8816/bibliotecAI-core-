@@ -18,6 +18,7 @@ function getBaseDomainFromEnv() {
 function extractSubdomain(hostname) {
   const host = removePort(hostname);
   const envBaseDomain = getBaseDomainFromEnv();
+  const vercelProjectHost = (import.meta.env.VITE_VERCEL_PROJECT_HOST || '').trim().toLowerCase();
 
   if (!host) return { mode: 'root', subdomain: null };
 
@@ -50,8 +51,23 @@ function extractSubdomain(hostname) {
   }
 
   if (host.endsWith('.vercel.app')) {
+    // Root/preview domains on vercel.app are not tenant hosts.
+    // Example root: bibliotec-ai-core.vercel.app
+    // Example preview: feature-branch--bibliotec-ai-core.vercel.app
+    if (host.includes('--')) {
+      return { mode: 'root', subdomain: null };
+    }
+
+    if (vercelProjectHost && host === vercelProjectHost) {
+      return { mode: 'root', subdomain: null };
+    }
+
     const parts = host.split('.');
-    if (parts.length >= 3) {
+    if (parts.length === 3) {
+      return { mode: 'root', subdomain: null };
+    }
+
+    if (parts.length >= 4) {
       if (parts[0] === 'admin') return { mode: 'admin', subdomain: null };
       if (!RESERVED_SUBDOMAINS.has(parts[0])) {
         return { mode: 'tenant', subdomain: parts[0] };
