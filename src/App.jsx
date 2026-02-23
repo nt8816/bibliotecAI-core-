@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react';
 import { Toaster } from '@/components/ui/toaster';
 import { Toaster as Sonner } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -9,26 +10,26 @@ import { TenantProvider, useTenant } from '@/hooks/useTenant';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { SuperAdminRoute } from '@/components/SuperAdminRoute';
 
-import Auth from './pages/Auth';
-import Dashboard from './pages/Dashboard';
-import Livros from './pages/Livros.jsx';
-import Usuarios from './pages/Usuarios.jsx';
-import Emprestimos from './pages/Emprestimos';
-import Relatorios from './pages/Relatorios.jsx';
-import NotFound from './pages/NotFound';
-import TenantNotFound from './pages/TenantNotFound';
-import GerenciarTokens from './pages/GerenciarTokens.jsx';
-import Convite from './pages/Convite';
-import ConfiguracaoEscola from './pages/ConfiguracaoEscola';
-import AdminTenants from './pages/AdminTenants';
-import OnboardingGestor from './pages/OnboardingGestor';
-import ComunidadeAluno from './pages/aluno/ComunidadeAluno';
+import { PrivateTelemetryTracker } from '@/components/PrivateTelemetryTracker';
 
-import MeusAlunos from './pages/professor/MeusAlunos';
-import PainelProfessor from './pages/professor/PainelProfessor';
-import RelatoriosLeitura from './pages/professor/RelatoriosLeitura';
-
-import PainelAluno from './pages/aluno/PainelAluno';
+const Auth = lazy(() => import('./pages/Auth'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Livros = lazy(() => import('./pages/Livros.jsx'));
+const Usuarios = lazy(() => import('./pages/Usuarios.jsx'));
+const Emprestimos = lazy(() => import('./pages/Emprestimos'));
+const Relatorios = lazy(() => import('./pages/Relatorios.jsx'));
+const NotFound = lazy(() => import('./pages/NotFound'));
+const TenantNotFound = lazy(() => import('./pages/TenantNotFound'));
+const GerenciarTokens = lazy(() => import('./pages/GerenciarTokens.jsx'));
+const Convite = lazy(() => import('./pages/Convite'));
+const ConfiguracaoEscola = lazy(() => import('./pages/ConfiguracaoEscola'));
+const AdminTenants = lazy(() => import('./pages/AdminTenants'));
+const OnboardingGestor = lazy(() => import('./pages/OnboardingGestor'));
+const ComunidadeAluno = lazy(() => import('./pages/aluno/ComunidadeAluno'));
+const MeusAlunos = lazy(() => import('./pages/professor/MeusAlunos'));
+const PainelProfessor = lazy(() => import('./pages/professor/PainelProfessor'));
+const RelatoriosLeitura = lazy(() => import('./pages/professor/RelatoriosLeitura'));
+const PainelAluno = lazy(() => import('./pages/aluno/PainelAluno'));
 
 const queryClient = new QueryClient();
 
@@ -179,7 +180,10 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <AppRoutes />
+            <PrivateTelemetryTracker />
+            <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Carregando...</div>}>
+              <AppRoutes />
+            </Suspense>
           </BrowserRouter>
         </TooltipProvider>
       </AuthProvider>

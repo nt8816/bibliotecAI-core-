@@ -11,6 +11,8 @@ import {
   Lightbulb,
   MessageSquare,
   Building2,
+  Bell,
+  Download,
 } from 'lucide-react';
 
 import { NavLink } from '@/components/NavLink';
@@ -30,14 +32,29 @@ import {
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useSystemNotifications } from '@/hooks/useSystemNotifications';
+import { usePrivateTelemetry } from '@/hooks/usePrivateTelemetry';
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
   const { signOut, user, userRole, isGestor, isSuperAdmin } = useAuth();
+  const { counts, canViewNotifications } = useSystemNotifications();
+  const { getEvents } = usePrivateTelemetry();
 
   const handleSignOut = async () => {
     await signOut();
+  };
+
+  const handleExportTelemetry = () => {
+    const events = getEvents();
+    const blob = new Blob([JSON.stringify(events, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'minha_telemetria_privada.json';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const getMenuItems = () => {
@@ -144,7 +161,16 @@ export function AppSidebar() {
                   <SidebarMenuButton asChild>
                     <NavLink to={item.url} end className="sidebar-link" activeClassName="sidebar-link-active">
                       <item.icon className="w-5 h-5" />
-                      {!collapsed && <span className="font-medium">{item.title}</span>}
+                      {!collapsed && (
+                        <div className="flex w-full items-center justify-between gap-2">
+                          <span className="font-medium">{item.title}</span>
+                          {item.url === '/emprestimos' && canViewNotifications && (counts.atrasados > 0 || counts.solicitacoesPendentes > 0) && (
+                            <Badge className="h-5 min-w-5 px-1.5 text-[10px] leading-none">
+                              {counts.atrasados + counts.solicitacoesPendentes}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -179,6 +205,23 @@ export function AppSidebar() {
           <div className="mb-3 px-2 space-y-2">
             <Badge className={getRoleBadge().className}>{getRoleBadge().label}</Badge>
             <p className="text-sm text-sidebar-foreground/70 truncate">{user.email}</p>
+            {canViewNotifications && (
+              <div className="rounded-md bg-sidebar-accent/60 p-2 text-xs text-sidebar-foreground/90 space-y-1">
+                <p className="flex items-center gap-2 font-medium"><Bell className="w-3.5 h-3.5" /> Notificações internas</p>
+                <p>Pendentes: {counts.solicitacoesPendentes}</p>
+                <p>Atrasados: {counts.atrasados}</p>
+              </div>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full justify-start gap-2 border-sidebar-border bg-transparent text-sidebar-foreground hover:bg-sidebar-accent"
+              onClick={handleExportTelemetry}
+            >
+              <Download className="w-4 h-4" />
+              Minha Telemetria
+            </Button>
           </div>
         )}
 

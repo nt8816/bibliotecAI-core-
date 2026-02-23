@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { usePrivateTelemetry } from '@/hooks/usePrivateTelemetry';
 import {
   Plus,
   BookMarked,
@@ -24,6 +25,8 @@ import {
   CalendarIcon,
   Inbox,
   XCircle,
+  ArrowUpDown,
+  Loader2,
 } from 'lucide-react';
 import { format, isPast, addMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -56,9 +59,12 @@ export default function Emprestimos() {
   const [searchUsuario, setSearchUsuario] = useState('');
   const [searchLivro, setSearchLivro] = useState('');
   const [respostaPorSolicitacao, setRespostaPorSolicitacao] = useState({});
+  const [sortDirection, setSortDirection] = useState('desc');
+  const [actionLoading, setActionLoading] = useState({ devolucaoId: null, solicitacaoId: null, tipo: null });
 
   const { isGestor, isBibliotecaria } = useAuth();
   const { toast } = useToast();
+  const { trackEvent } = usePrivateTelemetry();
   const canManageLoans = isGestor || isBibliotecaria;
 
   const fetchData = useCallback(async () => {
@@ -129,6 +135,7 @@ export default function Emprestimos() {
       if (livroError) throw livroError;
 
       toast({ title: 'Sucesso', description: 'Empréstimo registrado com sucesso.' });
+      trackEvent('emprestimo_criado', { livroId: selectedLivro, usuarioId: selectedUsuario });
       setIsDialogOpen(false);
       setSelectedLivro('');
       setSelectedUsuario('');
@@ -144,6 +151,7 @@ export default function Emprestimos() {
   };
 
   const handleDevolucao = async (emprestimo) => {
+    setActionLoading({ devolucaoId: emprestimo.id, solicitacaoId: null, tipo: 'devolucao' });
     try {
       const { error: empError } = await supabase
         .from('emprestimos')
@@ -155,9 +163,12 @@ export default function Emprestimos() {
       if (livroError) throw livroError;
 
       toast({ title: 'Sucesso', description: 'Devolução registrada com sucesso.' });
+      trackEvent('emprestimo_devolvido', { id: emprestimo.id });
       fetchData();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível registrar a devolução.' });
+    } finally {
+      setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
     }
   };
 
@@ -165,6 +176,7 @@ export default function Emprestimos() {
     if (!canManageLoans || solicitacao.status !== 'pendente') return;
 
     setSaving(true);
+    setActionLoading({ devolucaoId: null, solicitacaoId: solicitacao.id, tipo: 'aprovar' });
     let emprestimoCriadoId = null;
     try {
       if (!solicitacao?.livros?.disponivel) {
@@ -192,6 +204,7 @@ export default function Emprestimos() {
       if (solicitacaoError) throw solicitacaoError;
 
       toast({ title: 'Solicitação aprovada', description: 'Empréstimo criado e aluno notificado.' });
+      trackEvent('solicitacao_aprovada', { id: solicitacao.id });
       setRespostaPorSolicitacao((prev) => ({ ...prev, [solicitacao.id]: '' }));
       fetchData();
     } catch (error) {
@@ -201,6 +214,7 @@ export default function Emprestimos() {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível aprovar a solicitação.' });
     } finally {
       setSaving(false);
+      setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
     }
   };
 
@@ -208,6 +222,7 @@ export default function Emprestimos() {
     if (!canManageLoans || solicitacao.status !== 'pendente') return;
 
     setSaving(true);
+    setActionLoading({ devolucaoId: null, solicitacaoId: solicitacao.id, tipo: 'recusar' });
     try {
       const resposta = (respostaPorSolicitacao[solicitacao.id] || '').trim() || 'Solicitação recusada pela biblioteca.';
 
@@ -218,12 +233,14 @@ export default function Emprestimos() {
       if (error) throw error;
 
       toast({ title: 'Solicitação recusada' });
+      trackEvent('solicitacao_recusada', { id: solicitacao.id });
       setRespostaPorSolicitacao((prev) => ({ ...prev, [solicitacao.id]: '' }));
       fetchData();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível recusar a solicitação.' });
     } finally {
       setSaving(false);
+      setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
     }
   };
 
@@ -290,8 +307,15 @@ export default function Emprestimos() {
     return <Badge variant="secondary">Pendente</Badge>;
   };
 
-  const emprestimosAtivos = emprestimos.filter((e) => e.status === 'ativo');
-  const emprestimosHistorico = emprestimos.filter((e) => e.status === 'devolvido');
+  const sortEmprestimos = (list) =>
+    [...list].sort((a, b) => {
+      const dateA = new Date(a?.data_emprestimo || a?.created_at || 0).getTime();
+      const dateB = new Date(b?.data_emprestimo || b?.created_at || 0).getTime();
+      return sortDirection === 'asc' ? dateA - dateB : dateB - dateA;
+    });
+
+  const emprestimosAtivos = sortEmprestimos(emprestimos.filter((e) => e.status === 'ativo'));
+  const emprestimosHistorico = sortEmprestimos(emprestimos.filter((e) => e.status === 'devolvido'));
   const solicitacoesPendentes = useMemo(
     () => solicitacoes.filter((s) => s.status === 'pendente'),
     [solicitacoes],
@@ -339,8 +363,15 @@ export default function Emprestimos() {
             </div>
 
             {showDevolucao && canManageLoans && (
-              <Button size="sm" variant="outline" className="mt-3 w-full" onClick={() => handleDevolucao(emprestimo)}>
-                <CheckCircle className="w-4 h-4 mr-2" /> Devolver
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-3 w-full"
+                onClick={() => handleDevolucao(emprestimo)}
+                disabled={actionLoading.devolucaoId === emprestimo.id}
+              >
+                {actionLoading.devolucaoId === emprestimo.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                Devolver
               </Button>
             )}
           </div>
@@ -377,8 +408,9 @@ export default function Emprestimos() {
                 <TableCell>{getStatusBadge(emprestimo)}</TableCell>
                 {showDevolucao && canManageLoans && (
                   <TableCell className="text-right">
-                    <Button size="sm" variant="outline" onClick={() => handleDevolucao(emprestimo)}>
-                      <CheckCircle className="w-4 h-4 mr-2" /> Devolver
+                    <Button size="sm" variant="outline" onClick={() => handleDevolucao(emprestimo)} disabled={actionLoading.devolucaoId === emprestimo.id}>
+                      {actionLoading.devolucaoId === emprestimo.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                      Devolver
                     </Button>
                   </TableCell>
                 )}
@@ -416,6 +448,17 @@ export default function Emprestimos() {
                     </Button>
                   </PopoverContent>
                 </Popover>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  onClick={() => setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                >
+                  <ArrowUpDown className="w-4 h-4 mr-2" />
+                  Data ({sortDirection === 'desc' ? 'mais novas' : 'mais antigas'})
+                </Button>
 
                 <Dialog
                   open={isDialogOpen}
@@ -575,7 +618,15 @@ export default function Emprestimos() {
           {loading ? (
             <p className="text-center text-muted-foreground py-8">Carregando...</p>
           ) : emprestimos.length === 0 && (!canManageLoans || solicitacoes.length === 0) ? (
-            <p className="text-center text-muted-foreground py-8">Nenhum dado de empréstimo registrado</p>
+            <div className="py-10 text-center space-y-3">
+              <p className="text-muted-foreground">Nenhum dado de empréstimo registrado</p>
+              {canManageLoans && (
+                <Button onClick={() => setIsDialogOpen(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Criar primeiro empréstimo
+                </Button>
+              )}
+            </div>
           ) : (
             <Tabs defaultValue={canManageLoans ? 'solicitacoes' : 'ativos'}>
               <TabsList className="mb-4 h-auto w-full justify-start gap-1 overflow-x-auto whitespace-nowrap pb-1 sm:gap-2">
@@ -641,13 +692,27 @@ export default function Emprestimos() {
                                 <Button
                                   variant="outline"
                                   className="w-full sm:w-auto"
-                                  disabled={saving}
+                                  disabled={saving || (actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'aprovar')}
                                   onClick={() => handleRecusarSolicitacao(solicitacao)}
                                 >
-                                  <XCircle className="w-4 h-4 mr-2" /> Recusar
+                                  {actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'recusar' ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <XCircle className="w-4 h-4 mr-2" />
+                                  )}
+                                  Recusar
                                 </Button>
-                                <Button className="w-full sm:w-auto" disabled={saving} onClick={() => handleAprovarSolicitacao(solicitacao)}>
-                                  <CheckCircle className="w-4 h-4 mr-2" /> Aprovar e gerar empréstimo
+                                <Button
+                                  className="w-full sm:w-auto"
+                                  disabled={saving || (actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'recusar')}
+                                  onClick={() => handleAprovarSolicitacao(solicitacao)}
+                                >
+                                  {actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'aprovar' ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <CheckCircle className="w-4 h-4 mr-2" />
+                                  )}
+                                  Aprovar e gerar empréstimo
                                 </Button>
                               </div>
                             ) : (

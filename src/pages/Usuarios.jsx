@@ -1,11 +1,11 @@
-import { Fragment, useEffect, useRef, useState, useCallback } from 'react';
-import { Plus, Pencil, Trash2, Search, Users, Upload, FileSpreadsheet, AlertCircle, CheckCircle, Loader2, Download } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { Plus, Pencil, Trash2, Search, Users, Upload, FileSpreadsheet, AlertCircle, CheckCircle, Loader2, Download, ArrowUpDown } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 
 import { MainLayout } from '@/components/layout/MainLayout';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,10 +14,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { usePrivateTelemetry } from '@/hooks/usePrivateTelemetry';
 
 const emptyUsuario = {
   nome: '',
@@ -33,6 +35,11 @@ export default function Usuarios() {
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState('nome');
+  const [sortDirection, setSortDirection] = useState('asc');
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUsuario, setEditingUsuario] = useState(null);
@@ -48,6 +55,7 @@ export default function Usuarios() {
 
   const { isGestor, isBibliotecaria, user } = useAuth();
   const { toast } = useToast();
+  const { trackEvent } = usePrivateTelemetry();
 
   const canManageUsers = isGestor || isBibliotecaria;
 
@@ -115,10 +123,12 @@ export default function Usuarios() {
         const { error } = await supabase.from('usuarios_biblioteca').update(formData).eq('id', editingUsuario.id);
         if (error) throw error;
         toast({ title: 'Sucesso', description: 'Usuário atualizado com sucesso.' });
+        trackEvent('usuario_atualizado', { id: editingUsuario.id });
       } else {
         const { error } = await supabase.from('usuarios_biblioteca').insert(formData);
         if (error) throw error;
         toast({ title: 'Sucesso', description: 'Usuário cadastrado com sucesso.' });
+        trackEvent('usuario_cadastrado', { tipo: formData.tipo });
       }
 
       setIsDialogOpen(false);
@@ -133,13 +143,37 @@ export default function Usuarios() {
   const handleDelete = async (id) => {
     if (!confirm('Tem certeza que deseja excluir este usuário?')) return;
 
+    setDeletingId(id);
     try {
       const { error } = await supabase.from('usuarios_biblioteca').delete().eq('id', id);
       if (error) throw error;
       toast({ title: 'Sucesso', description: 'Usuário excluído com sucesso.' });
+      trackEvent('usuario_excluido', { id });
+      setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
       fetchUsuarios();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error.message || 'Não foi possível excluir o usuário.' });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (!selectedIds.length || !isGestor) return;
+    if (!confirm(`Tem certeza que deseja excluir ${selectedIds.length} usuário(s)?`)) return;
+
+    setBatchDeleting(true);
+    try {
+      const { error } = await supabase.from('usuarios_biblioteca').delete().in('id', selectedIds);
+      if (error) throw error;
+      toast({ title: 'Sucesso', description: `${selectedIds.length} usuário(s) excluído(s).` });
+      trackEvent('usuarios_exclusao_lote', { total: selectedIds.length });
+      setSelectedIds([]);
+      fetchUsuarios();
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro', description: error.message || 'Não foi possível excluir os usuários selecionados.' });
+    } finally {
+      setBatchDeleting(false);
     }
   };
 
@@ -322,6 +356,42 @@ export default function Usuarios() {
     || (usuario.matricula || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const sortedUsuarios = [...filteredUsuarios].sort((a, b) => {
+    const aValue = String(a?.[sortField] || '').toLowerCase();
+    const bValue = String(b?.[sortField] || '').toLowerCase();
+
+    if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+    if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const allVisibleSelected = sortedUsuarios.length > 0 && sortedUsuarios.every((u) => selectedIds.includes(u.id));
+
+  const handleToggleSelectAll = (checked) => {
+    if (!checked) {
+      setSelectedIds([]);
+      return;
+    }
+    setSelectedIds(sortedUsuarios.map((u) => u.id));
+  };
+
+  const handleToggleUserSelection = (id, checked) => {
+    if (checked) {
+      setSelectedIds((prev) => [...new Set([...prev, id])]);
+      return;
+    }
+    setSelectedIds((prev) => prev.filter((value) => value !== id));
+  };
+
+  const handleToggleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortField(field);
+    setSortDirection('asc');
+  };
+
   return (
     <MainLayout title="Usuários">
       <div className="space-y-4 sm:space-y-6">
@@ -338,6 +408,11 @@ export default function Usuarios() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input placeholder="Buscar usuários..." className="pl-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                 </div>
+
+                <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => handleToggleSort('nome')}>
+                  <ArrowUpDown className="w-4 h-4 mr-2" />
+                  Ordenar nome ({sortDirection === 'asc' ? 'A-Z' : 'Z-A'})
+                </Button>
 
                 <Popover>
                   <PopoverTrigger asChild>
@@ -527,17 +602,47 @@ export default function Usuarios() {
           <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
             {loading ? (
               <p className="text-center text-muted-foreground py-8">Carregando...</p>
-            ) : filteredUsuarios.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">{searchTerm ? 'Nenhum usuário encontrado' : 'Nenhum usuário cadastrado'}</p>
+            ) : sortedUsuarios.length === 0 ? (
+              <div className="py-10 text-center space-y-3">
+                <p className="text-muted-foreground">{searchTerm ? 'Nenhum usuário encontrado' : 'Nenhum usuário cadastrado'}</p>
+                {canManageUsers && (
+                  <Button onClick={() => handleOpenDialog()}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Cadastrar primeiro usuário
+                  </Button>
+                )}
+              </div>
             ) : (
               <>
+                {isGestor && selectedIds.length > 0 && (
+                  <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border bg-muted/40 p-3">
+                    <p className="text-sm font-medium">{selectedIds.length} usuário(s) selecionado(s)</p>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setSelectedIds([])}>Limpar seleção</Button>
+                      <Button variant="destructive" size="sm" disabled={batchDeleting} onClick={handleDeleteSelected}>
+                        {batchDeleting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Excluindo...</> : <>Excluir selecionados</>}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-3 md:hidden">
-                  {filteredUsuarios.map((usuario) => (
+                  {sortedUsuarios.map((usuario) => (
                     <div key={usuario.id} className="rounded-lg border bg-card p-4">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="font-semibold truncate">{usuario.nome}</p>
-                          <p className="text-xs text-muted-foreground break-all">{usuario.email}</p>
+                        <div className="flex min-w-0 gap-2">
+                          {isGestor && (
+                            <Checkbox
+                              checked={selectedIds.includes(usuario.id)}
+                              onCheckedChange={(checked) => handleToggleUserSelection(usuario.id, Boolean(checked))}
+                              aria-label={`Selecionar ${usuario.nome}`}
+                              className="mt-0.5"
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-semibold truncate">{usuario.nome}</p>
+                            <p className="text-xs text-muted-foreground break-all">{usuario.email}</p>
+                          </div>
                         </div>
                         <Badge variant={getTipoBadgeVariant(usuario.tipo)}>{getTipoLabel(usuario.tipo)}</Badge>
                       </div>
@@ -560,8 +665,14 @@ export default function Usuarios() {
                             </Button>
                           )}
                           {isGestor && (
-                            <Button variant="outline" size="sm" className="flex-1" onClick={() => handleDelete(usuario.id)}>
-                              <Trash2 className="w-4 h-4 mr-2 text-destructive" />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1"
+                              onClick={() => handleDelete(usuario.id)}
+                              disabled={deletingId === usuario.id}
+                            >
+                              {deletingId === usuario.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2 text-destructive" />}
                               Excluir
                             </Button>
                           )}
@@ -575,7 +686,21 @@ export default function Usuarios() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Nome</TableHead>
+                      {isGestor && (
+                        <TableHead className="w-10">
+                          <Checkbox
+                            checked={allVisibleSelected}
+                            onCheckedChange={(checked) => handleToggleSelectAll(Boolean(checked))}
+                            aria-label="Selecionar todos os usuários visíveis"
+                          />
+                        </TableHead>
+                      )}
+                      <TableHead>
+                        <button type="button" className="inline-flex items-center gap-1" onClick={() => handleToggleSort('nome')}>
+                          Nome
+                          <ArrowUpDown className="h-3.5 w-3.5" />
+                        </button>
+                      </TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Tipo</TableHead>
                       <TableHead>Matrícula</TableHead>
@@ -586,8 +711,17 @@ export default function Usuarios() {
                   </TableHeader>
 
                   <TableBody>
-                    {filteredUsuarios.map((usuario) => (
+                    {sortedUsuarios.map((usuario) => (
                       <TableRow key={usuario.id}>
+                        {isGestor && (
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedIds.includes(usuario.id)}
+                              onCheckedChange={(checked) => handleToggleUserSelection(usuario.id, Boolean(checked))}
+                              aria-label={`Selecionar ${usuario.nome}`}
+                            />
+                          </TableCell>
+                        )}
                         <TableCell className="font-medium">{usuario.nome}</TableCell>
                         <TableCell>{usuario.email}</TableCell>
                         <TableCell><Badge variant={getTipoBadgeVariant(usuario.tipo)}>{getTipoLabel(usuario.tipo)}</Badge></TableCell>
@@ -598,13 +732,19 @@ export default function Usuarios() {
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
                               {!(isBibliotecaria && !isGestor && usuario.tipo === 'gestor') && (
-                                <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(usuario)}>
+                                <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(usuario)} aria-label={`Editar ${usuario.nome}`}>
                                   <Pencil className="w-4 h-4" />
                                 </Button>
                               )}
                               {isGestor && (
-                                <Button variant="ghost" size="icon" onClick={() => handleDelete(usuario.id)}>
-                                  <Trash2 className="w-4 h-4 text-destructive" />
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDelete(usuario.id)}
+                                  disabled={deletingId === usuario.id}
+                                  aria-label={`Excluir ${usuario.nome}`}
+                                >
+                                  {deletingId === usuario.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4 text-destructive" />}
                                 </Button>
                               )}
                             </div>
