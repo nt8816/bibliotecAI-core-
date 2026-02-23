@@ -153,7 +153,7 @@ export function AppSidebar() {
                     <NavLink
                       to={item.url}
                       end
-                      className={`flex w-full min-w-0 items-center ${collapsed ? 'justify-center' : 'gap-3'}`}
+                      className={`flex min-w-0 items-center ${collapsed ? 'mx-auto size-8 justify-center rounded-md' : 'w-full gap-3'}`}
                       activeClassName="rounded-md bg-sidebar-accent text-sidebar-accent-foreground"
                     >
                       <item.icon className="w-5 h-5" />
@@ -186,7 +186,7 @@ export function AppSidebar() {
                       <NavLink
                         to={item.url}
                         end
-                        className={`flex w-full min-w-0 items-center ${collapsed ? 'justify-center' : 'gap-3'}`}
+                        className={`flex min-w-0 items-center ${collapsed ? 'mx-auto size-8 justify-center rounded-md' : 'w-full gap-3'}`}
                         activeClassName="rounded-md bg-sidebar-accent text-sidebar-accent-foreground"
                       >
                         <item.icon className="w-5 h-5" />
@@ -217,7 +217,7 @@ export function AppSidebar() {
                 variant="ghost"
                 size={collapsed ? 'icon' : 'sm'}
                 className={collapsed
-                  ? 'relative mb-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                  ? 'relative mx-auto mb-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                   : 'relative mb-2 w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
                 aria-label="Abrir notificações"
               >
@@ -264,7 +264,7 @@ export function AppSidebar() {
           variant="ghost"
           size={collapsed ? 'icon' : 'default'}
           className={collapsed
-            ? 'w-full justify-center text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+            ? 'mx-auto justify-center text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
             : 'w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
           onClick={handleSignOut}
         >
