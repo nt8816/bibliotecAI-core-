@@ -309,62 +309,101 @@ export default function Emprestimos() {
   const maxDate = addMonths(today, 1);
 
   const renderTable = (data, showDevolucao) => (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Livro</TableHead>
-            <TableHead>Usuário</TableHead>
-            <TableHead>Data Empréstimo</TableHead>
-            <TableHead>Devolução Prevista</TableHead>
-            {!showDevolucao && <TableHead>Devolução Real</TableHead>}
-            <TableHead>Status</TableHead>
-            {showDevolucao && canManageLoans && <TableHead className="text-right">Ações</TableHead>}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {data.map((emprestimo) => (
-            <TableRow key={emprestimo.id} className={isAtrasado(emprestimo) ? 'bg-destructive/5' : ''}>
-              <TableCell>
-                <p className="font-medium">{emprestimo.livros?.titulo}</p>
-                <p className="text-sm text-muted-foreground">{emprestimo.livros?.autor}</p>
-              </TableCell>
-              <TableCell>
-                <p className="font-medium">{emprestimo.usuarios_biblioteca?.nome}</p>
-                <p className="text-sm text-muted-foreground">{emprestimo.usuarios_biblioteca?.email}</p>
-              </TableCell>
-              <TableCell>{formatDateBR(emprestimo.data_emprestimo)}</TableCell>
-              <TableCell>{formatDateBR(emprestimo.data_devolucao_prevista)}</TableCell>
-              {!showDevolucao && <TableCell>{emprestimo.data_devolucao_real ? formatDateBR(emprestimo.data_devolucao_real) : '-'}</TableCell>}
-              <TableCell>{getStatusBadge(emprestimo)}</TableCell>
-              {showDevolucao && canManageLoans && (
-                <TableCell className="text-right">
-                  <Button size="sm" variant="outline" onClick={() => handleDevolucao(emprestimo)}>
-                    <CheckCircle className="w-4 h-4 mr-2" /> Devolver
-                  </Button>
-                </TableCell>
+    <>
+      <div className="space-y-3 md:hidden">
+        {data.map((emprestimo) => (
+          <div key={emprestimo.id} className={`rounded-lg border p-4 ${isAtrasado(emprestimo) ? 'bg-destructive/5 border-destructive/30' : 'bg-card'}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold truncate">{emprestimo.livros?.titulo || '-'}</p>
+                <p className="text-xs text-muted-foreground truncate">{emprestimo.livros?.autor || '-'}</p>
+              </div>
+              <div className="shrink-0">{getStatusBadge(emprestimo)}</div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+              <p className="text-muted-foreground">Usuário</p>
+              <p className="text-right truncate">{emprestimo.usuarios_biblioteca?.nome || '-'}</p>
+              <p className="text-muted-foreground">E-mail</p>
+              <p className="text-right truncate">{emprestimo.usuarios_biblioteca?.email || '-'}</p>
+              <p className="text-muted-foreground">Empréstimo</p>
+              <p className="text-right">{formatDateBR(emprestimo.data_emprestimo)}</p>
+              <p className="text-muted-foreground">Devolução prevista</p>
+              <p className="text-right">{formatDateBR(emprestimo.data_devolucao_prevista)}</p>
+              {!showDevolucao && (
+                <>
+                  <p className="text-muted-foreground">Devolução real</p>
+                  <p className="text-right">{emprestimo.data_devolucao_real ? formatDateBR(emprestimo.data_devolucao_real) : '-'}</p>
+                </>
               )}
+            </div>
+
+            {showDevolucao && canManageLoans && (
+              <Button size="sm" variant="outline" className="mt-3 w-full" onClick={() => handleDevolucao(emprestimo)}>
+                <CheckCircle className="w-4 h-4 mr-2" /> Devolver
+              </Button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden md:block overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Livro</TableHead>
+              <TableHead>Usuário</TableHead>
+              <TableHead>Data Empréstimo</TableHead>
+              <TableHead>Devolução Prevista</TableHead>
+              {!showDevolucao && <TableHead>Devolução Real</TableHead>}
+              <TableHead>Status</TableHead>
+              {showDevolucao && canManageLoans && <TableHead className="text-right">Ações</TableHead>}
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+          </TableHeader>
+          <TableBody>
+            {data.map((emprestimo) => (
+              <TableRow key={emprestimo.id} className={isAtrasado(emprestimo) ? 'bg-destructive/5' : ''}>
+                <TableCell>
+                  <p className="font-medium">{emprestimo.livros?.titulo}</p>
+                  <p className="text-sm text-muted-foreground">{emprestimo.livros?.autor}</p>
+                </TableCell>
+                <TableCell>
+                  <p className="font-medium">{emprestimo.usuarios_biblioteca?.nome}</p>
+                  <p className="text-sm text-muted-foreground">{emprestimo.usuarios_biblioteca?.email}</p>
+                </TableCell>
+                <TableCell>{formatDateBR(emprestimo.data_emprestimo)}</TableCell>
+                <TableCell>{formatDateBR(emprestimo.data_devolucao_prevista)}</TableCell>
+                {!showDevolucao && <TableCell>{emprestimo.data_devolucao_real ? formatDateBR(emprestimo.data_devolucao_real) : '-'}</TableCell>}
+                <TableCell>{getStatusBadge(emprestimo)}</TableCell>
+                {showDevolucao && canManageLoans && (
+                  <TableCell className="text-right">
+                    <Button size="sm" variant="outline" onClick={() => handleDevolucao(emprestimo)}>
+                      <CheckCircle className="w-4 h-4 mr-2" /> Devolver
+                    </Button>
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </>
   );
 
   return (
     <MainLayout title="Empréstimos">
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
               <BookMarked className="w-5 h-5" /> Gerenciamento de Empréstimos
             </CardTitle>
 
             {canManageLoans && (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" className="w-full sm:w-auto">
                       <Download className="w-4 h-4 mr-2" /> Exportar dados
                     </Button>
                   </PopoverTrigger>
@@ -392,12 +431,12 @@ export default function Emprestimos() {
                   }}
                 >
                   <DialogTrigger asChild>
-                    <Button>
+                    <Button className="w-full sm:w-auto">
                       <Plus className="w-4 h-4 mr-2" /> Novo Empréstimo
                     </Button>
                   </DialogTrigger>
 
-                  <DialogContent className="max-w-lg">
+                  <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle>Novo Empréstimo</DialogTitle>
                     </DialogHeader>
@@ -521,9 +560,9 @@ export default function Emprestimos() {
                       </div>
                     </div>
 
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                      <Button onClick={handleCreateEmprestimo} disabled={saving}>{saving ? 'Registrando...' : 'Registrar Empréstimo'}</Button>
+                    <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+                      <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">Cancelar</Button>
+                      <Button onClick={handleCreateEmprestimo} disabled={saving} className="w-full sm:w-auto">{saving ? 'Registrando...' : 'Registrar Empréstimo'}</Button>
                     </div>
                   </DialogContent>
                 </Dialog>
@@ -532,23 +571,23 @@ export default function Emprestimos() {
           </div>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
           {loading ? (
             <p className="text-center text-muted-foreground py-8">Carregando...</p>
           ) : emprestimos.length === 0 && (!canManageLoans || solicitacoes.length === 0) ? (
             <p className="text-center text-muted-foreground py-8">Nenhum dado de empréstimo registrado</p>
           ) : (
             <Tabs defaultValue={canManageLoans ? 'solicitacoes' : 'ativos'}>
-              <TabsList className="mb-4 flex flex-wrap h-auto gap-2">
+              <TabsList className="mb-4 h-auto w-full justify-start gap-1 overflow-x-auto whitespace-nowrap pb-1 sm:gap-2">
                 {canManageLoans && (
-                  <TabsTrigger value="solicitacoes" className="gap-2">
+                  <TabsTrigger value="solicitacoes" className="gap-2 shrink-0">
                     <Inbox className="w-4 h-4" /> Solicitações ({solicitacoesPendentes.length})
                   </TabsTrigger>
                 )}
-                <TabsTrigger value="ativos" className="gap-2">
+                <TabsTrigger value="ativos" className="gap-2 shrink-0">
                   <AlertTriangle className="w-4 h-4" /> Ativos ({emprestimosAtivos.length})
                 </TabsTrigger>
-                <TabsTrigger value="historico" className="gap-2">
+                <TabsTrigger value="historico" className="gap-2 shrink-0">
                   <CheckCircle className="w-4 h-4" /> Histórico ({emprestimosHistorico.length})
                 </TabsTrigger>
               </TabsList>
@@ -598,15 +637,16 @@ export default function Emprestimos() {
                             </div>
 
                             {isPendente ? (
-                              <div className="flex flex-wrap justify-end gap-2">
+                              <div className="flex flex-col sm:flex-row sm:flex-wrap sm:justify-end gap-2">
                                 <Button
                                   variant="outline"
+                                  className="w-full sm:w-auto"
                                   disabled={saving}
                                   onClick={() => handleRecusarSolicitacao(solicitacao)}
                                 >
                                   <XCircle className="w-4 h-4 mr-2" /> Recusar
                                 </Button>
-                                <Button disabled={saving} onClick={() => handleAprovarSolicitacao(solicitacao)}>
+                                <Button className="w-full sm:w-auto" disabled={saving} onClick={() => handleAprovarSolicitacao(solicitacao)}>
                                   <CheckCircle className="w-4 h-4 mr-2" /> Aprovar e gerar empréstimo
                                 </Button>
                               </div>

@@ -324,24 +324,24 @@ export default function Usuarios() {
 
   return (
     <MainLayout title="Usuários">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         <Card>
-          <CardHeader>
+          <CardHeader className="p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <Users className="w-5 h-5" />
                 Gerenciamento de Usuários
               </CardTitle>
 
-              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                <div className="relative flex-1 sm:w-64">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
+                <div className="relative w-full sm:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input placeholder="Buscar usuários..." className="pl-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                 </div>
 
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" className="w-full sm:w-auto">
                       <Download className="w-4 h-4 mr-2" />
                       Exportar dados
                     </Button>
@@ -355,12 +355,12 @@ export default function Usuarios() {
                 {canManageUsers && (
                   <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
                     <DialogTrigger asChild>
-                      <Button variant="outline">
+                      <Button variant="outline" className="w-full sm:w-auto">
                         <Upload className="w-4 h-4 mr-2" />
                         Importar em Massa
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="max-w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
                       <DialogHeader>
                         <DialogTitle>Importar Usuários em Massa</DialogTitle>
                         <DialogDescription>
@@ -371,9 +371,9 @@ export default function Usuarios() {
                       <div className="space-y-6 py-2">
                         <Alert>
                           <FileSpreadsheet className="w-4 h-4" />
-                          <AlertDescription className="flex items-center justify-between">
-                            <span>Baixe o modelo de planilha para preencher os dados.</span>
-                            <Button variant="outline" size="sm" onClick={baixarModelo}>
+                          <AlertDescription className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
+                            <span className="text-sm">Baixe o modelo de planilha para preencher os dados.</span>
+                            <Button variant="outline" size="sm" onClick={baixarModelo} className="w-full sm:w-auto">
                               <Download className="w-4 h-4 mr-2" />
                               Baixar Modelo
                             </Button>
@@ -381,21 +381,21 @@ export default function Usuarios() {
                         </Alert>
 
                         <div className="flex flex-col sm:flex-row gap-4 items-start">
-                          <div className="space-y-2">
+                          <div className="w-full space-y-2 sm:w-auto">
                             <Label>Tipo de Usuário</Label>
                             <select
                               value={tipoUsuarioImport}
                               onChange={(e) => setTipoUsuarioImport(e.target.value)}
-                              className="h-10 w-[200px] rounded-md border border-input bg-background px-3 text-sm"
+                              className="h-10 w-full sm:w-[200px] rounded-md border border-input bg-background px-3 text-sm"
                             >
                               <option value="aluno">Alunos</option>
                               <option value="professor">Professores</option>
                             </select>
                           </div>
 
-                          <div className="flex-1">
+                          <div className="w-full sm:flex-1">
                             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileChange} className="hidden" />
-                            <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importLoading}>
+                            <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importLoading} className="w-full sm:w-auto">
                               {importLoading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processando...</> : <><Upload className="w-4 h-4 mr-2" />Selecionar Arquivo</>}
                             </Button>
                           </div>
@@ -405,9 +405,9 @@ export default function Usuarios() {
                           <div className="space-y-4">
                             <Alert className="border-primary bg-primary/10">
                               <CheckCircle className="w-4 h-4 text-primary" />
-                              <AlertDescription className="flex items-center justify-between">
+                              <AlertDescription className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
                                 <span className="font-medium">{importUsuarios.length} usuários encontrados.</span>
-                                <Button onClick={importarUsuarios} disabled={importing} size="sm" className="ml-4">
+                                <Button onClick={importarUsuarios} disabled={importing} size="sm" className="w-full sm:ml-4 sm:w-auto">
                                   {importing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importando...</> : <><Upload className="w-4 h-4 mr-2" />Importar Todos</>}
                                 </Button>
                               </AlertDescription>
@@ -453,12 +453,12 @@ export default function Usuarios() {
                 {canManageUsers && (
                   <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
-                      <Button onClick={() => handleOpenDialog()}>
+                      <Button onClick={() => handleOpenDialog()} className="w-full sm:w-auto">
                         <Plus className="w-4 h-4 mr-2" />
                         Adicionar
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                       <DialogHeader>
                         <DialogTitle>{editingUsuario ? 'Editar Usuário' : 'Novo Usuário'}</DialogTitle>
                         <DialogDescription>
@@ -513,9 +513,9 @@ export default function Usuarios() {
                         </div>
                       </div>
 
-                      <div className="flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                        <Button onClick={handleSave} disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</Button>
+                      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+                        <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">Cancelar</Button>
+                        <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto">{saving ? 'Salvando...' : 'Salvar'}</Button>
                       </div>
                     </DialogContent>
                   </Dialog>
@@ -524,13 +524,54 @@ export default function Usuarios() {
             </div>
           </CardHeader>
 
-          <CardContent>
+          <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
             {loading ? (
               <p className="text-center text-muted-foreground py-8">Carregando...</p>
             ) : filteredUsuarios.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">{searchTerm ? 'Nenhum usuário encontrado' : 'Nenhum usuário cadastrado'}</p>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+                <div className="space-y-3 md:hidden">
+                  {filteredUsuarios.map((usuario) => (
+                    <div key={usuario.id} className="rounded-lg border bg-card p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate">{usuario.nome}</p>
+                          <p className="text-xs text-muted-foreground break-all">{usuario.email}</p>
+                        </div>
+                        <Badge variant={getTipoBadgeVariant(usuario.tipo)}>{getTipoLabel(usuario.tipo)}</Badge>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <p className="text-muted-foreground">Matrícula</p>
+                        <p className="text-right truncate">{usuario.matricula || '-'}</p>
+                        <p className="text-muted-foreground">Turma</p>
+                        <p className="text-right truncate">{usuario.turma || '-'}</p>
+                        <p className="text-muted-foreground">Telefone</p>
+                        <p className="text-right truncate">{usuario.telefone || '-'}</p>
+                      </div>
+
+                      {canManageUsers && (
+                        <div className="mt-3 flex gap-2">
+                          {!(isBibliotecaria && !isGestor && usuario.tipo === 'gestor') && (
+                            <Button variant="outline" size="sm" className="flex-1" onClick={() => handleOpenDialog(usuario)}>
+                              <Pencil className="w-4 h-4 mr-2" />
+                              Editar
+                            </Button>
+                          )}
+                          {isGestor && (
+                            <Button variant="outline" size="sm" className="flex-1" onClick={() => handleDelete(usuario.id)}>
+                              <Trash2 className="w-4 h-4 mr-2 text-destructive" />
+                              Excluir
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="hidden md:block overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -573,7 +614,8 @@ export default function Usuarios() {
                     ))}
                   </TableBody>
                 </Table>
-              </div>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>

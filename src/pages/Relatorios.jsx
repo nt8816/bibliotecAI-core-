@@ -171,7 +171,7 @@ export default function Relatorios() {
   return (
     <MainLayout title="Relatórios">
       <div className="space-y-4 sm:space-y-6">
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
           {statCards.map((card) => (
             <Card key={card.title}>
               <CardContent className="p-3 sm:p-4">
@@ -219,7 +219,7 @@ export default function Relatorios() {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={emprestimosPorMes} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="mes" tick={{ fontSize: 12 }} interval={0} />
+                      <XAxis dataKey="mes" tick={{ fontSize: 11 }} minTickGap={18} interval="preserveStartEnd" />
                       <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
                       <Tooltip />
                       <Bar dataKey="emprestimos" fill="hsl(122, 46%, 34%)" radius={[6, 6, 0, 0]} />
@@ -244,7 +244,7 @@ export default function Relatorios() {
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={emprestimosPorMes} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="mes" tick={{ fontSize: 12 }} interval={0} />
+                      <XAxis dataKey="mes" tick={{ fontSize: 11 }} minTickGap={18} interval="preserveStartEnd" />
                       <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
                       <Tooltip />
                       <Line type="monotone" dataKey="emprestimos" stroke="hsl(122, 46%, 34%)" strokeWidth={2.5} dot={false} />
