@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Accessibility, Contrast, Type, BrainCircuit, Waves } from 'lucide-react';
+import { Contrast, Type, BrainCircuit, Waves } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { AccessibilityLogoIcon } from '@/components/accessibility/AccessibilityLogoIcon';
 
 const STORAGE_KEY = 'bibliotecai:a11y-prefs';
 
@@ -54,7 +55,7 @@ export function AccessibilityControls() {
     <Popover>
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" className="gap-2" aria-label="Abrir ajustes de acessibilidade">
-          <Accessibility className="h-4 w-4" />
+          <AccessibilityLogoIcon className="h-5 w-5" />
           <span className="hidden sm:inline">Acessibilidade</span>
         </Button>
       </PopoverTrigger>

@@ -12,7 +12,6 @@ import {
   MessageSquare,
   Building2,
   Bell,
-  Download,
 } from 'lucide-react';
 
 import { NavLink } from '@/components/NavLink';
@@ -33,28 +32,15 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useSystemNotifications } from '@/hooks/useSystemNotifications';
-import { usePrivateTelemetry } from '@/hooks/usePrivateTelemetry';
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
   const { signOut, user, userRole, isGestor, isSuperAdmin } = useAuth();
   const { counts, canViewNotifications } = useSystemNotifications();
-  const { getEvents } = usePrivateTelemetry();
 
   const handleSignOut = async () => {
     await signOut();
-  };
-
-  const handleExportTelemetry = () => {
-    const events = getEvents();
-    const blob = new Blob([JSON.stringify(events, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'minha_telemetria_privada.json';
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   const getMenuItems = () => {
@@ -212,16 +198,6 @@ export function AppSidebar() {
                 <p>Atrasados: {counts.atrasados}</p>
               </div>
             )}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full justify-start gap-2 border-sidebar-border bg-transparent text-sidebar-foreground hover:bg-sidebar-accent"
-              onClick={handleExportTelemetry}
-            >
-              <Download className="w-4 h-4" />
-              Minha Telemetria
-            </Button>
           </div>
         )}
 

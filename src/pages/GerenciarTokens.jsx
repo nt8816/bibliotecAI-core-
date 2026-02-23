@@ -19,6 +19,7 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 export default function GerenciarTokens() {
   const [tokens, setTokens] = useState([]);
   const [criadoresInfo, setCriadoresInfo] = useState({});
+  const [utilizadoresInfo, setUtilizadoresInfo] = useState({});
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [roleDestino, setRoleDestino] = useState('professor');
@@ -40,14 +41,24 @@ export default function GerenciarTokens() {
       setTokens(tokenList);
 
       const criadorIds = [...new Set(tokenList.map((t) => t.criado_por).filter(Boolean))];
-      if (criadorIds.length === 0) {
+      const utilizadorIds = [...new Set(tokenList.map((t) => t.usado_por).filter(Boolean))];
+
+      if (criadorIds.length === 0 && utilizadorIds.length === 0) {
         setCriadoresInfo({});
+        setUtilizadoresInfo({});
         return;
       }
 
-      const [usuariosRes, rolesRes] = await Promise.all([
-        supabase.from('usuarios_biblioteca').select('user_id, nome').in('user_id', criadorIds),
-        supabase.from('user_roles').select('user_id, role').in('user_id', criadorIds),
+      const [usuariosRes, rolesRes, usuariosUtilizadoresRes] = await Promise.all([
+        criadorIds.length
+          ? supabase.from('usuarios_biblioteca').select('user_id, nome').in('user_id', criadorIds)
+          : Promise.resolve({ data: [], error: null }),
+        criadorIds.length
+          ? supabase.from('user_roles').select('user_id, role').in('user_id', criadorIds)
+          : Promise.resolve({ data: [], error: null }),
+        utilizadorIds.length
+          ? supabase.from('usuarios_biblioteca').select('user_id, nome').in('user_id', utilizadorIds)
+          : Promise.resolve({ data: [], error: null }),
       ]);
 
       const infoMap = {};
@@ -59,6 +70,12 @@ export default function GerenciarTokens() {
       });
 
       setCriadoresInfo(infoMap);
+
+      const utilizadoresMap = {};
+      (usuariosUtilizadoresRes.data || []).forEach((u) => {
+        utilizadoresMap[u.user_id] = u.nome;
+      });
+      setUtilizadoresInfo(utilizadoresMap);
     } catch (error) {
       console.error('Error fetching tokens:', error);
       toast({
@@ -305,6 +322,7 @@ export default function GerenciarTokens() {
                   <TableRow>
                     <TableHead>Cargo (convite)</TableHead>
                     <TableHead>Criado por</TableHead>
+                    <TableHead>Utilizado por</TableHead>
                     <TableHead>Categoria</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Criado em</TableHead>
@@ -317,6 +335,7 @@ export default function GerenciarTokens() {
                     <TableRow key={token.id}>
                       <TableCell>{getRoleBadge(token.role_destino)}</TableCell>
                       <TableCell>{criadoresInfo[token.criado_por]?.nome || '—'}</TableCell>
+                      <TableCell>{token.usado_por ? (utilizadoresInfo[token.usado_por] || 'Usuário não encontrado') : '—'}</TableCell>
                       <TableCell>
                         <Badge variant="secondary">{getRoleLabel(criadoresInfo[token.criado_por]?.role)}</Badge>
                       </TableCell>
