@@ -13,6 +13,7 @@ import {
   Building2,
   Bell,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -31,13 +32,17 @@ import {
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useSystemNotifications } from '@/hooks/useSystemNotifications';
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
+  const navigate = useNavigate();
   const { signOut, user, userRole, isGestor, isSuperAdmin } = useAuth();
   const { counts, canViewNotifications } = useSystemNotifications();
+  const totalPendencias = counts.atrasados + counts.solicitacoesPendentes;
+  const hasPendencias = totalPendencias > 0;
 
   const handleSignOut = async () => {
     await signOut();
@@ -191,14 +196,58 @@ export function AppSidebar() {
           <div className="mb-3 px-2 space-y-2">
             <Badge className={getRoleBadge().className}>{getRoleBadge().label}</Badge>
             <p className="text-sm text-sidebar-foreground/70 truncate">{user.email}</p>
-            {canViewNotifications && (
-              <div className="rounded-md bg-sidebar-accent/60 p-2 text-xs text-sidebar-foreground/90 space-y-1">
-                <p className="flex items-center gap-2 font-medium"><Bell className="w-3.5 h-3.5" /> Notificações internas</p>
-                <p>Pendentes: {counts.solicitacoesPendentes}</p>
-                <p>Atrasados: {counts.atrasados}</p>
-              </div>
-            )}
           </div>
+        )}
+
+        {canViewNotifications && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size={collapsed ? 'icon' : 'sm'}
+                className={collapsed
+                  ? 'relative mb-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                  : 'relative mb-2 w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
+                aria-label="Abrir notificações"
+              >
+                <Bell className="w-5 h-5" />
+                {!collapsed && <span>Notificações</span>}
+                {hasPendencias && (
+                  <span className="absolute -right-1 -top-1 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] leading-[1.1rem] text-center font-bold">
+                    {totalPendencias > 99 ? '99+' : totalPendencias}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+
+            <PopoverContent align="end" className="w-72">
+              <div className="space-y-3">
+                <div>
+                  <p className="font-semibold text-sm">Notificações</p>
+                  <p className="text-xs text-muted-foreground">Atualizado em tempo real</p>
+                </div>
+
+                {hasPendencias ? (
+                  <div className="space-y-2">
+                    <div className="rounded-md border p-2 text-sm flex items-center justify-between gap-2">
+                      <span>Solicitações pendentes</span>
+                      <Badge>{counts.solicitacoesPendentes}</Badge>
+                    </div>
+                    <div className="rounded-md border p-2 text-sm flex items-center justify-between gap-2">
+                      <span>Empréstimos atrasados</span>
+                      <Badge variant="destructive">{counts.atrasados}</Badge>
+                    </div>
+                    <Button size="sm" className="w-full" onClick={() => navigate('/emprestimos')}>
+                      Abrir painel de empréstimos
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Sem pendências no momento.</p>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
         )}
 
         <Button
