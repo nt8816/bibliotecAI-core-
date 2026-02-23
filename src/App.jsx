@@ -14,7 +14,7 @@ import Dashboard from './pages/Dashboard';
 import Livros from './pages/Livros.jsx';
 import Usuarios from './pages/Usuarios.jsx';
 import Emprestimos from './pages/Emprestimos';
-import Relatorios from './pages/Relatorios';
+import Relatorios from './pages/Relatorios.jsx';
 import NotFound from './pages/NotFound';
 import TenantNotFound from './pages/TenantNotFound';
 import GerenciarTokens from './pages/GerenciarTokens.jsx';
