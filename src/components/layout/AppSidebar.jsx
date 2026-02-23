@@ -129,10 +129,10 @@ export function AppSidebar() {
 
   return (
     <Sidebar className="border-r-0" collapsible="icon">
-      <SidebarHeader className="p-4 border-b border-sidebar-border">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-sidebar-accent flex items-center justify-center overflow-hidden">
-            <img src="/bibliotecai-symbol.svg" alt="BibliotecAI" className="w-7 h-7" />
+      <SidebarHeader className={`${collapsed ? 'p-2' : 'p-4'} border-b border-sidebar-border`}>
+        <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
+          <div className={`${collapsed ? 'w-8 h-8' : 'w-10 h-10'} rounded-lg bg-sidebar-accent flex items-center justify-center overflow-hidden`}>
+            <img src="/bibliotecai-symbol.svg" alt="BibliotecAI" className={`${collapsed ? 'w-6 h-6' : 'w-7 h-7'}`} />
           </div>
           {!collapsed && (
             <div className="flex flex-col">
@@ -143,14 +143,19 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="p-2">
+      <SidebarContent className={collapsed ? 'p-1' : 'p-2'}>
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
-                    <NavLink to={item.url} end className="sidebar-link" activeClassName="sidebar-link-active">
+                    <NavLink
+                      to={item.url}
+                      end
+                      className={`flex w-full min-w-0 items-center ${collapsed ? 'justify-center' : 'gap-3'}`}
+                      activeClassName="rounded-md bg-sidebar-accent text-sidebar-accent-foreground"
+                    >
                       <item.icon className="w-5 h-5" />
                       {!collapsed && (
                         <div className="flex w-full items-center justify-between gap-2">
@@ -178,7 +183,12 @@ export function AppSidebar() {
                 {gestorMenuItems.map((item) => (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild>
-                      <NavLink to={item.url} end className="sidebar-link" activeClassName="sidebar-link-active">
+                      <NavLink
+                        to={item.url}
+                        end
+                        className={`flex w-full min-w-0 items-center ${collapsed ? 'justify-center' : 'gap-3'}`}
+                        activeClassName="rounded-md bg-sidebar-accent text-sidebar-accent-foreground"
+                      >
                         <item.icon className="w-5 h-5" />
                         {!collapsed && <span className="font-medium">{item.title}</span>}
                       </NavLink>
@@ -191,7 +201,7 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      <SidebarFooter className="p-4 border-t border-sidebar-border">
+      <SidebarFooter className={`${collapsed ? 'p-2' : 'p-4'} border-t border-sidebar-border`}>
         {!collapsed && user && (
           <div className="mb-3 px-2 space-y-2">
             <Badge className={getRoleBadge().className}>{getRoleBadge().label}</Badge>
@@ -252,7 +262,10 @@ export function AppSidebar() {
 
         <Button
           variant="ghost"
-          className="w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          size={collapsed ? 'icon' : 'default'}
+          className={collapsed
+            ? 'w-full justify-center text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+            : 'w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
           onClick={handleSignOut}
         >
           <LogOut className="w-5 h-5" />
