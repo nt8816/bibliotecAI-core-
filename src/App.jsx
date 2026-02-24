@@ -176,16 +176,18 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TenantProvider>
       <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <PrivateTelemetryTracker />
-            <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Carregando...</div>}>
-              <AppRoutes />
-            </Suspense>
-          </BrowserRouter>
-        </TooltipProvider>
+        <div translate="no" className="notranslate">
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+              <PrivateTelemetryTracker />
+              <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Carregando...</div>}>
+                <AppRoutes />
+              </Suspense>
+            </BrowserRouter>
+          </TooltipProvider>
+        </div>
       </AuthProvider>
     </TenantProvider>
   </QueryClientProvider>

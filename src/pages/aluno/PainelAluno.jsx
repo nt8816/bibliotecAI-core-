@@ -1535,7 +1535,7 @@ export default function PainelAluno() {
 
                   {livro.sinopse && (
                     <div className="mt-2">
-                      <p className="text-xs text-muted-foreground line-clamp-2">{livro.sinopse}</p>
+                      <p className="text-xs text-muted-foreground line-clamp-2" translate="yes">{livro.sinopse}</p>
                       <Button size="sm" variant="ghost" className="h-6 px-1 text-xs mt-1" onClick={() => speakText(livro.sinopse || '')}>
                         {speaking ? <VolumeX className="w-3 h-3 mr-1" /> : <Volume2 className="w-3 h-3 mr-1" />}
                         {speaking ? 'Parar' : 'Ouvir sinopse'}

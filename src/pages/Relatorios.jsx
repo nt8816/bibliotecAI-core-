@@ -208,7 +208,7 @@ export default function Relatorios() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <BarChart3 className="w-4 h-4" /> Empréstimos por mês (dados reais)
+                <BarChart3 className="w-4 h-4" /> Empréstimos por mês
               </CardTitle>
             </CardHeader>
             <CardContent>

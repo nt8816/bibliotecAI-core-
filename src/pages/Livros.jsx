@@ -690,7 +690,7 @@ export default function Livros() {
                             {buscandoSinopse ? 'Buscando...' : 'Buscar sinopse'}
                           </Button>
                         </div>
-                        <Textarea id="sinopse" placeholder="Digite a sinopse ou use o botão acima..." className="min-h-[120px] resize-y" value={formData.sinopse || ''} onChange={(e) => setFormData({ ...formData, sinopse: e.target.value })} />
+                        <Textarea id="sinopse" placeholder="Digite a sinopse ou use o botão acima..." className="min-h-[120px] resize-y" value={formData.sinopse || ''} onChange={(e) => setFormData({ ...formData, sinopse: e.target.value })} translate="yes" />
                       </div>
                     </div>
 
@@ -746,7 +746,7 @@ export default function Livros() {
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent side="left" className="max-w-xs">
-                                <p className="text-xs">{livro.sinopse.slice(0, 200)}{livro.sinopse.length > 200 ? '...' : ''}</p>
+                                <p className="text-xs" translate="yes">{livro.sinopse.slice(0, 200)}{livro.sinopse.length > 200 ? '...' : ''}</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
@@ -785,7 +785,7 @@ export default function Livros() {
                     Visualização completa da sinopse selecionada.
                   </DialogDescription>
                 </DialogHeader>
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">{livros.find((l) => l.id === sinopseExpandida)?.sinopse || 'Sem sinopse.'}</p>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap" translate="yes">{livros.find((l) => l.id === sinopseExpandida)?.sinopse || 'Sem sinopse.'}</p>
               </DialogContent>
             </Dialog>
           )}
