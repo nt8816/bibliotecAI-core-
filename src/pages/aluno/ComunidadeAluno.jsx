@@ -200,12 +200,43 @@ export default function ComunidadeAluno() {
     fetchData();
   }, [fetchData]);
 
-  const onRealtimeChange = useCallback(() => {
+  const onPostsRealtimeChange = useCallback(() => {
     fetchData();
   }, [fetchData]);
 
-  useRealtimeSubscription({ table: enabled ? 'comunidade_posts' : null, onChange: onRealtimeChange });
-  useRealtimeSubscription({ table: enabled ? 'comunidade_curtidas' : null, onChange: onRealtimeChange });
+  const onLikeInsert = useCallback((payload) => {
+    const nextLike = payload?.new;
+    if (!nextLike?.post_id || !nextLike?.usuario_id) return;
+
+    setLikes((prev) => {
+      const list = ensureArray(prev);
+      const exists = list.some((item) => item.post_id === nextLike.post_id && item.usuario_id === nextLike.usuario_id);
+      if (exists) return list;
+      return [...list, { post_id: nextLike.post_id, usuario_id: nextLike.usuario_id }];
+    });
+  }, []);
+
+  const onLikeDelete = useCallback((payload) => {
+    const removedLike = payload?.old;
+    if (!removedLike?.post_id || !removedLike?.usuario_id) {
+      // Fallback when OLD payload is not fully available.
+      fetchData();
+      return;
+    }
+
+    setLikes((prev) =>
+      ensureArray(prev).filter(
+        (item) => !(item.post_id === removedLike.post_id && item.usuario_id === removedLike.usuario_id),
+      ),
+    );
+  }, [fetchData]);
+
+  useRealtimeSubscription({ table: enabled ? 'comunidade_posts' : null, onChange: onPostsRealtimeChange });
+  useRealtimeSubscription({
+    table: enabled ? 'comunidade_curtidas' : null,
+    onInsert: onLikeInsert,
+    onDelete: onLikeDelete,
+  });
 
   const likedPostIds = useMemo(() => {
     if (!alunoId) return new Set();
