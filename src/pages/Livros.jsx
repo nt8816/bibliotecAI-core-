@@ -259,26 +259,97 @@ export default function Livros() {
     toast({ title: 'Exportado!', description: 'Arquivo acervo_livros.pdf baixado.' });
   };
 
+  const normalizeText = (value) =>
+    String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+
+  const findColumnIndex = (headers, aliases) => headers.findIndex((header) => aliases.some((alias) => header === alias || header.includes(alias)));
+
+  const parseEmbeddedHtmlTable = (rows) => {
+    const htmlCell = rows
+      .flat()
+      .find((cell) => typeof cell === 'string' && cell.toLowerCase().includes('<table'));
+
+    if (!htmlCell || typeof DOMParser === 'undefined') return null;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlCell, 'text/html');
+    const tableRows = [...doc.querySelectorAll('tr')]
+      .map((tr) => [...tr.querySelectorAll('th,td')].map((cell) => cell.textContent?.trim() || ''))
+      .filter((row) => row.some((cell) => cell));
+
+    return tableRows.length > 1 ? tableRows : null;
+  };
+
+  const detectHeaderRowIndex = (rows) =>
+    rows.findIndex((row) => {
+      const normalized = row.map(normalizeText);
+      const hasTitle = normalized.some((h) => h.includes('titulo') || h.includes('livro') || h.includes('obra') || h.includes('nome'));
+      const hasAuthor = normalized.some((h) => h.includes('autor'));
+      const hasAnyMetadata = normalized.some((h) => h.includes('isbn') || h.includes('tombo') || h.includes('editora') || h.includes('categoria') || h.includes('ano'));
+      return hasTitle && (hasAuthor || hasAnyMetadata);
+    });
+
+  const normalizeYear = (rawAno, rawTitulo) => {
+    const colYear = String(rawAno || '').match(/\b(18|19|20)\d{2}\b/);
+    if (colYear) return colYear[0];
+    const titleYear = String(rawTitulo || '').match(/\b(18|19|20)\d{2}\b/);
+    return titleYear ? titleYear[0] : '';
+  };
+
+  const normalizeTitulo = (raw) =>
+    String(raw || '')
+      .replace(/\s*-\s*ano:\s*\d{4}\s*/gi, ' ')
+      .replace(/\s*-\s*vol:\s*[^-]+/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const hasBookData = (livro) => [livro.titulo, livro.autor, livro.area, livro.tombo, livro.editora, livro.ano, livro.sinopse].some((value) => String(value || '').trim());
+
   const mapLivroFromRow = (row, headers) => {
-    const get = (...keys) => {
-      const idx = headers.findIndex((h) => keys.some((k) => h.includes(k)));
-      return idx >= 0 && row[idx] != null ? String(row[idx]).trim() : '';
+    const indices = {
+      titulo: findColumnIndex(headers, ['titulo', 'livro', 'obra', 'nome']),
+      autor: findColumnIndex(headers, ['autor', 'autores']),
+      area: findColumnIndex(headers, ['area', 'categoria', 'assunto', 'genero', 'setor', 'tipo']),
+      tombo: findColumnIndex(headers, ['tombo', 'isbn', 'codigo', 'cod', 'id acervo', 'id livro', 'id']),
+      editora: findColumnIndex(headers, ['editora']),
+      ano: findColumnIndex(headers, ['ano', 'ano publicacao', 'publicacao']),
+      edicao: findColumnIndex(headers, ['edicao', 'edicao', 'edi']),
+      vol: findColumnIndex(headers, ['vol', 'volume']),
+      local: findColumnIndex(headers, ['local', 'estante', 'prateleira', 'sala']),
+      sinopse: findColumnIndex(headers, ['sinopse', 'descricao', 'resumo']),
+      estante: findColumnIndex(headers, ['estante']),
+      prateleira: findColumnIndex(headers, ['prateleira']),
     };
 
-    const titulo = get('titulo', 'título');
-    if (!titulo) return null;
+    const getByIndex = (idx) => (idx >= 0 && row[idx] != null ? String(row[idx]).trim() : '');
+
+    const rawTitulo = getByIndex(indices.titulo);
+    const titulo = normalizeTitulo(rawTitulo);
+    const volumeFromTitle = rawTitulo.match(/\bvol[:\s]*([0-9]+)/i)?.[1] || '';
+
+    const estante = getByIndex(indices.estante);
+    const prateleira = getByIndex(indices.prateleira);
+    const localBase = getByIndex(indices.local);
+    const local = [localBase, estante && !localBase.includes(estante) ? `Estante ${estante}` : '', prateleira ? `Prateleira ${prateleira}` : '']
+      .filter(Boolean)
+      .join(' | ');
 
     return {
       titulo,
-      autor: get('autor'),
-      area: get('area', 'área'),
-      tombo: get('tombo'),
-      editora: get('editora'),
-      ano: get('ano'),
-      edicao: get('edicao', 'edição'),
-      vol: get('vol', 'volume'),
-      local: get('local'),
-      sinopse: get('sinopse'),
+      autor: getByIndex(indices.autor),
+      area: getByIndex(indices.area),
+      tombo: getByIndex(indices.tombo),
+      editora: getByIndex(indices.editora),
+      ano: normalizeYear(getByIndex(indices.ano), rawTitulo),
+      edicao: getByIndex(indices.edicao),
+      vol: getByIndex(indices.vol) || volumeFromTitle,
+      local,
+      sinopse: getByIndex(indices.sinopse),
       disponivel: true,
       status: 'pendente',
     };
@@ -288,18 +359,28 @@ export default function Livros() {
     const data = await file.arrayBuffer();
     const workbook = XLSX.read(data);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    const rows = parseEmbeddedHtmlTable(rawRows) || rawRows;
 
-    if (jsonData.length < 2) {
+    if (rows.length < 2) {
       throw new Error('Arquivo vazio ou sem linhas de dados.');
     }
 
-    const headers = jsonData[0].map((h) => String(h).toLowerCase().trim());
+    const headerRowIndex = detectHeaderRowIndex(rows);
+    if (headerRowIndex < 0) {
+      throw new Error('Não foi possível identificar o cabeçalho automaticamente.');
+    }
+
+    const headers = rows[headerRowIndex].map((h) => normalizeText(h));
     const imported = [];
 
-    for (let i = 1; i < jsonData.length; i += 1) {
-      const mapped = mapLivroFromRow(jsonData[i], headers);
-      if (mapped) imported.push(mapped);
+    for (let i = headerRowIndex + 1; i < rows.length; i += 1) {
+      const mapped = mapLivroFromRow(rows[i], headers);
+      if (hasBookData(mapped)) imported.push(mapped);
+    }
+
+    if (imported.length === 0) {
+      throw new Error('Nenhum livro com dados válidos foi identificado.');
     }
 
     return imported;
