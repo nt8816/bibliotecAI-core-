@@ -95,6 +95,7 @@ export default function ComunidadeAluno() {
   const [postEmEdicao, setPostEmEdicao] = useState(null);
   const [editTitulo, setEditTitulo] = useState('');
   const [editConteudo, setEditConteudo] = useState('');
+  const [likingPostIds, setLikingPostIds] = useState(new Set());
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -314,16 +315,34 @@ export default function ComunidadeAluno() {
 
   const toggleLikePost = async (postId) => {
     if (!enabled || !alunoId) return;
+    if (likingPostIds.has(postId)) return;
+
+    setLikingPostIds((prev) => {
+      const next = new Set(prev);
+      next.add(postId);
+      return next;
+    });
 
     try {
       if (likedPostIds.has(postId)) {
+        setLikes((prev) => ensureArray(prev).filter((item) => !(item.post_id === postId && item.usuario_id === alunoId)));
         const { error } = await supabase.from('comunidade_curtidas').delete().eq('post_id', postId).eq('usuario_id', alunoId);
-        if (error) throw error;
+        if (error) {
+          setLikes((prev) => [...ensureArray(prev), { post_id: postId, usuario_id: alunoId }]);
+          throw error;
+        }
       } else {
+        const hadLike = ensureArray(likes).some((item) => item.post_id === postId && item.usuario_id === alunoId);
+        if (!hadLike) {
+          setLikes((prev) => [...ensureArray(prev), { post_id: postId, usuario_id: alunoId }]);
+        }
+
         const { error } = await supabase.from('comunidade_curtidas').insert({ post_id: postId, usuario_id: alunoId });
-        if (error) throw error;
+        if (error) {
+          setLikes((prev) => ensureArray(prev).filter((item) => !(item.post_id === postId && item.usuario_id === alunoId)));
+          throw error;
+        }
       }
-      await fetchData();
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -331,6 +350,12 @@ export default function ComunidadeAluno() {
         description: isMissingTableError(error)
           ? 'Comunidade indisponível: aplique a migration do banco.'
           : error?.message || 'Falha ao curtir/descurtir.',
+      });
+    } finally {
+      setLikingPostIds((prev) => {
+        const next = new Set(prev);
+        next.delete(postId);
+        return next;
       });
     }
   };
@@ -477,10 +502,10 @@ export default function ComunidadeAluno() {
               <div className="space-y-2">
                 {rankingEscolas.map((item, index) => (
                   <div key={item.escolaId} className="flex items-center justify-between rounded-lg border p-3">
-                    <p className="text-sm font-medium">
+                    <p className="text-sm font-medium min-w-0 truncate pr-2">
                       {index + 1}. {item.escolaNome}
                     </p>
-                    <Badge>{item.leituras} leituras</Badge>
+                    <Badge className="shrink-0">{item.leituras} leituras</Badge>
                   </div>
                 ))}
               </div>
@@ -500,18 +525,20 @@ export default function ComunidadeAluno() {
             ) : (
               <div className="space-y-4">
                 {postsFiltrados.map((post) => (
-                  <div key={post.id} className="p-4 rounded-xl border bg-card shadow-sm space-y-3">
+                  <div key={post.id} className="p-4 rounded-xl border bg-card shadow-sm space-y-3 overflow-hidden">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold text-sm sm:text-base">{safeText(post?.titulo, 'Post da comunidade')}</p>
+                          <p className="font-semibold text-sm sm:text-base break-words">{safeText(post?.titulo, 'Post da comunidade')}</p>
                           {ensureArray(post?.tags).includes('ia') && <Badge variant="secondary">IA</Badge>}
                         </div>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground break-words">
                           {safeNestedName(post?.usuarios_biblioteca, 'Usuário')} • {safeText(post?.tipo, 'resenha')} • {formatDateBR(post?.created_at)}
                         </p>
                       </div>
-                      <Badge variant="secondary">{safeText(post?.livros?.titulo, 'Geral')}</Badge>
+                      <Badge variant="secondary" className="max-w-[38vw] sm:max-w-[220px] truncate shrink-0">
+                        {safeText(post?.livros?.titulo, 'Geral')}
+                      </Badge>
                     </div>
 
                     <p className="text-sm text-muted-foreground whitespace-pre-wrap">{safeText(post?.conteudo, 'Conteúdo indisponível')}</p>
@@ -537,8 +564,13 @@ export default function ComunidadeAluno() {
                       </div>
                     )}
 
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => toggleLikePost(post.id)} disabled={!enabled}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleLikePost(post.id)}
+                        disabled={!enabled || likingPostIds.has(post.id)}
+                      >
                         <Heart className={`w-4 h-4 mr-1 ${likedPostIds.has(post.id) ? 'fill-destructive text-destructive' : ''}`} />
                         {likesByPost.get(post.id) || 0}
                       </Button>
