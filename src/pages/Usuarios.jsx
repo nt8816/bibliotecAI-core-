@@ -417,7 +417,7 @@ export default function Usuarios() {
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button variant="outline" size="sm" className="w-full sm:w-auto">
-                      <Download className="w-4 h-4 mr-2" />
+                      <Upload className="w-4 h-4 mr-2" />
                       Exportar dados
                     </Button>
                   </PopoverTrigger>
@@ -431,7 +431,7 @@ export default function Usuarios() {
                   <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
                     <DialogTrigger asChild>
                       <Button variant="outline" className="w-full sm:w-auto">
-                        <Upload className="w-4 h-4 mr-2" />
+                        <Download className="w-4 h-4 mr-2" />
                         Importar em Massa
                       </Button>
                     </DialogTrigger>
@@ -471,7 +471,7 @@ export default function Usuarios() {
                           <div className="w-full sm:flex-1">
                             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileChange} className="hidden" />
                             <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importLoading} className="w-full sm:w-auto">
-                              {importLoading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processando...</> : <><Upload className="w-4 h-4 mr-2" />Selecionar Arquivo</>}
+                              {importLoading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processando...</> : <><Download className="w-4 h-4 mr-2" />Selecionar Arquivo</>}
                             </Button>
                           </div>
                         </div>
@@ -483,7 +483,7 @@ export default function Usuarios() {
                               <AlertDescription className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
                                 <span className="font-medium">{importUsuarios.length} usuários encontrados.</span>
                                 <Button onClick={importarUsuarios} disabled={importing} size="sm" className="w-full sm:ml-4 sm:w-auto">
-                                  {importing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importando...</> : <><Upload className="w-4 h-4 mr-2" />Importar Todos</>}
+                                  {importing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importando...</> : <><Download className="w-4 h-4 mr-2" />Importar Todos</>}
                                 </Button>
                               </AlertDescription>
                             </Alert>

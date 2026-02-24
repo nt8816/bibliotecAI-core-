@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   Search,
   Download,
+  Upload,
   CalendarIcon,
   Inbox,
   XCircle,
@@ -436,7 +437,7 @@ export default function Emprestimos() {
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button variant="outline" size="sm" className="w-full sm:w-auto">
-                      <Download className="w-4 h-4 mr-2" /> Exportar dados
+                      <Upload className="w-4 h-4 mr-2" /> Exportar dados
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-40 p-2" align="end">

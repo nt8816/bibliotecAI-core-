@@ -452,7 +452,7 @@ export default function Livros() {
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm">
-                    <Download className="w-4 h-4 mr-2" />
+                    <Upload className="w-4 h-4 mr-2" />
                     Exportar dados
                   </Button>
                 </PopoverTrigger>
@@ -466,7 +466,7 @@ export default function Livros() {
                 <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline">
-                      <Upload className="w-4 h-4 mr-2" />
+                      <Download className="w-4 h-4 mr-2" />
                       Importar em Massa
                     </Button>
                   </DialogTrigger>
@@ -493,7 +493,7 @@ export default function Livros() {
                       <div className="flex flex-wrap gap-2">
                         <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={handleImportFileChange} className="hidden" />
                         <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importLoading}>
-                          {importLoading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processando...</> : <><Upload className="w-4 h-4 mr-2" />Selecionar Arquivo</>}
+                          {importLoading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processando...</> : <><Download className="w-4 h-4 mr-2" />Selecionar Arquivo</>}
                         </Button>
                         <Badge variant="secondary" className="gap-1"><FileSpreadsheet className="w-3.5 h-3.5" />Excel/CSV</Badge>
                         <Badge variant="secondary" className="gap-1"><FileText className="w-3.5 h-3.5" />PDF</Badge>
@@ -506,7 +506,7 @@ export default function Livros() {
                             <AlertDescription className="flex items-center justify-between">
                               <span className="font-medium">{importLivros.length} livros encontrados.</span>
                               <Button onClick={importarLivros} disabled={importing} size="sm" className="ml-4">
-                                {importing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importando...</> : <><Upload className="w-4 h-4 mr-2" />Importar Todos</>}
+                                {importing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importando...</> : <><Download className="w-4 h-4 mr-2" />Importar Todos</>}
                               </Button>
                             </AlertDescription>
                           </Alert>
