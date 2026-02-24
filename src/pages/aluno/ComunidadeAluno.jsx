@@ -741,6 +741,7 @@ export default function ComunidadeAluno() {
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Visualização da imagem</DialogTitle>
+            <DialogDescription>Imagem ampliada do post selecionado.</DialogDescription>
           </DialogHeader>
           {selectedImageUrl && (
             <img src={selectedImageUrl} alt="Imagem ampliada" className="w-full max-h-[75vh] object-contain rounded-lg border" />

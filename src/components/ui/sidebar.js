@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 const SIDEBAR_COOKIE_NAME = "sidebar:state";
@@ -83,9 +83,9 @@ const Sidebar = React.forwardRef(({ side = "left", variant = "sidebar", collapsi
         return (_jsx("div", { className: cn("flex h-full w-[--sidebar-width] flex-col bg-sidebar text-sidebar-foreground", className), ref: ref, ...props, children: children }));
     }
     if (isMobile) {
-        return (_jsx(Sheet, { open: openMobile, onOpenChange: setOpenMobile, ...props, children: _jsx(SheetContent, { "data-sidebar": "sidebar", "data-mobile": "true", className: "w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden", style: {
+        return (_jsx(Sheet, { open: openMobile, onOpenChange: setOpenMobile, ...props, children: _jsxs(SheetContent, { "data-sidebar": "sidebar", "data-mobile": "true", className: "w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden", style: {
                     "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
-                }, side: side, children: _jsx("div", { className: "flex h-full w-full flex-col", children: children }) }) }));
+                }, side: side, children: [_jsx(SheetTitle, { className: "sr-only", children: "Menu de navegação" }), _jsx(SheetDescription, { className: "sr-only", children: "Navegação principal do sistema BibliotecAI." }), _jsx("div", { className: "flex h-full w-full flex-col", children: children })] }) }));
     }
     return (_jsxs("div", { ref: ref, className: "group peer hidden text-sidebar-foreground md:block", "data-state": state, "data-collapsible": state === "collapsed" ? collapsible : "", "data-variant": variant, "data-side": side, children: [_jsx("div", { className: cn("relative h-svh w-[--sidebar-width] bg-transparent transition-[width] duration-200 ease-linear", "group-data-[collapsible=offcanvas]:w-0", "group-data-[side=right]:rotate-180", variant === "floating" || variant === "inset"
                     ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4))]"
