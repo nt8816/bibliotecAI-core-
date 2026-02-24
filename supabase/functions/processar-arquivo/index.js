@@ -5,6 +5,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const MAX_BASE64_LENGTH = 8 * 1024 * 1024; // ~6MB binary payload
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -17,6 +19,23 @@ Deno.serve(async (req) => {
     if (!base64Data) {
       return new Response(
         JSON.stringify({ success: false, error: 'Nenhum dado fornecido' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
+    if (typeof base64Data !== 'string' || base64Data.length > MAX_BASE64_LENGTH) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Arquivo excede o limite permitido para processamento' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 413 }
+      );
+    }
+
+    if (tipo !== 'pdf_livros') {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Tipo de arquivo não suportado por este endpoint',
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }

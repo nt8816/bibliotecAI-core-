@@ -138,8 +138,10 @@ export default function Convite() {
         description: `Sua conta foi criada com sucesso como ${getRoleLabel(data.role)}.`,
       });
 
-      const authEmail = data?.auth_email || email;
-      const authPassword = data?.auth_password || senha;
+      const authEmail = isAlunoInvite
+        ? `${matricula.trim().replace(/\s+/g, '')}@temp.bibliotecai.com`
+        : email.trim().toLowerCase();
+      const authPassword = isAlunoInvite ? matricula.trim() : senha;
 
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: authEmail,

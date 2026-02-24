@@ -38,6 +38,9 @@ export default function OnboardingGestor() {
       }
 
       setInvite(data);
+      if (data.email) {
+        setEmail(data.email);
+      }
     } catch (_error) {
       setInvalidInvite(true);
     } finally {
@@ -147,8 +150,20 @@ export default function OnboardingGestor() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                readOnly={Boolean(invite?.email)}
+              />
             </div>
+            {invite?.email && (
+              <p className="text-xs text-muted-foreground">
+                Este convite está vinculado ao email acima.
+              </p>
+            )}
             <div className="space-y-2">
               <Label htmlFor="senha">Senha</Label>
               <Input id="senha" type="password" value={senha} onChange={(e) => setSenha(e.target.value)} required />
