@@ -1,5 +1,23 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Plus, Pencil, Trash2, Search, Users, Upload, FileSpreadsheet, AlertCircle, CheckCircle, Loader2, Download, ArrowUpDown } from 'lucide-react';
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Search,
+  Users,
+  Upload,
+  FileSpreadsheet,
+  AlertCircle,
+  CheckCircle,
+  Loader2,
+  Download,
+  ArrowUpDown,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Copy,
+  RefreshCw,
+} from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -45,6 +63,12 @@ export default function Usuarios() {
   const [editingUsuario, setEditingUsuario] = useState(null);
   const [formData, setFormData] = useState(emptyUsuario);
   const [saving, setSaving] = useState(false);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [selectedAlunoForPassword, setSelectedAlunoForPassword] = useState(null);
+  const [novaSenhaAluno, setNovaSenhaAluno] = useState('');
+  const [senhaVisivel, setSenhaVisivel] = useState(false);
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [senhaTemporariaGerada, setSenhaTemporariaGerada] = useState('');
 
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importUsuarios, setImportUsuarios] = useState([]);
@@ -392,6 +416,98 @@ export default function Usuarios() {
     setSortDirection('asc');
   };
 
+  const gerarSenhaTemporaria = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+    let senha = '';
+    for (let i = 0; i < 10; i += 1) {
+      senha += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return senha;
+  };
+
+  const handleOpenPasswordDialog = (aluno) => {
+    if (!isGestor) {
+      toast({
+        variant: 'destructive',
+        title: 'Sem permissão',
+        description: 'Apenas gestores podem redefinir senha de alunos.',
+      });
+      return;
+    }
+
+    if (aluno.tipo !== 'aluno') {
+      toast({
+        variant: 'destructive',
+        title: 'Ação inválida',
+        description: 'A redefinição está disponível apenas para alunos.',
+      });
+      return;
+    }
+
+    setSelectedAlunoForPassword(aluno);
+    setNovaSenhaAluno(gerarSenhaTemporaria());
+    setSenhaTemporariaGerada('');
+    setSenhaVisivel(false);
+    setPasswordDialogOpen(true);
+  };
+
+  const handleResetAlunoPassword = async () => {
+    if (!selectedAlunoForPassword?.id) return;
+
+    const senha = novaSenhaAluno.trim();
+    if (senha.length < 6) {
+      toast({
+        variant: 'destructive',
+        title: 'Senha inválida',
+        description: 'A senha deve ter pelo menos 6 caracteres.',
+      });
+      return;
+    }
+
+    setResettingPassword(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('redefinir-senha-aluno', {
+        body: {
+          aluno_id: selectedAlunoForPassword.id,
+          nova_senha: senha,
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Não foi possível redefinir a senha.');
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Não foi possível redefinir a senha.');
+      }
+
+      setSenhaTemporariaGerada(data.senha_temporaria || senha);
+      toast({
+        title: 'Senha redefinida',
+        description: `Senha temporária de ${selectedAlunoForPassword.nome} atualizada com sucesso.`,
+      });
+      trackEvent('senha_aluno_redefinida', { usuario_id: selectedAlunoForPassword.id });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao redefinir senha',
+        description: error.message || 'Não foi possível redefinir a senha.',
+      });
+    } finally {
+      setResettingPassword(false);
+    }
+  };
+
+  const handleCopyPassword = async () => {
+    if (!senhaTemporariaGerada) return;
+    try {
+      await navigator.clipboard.writeText(senhaTemporariaGerada);
+      toast({ title: 'Senha copiada', description: 'A senha temporária foi copiada para a área de transferência.' });
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível copiar a senha.' });
+    }
+  };
+
   return (
     <MainLayout title="Usuários">
       <div className="space-y-4 sm:space-y-6">
@@ -595,6 +711,99 @@ export default function Usuarios() {
                     </DialogContent>
                   </Dialog>
                 )}
+
+                {isGestor && (
+                  <Dialog
+                    open={passwordDialogOpen}
+                    onOpenChange={(open) => {
+                      setPasswordDialogOpen(open);
+                      if (!open) {
+                        setSelectedAlunoForPassword(null);
+                        setNovaSenhaAluno('');
+                        setSenhaTemporariaGerada('');
+                        setSenhaVisivel(false);
+                      }
+                    }}
+                  >
+                    <DialogContent className="max-w-[95vw] sm:max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle>Redefinir senha do aluno</DialogTitle>
+                        <DialogDescription>
+                          Defina uma nova senha para o aluno selecionado. A senha atual não pode ser visualizada.
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="space-y-4 py-2">
+                        <div className="rounded-md border bg-muted/40 p-3 text-sm">
+                          <p>
+                            <strong>Aluno:</strong> {selectedAlunoForPassword?.nome || '—'}
+                          </p>
+                          <p className="text-muted-foreground mt-1 break-all">
+                            {selectedAlunoForPassword?.email || 'Sem email'}
+                          </p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="novaSenhaAluno">Nova senha</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              id="novaSenhaAluno"
+                              type={senhaVisivel ? 'text' : 'password'}
+                              value={novaSenhaAluno}
+                              onChange={(e) => setNovaSenhaAluno(e.target.value)}
+                              placeholder="Mínimo 6 caracteres"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              onClick={() => setSenhaVisivel((prev) => !prev)}
+                              aria-label={senhaVisivel ? 'Ocultar senha' : 'Mostrar senha'}
+                            >
+                              {senhaVisivel ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </Button>
+                          </div>
+                        </div>
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => {
+                            setNovaSenhaAluno(gerarSenhaTemporaria());
+                            setSenhaTemporariaGerada('');
+                          }}
+                        >
+                          <RefreshCw className="w-4 h-4 mr-2" />
+                          Gerar senha automática
+                        </Button>
+
+                        {senhaTemporariaGerada && (
+                          <Alert>
+                            <AlertDescription className="space-y-2">
+                              <p className="text-sm font-medium">
+                                Senha temporária definida: <code>{senhaTemporariaGerada}</code>
+                              </p>
+                              <Button type="button" size="sm" variant="outline" onClick={handleCopyPassword}>
+                                <Copy className="w-4 h-4 mr-2" />
+                                Copiar senha
+                              </Button>
+                            </AlertDescription>
+                          </Alert>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+                        <Button variant="outline" onClick={() => setPasswordDialogOpen(false)} className="w-full sm:w-auto">
+                          Fechar
+                        </Button>
+                        <Button onClick={handleResetAlunoPassword} disabled={resettingPassword} className="w-full sm:w-auto">
+                          {resettingPassword ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Redefinindo...</> : 'Salvar nova senha'}
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                )}
               </div>
             </div>
           </CardHeader>
@@ -662,6 +871,12 @@ export default function Usuarios() {
                             <Button variant="outline" size="sm" className="flex-1" onClick={() => handleOpenDialog(usuario)}>
                               <Pencil className="w-4 h-4 mr-2" />
                               Editar
+                            </Button>
+                          )}
+                          {isGestor && usuario.tipo === 'aluno' && (
+                            <Button variant="outline" size="sm" className="flex-1" onClick={() => handleOpenPasswordDialog(usuario)}>
+                              <KeyRound className="w-4 h-4 mr-2" />
+                              Senha
                             </Button>
                           )}
                           {isGestor && (
@@ -734,6 +949,16 @@ export default function Usuarios() {
                               {!(isBibliotecaria && !isGestor && usuario.tipo === 'gestor') && (
                                 <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(usuario)} aria-label={`Editar ${usuario.nome}`}>
                                   <Pencil className="w-4 h-4" />
+                                </Button>
+                              )}
+                              {isGestor && usuario.tipo === 'aluno' && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleOpenPasswordDialog(usuario)}
+                                  aria-label={`Redefinir senha de ${usuario.nome}`}
+                                >
+                                  <KeyRound className="w-4 h-4" />
                                 </Button>
                               )}
                               {isGestor && (
