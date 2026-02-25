@@ -9,6 +9,7 @@ import { AuthProvider } from '@/hooks/useAuth';
 import { TenantProvider, useTenant } from '@/hooks/useTenant';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { SuperAdminRoute } from '@/components/SuperAdminRoute';
+import { BookLoadingScreen } from '@/components/BookLoadingScreen';
 
 import { PrivateTelemetryTracker } from '@/components/PrivateTelemetryTracker';
 
@@ -46,7 +47,7 @@ function AppRoutes() {
   const { loading, isTenantHost, tenant, error } = useTenant();
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Carregando tenant...</div>;
+    return <BookLoadingScreen message="Preparando sua biblioteca..." />;
   }
 
   if (isTenantHost && !tenant) {
@@ -191,7 +192,7 @@ const App = () => (
             <Sonner />
             <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
               <PrivateTelemetryTracker />
-              <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Carregando...</div>}>
+              <Suspense fallback={<BookLoadingScreen message="Virando as páginas..." />}>
                 <AppRoutes />
               </Suspense>
             </BrowserRouter>
