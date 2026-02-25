@@ -340,83 +340,6 @@ html.a11y-reduce-motion *::after {
 }
 
 @layer components {
-  .book-loading-screen {
-    @apply min-h-screen flex items-center justify-center p-6;
-    background:
-      radial-gradient(circle at 12% 20%, hsl(var(--primary) / 0.18), transparent 42%),
-      radial-gradient(circle at 90% 86%, hsl(var(--secondary) / 0.16), transparent 44%),
-      hsl(var(--background));
-  }
-
-  .book-loading-stage {
-    @apply rounded-2xl border p-8 text-center;
-    min-width: min(90vw, 26rem);
-    background: hsl(var(--card) / 0.92);
-    box-shadow: 0 14px 36px hsl(var(--primary) / 0.14);
-  }
-
-  .book-loading-visual {
-    position: relative;
-    width: 150px;
-    height: 100px;
-    margin: 0 auto;
-    perspective: 900px;
-    animation: bookLoaderFloat 2.4s ease-in-out infinite;
-  }
-
-  .book-loading-cover {
-    position: absolute;
-    top: 8px;
-    left: 12px;
-    width: 58px;
-    height: 84px;
-    border-radius: 8px 3px 3px 8px;
-    background: linear-gradient(165deg, hsl(var(--primary)), hsl(var(--secondary)));
-    box-shadow: 0 8px 18px hsl(var(--primary) / 0.34);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 5;
-  }
-
-  .book-loading-icon {
-    width: 24px;
-    height: 24px;
-    color: hsl(var(--primary-foreground));
-  }
-
-  .book-loading-page {
-    position: absolute;
-    top: 12px;
-    left: 58px;
-    width: 68px;
-    height: 76px;
-    border-radius: 3px 8px 8px 3px;
-    border: 1px solid hsl(var(--border));
-    background: linear-gradient(90deg, hsl(var(--muted)), #ffffff 22%);
-    transform-origin: left center;
-    backface-visibility: hidden;
-  }
-
-  .book-loading-page-1 {
-    animation: bookPageTurn 1.6s ease-in-out infinite;
-  }
-
-  .book-loading-page-2 {
-    animation: bookPageTurn 1.6s ease-in-out infinite 0.32s;
-  }
-
-  .book-loading-page-3 {
-    animation: bookPageTurn 1.6s ease-in-out infinite 0.64s;
-  }
-
-  .book-loading-text {
-    @apply mt-6 text-sm font-semibold text-muted-foreground;
-    letter-spacing: 0.02em;
-  }
-}
-
-@layer components {
   .student-gamify-hero {
     background:
       radial-gradient(circle at 0% 0%, hsl(var(--primary) / 0.2), transparent 46%),
@@ -470,33 +393,6 @@ html.a11y-reduce-motion *::after {
   }
   50% {
     transform: translateY(-10px) translateX(8px);
-  }
-}
-
-@keyframes bookLoaderFloat {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-6px);
-  }
-}
-
-@keyframes bookPageTurn {
-  0% {
-    transform: rotateY(0deg);
-    opacity: 0.15;
-  }
-  20% {
-    opacity: 1;
-  }
-  65% {
-    transform: rotateY(-166deg);
-    opacity: 0.95;
-  }
-  100% {
-    transform: rotateY(-180deg);
-    opacity: 0.1;
   }
 }
 
@@ -619,8 +515,6 @@ html.a11y-reduce-motion *::after {
   .auth-logo-wrap,
   .auth-login-button,
   .auth-login-form .auth-field,
-  .book-loading-visual,
-  .book-loading-page,
   .student-gamify-orb,
   .student-achievement-chip,
   .student-badge-unlocked {
