@@ -4,6 +4,20 @@ import path from "path";
 
 export default defineConfig(() => ({
   base: "/",
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("jspdf") || id.includes("html2canvas")) return "vendor-pdf";
+          if (id.includes("xlsx")) return "vendor-xlsx";
+          if (id.includes("@supabase")) return "vendor-supabase";
+          if (id.includes("react-router")) return "vendor-router";
+          return undefined;
+        },
+      },
+    },
+  },
   server: {
     host: "::",
     port: 8080,

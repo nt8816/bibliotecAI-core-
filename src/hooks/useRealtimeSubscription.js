@@ -1,6 +1,20 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 export function useRealtimeSubscription({ table, onInsert, onUpdate, onDelete, onChange, }) {
+    const handlersRef = useRef({
+        onInsert,
+        onUpdate,
+        onDelete,
+        onChange,
+    });
+    useEffect(() => {
+        handlersRef.current = {
+            onInsert,
+            onUpdate,
+            onDelete,
+            onChange,
+        };
+    }, [onInsert, onUpdate, onDelete, onChange]);
     useEffect(() => {
         if (!table)
             return;
@@ -15,23 +29,24 @@ export function useRealtimeSubscription({ table, onInsert, onUpdate, onDelete, o
         }, (payload) => {
             if (disposed)
                 return;
+            const handlers = handlersRef.current;
             // Call general onChange handler
-            if (onChange) {
-                onChange(payload);
+            if (handlers.onChange) {
+                handlers.onChange(payload);
             }
             // Call specific event handlers
             switch (payload.eventType) {
                 case 'INSERT':
-                    if (onInsert)
-                        onInsert(payload);
+                    if (handlers.onInsert)
+                        handlers.onInsert(payload);
                     break;
                 case 'UPDATE':
-                    if (onUpdate)
-                        onUpdate(payload);
+                    if (handlers.onUpdate)
+                        handlers.onUpdate(payload);
                     break;
                 case 'DELETE':
-                    if (onDelete)
-                        onDelete(payload);
+                    if (handlers.onDelete)
+                        handlers.onDelete(payload);
                     break;
             }
         })
@@ -44,5 +59,5 @@ export function useRealtimeSubscription({ table, onInsert, onUpdate, onDelete, o
             disposed = true;
             supabase.removeChannel(channel);
         };
-    }, [table, onInsert, onUpdate, onDelete, onChange]);
+    }, [table]);
 }

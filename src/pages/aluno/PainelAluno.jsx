@@ -174,144 +174,159 @@ export default function PainelAluno() {
   const [saving, setSaving] = useState(false);
   const [optionalFeaturesEnabled, setOptionalFeaturesEnabled] = useState(ENABLE_OPTIONAL_STUDENT_FEATURES);
   const warnedMissingFeaturesRef = useRef(false);
+  const fetchInFlightRef = useRef(null);
+  const realtimeDebounceRef = useRef(null);
 
   const fetchData = useCallback(async () => {
     if (!user) return;
+    if (fetchInFlightRef.current) return fetchInFlightRef.current;
 
-    setLoading(true);
-    try {
-      const { data: perfil, error: perfilError } = await supabase
-        .from('usuarios_biblioteca')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
+    const request = (async () => {
+      setLoading(true);
+      try {
+        const { data: perfil, error: perfilError } = await supabase
+          .from('usuarios_biblioteca')
+          .select('id')
+          .eq('user_id', user.id)
+          .single();
 
-      if (perfilError || !perfil) throw perfilError || new Error('Perfil do aluno não encontrado.');
-      setAlunoId(perfil.id);
+        if (perfilError || !perfil) throw perfilError || new Error('Perfil do aluno não encontrado.');
+        setAlunoId(perfil.id);
 
-      const [
-        livrosRes,
-        emprestimosRes,
-        avaliacoesRes,
-        wishlistRes,
-        sugestoesRes,
-        solicitacoesRes,
-        atividadesRes,
-      ] = await Promise.all([
-        supabase.from('livros').select('*').order('titulo'),
-        supabase
-          .from('emprestimos')
-          .select('*, livros(titulo, autor)')
-          .eq('usuario_id', perfil.id)
-          .order('data_emprestimo', { ascending: false }),
-        supabase
-          .from('avaliacoes_livros')
-          .select('*, livros(titulo, autor)')
-          .eq('usuario_id', perfil.id)
-          .order('created_at', { ascending: false }),
-        supabase.from('lista_desejos').select('livro_id').eq('usuario_id', perfil.id),
-        supabase
-          .from('sugestoes_livros')
-          .select('*, livros(titulo, autor)')
-          .eq('aluno_id', perfil.id)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('solicitacoes_emprestimo')
-          .select('*, livros(titulo, autor)')
-          .eq('usuario_id', perfil.id)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('atividades_leitura')
-          .select('*, livros(titulo, autor)')
-          .eq('aluno_id', perfil.id)
-          .order('created_at', { ascending: false }),
-      ]);
+        const [
+          livrosRes,
+          emprestimosRes,
+          avaliacoesRes,
+          wishlistRes,
+          sugestoesRes,
+          solicitacoesRes,
+          atividadesRes,
+        ] = await Promise.all([
+          supabase
+            .from('livros')
+            .select('id, titulo, autor, area, disponivel, sinopse, created_at')
+            .order('titulo'),
+          supabase
+            .from('emprestimos')
+            .select('*, livros(titulo, autor)')
+            .eq('usuario_id', perfil.id)
+            .order('data_emprestimo', { ascending: false }),
+          supabase
+            .from('avaliacoes_livros')
+            .select('*, livros(titulo, autor)')
+            .eq('usuario_id', perfil.id)
+            .order('created_at', { ascending: false }),
+          supabase.from('lista_desejos').select('livro_id').eq('usuario_id', perfil.id),
+          supabase
+            .from('sugestoes_livros')
+            .select('*, livros(titulo, autor)')
+            .eq('aluno_id', perfil.id)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('solicitacoes_emprestimo')
+            .select('*, livros(titulo, autor)')
+            .eq('usuario_id', perfil.id)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('atividades_leitura')
+            .select('*, livros(titulo, autor)')
+            .eq('aluno_id', perfil.id)
+            .order('created_at', { ascending: false }),
+        ]);
 
-      const optionalQuery = async (queryBuilder, fallback = []) => {
-        const { data, error } = await queryBuilder;
-        if (error) {
-          if (isMissingTableError(error)) return { data: fallback, missing: true };
-          throw error;
+        const optionalQuery = async (queryBuilder, fallback = []) => {
+          const { data, error } = await queryBuilder;
+          if (error) {
+            if (isMissingTableError(error)) return { data: fallback, missing: true };
+            throw error;
+          }
+          return { data: data || fallback, missing: false };
+        };
+        let entregasOpt = { data: [], missing: false };
+        let audioCatalogoOpt = { data: [], missing: false };
+        let meusAudiobooksOpt = { data: [], missing: false };
+
+        if (optionalFeaturesEnabled) {
+          // Probe only one new table first to avoid multiple 404 calls when migration is missing.
+          entregasOpt = await optionalQuery(
+            supabase.from('atividades_entregas').select('*').eq('aluno_id', perfil.id).order('updated_at', { ascending: false }),
+          );
+
+          if (!entregasOpt.missing) {
+            [audioCatalogoOpt, meusAudiobooksOpt] = await Promise.all([
+              optionalQuery(
+                supabase
+                  .from('audiobooks_biblioteca')
+                  .select('*, livros(titulo, autor)')
+                  .order('created_at', { ascending: false }),
+              ),
+              optionalQuery(
+                supabase
+                  .from('aluno_audiobooks')
+                  .select('*, audiobooks_biblioteca(*, livros(titulo, autor))')
+                  .eq('aluno_id', perfil.id)
+                  .order('created_at', { ascending: false }),
+              ),
+            ]);
+          }
         }
-        return { data: data || fallback, missing: false };
-      };
-      let entregasOpt = { data: [], missing: false };
-      let audioCatalogoOpt = { data: [], missing: false };
-      let meusAudiobooksOpt = { data: [], missing: false };
 
-      if (optionalFeaturesEnabled) {
-        // Probe only one new table first to avoid multiple 404 calls when migration is missing.
-        entregasOpt = await optionalQuery(
-          supabase.from('atividades_entregas').select('*').eq('aluno_id', perfil.id).order('updated_at', { ascending: false }),
-        );
+        const missingAnyNewTable =
+          entregasOpt.missing || audioCatalogoOpt.missing || meusAudiobooksOpt.missing;
 
-        if (!entregasOpt.missing) {
-          [audioCatalogoOpt, meusAudiobooksOpt] = await Promise.all([
-            optionalQuery(
-              supabase
-                .from('audiobooks_biblioteca')
-                .select('*, livros(titulo, autor)')
-                .order('created_at', { ascending: false }),
-            ),
-            optionalQuery(
-              supabase
-                .from('aluno_audiobooks')
-                .select('*, audiobooks_biblioteca(*, livros(titulo, autor))')
-                .eq('aluno_id', perfil.id)
-                .order('created_at', { ascending: false }),
-            ),
-          ]);
+        if (missingAnyNewTable && !warnedMissingFeaturesRef.current) {
+          warnedMissingFeaturesRef.current = true;
+          setOptionalFeaturesEnabled(false);
         }
+
+        const maybeError = [
+          livrosRes.error,
+          emprestimosRes.error,
+          avaliacoesRes.error,
+          wishlistRes.error,
+          sugestoesRes.error,
+          solicitacoesRes.error,
+          atividadesRes.error,
+        ].find(Boolean);
+
+        if (maybeError) throw maybeError;
+
+        setLivros(livrosRes.data || []);
+        setEmprestimos(emprestimosRes.data || []);
+        setAvaliacoes(avaliacoesRes.data || []);
+        setWishlist((wishlistRes.data || []).map((item) => item.livro_id));
+        setSugestoes(sugestoesRes.data || []);
+        setSolicitacoes(solicitacoesRes.data || []);
+        setAtividades(atividadesRes.data || []);
+        setEntregas(entregasOpt.data);
+        setAudiobookCatalogo(audioCatalogoOpt.data);
+        setMeusAudiobooks(meusAudiobooksOpt.data);
+
+        const entregaInicial = {};
+        entregasOpt.data.forEach((entrega) => {
+          entregaInicial[entrega.atividade_id] = entrega.texto_entrega;
+        });
+        setAtividadeTexto(entregaInicial);
+      } catch (error) {
+        const description = isMissingTableError(error)
+          ? 'Tabelas novas não encontradas. Aplique a migration mais recente do Supabase.'
+          : error?.message || 'Não foi possível carregar seus dados.';
+        toast({
+          variant: 'destructive',
+          title: 'Erro ao carregar painel',
+          description,
+        });
+      } finally {
+        setLoading(false);
       }
-
-      const missingAnyNewTable =
-        entregasOpt.missing || audioCatalogoOpt.missing || meusAudiobooksOpt.missing;
-
-      if (missingAnyNewTable && !warnedMissingFeaturesRef.current) {
-        warnedMissingFeaturesRef.current = true;
-        setOptionalFeaturesEnabled(false);
+    })();
+    fetchInFlightRef.current = request;
+    request.finally(() => {
+      if (fetchInFlightRef.current === request) {
+        fetchInFlightRef.current = null;
       }
-
-      const maybeError = [
-        livrosRes.error,
-        emprestimosRes.error,
-        avaliacoesRes.error,
-        wishlistRes.error,
-        sugestoesRes.error,
-        solicitacoesRes.error,
-        atividadesRes.error,
-      ].find(Boolean);
-
-      if (maybeError) throw maybeError;
-
-      setLivros(livrosRes.data || []);
-      setEmprestimos(emprestimosRes.data || []);
-      setAvaliacoes(avaliacoesRes.data || []);
-      setWishlist((wishlistRes.data || []).map((item) => item.livro_id));
-      setSugestoes(sugestoesRes.data || []);
-      setSolicitacoes(solicitacoesRes.data || []);
-      setAtividades(atividadesRes.data || []);
-      setEntregas(entregasOpt.data);
-      setAudiobookCatalogo(audioCatalogoOpt.data);
-      setMeusAudiobooks(meusAudiobooksOpt.data);
-
-      const entregaInicial = {};
-      entregasOpt.data.forEach((entrega) => {
-        entregaInicial[entrega.atividade_id] = entrega.texto_entrega;
-      });
-      setAtividadeTexto(entregaInicial);
-    } catch (error) {
-      const description = isMissingTableError(error)
-        ? 'Tabelas novas não encontradas. Aplique a migration mais recente do Supabase.'
-        : error?.message || 'Não foi possível carregar seus dados.';
-      toast({
-        variant: 'destructive',
-        title: 'Erro ao carregar painel',
-        description,
-      });
-    } finally {
-      setLoading(false);
-    }
+    });
+    return request;
   }, [optionalFeaturesEnabled, toast, user]);
 
   useEffect(() => {
@@ -327,8 +342,17 @@ export default function PainelAluno() {
   }, [studioSlides]);
 
   const onRealtimeChange = useCallback(() => {
-    fetchData();
+    if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
+    realtimeDebounceRef.current = setTimeout(() => {
+      fetchData();
+    }, 400);
   }, [fetchData]);
+
+  useEffect(() => {
+    return () => {
+      if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
+    };
+  }, []);
 
   useRealtimeSubscription({ table: 'emprestimos', onChange: onRealtimeChange });
   useRealtimeSubscription({ table: 'avaliacoes_livros', onChange: onRealtimeChange });

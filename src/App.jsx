@@ -31,7 +31,16 @@ const PainelProfessor = lazy(() => import('./pages/professor/PainelProfessor'));
 const RelatoriosLeitura = lazy(() => import('./pages/professor/RelatoriosLeitura'));
 const PainelAluno = lazy(() => import('./pages/aluno/PainelAluno'));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 function AppRoutes() {
   const { loading, isTenantHost, tenant, error } = useTenant();
