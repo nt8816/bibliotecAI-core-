@@ -200,9 +200,34 @@ export default function ComunidadeAluno() {
     fetchData();
   }, [fetchData]);
 
-  const onPostsRealtimeChange = useCallback(() => {
-    fetchData();
-  }, [fetchData]);
+  const onPostInsert = useCallback((payload) => {
+    const nextPost = payload?.new;
+    if (!nextPost?.id) return;
+
+    setPosts((prev) => {
+      const list = ensureArray(prev);
+      const exists = list.some((item) => item.id === nextPost.id);
+      if (exists) return list;
+      return [nextPost, ...list].slice(0, 80);
+    });
+  }, []);
+
+  const onPostUpdate = useCallback((payload) => {
+    const nextPost = payload?.new;
+    if (!nextPost?.id) return;
+
+    setPosts((prev) =>
+      ensureArray(prev).map((item) => (item.id === nextPost.id ? { ...item, ...nextPost } : item)),
+    );
+  }, []);
+
+  const onPostDelete = useCallback((payload) => {
+    const removedPost = payload?.old;
+    if (!removedPost?.id) return;
+
+    setPosts((prev) => ensureArray(prev).filter((item) => item.id !== removedPost.id));
+    setLikes((prev) => ensureArray(prev).filter((item) => item.post_id !== removedPost.id));
+  }, []);
 
   const onLikeInsert = useCallback((payload) => {
     const nextLike = payload?.new;
@@ -218,20 +243,21 @@ export default function ComunidadeAluno() {
 
   const onLikeDelete = useCallback((payload) => {
     const removedLike = payload?.old;
-    if (!removedLike?.post_id || !removedLike?.usuario_id) {
-      // Fallback when OLD payload is not fully available.
-      fetchData();
-      return;
-    }
+    if (!removedLike?.post_id || !removedLike?.usuario_id) return;
 
     setLikes((prev) =>
       ensureArray(prev).filter(
         (item) => !(item.post_id === removedLike.post_id && item.usuario_id === removedLike.usuario_id),
       ),
     );
-  }, [fetchData]);
+  }, []);
 
-  useRealtimeSubscription({ table: enabled ? 'comunidade_posts' : null, onChange: onPostsRealtimeChange });
+  useRealtimeSubscription({
+    table: enabled ? 'comunidade_posts' : null,
+    onInsert: onPostInsert,
+    onUpdate: onPostUpdate,
+    onDelete: onPostDelete,
+  });
   useRealtimeSubscription({
     table: enabled ? 'comunidade_curtidas' : null,
     onInsert: onLikeInsert,
