@@ -75,6 +75,7 @@ export default function Usuarios() {
   const [importLoading, setImportLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [tipoUsuarioImport, setTipoUsuarioImport] = useState('aluno');
+  const [turmasDisponiveis, setTurmasDisponiveis] = useState([]);
   const fileInputRef = useRef(null);
 
   const { isGestor, isBibliotecaria, user } = useAuth();
@@ -82,6 +83,20 @@ export default function Usuarios() {
   const { trackEvent } = usePrivateTelemetry();
 
   const canManageUsers = isGestor || isBibliotecaria;
+  const canCreateGestor = isGestor;
+
+  const userTypeOptions = canCreateGestor
+    ? [
+        { value: 'aluno', label: 'Aluno' },
+        { value: 'professor', label: 'Professor' },
+        { value: 'bibliotecaria', label: 'Bibliotecária' },
+        { value: 'gestor', label: 'Gestor' },
+      ]
+    : [
+        { value: 'aluno', label: 'Aluno' },
+        { value: 'professor', label: 'Professor' },
+        { value: 'bibliotecaria', label: 'Bibliotecária' },
+      ];
 
   const fetchUsuarios = useCallback(async () => {
     try {
@@ -96,15 +111,33 @@ export default function Usuarios() {
     }
   }, [toast]);
 
+  const fetchTurmas = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.from('salas_cursos').select('nome, tipo').order('nome');
+      if (error) throw error;
+
+      const turmas = [...new Set((data || [])
+        .filter((item) => item?.nome && item?.tipo === 'sala')
+        .map((item) => item.nome.trim())
+        .filter(Boolean))];
+
+      setTurmasDisponiveis(turmas);
+    } catch (error) {
+      console.error('Error fetching turmas:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchUsuarios();
-  }, [fetchUsuarios]);
+    fetchTurmas();
+  }, [fetchUsuarios, fetchTurmas]);
 
   const handleRealtimeChange = useCallback(() => {
     fetchUsuarios();
   }, [fetchUsuarios]);
 
   useRealtimeSubscription({ table: 'usuarios_biblioteca', onChange: handleRealtimeChange });
+  useRealtimeSubscription({ table: 'salas_cursos', onChange: fetchTurmas });
 
   const handleOpenDialog = (usuario) => {
     if (usuario && isBibliotecaria && !isGestor && usuario.tipo === 'gestor') {
@@ -138,6 +171,15 @@ export default function Usuarios() {
   const handleSave = async () => {
     if (!formData.nome.trim() || !formData.email.trim()) {
       toast({ variant: 'destructive', title: 'Erro', description: 'Nome e email são obrigatórios.' });
+      return;
+    }
+
+    if (!canCreateGestor && formData.tipo === 'gestor') {
+      toast({
+        variant: 'destructive',
+        title: 'Sem permissão',
+        description: 'A bibliotecária não pode cadastrar novos gestores.',
+      });
       return;
     }
 
@@ -676,10 +718,11 @@ export default function Usuarios() {
                             onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
                             className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                           >
-                            <option value="aluno">Aluno</option>
-                            <option value="professor">Professor</option>
-                            <option value="bibliotecaria">Bibliotecária</option>
-                            <option value="gestor">Gestor</option>
+                            {userTypeOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
                           </select>
                         </div>
 
@@ -695,7 +738,18 @@ export default function Usuarios() {
 
                         <div className="space-y-2">
                           <Label htmlFor="turma">Turma</Label>
-                          <Input id="turma" value={formData.turma} onChange={(e) => setFormData({ ...formData, turma: e.target.value })} />
+                          <Input
+                            id="turma"
+                            list="turmas-disponiveis"
+                            value={formData.turma}
+                            onChange={(e) => setFormData({ ...formData, turma: e.target.value })}
+                            placeholder={turmasDisponiveis.length > 0 ? 'Selecione ou digite a turma' : 'Digite a turma'}
+                          />
+                          <datalist id="turmas-disponiveis">
+                            {turmasDisponiveis.map((turma) => (
+                              <option key={turma} value={turma} />
+                            ))}
+                          </datalist>
                         </div>
 
                         <div className="space-y-2">

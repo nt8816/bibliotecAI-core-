@@ -240,15 +240,29 @@ export function AppSidebar() {
 
                 {hasPendencias ? (
                   <div className="space-y-2">
-                    <div className="rounded-md border p-2 text-sm flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      className="w-full rounded-md border p-2 text-sm flex items-center justify-between gap-2 text-left hover:bg-accent transition-colors"
+                      onClick={() => navigate('/emprestimos?tab=solicitacoes')}
+                    >
                       <span>Solicitações pendentes</span>
                       <Badge>{counts.solicitacoesPendentes}</Badge>
-                    </div>
-                    <div className="rounded-md border p-2 text-sm flex items-center justify-between gap-2">
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full rounded-md border p-2 text-sm flex items-center justify-between gap-2 text-left hover:bg-accent transition-colors"
+                      onClick={() => navigate('/emprestimos?tab=ativos&status=atrasados')}
+                    >
                       <span>Empréstimos atrasados</span>
                       <Badge variant="destructive">{counts.atrasados}</Badge>
-                    </div>
-                    <Button size="sm" className="w-full" onClick={() => navigate('/emprestimos')}>
+                    </button>
+                    <Button
+                      size="sm"
+                      className="w-full"
+                      onClick={() =>
+                        navigate(counts.solicitacoesPendentes > 0 ? '/emprestimos?tab=solicitacoes' : '/emprestimos?tab=ativos')
+                      }
+                    >
                       Abrir painel de empréstimos
                     </Button>
                   </div>

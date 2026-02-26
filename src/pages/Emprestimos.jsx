@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -47,6 +48,7 @@ function formatDateBR(value) {
 }
 
 export default function Emprestimos() {
+  const [searchParams] = useSearchParams();
   const [emprestimos, setEmprestimos] = useState([]);
   const [solicitacoes, setSolicitacoes] = useState([]);
   const [livrosDisponiveis, setLivrosDisponiveis] = useState([]);
@@ -61,12 +63,15 @@ export default function Emprestimos() {
   const [searchLivro, setSearchLivro] = useState('');
   const [respostaPorSolicitacao, setRespostaPorSolicitacao] = useState({});
   const [sortDirection, setSortDirection] = useState('desc');
+  const [activeTab, setActiveTab] = useState('ativos');
   const [actionLoading, setActionLoading] = useState({ devolucaoId: null, solicitacaoId: null, tipo: null });
 
   const { isGestor, isBibliotecaria } = useAuth();
   const { toast } = useToast();
   const { trackEvent } = usePrivateTelemetry();
   const canManageLoans = isGestor || isBibliotecaria;
+  const requestedTab = searchParams.get('tab');
+  const requestedStatus = searchParams.get('status');
 
   const fetchData = useCallback(async () => {
     try {
@@ -317,10 +322,20 @@ export default function Emprestimos() {
 
   const emprestimosAtivos = sortEmprestimos(emprestimos.filter((e) => e.status === 'ativo'));
   const emprestimosHistorico = sortEmprestimos(emprestimos.filter((e) => e.status === 'devolvido'));
+  const emprestimosAtivosFiltrados = requestedStatus === 'atrasados'
+    ? emprestimosAtivos.filter((emprestimo) => isAtrasado(emprestimo))
+    : emprestimosAtivos;
   const solicitacoesPendentes = useMemo(
     () => solicitacoes.filter((s) => s.status === 'pendente'),
     [solicitacoes],
   );
+
+  useEffect(() => {
+    const defaultTab = canManageLoans ? 'solicitacoes' : 'ativos';
+    const nextTab = requestedTab || defaultTab;
+    const isValidTab = ['ativos', 'historico', ...(canManageLoans ? ['solicitacoes'] : [])].includes(nextTab);
+    setActiveTab(isValidTab ? nextTab : defaultTab);
+  }, [canManageLoans, requestedTab]);
 
   const filteredUsuarios = usuarios.filter(
     (u) => u.nome.toLowerCase().includes(searchUsuario.toLowerCase()) || u.email.toLowerCase().includes(searchUsuario.toLowerCase()),
@@ -632,7 +647,7 @@ export default function Emprestimos() {
               )}
             </div>
           ) : (
-            <Tabs defaultValue={canManageLoans ? 'solicitacoes' : 'ativos'}>
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="mb-4 h-auto w-full justify-start gap-1 overflow-x-auto whitespace-nowrap pb-1 sm:gap-2">
                 {canManageLoans && (
                   <TabsTrigger value="solicitacoes" className="gap-2 shrink-0">
@@ -731,10 +746,10 @@ export default function Emprestimos() {
               )}
 
               <TabsContent value="ativos">
-                {emprestimosAtivos.length === 0 ? (
+                {emprestimosAtivosFiltrados.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">Nenhum empréstimo ativo</p>
                 ) : (
-                  renderTable(emprestimosAtivos, true)
+                  renderTable(emprestimosAtivosFiltrados, true)
                 )}
               </TabsContent>
 
