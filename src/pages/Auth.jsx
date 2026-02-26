@@ -42,17 +42,20 @@ export default function Auth() {
       return signIn(normalized.toLowerCase(), password);
     }
 
-    const matricula = normalized.replace(/\s+/g, '');
-    const candidates = [`${matricula}@temp.bibliotecai.com`];
+    const matriculaCompacta = normalized.replace(/\s+/g, '');
+    const matriculaSomenteAlfanumerica = normalized.replace(/[^A-Za-z0-9]/g, '');
+    const matriculaCandidates = [...new Set([matriculaCompacta, matriculaSomenteAlfanumerica].filter(Boolean))];
+    const candidates = matriculaCandidates.map((matricula) => `${matricula}@temp.bibliotecai.com`);
 
-    // Best effort: if RLS permits this lookup, prefer the real email mapped to the matricula.
-    const { data: profile } = await supabase
-      .from('usuarios_biblioteca')
-      .select('email, user_id')
-      .eq('matricula', matricula)
-      .maybeSingle();
+    const { data: emailPorMatricula } = await supabase.rpc('get_login_email_by_matricula', {
+      _matricula: normalized,
+    });
 
-    if (profile && !profile.user_id) {
+    const { data: temContaAtivada } = await supabase.rpc('is_matricula_login_activated', {
+      _matricula: normalized,
+    });
+
+    if (temContaAtivada === false) {
       return {
         error: {
           message:
@@ -61,8 +64,8 @@ export default function Auth() {
       };
     }
 
-    if (profile?.email) {
-      candidates.unshift(profile.email);
+    if (emailPorMatricula) {
+      candidates.unshift(String(emailPorMatricula).toLowerCase());
     }
 
     let lastError = null;

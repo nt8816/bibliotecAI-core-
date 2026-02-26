@@ -180,7 +180,7 @@ export default function Relatorios() {
                     <p className="text-[11px] sm:text-xs text-muted-foreground">{card.title}</p>
                     <p className="text-xl sm:text-2xl font-bold mt-0.5">{loading ? '...' : card.value}</p>
                   </div>
-                  <card.icon className={`w-5 h-5 sm:w-6 sm:h-6 ${card.color}`} />
+                  <card.icon className={`w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 ${card.color}`} />
                 </div>
               </CardContent>
             </Card>
@@ -208,7 +208,7 @@ export default function Relatorios() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <BarChart3 className="w-4 h-4" /> Empréstimos por mês
+                <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5" /> Empréstimos por mês
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -233,7 +233,7 @@ export default function Relatorios() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <TrendingUp className="w-4 h-4" /> Evolução (empréstimos vs devoluções)
+                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" /> Evolução (empréstimos vs devoluções)
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -324,37 +324,6 @@ export default function Relatorios() {
           </Card>
         </div>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Detalhe mensal (uso rápido no celular/tablet)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">Carregando...</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[520px]">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2">Mês</th>
-                      <th className="text-right py-2">Empréstimos</th>
-                      <th className="text-right py-2">Devoluções</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {emprestimosPorMes.map((item) => (
-                      <tr key={item.key} className="border-b last:border-b-0">
-                        <td className="py-2">{item.mes}</td>
-                        <td className="py-2 text-right font-medium">{item.emprestimos}</td>
-                        <td className="py-2 text-right">{item.devolucoes}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
     </MainLayout>
   );

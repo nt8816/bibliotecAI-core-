@@ -156,7 +156,7 @@ export function AppSidebar() {
                       className={`flex min-w-0 items-center ${collapsed ? 'mx-auto size-8 justify-center rounded-md' : 'w-full gap-3'}`}
                       activeClassName="rounded-md bg-sidebar-accent text-sidebar-accent-foreground"
                     >
-                      <item.icon className="w-5 h-5" />
+                      <item.icon className="w-4 h-4 sm:w-5 sm:h-5" />
                       {!collapsed && (
                         <div className="flex w-full items-center justify-between gap-2">
                           <span className="font-medium">{item.title}</span>
@@ -189,7 +189,7 @@ export function AppSidebar() {
                         className={`flex min-w-0 items-center ${collapsed ? 'mx-auto size-8 justify-center rounded-md' : 'w-full gap-3'}`}
                         activeClassName="rounded-md bg-sidebar-accent text-sidebar-accent-foreground"
                       >
-                        <item.icon className="w-5 h-5" />
+                        <item.icon className="w-4 h-4 sm:w-5 sm:h-5" />
                         {!collapsed && <span className="font-medium">{item.title}</span>}
                       </NavLink>
                     </SidebarMenuButton>
@@ -221,7 +221,7 @@ export function AppSidebar() {
                   : 'relative mb-2 w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
                 aria-label="Abrir notificações"
               >
-                <Bell className="w-5 h-5" />
+                <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
                 {!collapsed && <span>Notificações</span>}
                 {hasPendencias && (
                   <span className="absolute -right-1 -top-1 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] leading-[1.1rem] text-center font-bold">
@@ -282,7 +282,7 @@ export function AppSidebar() {
             : 'w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
           onClick={handleSignOut}
         >
-          <LogOut className="w-5 h-5" />
+          <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
           {!collapsed && <span>Sair</span>}
         </Button>
       </SidebarFooter>
