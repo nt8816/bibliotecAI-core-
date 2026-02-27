@@ -46,26 +46,37 @@ export default function Auth() {
     const matriculaSomenteAlfanumerica = normalized.replace(/[^A-Za-z0-9]/g, '');
     const matriculaCandidates = [...new Set([matriculaCompacta, matriculaSomenteAlfanumerica].filter(Boolean))];
     const candidates = matriculaCandidates.map((matricula) => `${matricula}@temp.bibliotecai.com`);
+    const enableMatriculaRpc = String(import.meta.env.VITE_ENABLE_MATRICULA_RPC || '').toLowerCase() === 'true';
 
-    const { data: emailPorMatricula } = await supabase.rpc('get_login_email_by_matricula', {
-      _matricula: normalized,
-    });
+    if (enableMatriculaRpc) {
+      const { data: emailPorMatricula, error: emailError } = await supabase.rpc('get_login_email_by_matricula', {
+        _matricula: normalized,
+      });
 
-    const { data: temContaAtivada } = await supabase.rpc('is_matricula_login_activated', {
-      _matricula: normalized,
-    });
+      const { data: temContaAtivada, error: activatedError } = await supabase.rpc('is_matricula_login_activated', {
+        _matricula: normalized,
+      });
 
-    if (temContaAtivada === false) {
-      return {
-        error: {
-          message:
-            'Matrícula encontrada, mas o acesso ainda não foi ativado. Use o link de convite do gestor para criar a conta.',
-        },
-      };
-    }
+      const isMissingRpc =
+        (activatedError && (activatedError.code === 'PGRST202' || activatedError.status === 404))
+        || (emailError && (emailError.code === 'PGRST202' || emailError.status === 404));
 
-    if (emailPorMatricula) {
-      candidates.unshift(String(emailPorMatricula).toLowerCase());
+      if (activatedError && !isMissingRpc) {
+        return { error: activatedError };
+      }
+
+      if (!isMissingRpc && temContaAtivada === false) {
+        return {
+          error: {
+            message:
+              'Matrícula encontrada, mas o acesso ainda não foi ativado. Use o link de convite do gestor para criar a conta.',
+          },
+        };
+      }
+
+      if (!emailError && emailPorMatricula) {
+        candidates.unshift(String(emailPorMatricula).toLowerCase());
+      }
     }
 
     let lastError = null;
