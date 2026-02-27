@@ -168,9 +168,35 @@ export default function Usuarios() {
     setIsDialogOpen(true);
   };
 
+  const provisionarAlunoComMatricula = async (payload) => {
+    const { data, error } = await supabase.functions.invoke('provisionar-aluno-matricula', {
+      body: payload,
+    });
+
+    if (error) {
+      throw new Error(error.message || 'Não foi possível provisionar login por matrícula.');
+    }
+
+    if (!data?.success) {
+      throw new Error(data?.error || 'Não foi possível provisionar login por matrícula.');
+    }
+
+    return data;
+  };
+
   const handleSave = async () => {
-    if (!formData.nome.trim() || !formData.email.trim()) {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Nome e email são obrigatórios.' });
+    if (!formData.nome.trim()) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Nome é obrigatório.' });
+      return;
+    }
+
+    if (formData.tipo === 'aluno' && !formData.matricula.trim()) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Matrícula é obrigatória para aluno.' });
+      return;
+    }
+
+    if (formData.tipo !== 'aluno' && !formData.email.trim()) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Email é obrigatório para este tipo de usuário.' });
       return;
     }
 
@@ -191,9 +217,23 @@ export default function Usuarios() {
         toast({ title: 'Sucesso', description: 'Usuário atualizado com sucesso.' });
         trackEvent('usuario_atualizado', { id: editingUsuario.id });
       } else {
-        const { error } = await supabase.from('usuarios_biblioteca').insert(formData);
-        if (error) throw error;
-        toast({ title: 'Sucesso', description: 'Usuário cadastrado com sucesso.' });
+        if (formData.tipo === 'aluno') {
+          await provisionarAlunoComMatricula({
+            nome: formData.nome,
+            matricula: formData.matricula,
+            turma: formData.turma,
+            cpf: formData.cpf,
+            telefone: formData.telefone,
+          });
+          toast({
+            title: 'Aluno cadastrado',
+            description: 'Login e senha iniciais do aluno são a matrícula.',
+          });
+        } else {
+          const { error } = await supabase.from('usuarios_biblioteca').insert(formData);
+          if (error) throw error;
+          toast({ title: 'Sucesso', description: 'Usuário cadastrado com sucesso.' });
+        }
         trackEvent('usuario_cadastrado', { tipo: formData.tipo });
       }
 
@@ -352,15 +392,30 @@ export default function Usuarios() {
         const u = updated[i];
 
         try {
-          const email = u.email || `${u.matricula}@temp.bibliotecai.com`;
-          const { error } = await supabase.from('usuarios_biblioteca').insert({
-            nome: u.nome,
-            matricula: u.matricula,
-            email,
-            turma: u.turma,
-            tipo: tipoUsuarioImport,
-            escola_id: escola?.id,
-          });
+          let error = null;
+
+          if (tipoUsuarioImport === 'aluno') {
+            const result = await provisionarAlunoComMatricula({
+              nome: u.nome,
+              matricula: u.matricula,
+              turma: u.turma,
+            });
+
+            if (!result?.success) {
+              error = { message: result?.error || 'Não foi possível provisionar o aluno.' };
+            }
+          } else {
+            const email = u.email || `${u.matricula}@temp.bibliotecai.com`;
+            const response = await supabase.from('usuarios_biblioteca').insert({
+              nome: u.nome,
+              matricula: u.matricula,
+              email,
+              turma: u.turma,
+              tipo: tipoUsuarioImport,
+              escola_id: escola?.id,
+            });
+            error = response.error;
+          }
 
           if (error) {
             updated[i] = { ...u, status: 'erro', mensagem: error.code === '23505' ? 'Já existe' : error.message };
@@ -706,7 +761,7 @@ export default function Usuarios() {
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor="email">Email *</Label>
+                          <Label htmlFor="email">Email {formData.tipo === 'aluno' ? '(opcional)' : '*'}</Label>
                           <Input id="email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
                         </div>
 
