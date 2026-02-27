@@ -66,12 +66,32 @@ export default function Auth() {
       }
 
       if (!isMissingRpc && temContaAtivada === false) {
-        return {
-          error: {
-            message:
-              'Matrícula encontrada, mas o acesso ainda não foi ativado. Use o link de convite do gestor para criar a conta.',
+        const { data: activationData, error: activationError } = await supabase.functions.invoke('ativar-aluno-matricula', {
+          body: {
+            matricula: normalized,
+            senha: password,
           },
-        };
+        });
+
+        if (activationError) {
+          return {
+            error: {
+              message: activationError.message || 'Não foi possível ativar sua conta por matrícula.',
+            },
+          };
+        }
+
+        if (!activationData?.success) {
+          return {
+            error: {
+              message: activationData?.error || 'Não foi possível ativar sua conta por matrícula.',
+            },
+          };
+        }
+
+        if (activationData?.email) {
+          candidates.unshift(String(activationData.email).toLowerCase());
+        }
       }
 
       if (!emailError && emailPorMatricula) {
