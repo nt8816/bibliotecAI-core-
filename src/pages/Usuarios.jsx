@@ -88,20 +88,23 @@ const getFreshAccessToken = async () => {
   if (sessionError) throw new Error(sessionError.message || 'Não foi possível validar sua sessão.');
 
   let session = sessionData?.session || null;
-  const expiresAtMs = session?.expires_at ? session.expires_at * 1000 : 0;
-  const expiresSoon = !session?.access_token || !expiresAtMs || expiresAtMs - Date.now() < 60_000;
+  if (!session?.refresh_token) throw new Error('Sessão inválida. Faça login novamente.');
 
-  if (expiresSoon) {
-    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-    if (refreshError) throw new Error('Sessão expirada. Faça login novamente.');
-    session = refreshData?.session || session;
-  }
+  const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+  if (refreshError) throw new Error('Sessão expirada. Faça login novamente.');
+  session = refreshData?.session || session;
 
   if (!session?.access_token) {
     throw new Error('Sessão inválida. Faça login novamente.');
   }
 
   return session.access_token;
+};
+
+const isJwtUnauthorizedError = (error) => {
+  const status = error?.context?.status;
+  const message = String(error?.message || '').toLowerCase();
+  return status === 401 || message.includes('jwt') || message.includes('unauthorized');
 };
 
 export default function Usuarios() {
@@ -224,25 +227,37 @@ export default function Usuarios() {
   };
 
   const provisionarAlunoComMatricula = async (payload) => {
-    const accessToken = await getFreshAccessToken();
+    const invokeProvisionar = async () => {
+      const accessToken = await getFreshAccessToken();
+      return supabase.functions.invoke('provisionar-aluno-matricula', {
+        body: payload,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+    };
 
-    const { data, error } = await supabase.functions.invoke('provisionar-aluno-matricula', {
-      body: payload,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
+    let result = await invokeProvisionar();
 
-    if (error) {
-      const message = await extractEdgeFunctionError(error, 'Não foi possível provisionar login por matrícula.');
+    if (result.error && isJwtUnauthorizedError(result.error)) {
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        await supabase.auth.signOut();
+        throw new Error('Sua sessão expirou. Faça login novamente.');
+      }
+      result = await invokeProvisionar();
+    }
+
+    if (result.error) {
+      const message = await extractEdgeFunctionError(result.error, 'Não foi possível provisionar login por matrícula.');
       throw new Error(message);
     }
 
-    if (!data?.success) {
-      throw new Error(data?.error || 'Não foi possível provisionar login por matrícula.');
+    if (!result.data?.success) {
+      throw new Error(result.data?.error || 'Não foi possível provisionar login por matrícula.');
     }
 
-    return data;
+    return result.data;
   };
 
   const handleSave = async () => {
