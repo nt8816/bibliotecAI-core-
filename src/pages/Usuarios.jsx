@@ -229,11 +229,9 @@ export default function Usuarios() {
   const provisionarAlunoComMatricula = async (payload) => {
     const invokeProvisionar = async () => {
       const accessToken = await getFreshAccessToken();
+      supabase.functions.setAuth(accessToken);
       return supabase.functions.invoke('provisionar-aluno-matricula', {
         body: payload,
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
       });
     };
 
