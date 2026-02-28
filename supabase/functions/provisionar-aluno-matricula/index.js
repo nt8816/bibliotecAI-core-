@@ -52,6 +52,9 @@ Deno.serve(async (req) => {
       .from('usuarios_biblioteca')
       .select('id, tipo, escola_id')
       .eq('user_id', callerId)
+      .order('updated_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (callerProfileError || !callerProfile) {
@@ -90,6 +93,9 @@ Deno.serve(async (req) => {
       .from('usuarios_biblioteca')
       .select('id, user_id, escola_id')
       .eq('matricula', matricula)
+      .order('updated_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (existingError) {
@@ -135,21 +141,47 @@ Deno.serve(async (req) => {
     };
 
     let profileError = null;
+    let targetProfileId = existingByMatricula?.id || null;
 
-    if (existingByMatricula?.id) {
+    if (!targetProfileId) {
+      const { data: byUserProfile } = await adminClient
+        .from('usuarios_biblioteca')
+        .select('id')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      targetProfileId = byUserProfile?.id || null;
+    }
+
+    if (targetProfileId) {
       const { error } = await adminClient
         .from('usuarios_biblioteca')
         .update(profilePayload)
-        .eq('id', existingByMatricula.id);
+        .eq('id', targetProfileId);
       profileError = error;
     } else {
-      const { error } = await adminClient.from('usuarios_biblioteca').insert(profilePayload);
+      const { data: insertedProfile, error } = await adminClient
+        .from('usuarios_biblioteca')
+        .insert(profilePayload)
+        .select('id')
+        .maybeSingle();
       profileError = error;
+      targetProfileId = insertedProfile?.id || null;
     }
 
     if (profileError) {
       await adminClient.auth.admin.deleteUser(userId).catch(() => {});
       return jsonResponse({ success: false, error: 'Não foi possível salvar o perfil do aluno' }, 500);
+    }
+
+    if (targetProfileId) {
+      await adminClient
+        .from('usuarios_biblioteca')
+        .delete()
+        .eq('user_id', userId)
+        .neq('id', targetProfileId);
     }
 
     return jsonResponse({

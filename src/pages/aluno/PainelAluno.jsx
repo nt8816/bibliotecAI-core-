@@ -188,7 +188,10 @@ export default function PainelAluno() {
           .from('usuarios_biblioteca')
           .select('id')
           .eq('user_id', user.id)
-          .single();
+          .order('updated_at', { ascending: false, nullsFirst: false })
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
         if (perfilError || !perfil) throw perfilError || new Error('Perfil do aluno não encontrado.');
         setAlunoId(perfil.id);

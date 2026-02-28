@@ -70,10 +70,19 @@ Deno.serve(async (req) => {
     }
 
     if (aluno.user_id) {
+      const { data: activeProfile } = await adminClient
+        .from('usuarios_biblioteca')
+        .select('email')
+        .eq('user_id', aluno.user_id)
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
       return jsonResponse({
         success: true,
         already_active: true,
-        email: aluno.email,
+        email: activeProfile?.email || aluno.email,
       });
     }
 
@@ -117,6 +126,12 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Nao foi possivel vincular o perfil do aluno' }, 500);
     }
 
+    await adminClient
+      .from('usuarios_biblioteca')
+      .delete()
+      .eq('user_id', userId)
+      .neq('id', aluno.id);
+
     return jsonResponse({
       success: true,
       already_active: false,
@@ -127,4 +142,3 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: message }, 500);
   }
 });
-

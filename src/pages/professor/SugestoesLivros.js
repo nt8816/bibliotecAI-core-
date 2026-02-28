@@ -104,7 +104,10 @@ export default function SugestoesLivros() {
             .from('usuarios_biblioteca')
             .select('id')
             .eq('user_id', user?.id)
-            .single();
+            .order('updated_at', { ascending: false, nullsFirst: false })
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
         if (!professorData) {
             toast({
                 variant: 'destructive',
@@ -157,7 +160,10 @@ export default function SugestoesLivros() {
             .from('usuarios_biblioteca')
             .select('id')
             .eq('user_id', user?.id)
-            .single();
+            .order('updated_at', { ascending: false, nullsFirst: false })
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
         if (!professorData) {
             toast({
                 variant: 'destructive',
