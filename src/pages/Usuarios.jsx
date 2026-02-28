@@ -18,9 +18,6 @@ import {
   Copy,
   RefreshCw,
 } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,6 +35,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { usePrivateTelemetry } from '@/hooks/usePrivateTelemetry';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 const emptyUsuario = {
   nome: '',
@@ -58,53 +56,13 @@ const normalizeMatricula = (value) =>
 
 const isValidMatricula = (value) => MATRICULA_REGEX.test(normalizeMatricula(value));
 
-const extractEdgeFunctionError = async (error, fallbackMessage) => {
-  if (!error) return fallbackMessage;
-
-  const response = error.context;
-  if (response && typeof response.clone === 'function') {
-    try {
-      const clone = response.clone();
-      const contentType = clone.headers?.get('content-type') || '';
-
-      if (contentType.includes('application/json')) {
-        const payload = await clone.json();
-        if (typeof payload?.error === 'string' && payload.error.trim()) return payload.error;
-        if (typeof payload?.message === 'string' && payload.message.trim()) return payload.message;
-      } else {
-        const text = await clone.text();
-        if (text.trim()) return text.trim();
-      }
-    } catch {
-      // ignore parsing errors and fallback below
-    }
-  }
-
-  return error.message || fallbackMessage;
-};
-
-const getFreshAccessToken = async () => {
-  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-  if (sessionError) throw new Error(sessionError.message || 'Não foi possível validar sua sessão.');
-
-  let session = sessionData?.session || null;
-  if (!session?.refresh_token) throw new Error('Sessão inválida. Faça login novamente.');
-
-  const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-  if (refreshError) throw new Error('Sessão expirada. Faça login novamente.');
-  session = refreshData?.session || session;
-
-  if (!session?.access_token) {
-    throw new Error('Sessão inválida. Faça login novamente.');
-  }
-
-  return session.access_token;
-};
-
-const isJwtUnauthorizedError = (error) => {
-  const status = error?.context?.status;
-  const message = String(error?.message || '').toLowerCase();
-  return status === 401 || message.includes('jwt') || message.includes('unauthorized');
+const loadXlsx = async () => import('xlsx');
+const loadPdf = async () => {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ]);
+  return { jsPDF, autoTable };
 };
 
 export default function Usuarios() {
@@ -227,35 +185,18 @@ export default function Usuarios() {
   };
 
   const provisionarAlunoComMatricula = async (payload) => {
-    const invokeProvisionar = async () => {
-      const accessToken = await getFreshAccessToken();
-      supabase.functions.setAuth(accessToken);
-      return supabase.functions.invoke('provisionar-aluno-matricula', {
-        body: payload,
-      });
-    };
+    const data = await invokeEdgeFunction('provisionar-aluno-matricula', {
+      body: payload,
+      requireAuth: true,
+      signOutOnAuthFailure: true,
+      fallbackErrorMessage: 'Não foi possível provisionar login por matrícula.',
+    });
 
-    let result = await invokeProvisionar();
-
-    if (result.error && isJwtUnauthorizedError(result.error)) {
-      const { error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError) {
-        await supabase.auth.signOut();
-        throw new Error('Sua sessão expirou. Faça login novamente.');
-      }
-      result = await invokeProvisionar();
+    if (!data?.success) {
+      throw new Error(data?.error || 'Não foi possível provisionar login por matrícula.');
     }
 
-    if (result.error) {
-      const message = await extractEdgeFunctionError(result.error, 'Não foi possível provisionar login por matrícula.');
-      throw new Error(message);
-    }
-
-    if (!result.data?.success) {
-      throw new Error(result.data?.error || 'Não foi possível provisionar login por matrícula.');
-    }
-
-    return result.data;
+    return data;
   };
 
   const handleSave = async () => {
@@ -367,6 +308,7 @@ export default function Usuarios() {
   };
 
   const handleExportarUsuariosExcel = () => {
+    loadXlsx().then((XLSX) => {
     const headers = ['Nome', 'Email', 'Tipo', 'Matrícula', 'CPF', 'Turma', 'Telefone'];
     const data = filteredUsuarios.map((u) => [
       u.nome,
@@ -384,23 +326,30 @@ export default function Usuarios() {
     XLSX.writeFile(wb, 'usuarios.xlsx');
 
     toast({ title: 'Exportado!', description: 'Arquivo usuarios.xlsx baixado.' });
+    }).catch(() => {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível exportar o arquivo Excel.' });
+    });
   };
 
   const handleExportarUsuariosPDF = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(18);
-    doc.text('BibliotecAI - Usuários', 14, 22);
-    doc.setFontSize(11);
-    doc.setTextColor(100);
-    doc.text(`Total: ${filteredUsuarios.length} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
+    loadPdf().then(({ jsPDF, autoTable }) => {
+      const doc = new jsPDF();
+      doc.setFontSize(18);
+      doc.text('BibliotecAI - Usuários', 14, 22);
+      doc.setFontSize(11);
+      doc.setTextColor(100);
+      doc.text(`Total: ${filteredUsuarios.length} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
 
-    const headers = ['Nome', 'Email', 'Tipo', 'Matrícula', 'Turma', 'Telefone'];
-    const data = filteredUsuarios.map((u) => [u.nome, u.email, getTipoLabel(u.tipo), u.matricula || '-', u.turma || '-', u.telefone || '-']);
+      const headers = ['Nome', 'Email', 'Tipo', 'Matrícula', 'Turma', 'Telefone'];
+      const data = filteredUsuarios.map((u) => [u.nome, u.email, getTipoLabel(u.tipo), u.matricula || '-', u.turma || '-', u.telefone || '-']);
 
-    autoTable(doc, { head: [headers], body: data, startY: 40, styles: { fontSize: 8 }, headStyles: { fillColor: [46, 125, 50] } });
-    doc.save('usuarios.pdf');
+      autoTable(doc, { head: [headers], body: data, startY: 40, styles: { fontSize: 8 }, headStyles: { fillColor: [46, 125, 50] } });
+      doc.save('usuarios.pdf');
 
-    toast({ title: 'Exportado!', description: 'Arquivo usuarios.pdf baixado.' });
+      toast({ title: 'Exportado!', description: 'Arquivo usuarios.pdf baixado.' });
+    }).catch(() => {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível exportar o PDF.' });
+    });
   };
 
   const handleFileChange = async (e) => {
@@ -417,6 +366,7 @@ export default function Usuarios() {
         return;
       }
 
+      const XLSX = await loadXlsx();
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data);
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -532,15 +482,19 @@ export default function Usuarios() {
   };
 
   const baixarModelo = () => {
-    const ws = XLSX.utils.aoa_to_sheet([
-      ['Nome', 'Matrícula', 'Email', 'Turma'],
-      ['João Silva', '2024001', 'joao@email.com', '3º Ano A'],
-      ['Maria Santos', '2024002', 'maria@email.com', '3º Ano B'],
-    ]);
+    loadXlsx().then((XLSX) => {
+      const ws = XLSX.utils.aoa_to_sheet([
+        ['Nome', 'Matrícula', 'Email', 'Turma'],
+        ['João Silva', '2024001', 'joao@email.com', '3º Ano A'],
+        ['Maria Santos', '2024002', 'maria@email.com', '3º Ano B'],
+      ]);
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Usuários');
-    XLSX.writeFile(wb, 'modelo_importacao_usuarios.xlsx');
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Usuários');
+      XLSX.writeFile(wb, 'modelo_importacao_usuarios.xlsx');
+    }).catch(() => {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível baixar o modelo.' });
+    });
   };
 
   const getTipoBadgeVariant = (tipo) => {
@@ -655,16 +609,15 @@ export default function Usuarios() {
 
     setResettingPassword(true);
     try {
-      const { data, error } = await supabase.functions.invoke('redefinir-senha-aluno', {
+      const data = await invokeEdgeFunction('redefinir-senha-aluno', {
         body: {
           aluno_id: selectedAlunoForPassword.id,
           nova_senha: senha,
         },
+        requireAuth: true,
+        signOutOnAuthFailure: true,
+        fallbackErrorMessage: 'Não foi possível redefinir a senha.',
       });
-
-      if (error) {
-        throw new Error(error.message || 'Não foi possível redefinir a senha.');
-      }
 
       if (!data?.success) {
         throw new Error(data?.error || 'Não foi possível redefinir a senha.');

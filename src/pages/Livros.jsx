@@ -1,8 +1,5 @@
 import { Fragment, useEffect, useState, useCallback, useRef } from 'react';
 import { Plus, Pencil, Trash2, Search, BookOpen, Sparkles, Loader2, Info, Download, Upload, FileSpreadsheet, FileText, AlertCircle, CheckCircle } from 'lucide-react';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +18,7 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 const emptyLivro = {
   area: '',
@@ -37,7 +35,14 @@ const emptyLivro = {
 };
 
 const DEFAULT_PRE_CATEGORIES = ['Literatura', 'Ciências', 'Matemática', 'História', 'Geografia', 'Infantil'];
-const PRE_CATEGORIES_STORAGE_KEY = 'livros_pre_categorias_v1';
+const loadXlsx = async () => import('xlsx');
+const loadPdf = async () => {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ]);
+  return { jsPDF, autoTable };
+};
 
 async function buscarSinopseOpenLibrary(titulo, autor) {
   try {
@@ -97,9 +102,10 @@ export default function Livros() {
   const [importing, setImporting] = useState(false);
   const [preCategorias, setPreCategorias] = useState(DEFAULT_PRE_CATEGORIES);
   const [novaPreCategoria, setNovaPreCategoria] = useState('');
+  const [escolaId, setEscolaId] = useState(null);
   const fileInputRef = useRef(null);
 
-  const { isGestor, isBibliotecaria } = useAuth();
+  const { isGestor, isBibliotecaria, user } = useAuth();
   const { toast } = useToast();
 
   const canManageBooks = isGestor || isBibliotecaria;
@@ -121,35 +127,53 @@ export default function Livros() {
     fetchLivros();
   }, [fetchLivros]);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const raw = window.localStorage.getItem(PRE_CATEGORIES_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return;
+  const fetchPreCategorias = useCallback(async () => {
+    if (!user?.id) return;
 
-      const normalized = [...new Set(parsed.map((value) => String(value || '').trim()).filter(Boolean))];
-      if (normalized.length > 0) setPreCategorias(normalized);
-    } catch {
-      // ignore invalid localStorage values
+    try {
+      const { data: profile, error: profileError } = await supabase
+        .from('usuarios_biblioteca')
+        .select('escola_id')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (profileError) throw profileError;
+      if (!profile?.escola_id) {
+        setEscolaId(null);
+        setPreCategorias(DEFAULT_PRE_CATEGORIES);
+        return;
+      }
+
+      setEscolaId(profile.escola_id);
+      const { data: categorias, error: categoriasError } = await supabase
+        .from('categorias_livros')
+        .select('nome')
+        .eq('escola_id', profile.escola_id)
+        .order('nome');
+
+      if (categoriasError) throw categoriasError;
+
+      const nomes = [...new Set((categorias || []).map((c) => String(c.nome || '').trim()).filter(Boolean))];
+      setPreCategorias(nomes.length > 0 ? nomes : DEFAULT_PRE_CATEGORIES);
+    } catch (error) {
+      console.error('Error fetching categorias_livros:', error);
+      setPreCategorias(DEFAULT_PRE_CATEGORIES);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      window.localStorage.setItem(PRE_CATEGORIES_STORAGE_KEY, JSON.stringify(preCategorias));
-    } catch {
-      // ignore storage errors
-    }
-  }, [preCategorias]);
+    fetchPreCategorias();
+  }, [fetchPreCategorias]);
 
   const handleRealtimeChange = useCallback(() => {
     fetchLivros();
   }, [fetchLivros]);
 
   useRealtimeSubscription({ table: 'livros', onChange: handleRealtimeChange });
+  useRealtimeSubscription({ table: 'categorias_livros', onChange: fetchPreCategorias });
 
   const handleOpenDialog = (livro) => {
     if (livro) {
@@ -176,7 +200,7 @@ export default function Livros() {
   };
 
   const handleAdicionarPreCategoria = () => {
-    const categoria = novaPreCategoria.trim();
+    const categoria = novaPreCategoria.trim().replace(/\s+/g, ' ');
     if (!categoria) return;
     const exists = preCategorias.some((item) => item.toLowerCase() === categoria.toLowerCase());
     if (exists) {
@@ -185,10 +209,49 @@ export default function Livros() {
     }
     setPreCategorias((prev) => [...prev, categoria]);
     setNovaPreCategoria('');
+
+    if (!escolaId) return;
+    supabase
+      .from('categorias_livros')
+      .upsert(
+        {
+          escola_id: escolaId,
+          nome: categoria,
+          created_by: user?.id || null,
+        },
+        { onConflict: 'escola_id,nome' },
+      )
+      .then(({ error }) => {
+        if (error) {
+          toast({
+            variant: 'destructive',
+            title: 'Erro',
+            description: 'Não foi possível salvar a pré-categoria.',
+          });
+          fetchPreCategorias();
+        }
+      });
   };
 
   const handleRemoverPreCategoria = (categoria) => {
     setPreCategorias((prev) => prev.filter((item) => item !== categoria));
+    if (!escolaId) return;
+
+    supabase
+      .from('categorias_livros')
+      .delete()
+      .eq('escola_id', escolaId)
+      .eq('nome', categoria)
+      .then(({ error }) => {
+        if (error) {
+          toast({
+            variant: 'destructive',
+            title: 'Erro',
+            description: 'Não foi possível remover a pré-categoria.',
+          });
+          fetchPreCategorias();
+        }
+      });
   };
 
   const handleBuscarSinopse = async () => {
@@ -264,44 +327,52 @@ export default function Livros() {
   };
 
   const handleExportarExcel = () => {
-    const headers = ['Título', 'Autor', 'Área', 'Tombo', 'Editora', 'Ano', 'Edição', 'Volume', 'Local', 'Disponível', 'Sinopse'];
-    const data = livros.map((l) => [
-      l.titulo,
-      l.autor,
-      l.area,
-      l.tombo || '-',
-      l.editora || '-',
-      l.ano || '-',
-      l.edicao || '-',
-      l.vol || '-',
-      l.local || '-',
-      l.disponivel ? 'Sim' : 'Não',
-      l.sinopse || '-',
-    ]);
+    loadXlsx().then((XLSX) => {
+      const headers = ['Título', 'Autor', 'Área', 'Tombo', 'Editora', 'Ano', 'Edição', 'Volume', 'Local', 'Disponível', 'Sinopse'];
+      const data = livros.map((l) => [
+        l.titulo,
+        l.autor,
+        l.area,
+        l.tombo || '-',
+        l.editora || '-',
+        l.ano || '-',
+        l.edicao || '-',
+        l.vol || '-',
+        l.local || '-',
+        l.disponivel ? 'Sim' : 'Não',
+        l.sinopse || '-',
+      ]);
 
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Acervo');
-    XLSX.writeFile(wb, 'acervo_livros.xlsx');
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Acervo');
+      XLSX.writeFile(wb, 'acervo_livros.xlsx');
 
-    toast({ title: 'Exportado!', description: 'Arquivo acervo_livros.xlsx baixado.' });
+      toast({ title: 'Exportado!', description: 'Arquivo acervo_livros.xlsx baixado.' });
+    }).catch(() => {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível exportar o Excel.' });
+    });
   };
 
   const handleExportarPDF = () => {
-    const doc = new jsPDF('landscape');
-    doc.setFontSize(18);
-    doc.text('BibliotecAI - Acervo de Livros', 14, 22);
-    doc.setFontSize(11);
-    doc.setTextColor(100);
-    doc.text(`Total: ${livros.length} livros | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
+    loadPdf().then(({ jsPDF, autoTable }) => {
+      const doc = new jsPDF('landscape');
+      doc.setFontSize(18);
+      doc.text('BibliotecAI - Acervo de Livros', 14, 22);
+      doc.setFontSize(11);
+      doc.setTextColor(100);
+      doc.text(`Total: ${livros.length} livros | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
 
-    const headers = ['Título', 'Autor', 'Área', 'Tombo', 'Editora', 'Ano', 'Disponível'];
-    const data = livros.map((l) => [l.titulo, l.autor, l.area, l.tombo || '-', l.editora || '-', l.ano || '-', l.disponivel ? 'Sim' : 'Não']);
+      const headers = ['Título', 'Autor', 'Área', 'Tombo', 'Editora', 'Ano', 'Disponível'];
+      const data = livros.map((l) => [l.titulo, l.autor, l.area, l.tombo || '-', l.editora || '-', l.ano || '-', l.disponivel ? 'Sim' : 'Não']);
 
-    autoTable(doc, { head: [headers], body: data, startY: 40, styles: { fontSize: 8 }, headStyles: { fillColor: [46, 125, 50] } });
-    doc.save('acervo_livros.pdf');
+      autoTable(doc, { head: [headers], body: data, startY: 40, styles: { fontSize: 8 }, headStyles: { fillColor: [46, 125, 50] } });
+      doc.save('acervo_livros.pdf');
 
-    toast({ title: 'Exportado!', description: 'Arquivo acervo_livros.pdf baixado.' });
+      toast({ title: 'Exportado!', description: 'Arquivo acervo_livros.pdf baixado.' });
+    }).catch(() => {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível exportar o PDF.' });
+    });
   };
 
   const normalizeText = (value) =>
@@ -401,6 +472,7 @@ export default function Livros() {
   };
 
   const parseExcelOrCsv = async (file) => {
+    const XLSX = await loadXlsx();
     const data = await file.arrayBuffer();
     const workbook = XLSX.read(data);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -442,14 +514,14 @@ export default function Livros() {
 
     const base64Data = btoa(binary);
 
-    const { data, error } = await supabase.functions.invoke('processar-arquivo', {
+    const data = await invokeEdgeFunction('processar-arquivo', {
       body: {
         base64Data,
         tipo: 'pdf_livros',
       },
+      requireAuth: true,
+      fallbackErrorMessage: 'Erro ao processar PDF.',
     });
-
-    if (error) throw new Error(error.message || 'Erro ao processar PDF.');
 
     if (!data?.success || !Array.isArray(data?.livros)) {
       throw new Error(data?.error || 'PDF não pôde ser convertido automaticamente.');
@@ -535,15 +607,19 @@ export default function Livros() {
   };
 
   const baixarModeloImportacaoLivros = () => {
-    const ws = XLSX.utils.aoa_to_sheet([
-      ['Título', 'Autor', 'Área', 'Tombo', 'Editora', 'Ano', 'Edição', 'Volume', 'Local', 'Sinopse'],
-      ['Dom Casmurro', 'Machado de Assis', 'Literatura', 'T-001', 'Garnier', '1899', '1', '1', 'Estante A', 'Clássico da literatura brasileira.'],
-      ['Vidas Secas', 'Graciliano Ramos', 'Literatura', 'T-002', 'Record', '1938', '1', '1', 'Estante B', 'Romance regionalista.'],
-    ]);
+    loadXlsx().then((XLSX) => {
+      const ws = XLSX.utils.aoa_to_sheet([
+        ['Título', 'Autor', 'Área', 'Tombo', 'Editora', 'Ano', 'Edição', 'Volume', 'Local', 'Sinopse'],
+        ['Dom Casmurro', 'Machado de Assis', 'Literatura', 'T-001', 'Garnier', '1899', '1', '1', 'Estante A', 'Clássico da literatura brasileira.'],
+        ['Vidas Secas', 'Graciliano Ramos', 'Literatura', 'T-002', 'Record', '1938', '1', '1', 'Estante B', 'Romance regionalista.'],
+      ]);
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Livros');
-    XLSX.writeFile(wb, 'modelo_importacao_livros.xlsx');
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Livros');
+      XLSX.writeFile(wb, 'modelo_importacao_livros.xlsx');
+    }).catch(() => {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível baixar o modelo.' });
+    });
   };
 
   const getImportStatusBadge = (status) => {

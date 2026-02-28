@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 export default function OnboardingGestor() {
   const { token } = useParams();
@@ -68,13 +69,11 @@ export default function OnboardingGestor() {
     setSubmitting(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('registrar-gestor-tenant', {
+      const data = await invokeEdgeFunction('registrar-gestor-tenant', {
         body: { token, nome, email, senha },
+        requireAuth: false,
+        fallbackErrorMessage: 'Não foi possível concluir o cadastro',
       });
-
-      if (error) {
-        throw new Error(error.message || 'Não foi possível concluir o cadastro');
-      }
 
       if (!data?.success) {
         throw new Error(data?.error || 'Falha no cadastro');

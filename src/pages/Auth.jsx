@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 const loginSchema = z.object({
   login: z.string().trim().min(2, 'Informe seu email ou matrícula'),
@@ -66,17 +67,20 @@ export default function Auth() {
       }
 
       if (!isMissingRpc && temContaAtivada === false) {
-        const { data: activationData, error: activationError } = await supabase.functions.invoke('ativar-aluno-matricula', {
-          body: {
-            matricula: normalized,
-            senha: password,
-          },
-        });
-
-        if (activationError) {
+        let activationData;
+        try {
+          activationData = await invokeEdgeFunction('ativar-aluno-matricula', {
+            body: {
+              matricula: normalized,
+              senha: password,
+            },
+            requireAuth: false,
+            fallbackErrorMessage: 'Não foi possível ativar sua conta por matrícula.',
+          });
+        } catch (activationInvokeError) {
           return {
             error: {
-              message: activationError.message || 'Não foi possível ativar sua conta por matrícula.',
+              message: activationInvokeError.message || 'Não foi possível ativar sua conta por matrícula.',
             },
           };
         }

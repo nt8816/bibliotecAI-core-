@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 export default function Convite() {
   const { token } = useParams();
@@ -104,7 +105,7 @@ export default function Convite() {
     setSubmitting(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('registrar-via-convite', {
+      const data = await invokeEdgeFunction('registrar-via-convite', {
         body: {
           token,
           nome,
@@ -112,22 +113,9 @@ export default function Convite() {
           senha: isAlunoInvite ? undefined : senha,
           matricula: isAlunoInvite ? matricula.trim() : undefined,
         },
+        requireAuth: false,
+        fallbackErrorMessage: 'Não foi possível criar sua conta.',
       });
-
-      if (error) {
-        let backendMessage = error.message || 'Não foi possível criar sua conta.';
-
-        try {
-          const parsed = await error.context?.json?.();
-          if (parsed?.error) {
-            backendMessage = parsed.error;
-          }
-        } catch (_parseError) {
-          // keep message from error object
-        }
-
-        throw new Error(mapSignupError(backendMessage));
-      }
 
       if (!data?.success) {
         throw new Error(mapSignupError(data?.error || 'Erro ao registrar'));
