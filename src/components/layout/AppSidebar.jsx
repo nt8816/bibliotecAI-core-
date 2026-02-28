@@ -44,7 +44,7 @@ export function AppSidebar() {
   const { counts, canViewNotifications } = useSystemNotifications();
   const totalPendencias = counts.atrasados + counts.solicitacoesPendentes;
   const hasPendencias = totalPendencias > 0;
-  const settingsPath = isGestor || isBibliotecaria ? '/configuracao-escola' : '/configuracoes';
+  const settingsPath = '/configuracoes';
 
   const handleSignOut = async () => {
     await signOut();
