@@ -83,6 +83,27 @@ const extractEdgeFunctionError = async (error, fallbackMessage) => {
   return error.message || fallbackMessage;
 };
 
+const getFreshAccessToken = async () => {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw new Error(sessionError.message || 'Não foi possível validar sua sessão.');
+
+  let session = sessionData?.session || null;
+  const expiresAtMs = session?.expires_at ? session.expires_at * 1000 : 0;
+  const expiresSoon = !session?.access_token || !expiresAtMs || expiresAtMs - Date.now() < 60_000;
+
+  if (expiresSoon) {
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError) throw new Error('Sessão expirada. Faça login novamente.');
+    session = refreshData?.session || session;
+  }
+
+  if (!session?.access_token) {
+    throw new Error('Sessão inválida. Faça login novamente.');
+  }
+
+  return session.access_token;
+};
+
 export default function Usuarios() {
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -203,8 +224,13 @@ export default function Usuarios() {
   };
 
   const provisionarAlunoComMatricula = async (payload) => {
+    const accessToken = await getFreshAccessToken();
+
     const { data, error } = await supabase.functions.invoke('provisionar-aluno-matricula', {
       body: payload,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
     });
 
     if (error) {
