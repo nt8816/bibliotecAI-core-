@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, useCallback, useRef } from 'react';
-import { Plus, Pencil, Trash2, Search, BookOpen, Sparkles, Loader2, Info, Download, Upload, FileSpreadsheet, FileText, AlertCircle, CheckCircle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, BookOpen, Sparkles, Loader2, Info, Download, Upload, FileSpreadsheet, FileText, AlertCircle, CheckCircle, X } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -779,33 +779,39 @@ export default function Livros() {
                         <Label htmlFor="area">Área</Label>
                         <Input id="area" value={formData.area} onChange={(e) => setFormData({ ...formData, area: e.target.value })} />
                         <div className="space-y-2 pt-1">
-                          <p className="text-xs text-muted-foreground">Pré-categorias rápidas</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {preCategorias.map((categoria) => (
-                              <Fragment key={categoria}>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant={formData.area === categoria ? 'default' : 'outline'}
-                                  className="h-7 px-2 text-xs"
-                                  onClick={() => setFormData((prev) => ({ ...prev, area: categoria }))}
-                                >
-                                  {categoria}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7"
-                                  onClick={() => handleRemoverPreCategoria(categoria)}
-                                  aria-label={`Remover categoria ${categoria}`}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </Button>
-                              </Fragment>
-                            ))}
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs text-muted-foreground">Pré-categorias rápidas</p>
+                            <span className="text-[11px] text-muted-foreground">Toque para aplicar</span>
                           </div>
-                          <div className="flex gap-2">
+                          <div className="max-h-28 overflow-y-auto rounded-md border p-2">
+                            <div className="flex flex-wrap gap-2">
+                              {preCategorias.map((categoria) => (
+                                <div
+                                  key={categoria}
+                                  className={`inline-flex items-center rounded-full border pr-1 ${
+                                    formData.area === categoria ? 'border-primary bg-primary/10' : 'border-border bg-background'
+                                  }`}
+                                >
+                                  <button
+                                    type="button"
+                                    className="px-2.5 py-1 text-xs font-medium"
+                                    onClick={() => setFormData((prev) => ({ ...prev, area: categoria }))}
+                                  >
+                                    {categoria}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="flex size-5 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+                                    onClick={() => handleRemoverPreCategoria(categoria)}
+                                    aria-label={`Remover categoria ${categoria}`}
+                                  >
+                                    <X className="size-3.5" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-2 sm:flex-row">
                             <Input
                               placeholder="Nova pré-categoria"
                               value={novaPreCategoria}

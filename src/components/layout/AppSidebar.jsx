@@ -12,6 +12,7 @@ import {
   MessageSquare,
   Building2,
   Bell,
+  Settings,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -39,10 +40,11 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
   const navigate = useNavigate();
-  const { signOut, user, userRole, isGestor, isSuperAdmin } = useAuth();
+  const { signOut, user, userRole, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
   const { counts, canViewNotifications } = useSystemNotifications();
   const totalPendencias = counts.atrasados + counts.solicitacoesPendentes;
   const hasPendencias = totalPendencias > 0;
+  const settingsPath = isGestor || isBibliotecaria ? '/configuracao-escola' : '/configuracoes';
 
   const handleSignOut = async () => {
     await signOut();
@@ -209,80 +211,96 @@ export function AppSidebar() {
           </div>
         )}
 
-        {canViewNotifications && (
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size={collapsed ? 'icon' : 'sm'}
-                className={collapsed
-                  ? 'relative mx-auto mb-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                  : 'relative mb-2 w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
-                aria-label="Abrir notificações"
-              >
-                <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
-                {!collapsed && <span>Notificações</span>}
-                {hasPendencias && (
-                  <span className="absolute -right-1 -top-1 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] leading-[1.1rem] text-center font-bold">
-                    {totalPendencias > 99 ? '99+' : totalPendencias}
-                  </span>
-                )}
-              </Button>
-            </PopoverTrigger>
+        <div className={collapsed ? 'space-y-2' : 'grid grid-cols-2 gap-2'}>
+          {canViewNotifications && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size={collapsed ? 'icon' : 'sm'}
+                  className={collapsed
+                    ? 'relative mx-auto text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                    : 'relative w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
+                  aria-label="Abrir notificações"
+                >
+                  <Bell className="size-4 sm:size-5" />
+                  {!collapsed && <span className="truncate text-xs sm:text-sm">Notificações</span>}
+                  {hasPendencias && (
+                    <span className="absolute -right-1 -top-1 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] leading-[1.1rem] text-center font-bold">
+                      {totalPendencias > 99 ? '99+' : totalPendencias}
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
 
-            <PopoverContent align="end" className="w-72">
-              <div className="space-y-3">
-                <div>
-                  <p className="font-semibold text-sm">Notificações</p>
-                  <p className="text-xs text-muted-foreground">Atualizado em tempo real</p>
-                </div>
-
-                {hasPendencias ? (
-                  <div className="space-y-2">
-                    <button
-                      type="button"
-                      className="w-full rounded-md border p-2 text-sm flex items-center justify-between gap-2 text-left hover:bg-accent transition-colors"
-                      onClick={() => navigate('/emprestimos?tab=solicitacoes')}
-                    >
-                      <span>Solicitações pendentes</span>
-                      <Badge>{counts.solicitacoesPendentes}</Badge>
-                    </button>
-                    <button
-                      type="button"
-                      className="w-full rounded-md border p-2 text-sm flex items-center justify-between gap-2 text-left hover:bg-accent transition-colors"
-                      onClick={() => navigate('/emprestimos?tab=ativos&status=atrasados')}
-                    >
-                      <span>Empréstimos atrasados</span>
-                      <Badge variant="destructive">{counts.atrasados}</Badge>
-                    </button>
-                    <Button
-                      size="sm"
-                      className="w-full"
-                      onClick={() =>
-                        navigate(counts.solicitacoesPendentes > 0 ? '/emprestimos?tab=solicitacoes' : '/emprestimos?tab=ativos')
-                      }
-                    >
-                      Abrir painel de empréstimos
-                    </Button>
+              <PopoverContent align="end" className="w-72">
+                <div className="space-y-3">
+                  <div>
+                    <p className="font-semibold text-sm">Notificações</p>
+                    <p className="text-xs text-muted-foreground">Atualizado em tempo real</p>
                   </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Sem pendências no momento.</p>
-                )}
-              </div>
-            </PopoverContent>
-          </Popover>
-        )}
+
+                  {hasPendencias ? (
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        className="w-full rounded-md border p-2 text-sm flex items-center justify-between gap-2 text-left hover:bg-accent transition-colors"
+                        onClick={() => navigate('/emprestimos?tab=solicitacoes')}
+                      >
+                        <span>Solicitações pendentes</span>
+                        <Badge>{counts.solicitacoesPendentes}</Badge>
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full rounded-md border p-2 text-sm flex items-center justify-between gap-2 text-left hover:bg-accent transition-colors"
+                        onClick={() => navigate('/emprestimos?tab=ativos&status=atrasados')}
+                      >
+                        <span>Empréstimos atrasados</span>
+                        <Badge variant="destructive">{counts.atrasados}</Badge>
+                      </button>
+                      <Button
+                        size="sm"
+                        className="w-full"
+                        onClick={() =>
+                          navigate(counts.solicitacoesPendentes > 0 ? '/emprestimos?tab=solicitacoes' : '/emprestimos?tab=ativos')
+                        }
+                      >
+                        Abrir painel de empréstimos
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Sem pendências no momento.</p>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+
+          <Button
+            type="button"
+            variant="ghost"
+            size={collapsed ? 'icon' : 'sm'}
+            className={collapsed
+              ? 'mx-auto text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+              : 'w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
+            onClick={() => navigate(settingsPath)}
+            aria-label="Abrir configurações"
+          >
+            <Settings className="size-4 sm:size-5" />
+            {!collapsed && <span className="truncate text-xs sm:text-sm">Configurações</span>}
+          </Button>
+        </div>
 
         <Button
           variant="ghost"
           size={collapsed ? 'icon' : 'default'}
           className={collapsed
-            ? 'mx-auto justify-center text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-            : 'w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
+            ? 'mx-auto mt-2 justify-center text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+            : 'mt-2 w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
           onClick={handleSignOut}
         >
-          <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
+          <LogOut className="size-4 sm:size-5" />
           {!collapsed && <span>Sair</span>}
         </Button>
       </SidebarFooter>

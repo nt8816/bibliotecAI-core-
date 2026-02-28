@@ -60,14 +60,14 @@ export const invokeEdgeFunction = async (
   } = {},
 ) => {
   const invokeOnce = async () => {
+    const finalHeaders = { ...(headers || {}) };
+
     if (requireAuth) {
       const accessToken = await getAccessToken();
-      supabase.functions.setAuth(accessToken);
-    } else {
-      supabase.functions.setAuth('');
+      finalHeaders.Authorization = `Bearer ${accessToken}`;
     }
 
-    return supabase.functions.invoke(functionName, { body, headers });
+    return supabase.functions.invoke(functionName, { body, headers: finalHeaders });
   };
 
   let result = await invokeOnce();
@@ -88,4 +88,3 @@ export const invokeEdgeFunction = async (
 
   return result.data;
 };
-

@@ -25,6 +25,7 @@ const Convite = lazy(() => import('./pages/Convite'));
 const ConfiguracaoEscola = lazy(() => import('./pages/ConfiguracaoEscola'));
 const AdminTenants = lazy(() => import('./pages/AdminTenants'));
 const OnboardingGestor = lazy(() => import('./pages/OnboardingGestor'));
+const Configuracoes = lazy(() => import('./pages/Configuracoes'));
 const ComunidadeAluno = lazy(() => import('./pages/aluno/ComunidadeAluno'));
 const MeusAlunos = lazy(() => import('./pages/professor/MeusAlunos'));
 const PainelProfessor = lazy(() => import('./pages/professor/PainelProfessor'));
@@ -132,6 +133,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <ConfiguracaoEscola />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/configuracoes"
+        element={
+          <ProtectedRoute>
+            <Configuracoes />
           </ProtectedRoute>
         }
       />

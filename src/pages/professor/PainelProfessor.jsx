@@ -338,59 +338,59 @@ export default function PainelProfessor() {
 
   return (
     <MainLayout title="Painel do Professor">
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="space-y-4 sm:space-y-6">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 sm:gap-4">
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Lightbulb className="w-6 h-6 text-primary" />
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Lightbulb className="size-5 sm:size-6 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Sugestões enviadas</p>
-                  <p className="text-2xl font-bold">{sugestoes.length}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Sugestões enviadas</p>
+                  <p className="text-xl sm:text-2xl font-bold">{sugestoes.length}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-info/10 flex items-center justify-center">
-                  <ClipboardList className="w-6 h-6 text-info" />
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg bg-info/10 flex items-center justify-center">
+                  <ClipboardList className="size-5 sm:size-6 text-info" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Atividades criadas</p>
-                  <p className="text-2xl font-bold">{atividades.length}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Atividades criadas</p>
+                  <p className="text-xl sm:text-2xl font-bold">{atividades.length}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-warning/10 flex items-center justify-center">
-                  <Sparkles className="w-6 h-6 text-warning" />
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg bg-warning/10 flex items-center justify-center">
+                  <Sparkles className="size-5 sm:size-6 text-warning" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Entregas para avaliar</p>
-                  <p className="text-2xl font-bold">{entregasPendentes}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Entregas para avaliar</p>
+                  <p className="text-xl sm:text-2xl font-bold">{entregasPendentes}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-success/10 flex items-center justify-center">
-                  <Star className="w-6 h-6 text-success" />
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg bg-success/10 flex items-center justify-center">
+                  <Star className="size-5 sm:size-6 text-success" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Pontos já liberados</p>
-                  <p className="text-2xl font-bold">{pontosDistribuidos}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Pontos já liberados</p>
+                  <p className="text-xl sm:text-2xl font-bold">{pontosDistribuidos}</p>
                 </div>
               </div>
             </CardContent>
@@ -398,14 +398,14 @@ export default function PainelProfessor() {
         </div>
 
         <Tabs defaultValue="atividades">
-          <TabsList className="flex-wrap">
-            <TabsTrigger value="atividades" className="gap-1">
-              <ClipboardList className="w-4 h-4" /> Atividades
+          <TabsList className="w-full justify-start overflow-x-auto whitespace-nowrap px-1 py-1">
+            <TabsTrigger value="atividades" className="gap-1.5 shrink-0">
+              <ClipboardList className="w-4 h-4" /> <span className="hidden sm:inline">Atividades</span><span className="sm:hidden">Ativ.</span>
             </TabsTrigger>
-            <TabsTrigger value="entregas" className="gap-1">
-              <CheckCircle className="w-4 h-4" /> Entregas dos alunos
+            <TabsTrigger value="entregas" className="gap-1.5 shrink-0">
+              <CheckCircle className="w-4 h-4" /> <span className="hidden sm:inline">Entregas dos alunos</span><span className="sm:hidden">Entregas</span>
             </TabsTrigger>
-            <TabsTrigger value="sugestoes" className="gap-1">
+            <TabsTrigger value="sugestoes" className="gap-1.5 shrink-0">
               <Lightbulb className="w-4 h-4" /> Sugestões
             </TabsTrigger>
           </TabsList>
@@ -421,7 +421,7 @@ export default function PainelProfessor() {
                         <Plus className="w-4 h-4 mr-2" /> Nova atividade
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-lg">
+                    <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                       <DialogHeader>
                         <DialogTitle>{editingAtividade ? 'Editar atividade' : 'Nova atividade'}</DialogTitle>
                         <DialogDescription>Defina tarefa, livro, prazo e pontuação.</DialogDescription>
@@ -447,7 +447,7 @@ export default function PainelProfessor() {
                           />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <Label>Aluno *</Label>
                             <Select
@@ -489,7 +489,7 @@ export default function PainelProfessor() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <Label>Pontos</Label>
                             <Input
@@ -535,7 +535,43 @@ export default function PainelProfessor() {
                 ) : atividades.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">Nenhuma atividade cadastrada.</p>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <>
+                    <div className="space-y-3 md:hidden">
+                      {atividades.map((atividade) => (
+                        <div key={atividade.id} className="rounded-lg border p-3 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-medium">{atividade.titulo}</p>
+                              <p className="text-xs text-muted-foreground">{atividade.usuarios_biblioteca?.nome || '-'} • {atividade.livros?.titulo || '-'}</p>
+                            </div>
+                            <Badge
+                              variant={
+                                atividade.status === 'concluido'
+                                  ? 'default'
+                                  : atividade.status === 'em_andamento'
+                                    ? 'secondary'
+                                    : 'outline'
+                              }
+                            >
+                              {atividade.status}
+                            </Badge>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Pontos: {Number(atividade.pontos_extras || 0)} • Entrega: {formatDateBR(atividade.data_entrega)}
+                          </div>
+                          <div className="flex justify-end gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => handleOpenAtividadeDialog(atividade)}>
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleDeleteAtividade(atividade.id)}>
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="hidden md:block overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -583,7 +619,8 @@ export default function PainelProfessor() {
                         ))}
                       </TableBody>
                     </Table>
-                  </div>
+                    </div>
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -611,7 +648,7 @@ export default function PainelProfessor() {
 
                       return (
                         <div key={entrega.id} className="p-4 border rounded-lg space-y-3">
-                          <div className="flex flex-col md:flex-row md:justify-between gap-2">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start">
                             <div>
                               <p className="font-semibold">{entrega.atividades_leitura?.titulo || 'Atividade'}</p>
                               <p className="text-xs text-muted-foreground">
@@ -621,7 +658,7 @@ export default function PainelProfessor() {
                                 {entrega.atividades_leitura?.livros?.titulo || '-'}
                               </p>
                             </div>
-                            <div className="text-right">
+                            <div className="sm:text-right">
                               <Badge variant="outline">Enviado: {formatDateBR(entrega.enviado_em)}</Badge>
                             </div>
                           </div>
@@ -631,7 +668,7 @@ export default function PainelProfessor() {
                             <p className="text-sm whitespace-pre-wrap">{entrega.texto_entrega}</p>
                           </div>
 
-                          <div className="grid md:grid-cols-3 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div className="space-y-2">
                               <Label>Status</Label>
                               <Select
