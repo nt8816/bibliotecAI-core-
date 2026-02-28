@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTheme } from 'next-themes';
-import { Loader2, Moon, Settings, Shield, SlidersHorizontal, Sun, UserRound } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Loader2, Moon, Settings, Sun, UserRound } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,17 +32,16 @@ const roleLabel = {
 };
 
 export default function Configuracoes() {
-  const navigate = useNavigate();
-  const { userRole, user, isGestor, isBibliotecaria } = useAuth();
+  const { userRole, user } = useAuth();
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profile, setProfile] = useState(emptyProfile);
 
-  const canManageSchool = isGestor || isBibliotecaria;
-
   const roleBadgeLabel = useMemo(() => roleLabel[userRole] || 'sem papel', [userRole]);
+  const canEditTurma = userRole === 'aluno' || userRole === 'professor';
+  const showMatricula = userRole === 'aluno';
 
   const loadProfile = useCallback(async () => {
     if (!user?.id) {
@@ -67,7 +65,7 @@ export default function Configuracoes() {
 
       setProfile({
         id: data?.id || null,
-        nome: data?.nome || '',
+        nome: data?.nome || user?.user_metadata?.nome || '',
         telefone: data?.telefone || '',
         cpf: data?.cpf || '',
         turma: data?.turma || '',
@@ -83,7 +81,7 @@ export default function Configuracoes() {
     } finally {
       setLoadingProfile(false);
     }
-  }, [toast, user?.id]);
+  }, [toast, user?.id, user?.user_metadata?.nome]);
 
   useEffect(() => {
     loadProfile();
@@ -99,33 +97,27 @@ export default function Configuracoes() {
       return;
     }
 
-    if (!profile.id) {
-      toast({
-        variant: 'destructive',
-        title: 'Perfil não encontrado',
-        description: 'Não foi possível identificar seu cadastro para atualizar.',
-      });
-      return;
-    }
-
     setSavingProfile(true);
     try {
       const payload = {
         nome: profile.nome.trim(),
         telefone: profile.telefone.trim() || null,
         cpf: profile.cpf.trim() || null,
-        turma: profile.turma.trim() || null,
       };
 
-      const { error } = await supabase.from('usuarios_biblioteca').update(payload).eq('id', profile.id);
-      if (error) throw error;
+      if (canEditTurma) {
+        payload.turma = profile.turma.trim() || null;
+      }
+
+      if (profile.id) {
+        const { error } = await supabase.from('usuarios_biblioteca').update(payload).eq('id', profile.id);
+        if (error) throw error;
+      }
 
       const { error: authError } = await supabase.auth.updateUser({
         data: { nome: payload.nome },
       });
-      if (authError) {
-        console.error('Falha ao atualizar user_metadata:', authError);
-      }
+      if (authError) throw authError;
 
       toast({
         title: 'Dados atualizados',
@@ -165,6 +157,11 @@ export default function Configuracoes() {
                 />
               </div>
 
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" value={user?.email || ''} disabled />
+              </div>
+
               <div className="space-y-1.5">
                 <Label htmlFor="telefone">Telefone</Label>
                 <Input
@@ -185,20 +182,24 @@ export default function Configuracoes() {
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="turma">Turma</Label>
-                <Input
-                  id="turma"
-                  value={profile.turma}
-                  disabled={loadingProfile || savingProfile}
-                  onChange={(e) => setProfile((prev) => ({ ...prev, turma: e.target.value }))}
-                />
-              </div>
+              {canEditTurma && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="turma">Turma</Label>
+                  <Input
+                    id="turma"
+                    value={profile.turma}
+                    disabled={loadingProfile || savingProfile}
+                    onChange={(e) => setProfile((prev) => ({ ...prev, turma: e.target.value }))}
+                  />
+                </div>
+              )}
 
-              <div className="space-y-1.5">
-                <Label htmlFor="matricula">Matrícula</Label>
-                <Input id="matricula" value={profile.matricula} disabled />
-              </div>
+              {showMatricula && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="matricula">Matrícula</Label>
+                  <Input id="matricula" value={profile.matricula} disabled />
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end">
@@ -262,32 +263,6 @@ export default function Configuracoes() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <SlidersHorizontal className="size-4 sm:size-5" />
-              Atalhos de Configuração
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {canManageSchool && (
-              <Button className="justify-start gap-2" variant="outline" onClick={() => navigate('/configuracao-escola')}>
-                <Shield className="size-4" />
-                Configuração da Escola
-              </Button>
-            )}
-            {canManageSchool && (
-              <Button className="justify-start gap-2" variant="outline" onClick={() => navigate('/tokens')}>
-                <Shield className="size-4" />
-                Tokens de Convite
-              </Button>
-            )}
-            <Button className="justify-start gap-2" variant="outline" onClick={() => navigate('/dashboard')}>
-              <Settings className="size-4" />
-              Voltar ao Dashboard
-            </Button>
-          </CardContent>
-        </Card>
       </div>
     </MainLayout>
   );
