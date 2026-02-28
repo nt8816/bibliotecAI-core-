@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, useCallback, useRef } from 'react';
-import { Plus, Pencil, Trash2, Search, BookOpen, Sparkles, Loader2, Info, Download, Upload, FileSpreadsheet, FileText, AlertCircle, CheckCircle, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, BookOpen, Sparkles, Loader2, Info, Download, Upload, FileSpreadsheet, FileText, AlertCircle, CheckCircle } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -100,6 +100,7 @@ export default function Livros() {
   const [importLivros, setImportLivros] = useState([]);
   const [importLoading, setImportLoading] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [preCategoriasDialogOpen, setPreCategoriasDialogOpen] = useState(false);
   const [preCategorias, setPreCategorias] = useState(DEFAULT_PRE_CATEGORIES);
   const [novaPreCategoria, setNovaPreCategoria] = useState('');
   const [escolaId, setEscolaId] = useState(null);
@@ -781,52 +782,75 @@ export default function Livros() {
                         <div className="space-y-2 pt-1">
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-xs text-muted-foreground">Pré-categorias rápidas</p>
-                            <span className="text-[11px] text-muted-foreground">Toque para aplicar</span>
+                            <Dialog open={preCategoriasDialogOpen} onOpenChange={setPreCategoriasDialogOpen}>
+                              <DialogTrigger asChild>
+                                <Button type="button" size="sm" variant="outline">
+                                  Gerenciar
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-md">
+                                <DialogHeader>
+                                  <DialogTitle>Gerenciar pré-categorias</DialogTitle>
+                                  <DialogDescription>Adicione ou remova categorias para facilitar o cadastro de livros.</DialogDescription>
+                                </DialogHeader>
+
+                                <div className="space-y-3 py-1">
+                                  <div className="flex flex-col gap-2 sm:flex-row">
+                                    <Input
+                                      placeholder="Nova pré-categoria"
+                                      value={novaPreCategoria}
+                                      onChange={(e) => setNovaPreCategoria(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault();
+                                          handleAdicionarPreCategoria();
+                                        }
+                                      }}
+                                    />
+                                    <Button type="button" variant="outline" onClick={handleAdicionarPreCategoria}>
+                                      <Plus className="w-4 h-4 mr-1" />
+                                      Adicionar
+                                    </Button>
+                                  </div>
+
+                                  <div className="max-h-64 overflow-y-auto rounded-md border p-2">
+                                    <div className="space-y-1.5">
+                                      {preCategorias.map((categoria) => (
+                                        <div key={categoria} className="flex items-center justify-between rounded-md border px-2.5 py-2 text-sm">
+                                          <span className="truncate pr-2">{categoria}</span>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-7 w-7"
+                                            onClick={() => handleRemoverPreCategoria(categoria)}
+                                            aria-label={`Remover categoria ${categoria}`}
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </Button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
                           </div>
                           <div className="max-h-28 overflow-y-auto rounded-md border p-2">
                             <div className="flex flex-wrap gap-2">
                               {preCategorias.map((categoria) => (
-                                <div
+                                <button
+                                  type="button"
                                   key={categoria}
                                   className={`inline-flex items-center rounded-full border pr-1 ${
                                     formData.area === categoria ? 'border-primary bg-primary/10' : 'border-border bg-background'
                                   }`}
+                                  onClick={() => setFormData((prev) => ({ ...prev, area: categoria }))}
                                 >
-                                  <button
-                                    type="button"
-                                    className="px-2.5 py-1 text-xs font-medium"
-                                    onClick={() => setFormData((prev) => ({ ...prev, area: categoria }))}
-                                  >
-                                    {categoria}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="flex size-5 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
-                                    onClick={() => handleRemoverPreCategoria(categoria)}
-                                    aria-label={`Remover categoria ${categoria}`}
-                                  >
-                                    <X className="size-3.5" />
-                                  </button>
-                                </div>
+                                  <span className="px-2.5 py-1 text-xs font-medium">{categoria}</span>
+                                </button>
                               ))}
                             </div>
-                          </div>
-                          <div className="flex flex-col gap-2 sm:flex-row">
-                            <Input
-                              placeholder="Nova pré-categoria"
-                              value={novaPreCategoria}
-                              onChange={(e) => setNovaPreCategoria(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  handleAdicionarPreCategoria();
-                                }
-                              }}
-                            />
-                            <Button type="button" variant="outline" onClick={handleAdicionarPreCategoria}>
-                              <Plus className="w-4 h-4 mr-1" />
-                              Adicionar
-                            </Button>
                           </div>
                         </div>
                       </div>
