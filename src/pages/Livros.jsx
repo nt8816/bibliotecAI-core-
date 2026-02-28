@@ -36,6 +36,9 @@ const emptyLivro = {
   sinopse: '',
 };
 
+const DEFAULT_PRE_CATEGORIES = ['Literatura', 'Ciências', 'Matemática', 'História', 'Geografia', 'Infantil'];
+const PRE_CATEGORIES_STORAGE_KEY = 'livros_pre_categorias_v1';
+
 async function buscarSinopseOpenLibrary(titulo, autor) {
   try {
     const query = encodeURIComponent(`${titulo} ${autor}`.trim());
@@ -92,6 +95,8 @@ export default function Livros() {
   const [importLivros, setImportLivros] = useState([]);
   const [importLoading, setImportLoading] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [preCategorias, setPreCategorias] = useState(DEFAULT_PRE_CATEGORIES);
+  const [novaPreCategoria, setNovaPreCategoria] = useState('');
   const fileInputRef = useRef(null);
 
   const { isGestor, isBibliotecaria } = useAuth();
@@ -115,6 +120,30 @@ export default function Livros() {
   useEffect(() => {
     fetchLivros();
   }, [fetchLivros]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(PRE_CATEGORIES_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+
+      const normalized = [...new Set(parsed.map((value) => String(value || '').trim()).filter(Boolean))];
+      if (normalized.length > 0) setPreCategorias(normalized);
+    } catch {
+      // ignore invalid localStorage values
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(PRE_CATEGORIES_STORAGE_KEY, JSON.stringify(preCategorias));
+    } catch {
+      // ignore storage errors
+    }
+  }, [preCategorias]);
 
   const handleRealtimeChange = useCallback(() => {
     fetchLivros();
@@ -144,6 +173,22 @@ export default function Livros() {
     }
 
     setIsDialogOpen(true);
+  };
+
+  const handleAdicionarPreCategoria = () => {
+    const categoria = novaPreCategoria.trim();
+    if (!categoria) return;
+    const exists = preCategorias.some((item) => item.toLowerCase() === categoria.toLowerCase());
+    if (exists) {
+      setNovaPreCategoria('');
+      return;
+    }
+    setPreCategorias((prev) => [...prev, categoria]);
+    setNovaPreCategoria('');
+  };
+
+  const handleRemoverPreCategoria = (categoria) => {
+    setPreCategorias((prev) => prev.filter((item) => item !== categoria));
   };
 
   const handleBuscarSinopse = async () => {
@@ -657,6 +702,51 @@ export default function Livros() {
                       <div className="space-y-2">
                         <Label htmlFor="area">Área</Label>
                         <Input id="area" value={formData.area} onChange={(e) => setFormData({ ...formData, area: e.target.value })} />
+                        <div className="space-y-2 pt-1">
+                          <p className="text-xs text-muted-foreground">Pré-categorias rápidas</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {preCategorias.map((categoria) => (
+                              <Fragment key={categoria}>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant={formData.area === categoria ? 'default' : 'outline'}
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => setFormData((prev) => ({ ...prev, area: categoria }))}
+                                >
+                                  {categoria}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7"
+                                  onClick={() => handleRemoverPreCategoria(categoria)}
+                                  aria-label={`Remover categoria ${categoria}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              </Fragment>
+                            ))}
+                          </div>
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="Nova pré-categoria"
+                              value={novaPreCategoria}
+                              onChange={(e) => setNovaPreCategoria(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleAdicionarPreCategoria();
+                                }
+                              }}
+                            />
+                            <Button type="button" variant="outline" onClick={handleAdicionarPreCategoria}>
+                              <Plus className="w-4 h-4 mr-1" />
+                              Adicionar
+                            </Button>
+                          </div>
+                        </div>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="tombo">Tombo</Label>

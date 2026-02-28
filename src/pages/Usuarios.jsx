@@ -49,6 +49,40 @@ const emptyUsuario = {
   email: '',
 };
 
+const MATRICULA_REGEX = /^[A-Za-z0-9._-]{6,32}$/;
+
+const normalizeMatricula = (value) =>
+  String(value || '')
+    .trim()
+    .replace(/\s+/g, '');
+
+const isValidMatricula = (value) => MATRICULA_REGEX.test(normalizeMatricula(value));
+
+const extractEdgeFunctionError = async (error, fallbackMessage) => {
+  if (!error) return fallbackMessage;
+
+  const response = error.context;
+  if (response && typeof response.clone === 'function') {
+    try {
+      const clone = response.clone();
+      const contentType = clone.headers?.get('content-type') || '';
+
+      if (contentType.includes('application/json')) {
+        const payload = await clone.json();
+        if (typeof payload?.error === 'string' && payload.error.trim()) return payload.error;
+        if (typeof payload?.message === 'string' && payload.message.trim()) return payload.message;
+      } else {
+        const text = await clone.text();
+        if (text.trim()) return text.trim();
+      }
+    } catch {
+      // ignore parsing errors and fallback below
+    }
+  }
+
+  return error.message || fallbackMessage;
+};
+
 export default function Usuarios() {
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -174,7 +208,8 @@ export default function Usuarios() {
     });
 
     if (error) {
-      throw new Error(error.message || 'Não foi possível provisionar login por matrícula.');
+      const message = await extractEdgeFunctionError(error, 'Não foi possível provisionar login por matrícula.');
+      throw new Error(message);
     }
 
     if (!data?.success) {
@@ -192,6 +227,15 @@ export default function Usuarios() {
 
     if (formData.tipo === 'aluno' && !formData.matricula.trim()) {
       toast({ variant: 'destructive', title: 'Erro', description: 'Matrícula é obrigatória para aluno.' });
+      return;
+    }
+
+    if (formData.tipo === 'aluno' && !isValidMatricula(formData.matricula)) {
+      toast({
+        variant: 'destructive',
+        title: 'Matrícula inválida',
+        description: 'Use de 6 a 32 caracteres (letras, números, ponto, _ ou -).',
+      });
       return;
     }
 
@@ -220,7 +264,7 @@ export default function Usuarios() {
         if (formData.tipo === 'aluno') {
           await provisionarAlunoComMatricula({
             nome: formData.nome,
-            matricula: formData.matricula,
+            matricula: normalizeMatricula(formData.matricula),
             turma: formData.turma,
             cpf: formData.cpf,
             telefone: formData.telefone,
@@ -360,12 +404,15 @@ export default function Usuarios() {
         const row = jsonData[i];
         if (!row[nomeIdx] || !row[matriculaIdx]) continue;
 
+        const matricula = normalizeMatricula(row[matriculaIdx]);
+
         imported.push({
           nome: String(row[nomeIdx]).trim(),
-          matricula: String(row[matriculaIdx]).trim(),
+          matricula,
           email: emailIdx >= 0 && row[emailIdx] ? String(row[emailIdx]).trim() : undefined,
           turma: turmaIdx >= 0 && row[turmaIdx] ? String(row[turmaIdx]).trim() : undefined,
-          status: 'pendente',
+          status: isValidMatricula(matricula) ? 'pendente' : 'erro',
+          mensagem: isValidMatricula(matricula) ? undefined : 'Matrícula inválida (mínimo 6 caracteres).',
         });
       }
 
@@ -395,6 +442,12 @@ export default function Usuarios() {
           let error = null;
 
           if (tipoUsuarioImport === 'aluno') {
+            if (!isValidMatricula(u.matricula)) {
+              updated[i] = { ...u, status: 'erro', mensagem: 'Matrícula inválida (mínimo 6 caracteres).' };
+              setImportUsuarios([...updated]);
+              continue;
+            }
+
             const result = await provisionarAlunoComMatricula({
               nome: u.nome,
               matricula: u.matricula,
@@ -473,7 +526,7 @@ export default function Usuarios() {
 
   const filteredUsuarios = usuarios.filter((usuario) =>
     usuario.nome.toLowerCase().includes(searchTerm.toLowerCase())
-    || usuario.email.toLowerCase().includes(searchTerm.toLowerCase())
+    || String(usuario.email || '').toLowerCase().includes(searchTerm.toLowerCase())
     || (usuario.matricula || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
