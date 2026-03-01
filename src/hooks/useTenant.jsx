@@ -19,24 +19,25 @@ function extractSubdomain(hostname) {
   const host = removePort(hostname);
   const envBaseDomain = getBaseDomainFromEnv();
   const vercelProjectHost = (import.meta.env.VITE_VERCEL_PROJECT_HOST || '').trim().toLowerCase();
+  const query = new URLSearchParams(window.location.search);
+  const forcedTenant = (query.get('tenant') || '').trim().toLowerCase();
+  const forcedAdmin = query.get('admin') === '1';
 
   if (!host) return { mode: 'root', subdomain: null };
+
+  if (forcedTenant) {
+    return { mode: 'tenant', subdomain: forcedTenant };
+  }
+
+  if (forcedAdmin) {
+    return { mode: 'admin', subdomain: null };
+  }
 
   if (host.startsWith('admin.')) {
     return { mode: 'admin', subdomain: null };
   }
 
   if (LOCAL_HOSTS.has(host)) {
-    const localTenant = new URLSearchParams(window.location.search).get('tenant');
-    if (localTenant) {
-      return { mode: 'tenant', subdomain: localTenant.toLowerCase() };
-    }
-
-    const localAdmin = new URLSearchParams(window.location.search).get('admin');
-    if (localAdmin === '1') {
-      return { mode: 'admin', subdomain: null };
-    }
-
     return { mode: 'root', subdomain: null };
   }
 

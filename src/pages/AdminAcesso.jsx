@@ -15,7 +15,7 @@ export default function AdminAcesso() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    email: 'nt@gmail.com',
+    cpf: '987456321',
     senha: '123456',
   });
 
@@ -23,7 +23,12 @@ export default function AdminAcesso() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { error } = await signIn(formData.email.trim().toLowerCase(), formData.senha);
+      const cpf = (formData.cpf || '').replace(/\D/g, '');
+      if (cpf !== '987456321') {
+        throw new Error('CPF de administrador inválido.');
+      }
+
+      const { error } = await signIn('nt@gmail.com', formData.senha);
       if (error) {
         throw error;
       }
@@ -52,12 +57,13 @@ export default function AdminAcesso() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Login</Label>
+              <Label htmlFor="cpf">CPF administrador</Label>
               <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+                id="cpf"
+                type="text"
+                inputMode="numeric"
+                value={formData.cpf}
+                onChange={(e) => setFormData((prev) => ({ ...prev, cpf: e.target.value }))}
                 required
               />
             </div>
@@ -81,4 +87,3 @@ export default function AdminAcesso() {
     </div>
   );
 }
-
