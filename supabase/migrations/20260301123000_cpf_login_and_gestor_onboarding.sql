@@ -3,6 +3,9 @@
 ALTER TABLE public.tenant_admin_invites
   ADD COLUMN IF NOT EXISTS cpf text;
 
+DROP FUNCTION IF EXISTS public.get_tenant_invite_context(text);
+DROP FUNCTION IF EXISTS public.provision_tenant(text, text, text, text, text, integer);
+
 CREATE OR REPLACE FUNCTION public.get_tenant_invite_context(_token text)
 RETURNS TABLE (
   tenant_id uuid,
@@ -197,4 +200,3 @@ $$;
 
 REVOKE ALL ON FUNCTION public.get_login_email_by_cpf(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_login_email_by_cpf(text) TO anon, authenticated;
-

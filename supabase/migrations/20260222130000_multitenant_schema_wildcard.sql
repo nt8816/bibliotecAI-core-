@@ -9,7 +9,12 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT public.has_role(auth.uid(), 'super_admin')
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_roles ur
+    WHERE ur.user_id = auth.uid()
+      AND ur.role::text = 'super_admin'
+  )
 $$;
 
 CREATE TABLE IF NOT EXISTS public.tenants (
@@ -68,7 +73,7 @@ CREATE TABLE IF NOT EXISTS public.tenant_admin_invites (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
   escola_id uuid NOT NULL REFERENCES public.escolas(id) ON DELETE CASCADE,
-  token text NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(24), 'hex'),
+  token text NOT NULL UNIQUE DEFAULT md5(random()::text || clock_timestamp()::text),
   email text,
   expira_em timestamptz NOT NULL DEFAULT (now() + interval '72 hours'),
   usado_em timestamptz,
