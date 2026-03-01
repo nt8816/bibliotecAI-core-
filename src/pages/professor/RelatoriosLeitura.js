@@ -18,6 +18,7 @@ import { format, parseISO, isWithinInterval, startOfMonth, endOfMonth, subMonths
 import { ptBR } from 'date-fns/locale';
 export default function RelatoriosLeitura() {
     const [usuarios, setUsuarios] = useState([]);
+    const [turmasCadastradas, setTurmasCadastradas] = useState([]);
     const [emprestimos, setEmprestimos] = useState([]);
     const [loading, setLoading] = useState(true);
     // Filters
@@ -27,14 +28,15 @@ export default function RelatoriosLeitura() {
     const { toast } = useToast();
     const fetchData = useCallback(async () => {
         try {
-            const { data: usuariosData } = await supabase
-                .from('usuarios_biblioteca')
-                .select('id, nome, turma')
-                .eq('tipo', 'aluno')
-                .order('nome');
-            const { data: emprestimosData } = await supabase
-                .from('emprestimos')
-                .select(`
+            const [{ data: usuariosData }, { data: emprestimosData }, { data: turmasData, error: turmasError }] = await Promise.all([
+                supabase
+                    .from('usuarios_biblioteca')
+                    .select('id, nome, turma')
+                    .eq('tipo', 'aluno')
+                    .order('nome'),
+                supabase
+                    .from('emprestimos')
+                    .select(`
           id,
           usuario_id,
           data_emprestimo,
@@ -43,9 +45,18 @@ export default function RelatoriosLeitura() {
           livros(titulo),
           usuarios_biblioteca(nome, turma)
         `)
-                .order('data_emprestimo', { ascending: false });
+                    .order('data_emprestimo', { ascending: false }),
+                supabase
+                    .from('salas_cursos')
+                    .select('nome, tipo')
+                    .eq('tipo', 'sala')
+                    .order('nome'),
+            ]);
+            if (turmasError)
+                throw turmasError;
             setUsuarios(usuariosData || []);
             setEmprestimos(emprestimosData || []);
+            setTurmasCadastradas([...new Set((turmasData || []).map((item) => item?.nome?.trim()).filter(Boolean))]);
         }
         catch (error) {
             console.error('Error fetching data:', error);
@@ -72,6 +83,10 @@ export default function RelatoriosLeitura() {
     });
     useRealtimeSubscription({
         table: 'usuarios_biblioteca',
+        onChange: handleRealtimeChange,
+    });
+    useRealtimeSubscription({
+        table: 'salas_cursos',
         onChange: handleRealtimeChange,
     });
     // Filter emprestimos by period
@@ -101,8 +116,8 @@ export default function RelatoriosLeitura() {
         };
     })
         .sort((a, b) => b.livrosLidos - a.livrosLidos);
-    // Get unique turmas
-    const turmas = [...new Set(usuarios.filter(u => u.turma).map(u => u.turma))].sort();
+    // Usa as turmas criadas na escola, com fallback para turmas dos alunos já cadastrados.
+    const turmas = [...new Set([...turmasCadastradas, ...usuarios.filter(u => u.turma).map(u => u.turma)])].sort();
     // Overall stats
     const totalLivrosLidos = alunoStats.reduce((acc, a) => acc + a.livrosLidos, 0);
     const mediaLivrosPorAluno = alunoStats.length > 0 ? (totalLivrosLidos / alunoStats.length).toFixed(1) : '0';

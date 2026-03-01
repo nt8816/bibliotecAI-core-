@@ -20,6 +20,7 @@ import {
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 
 const PIE_COLORS = ['hsl(122, 46%, 34%)', 'hsl(43, 96%, 56%)'];
@@ -59,6 +60,9 @@ export default function Relatorios() {
   });
   const [livrosMaisEmprestados, setLivrosMaisEmprestados] = useState([]);
   const [emprestimosPorMes, setEmprestimosPorMes] = useState([]);
+  const [emprestimosDetalhados, setEmprestimosDetalhados] = useState([]);
+  const [rankingMes, setRankingMes] = useState(String(new Date().getMonth() + 1));
+  const [rankingAno, setRankingAno] = useState(String(new Date().getFullYear()));
 
   useEffect(() => {
     const fetchData = async () => {
@@ -78,7 +82,7 @@ export default function Relatorios() {
           supabase.from('emprestimos').select('*', { count: 'exact', head: true }),
           supabase
             .from('emprestimos')
-            .select('id, livro_id, created_at, data_emprestimo, data_devolucao_real, status, data_devolucao_prevista, livros(titulo)'),
+            .select('id, livro_id, usuario_id, created_at, data_emprestimo, data_devolucao_real, status, data_devolucao_prevista, livros(titulo), usuarios_biblioteca(nome, turma, tipo)'),
           supabase
             .from('emprestimos')
             .select('id', { count: 'exact', head: true })
@@ -87,6 +91,7 @@ export default function Relatorios() {
         ]);
 
         const allEmprestimos = emprestimosRes.data || [];
+        setEmprestimosDetalhados(allEmprestimos);
         const monthlyKeys = buildLastMonths(12);
         const monthlyMap = new Map(
           monthlyKeys.map((key) => [key, { key, mes: monthLabel(key), emprestimos: 0, devolucoes: 0 }]),
@@ -167,6 +172,45 @@ export default function Relatorios() {
     { title: 'Empréstimos no Mês', value: stats.emprestimosMesAtual, icon: CalendarDays, color: 'text-secondary' },
     { title: 'Atrasados Atuais', value: stats.atrasadosAtuais, icon: AlertTriangle, color: 'text-warning' },
   ];
+
+  const anosDisponiveis = useMemo(() => {
+    const years = new Set();
+    emprestimosDetalhados.forEach((emp) => {
+      const dateRef = emp?.data_devolucao_real || emp?.data_emprestimo || emp?.created_at;
+      if (!dateRef) return;
+      const year = new Date(dateRef).getFullYear();
+      if (!Number.isNaN(year)) years.add(String(year));
+    });
+    years.add(String(new Date().getFullYear()));
+    return Array.from(years).sort((a, b) => Number(b) - Number(a));
+  }, [emprestimosDetalhados]);
+
+  const rankingAlunos = useMemo(() => {
+    const monthNumber = Number(rankingMes);
+    const yearNumber = Number(rankingAno);
+    const map = new Map();
+
+    emprestimosDetalhados.forEach((emp) => {
+      if (emp.status !== 'devolvido') return;
+      const userId = emp.usuario_id;
+      const nome = emp?.usuarios_biblioteca?.nome;
+      if (!userId || !nome) return;
+      if (emp?.usuarios_biblioteca?.tipo && emp.usuarios_biblioteca.tipo !== 'aluno') return;
+
+      const dateRef = emp.data_devolucao_real || emp.data_emprestimo || emp.created_at;
+      if (!dateRef) return;
+      const date = new Date(dateRef);
+      if (Number.isNaN(date.getTime())) return;
+      if (date.getFullYear() !== yearNumber) return;
+      if (monthNumber >= 1 && monthNumber <= 12 && date.getMonth() + 1 !== monthNumber) return;
+
+      const current = map.get(userId) || { id: userId, nome, turma: emp?.usuarios_biblioteca?.turma || '-', leituras: 0 };
+      current.leituras += 1;
+      map.set(userId, current);
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.leituras - a.leituras).slice(0, 10);
+  }, [emprestimosDetalhados, rankingAno, rankingMes]);
 
   return (
     <MainLayout title="Relatórios">
@@ -323,6 +367,70 @@ export default function Relatorios() {
             </CardContent>
           </Card>
         </div>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <CardTitle className="text-base">Ranking de Leitura dos Alunos</CardTitle>
+              <div className="grid grid-cols-2 gap-2 w-full sm:w-auto">
+                <div className="space-y-1">
+                  <Label htmlFor="ranking-mes">Mês</Label>
+                  <select
+                    id="ranking-mes"
+                    value={rankingMes}
+                    onChange={(e) => setRankingMes(e.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    {Array.from({ length: 12 }).map((_, index) => (
+                      <option key={index + 1} value={String(index + 1)}>
+                        {String(index + 1).padStart(2, '0')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="ranking-ano">Ano</Label>
+                  <select
+                    id="ranking-ano"
+                    value={rankingAno}
+                    onChange={(e) => setRankingAno(e.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    {anosDisponiveis.map((ano) => (
+                      <option key={ano} value={ano}>{ano}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">Carregando...</p>
+            ) : rankingAlunos.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">Sem leituras concluídas para o mês/ano selecionado.</p>
+            ) : (
+              <div className="space-y-2">
+                {rankingAlunos.map((aluno, index) => (
+                  <div key={aluno.id} className="rounded-lg border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium truncate">
+                        {index + 1}. {aluno.nome} <span className="text-muted-foreground">({aluno.turma || '-'})</span>
+                      </p>
+                      <Badge variant="secondary">{aluno.leituras} leituras</Badge>
+                    </div>
+                    <div className="w-full bg-muted rounded-full h-2 mt-2">
+                      <div
+                        className="bg-primary h-2 rounded-full transition-all"
+                        style={{ width: `${(aluno.leituras / (rankingAlunos[0]?.leituras || 1)) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
       </div>
     </MainLayout>

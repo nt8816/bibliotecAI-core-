@@ -11,6 +11,7 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { Search, Users, GraduationCap } from 'lucide-react';
 export default function MeusAlunos() {
     const [usuarios, setUsuarios] = useState([]);
+    const [turmasCadastradas, setTurmasCadastradas] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterTurma, setFilterTurma] = useState('');
@@ -38,9 +39,26 @@ export default function MeusAlunos() {
             setLoading(false);
         }
     }, [toast]);
+    const fetchTurmas = useCallback(async () => {
+        try {
+            const { data, error } = await supabase
+                .from('salas_cursos')
+                .select('nome, tipo')
+                .eq('tipo', 'sala')
+                .order('nome');
+            if (error)
+                throw error;
+            const turmas = [...new Set((data || []).map((item) => item?.nome?.trim()).filter(Boolean))];
+            setTurmasCadastradas(turmas);
+        }
+        catch (error) {
+            console.error('Error fetching turmas:', error);
+        }
+    }, []);
     useEffect(() => {
         fetchUsuarios();
-    }, [fetchUsuarios]);
+        fetchTurmas();
+    }, [fetchTurmas, fetchUsuarios]);
     // Realtime subscription para sincronização automática
     const handleRealtimeChange = useCallback(() => {
         fetchUsuarios();
@@ -48,6 +66,10 @@ export default function MeusAlunos() {
     useRealtimeSubscription({
         table: 'usuarios_biblioteca',
         onChange: handleRealtimeChange,
+    });
+    useRealtimeSubscription({
+        table: 'salas_cursos',
+        onChange: fetchTurmas,
     });
     const getTipoBadgeVariant = (tipo) => {
         switch (tipo) {
@@ -73,8 +95,8 @@ export default function MeusAlunos() {
                 return 'Aluno';
         }
     };
-    // Get unique turmas for filter
-    const turmas = [...new Set(usuarios.filter(u => u.turma).map(u => u.turma))].sort();
+    // Usa as turmas cadastradas pelo gestor, com fallback para turmas existentes nos alunos.
+    const turmas = [...new Set([...turmasCadastradas, ...usuarios.filter(u => u.turma).map(u => u.turma)])].sort();
     const filteredUsuarios = usuarios.filter((usuario) => {
         const matchesSearch = usuario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
             usuario.email.toLowerCase().includes(searchTerm.toLowerCase()) ||

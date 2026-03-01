@@ -36,6 +36,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { usePrivateTelemetry } from '@/hooks/usePrivateTelemetry';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { ExportPeriodDialog } from '@/components/export/ExportPeriodDialog';
 
 const emptyUsuario = {
   nome: '',
@@ -92,6 +93,9 @@ export default function Usuarios() {
   const [importing, setImporting] = useState(false);
   const [tipoUsuarioImport, setTipoUsuarioImport] = useState('aluno');
   const [turmasDisponiveis, setTurmasDisponiveis] = useState([]);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState('xlsx');
+  const [exporting, setExporting] = useState(false);
   const fileInputRef = useRef(null);
 
   const { isGestor, isBibliotecaria, user } = useAuth();
@@ -307,10 +311,26 @@ export default function Usuarios() {
     }
   };
 
-  const handleExportarUsuariosExcel = () => {
-    loadXlsx().then((XLSX) => {
+  const filtrarUsuariosPorPeriodo = (period) => {
+    if (period.mode === 'total') return filteredUsuarios;
+    const start = new Date(`${period.startDate}T00:00:00`);
+    const end = new Date(`${period.endDate}T23:59:59`);
+    return filteredUsuarios.filter((usuario) => {
+      const refDate = usuario.created_at ? new Date(usuario.created_at) : null;
+      if (!refDate || Number.isNaN(refDate.getTime())) return false;
+      return refDate >= start && refDate <= end;
+    });
+  };
+
+  const getPeriodLabel = (period) => {
+    if (period.mode === 'total') return 'Período total';
+    return `Período: ${period.startDate} a ${period.endDate}`;
+  };
+
+  const handleExportarUsuariosExcel = (usuariosSelecionados, periodLabel) => {
+    return loadXlsx().then((XLSX) => {
     const headers = ['Nome', 'Email', 'Tipo', 'Matrícula', 'CPF', 'Turma', 'Telefone'];
-    const data = filteredUsuarios.map((u) => [
+    const data = usuariosSelecionados.map((u) => [
       u.nome,
       u.email,
       getTipoLabel(u.tipo),
@@ -325,31 +345,57 @@ export default function Usuarios() {
     XLSX.utils.book_append_sheet(wb, ws, 'Usuários');
     XLSX.writeFile(wb, 'usuarios.xlsx');
 
-    toast({ title: 'Exportado!', description: 'Arquivo usuarios.xlsx baixado.' });
+    toast({ title: 'Exportado!', description: `Arquivo usuarios.xlsx baixado. ${periodLabel}` });
     }).catch(() => {
       toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível exportar o arquivo Excel.' });
     });
   };
 
-  const handleExportarUsuariosPDF = () => {
-    loadPdf().then(({ jsPDF, autoTable }) => {
+  const handleExportarUsuariosPDF = (usuariosSelecionados, periodLabel) => {
+    return loadPdf().then(({ jsPDF, autoTable }) => {
       const doc = new jsPDF();
       doc.setFontSize(18);
       doc.text('BibliotecAI - Usuários', 14, 22);
       doc.setFontSize(11);
       doc.setTextColor(100);
-      doc.text(`Total: ${filteredUsuarios.length} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
+      doc.text(`Total: ${usuariosSelecionados.length} | ${periodLabel} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
 
       const headers = ['Nome', 'Email', 'Tipo', 'Matrícula', 'Turma', 'Telefone'];
-      const data = filteredUsuarios.map((u) => [u.nome, u.email, getTipoLabel(u.tipo), u.matricula || '-', u.turma || '-', u.telefone || '-']);
+      const data = usuariosSelecionados.map((u) => [u.nome, u.email, getTipoLabel(u.tipo), u.matricula || '-', u.turma || '-', u.telefone || '-']);
 
       autoTable(doc, { head: [headers], body: data, startY: 40, styles: { fontSize: 8 }, headStyles: { fillColor: [46, 125, 50] } });
       doc.save('usuarios.pdf');
 
-      toast({ title: 'Exportado!', description: 'Arquivo usuarios.pdf baixado.' });
+      toast({ title: 'Exportado!', description: `Arquivo usuarios.pdf baixado. ${periodLabel}` });
     }).catch(() => {
       toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível exportar o PDF.' });
     });
+  };
+
+  const handleOpenExportDialog = (format) => {
+    setExportFormat(format);
+    setExportDialogOpen(true);
+  };
+
+  const handleConfirmExport = async (period) => {
+    const usuariosSelecionados = filtrarUsuariosPorPeriodo(period);
+    if (usuariosSelecionados.length === 0) {
+      toast({ variant: 'destructive', title: 'Sem dados', description: 'Não há usuários no período selecionado.' });
+      return;
+    }
+
+    setExporting(true);
+    const periodLabel = getPeriodLabel(period);
+    try {
+      if (exportFormat === 'pdf') {
+        await handleExportarUsuariosPDF(usuariosSelecionados, periodLabel);
+      } else {
+        await handleExportarUsuariosExcel(usuariosSelecionados, periodLabel);
+      }
+      setExportDialogOpen(false);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleFileChange = async (e) => {
@@ -680,8 +726,8 @@ export default function Usuarios() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-40 p-2" align="end">
-                    <Button variant="ghost" size="sm" className="w-full justify-start" onClick={handleExportarUsuariosExcel}>Excel (.xlsx)</Button>
-                    <Button variant="ghost" size="sm" className="w-full justify-start" onClick={handleExportarUsuariosPDF}>PDF (.pdf)</Button>
+                    <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => handleOpenExportDialog('xlsx')}>Excel (.xlsx)</Button>
+                    <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => handleOpenExportDialog('pdf')}>PDF (.pdf)</Button>
                   </PopoverContent>
                 </Popover>
 
@@ -1139,6 +1185,15 @@ export default function Usuarios() {
           </CardContent>
         </Card>
       </div>
+
+      <ExportPeriodDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        title="Exportar usuários"
+        description="Escolha o período para exportar os usuários."
+        loading={exporting}
+        onConfirm={handleConfirmExport}
+      />
     </MainLayout>
   );
 }

@@ -91,7 +91,6 @@ export default function ComunidadeAluno() {
   const [postComIA, setPostComIA] = useState(false);
   const [imageDataUrls, setImageDataUrls] = useState([]);
   const [selectedImageUrl, setSelectedImageUrl] = useState('');
-  const [rankingEscolas, setRankingEscolas] = useState([]);
   const [postEmEdicao, setPostEmEdicao] = useState(null);
   const [editTitulo, setEditTitulo] = useState('');
   const [editConteudo, setEditConteudo] = useState('');
@@ -122,7 +121,6 @@ export default function ComunidadeAluno() {
         setPosts([]);
         setLikes([]);
         setAudiobooks([]);
-        setRankingEscolas([]);
         return;
       }
 
@@ -133,13 +131,12 @@ export default function ComunidadeAluno() {
           setPosts([]);
           setLikes([]);
           setAudiobooks([]);
-          setRankingEscolas([]);
           return;
         }
         throw probeRes.error;
       }
 
-      const [postsRes, likesRes, audioRes, usuariosRes, leiturasRes] = await Promise.all([
+      const [postsRes, likesRes, audioRes] = await Promise.all([
         supabase
           .from('comunidade_posts')
           .select('*, livros(titulo), audiobooks_biblioteca(titulo, autor, audio_url), usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)')
@@ -147,8 +144,6 @@ export default function ComunidadeAluno() {
           .limit(80),
         supabase.from('comunidade_curtidas').select('post_id, usuario_id'),
         supabase.from('audiobooks_biblioteca').select('id, titulo, autor').order('titulo'),
-        supabase.from('usuarios_biblioteca').select('id, escola_id, escolas(nome)').not('escola_id', 'is', null),
-        supabase.from('emprestimos').select('usuario_id').eq('status', 'devolvido'),
       ]);
 
       const maybeError = [postsRes.error, likesRes.error].find(Boolean);
@@ -158,36 +153,6 @@ export default function ComunidadeAluno() {
       setPosts(postsRes.data || []);
       setLikes(likesRes.data || []);
       setAudiobooks(audioRes.error ? [] : audioRes.data || []);
-
-      if (!usuariosRes.error && !leiturasRes.error) {
-        const escolaPorUsuario = new Map(
-          ensureArray(usuariosRes.data).map((u) => [
-            u.id,
-            {
-              escolaId: u.escola_id,
-              escolaNome: safeText(u?.escolas?.nome, 'Escola'),
-            },
-          ]),
-        );
-
-        const acumulado = new Map();
-        ensureArray(leiturasRes.data).forEach((registro) => {
-          const escola = escolaPorUsuario.get(registro.usuario_id);
-          if (!escola?.escolaId) return;
-          const key = escola.escolaId;
-          const atual = acumulado.get(key) || { escolaId: key, escolaNome: escola.escolaNome, leituras: 0 };
-          atual.leituras += 1;
-          acumulado.set(key, atual);
-        });
-
-        setRankingEscolas(
-          Array.from(acumulado.values())
-            .sort((a, b) => b.leituras - a.leituras)
-            .slice(0, 10),
-        );
-      } else {
-        setRankingEscolas([]);
-      }
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -550,28 +515,6 @@ export default function ComunidadeAluno() {
             Com IA
           </Button>
         </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Ranking da escola em leituras</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {rankingEscolas.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Sem dados de ranking por enquanto.</p>
-            ) : (
-              <div className="space-y-2">
-                {rankingEscolas.map((item, index) => (
-                  <div key={item.escolaId} className="flex items-center justify-between rounded-lg border p-3">
-                    <p className="text-sm font-medium min-w-0 truncate pr-2">
-                      {index + 1}. {item.escolaNome}
-                    </p>
-                    <Badge className="shrink-0">{item.leituras} leituras</Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
         <Card>
           <CardHeader>

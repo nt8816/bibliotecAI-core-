@@ -19,6 +19,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { ExportPeriodDialog } from '@/components/export/ExportPeriodDialog';
 
 const emptyLivro = {
   area: '',
@@ -104,6 +105,9 @@ export default function Livros() {
   const [preCategorias, setPreCategorias] = useState(DEFAULT_PRE_CATEGORIES);
   const [novaPreCategoria, setNovaPreCategoria] = useState('');
   const [escolaId, setEscolaId] = useState(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState('xlsx');
+  const [exporting, setExporting] = useState(false);
   const fileInputRef = useRef(null);
 
   const { isGestor, isBibliotecaria, user } = useAuth();
@@ -327,10 +331,27 @@ export default function Livros() {
     }
   };
 
-  const handleExportarExcel = () => {
-    loadXlsx().then((XLSX) => {
+  const filtrarLivrosPorPeriodo = (period) => {
+    if (period.mode === 'total') return livros;
+
+    const start = new Date(`${period.startDate}T00:00:00`);
+    const end = new Date(`${period.endDate}T23:59:59`);
+    return livros.filter((livro) => {
+      const refDate = livro.created_at ? new Date(livro.created_at) : null;
+      if (!refDate || Number.isNaN(refDate.getTime())) return false;
+      return refDate >= start && refDate <= end;
+    });
+  };
+
+  const getPeriodLabel = (period) => {
+    if (period.mode === 'total') return 'Período total';
+    return `Período: ${period.startDate} a ${period.endDate}`;
+  };
+
+  const handleExportarExcel = (livrosSelecionados, periodLabel) => {
+    return loadXlsx().then((XLSX) => {
       const headers = ['Título', 'Autor', 'Área', 'Tombo', 'Editora', 'Ano', 'Edição', 'Volume', 'Local', 'Disponível', 'Sinopse'];
-      const data = livros.map((l) => [
+      const data = livrosSelecionados.map((l) => [
         l.titulo,
         l.autor,
         l.area,
@@ -349,31 +370,57 @@ export default function Livros() {
       XLSX.utils.book_append_sheet(wb, ws, 'Acervo');
       XLSX.writeFile(wb, 'acervo_livros.xlsx');
 
-      toast({ title: 'Exportado!', description: 'Arquivo acervo_livros.xlsx baixado.' });
+      toast({ title: 'Exportado!', description: `Arquivo acervo_livros.xlsx baixado. ${periodLabel}` });
     }).catch(() => {
       toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível exportar o Excel.' });
     });
   };
 
-  const handleExportarPDF = () => {
-    loadPdf().then(({ jsPDF, autoTable }) => {
+  const handleExportarPDF = (livrosSelecionados, periodLabel) => {
+    return loadPdf().then(({ jsPDF, autoTable }) => {
       const doc = new jsPDF('landscape');
       doc.setFontSize(18);
       doc.text('BibliotecAI - Acervo de Livros', 14, 22);
       doc.setFontSize(11);
       doc.setTextColor(100);
-      doc.text(`Total: ${livros.length} livros | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
+      doc.text(`Total: ${livrosSelecionados.length} livros | ${periodLabel} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
 
       const headers = ['Título', 'Autor', 'Área', 'Tombo', 'Editora', 'Ano', 'Disponível'];
-      const data = livros.map((l) => [l.titulo, l.autor, l.area, l.tombo || '-', l.editora || '-', l.ano || '-', l.disponivel ? 'Sim' : 'Não']);
+      const data = livrosSelecionados.map((l) => [l.titulo, l.autor, l.area, l.tombo || '-', l.editora || '-', l.ano || '-', l.disponivel ? 'Sim' : 'Não']);
 
       autoTable(doc, { head: [headers], body: data, startY: 40, styles: { fontSize: 8 }, headStyles: { fillColor: [46, 125, 50] } });
       doc.save('acervo_livros.pdf');
 
-      toast({ title: 'Exportado!', description: 'Arquivo acervo_livros.pdf baixado.' });
+      toast({ title: 'Exportado!', description: `Arquivo acervo_livros.pdf baixado. ${periodLabel}` });
     }).catch(() => {
       toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível exportar o PDF.' });
     });
+  };
+
+  const handleOpenExportDialog = (format) => {
+    setExportFormat(format);
+    setExportDialogOpen(true);
+  };
+
+  const handleConfirmExport = async (period) => {
+    const livrosSelecionados = filtrarLivrosPorPeriodo(period);
+    if (livrosSelecionados.length === 0) {
+      toast({ variant: 'destructive', title: 'Sem dados', description: 'Não há livros no período selecionado.' });
+      return;
+    }
+
+    setExporting(true);
+    const periodLabel = getPeriodLabel(period);
+    try {
+      if (exportFormat === 'pdf') {
+        await handleExportarPDF(livrosSelecionados, periodLabel);
+      } else {
+        await handleExportarExcel(livrosSelecionados, periodLabel);
+      }
+      setExportDialogOpen(false);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const normalizeText = (value) =>
@@ -660,8 +707,8 @@ export default function Livros() {
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-40 p-2" align="end">
-                  <Button variant="ghost" size="sm" className="w-full justify-start" onClick={handleExportarExcel}>Excel (.xlsx)</Button>
-                  <Button variant="ghost" size="sm" className="w-full justify-start" onClick={handleExportarPDF}>PDF (.pdf)</Button>
+                  <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => handleOpenExportDialog('xlsx')}>Excel (.xlsx)</Button>
+                  <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => handleOpenExportDialog('pdf')}>PDF (.pdf)</Button>
                 </PopoverContent>
               </Popover>
 
@@ -1002,6 +1049,15 @@ export default function Livros() {
           </AlertDialog>
         </CardContent>
       </Card>
+
+      <ExportPeriodDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        title="Exportar acervo"
+        description="Escolha o período para exportar os livros."
+        loading={exporting}
+        onConfirm={handleConfirmExport}
+      />
     </MainLayout>
   );
 }

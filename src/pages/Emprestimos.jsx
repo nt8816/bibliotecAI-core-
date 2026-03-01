@@ -34,6 +34,7 @@ import { format, isPast, addMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { cn } from '@/lib/utils';
+import { ExportPeriodDialog } from '@/components/export/ExportPeriodDialog';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -65,6 +66,9 @@ export default function Emprestimos() {
   const [sortDirection, setSortDirection] = useState('desc');
   const [activeTab, setActiveTab] = useState('ativos');
   const [actionLoading, setActionLoading] = useState({ devolucaoId: null, solicitacaoId: null, tipo: null });
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState('xlsx');
+  const [exporting, setExporting] = useState(false);
 
   const { isGestor, isBibliotecaria } = useAuth();
   const { toast } = useToast();
@@ -250,9 +254,25 @@ export default function Emprestimos() {
     }
   };
 
-  const handleExportarExcel = () => {
+  const filtrarEmprestimosPorPeriodo = (period) => {
+    if (period.mode === 'total') return emprestimos;
+    const start = new Date(`${period.startDate}T00:00:00`);
+    const end = new Date(`${period.endDate}T23:59:59`);
+    return emprestimos.filter((emprestimo) => {
+      const refDate = emprestimo.data_emprestimo ? new Date(emprestimo.data_emprestimo) : null;
+      if (!refDate || Number.isNaN(refDate.getTime())) return false;
+      return refDate >= start && refDate <= end;
+    });
+  };
+
+  const getPeriodLabel = (period) => {
+    if (period.mode === 'total') return 'Período total';
+    return `Período: ${period.startDate} a ${period.endDate}`;
+  };
+
+  const handleExportarExcel = (emprestimosSelecionados, periodLabel) => {
     const headers = ['Livro', 'Autor', 'Usuário', 'Email', 'Data Empréstimo', 'Devolução Prevista', 'Devolução Real', 'Status'];
-    const data = emprestimos.map((e) => [
+    const data = emprestimosSelecionados.map((e) => [
       e.livros?.titulo || '-',
       e.livros?.autor || '-',
       e.usuarios_biblioteca?.nome || '-',
@@ -267,19 +287,19 @@ export default function Emprestimos() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Empréstimos');
     XLSX.writeFile(wb, 'emprestimos.xlsx');
-    toast({ title: 'Exportado!', description: 'Arquivo emprestimos.xlsx baixado.' });
+    toast({ title: 'Exportado!', description: `Arquivo emprestimos.xlsx baixado. ${periodLabel}` });
   };
 
-  const handleExportarPDF = () => {
+  const handleExportarPDF = (emprestimosSelecionados, periodLabel) => {
     const doc = new jsPDF();
     doc.setFontSize(18);
     doc.text('BibliotecAI - Empréstimos', 14, 22);
     doc.setFontSize(11);
     doc.setTextColor(100);
-    doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
+    doc.text(`${periodLabel} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
 
     const headers = ['Livro', 'Usuário', 'Empréstimo', 'Prev. Devolução', 'Status'];
-    const data = emprestimos.map((e) => [
+    const data = emprestimosSelecionados.map((e) => [
       e.livros?.titulo || '-',
       e.usuarios_biblioteca?.nome || '-',
       formatDateBR(e.data_emprestimo),
@@ -296,7 +316,33 @@ export default function Emprestimos() {
     });
 
     doc.save('emprestimos.pdf');
-    toast({ title: 'Exportado!', description: 'Arquivo emprestimos.pdf baixado.' });
+    toast({ title: 'Exportado!', description: `Arquivo emprestimos.pdf baixado. ${periodLabel}` });
+  };
+
+  const handleOpenExportDialog = (format) => {
+    setExportFormat(format);
+    setExportDialogOpen(true);
+  };
+
+  const handleConfirmExport = async (period) => {
+    const emprestimosSelecionados = filtrarEmprestimosPorPeriodo(period);
+    if (emprestimosSelecionados.length === 0) {
+      toast({ variant: 'destructive', title: 'Sem dados', description: 'Não há empréstimos no período selecionado.' });
+      return;
+    }
+
+    setExporting(true);
+    const periodLabel = getPeriodLabel(period);
+    try {
+      if (exportFormat === 'pdf') {
+        handleExportarPDF(emprestimosSelecionados, periodLabel);
+      } else {
+        handleExportarExcel(emprestimosSelecionados, periodLabel);
+      }
+      setExportDialogOpen(false);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const isAtrasado = (emprestimo) => emprestimo.status === 'ativo' && isPast(new Date(emprestimo.data_devolucao_prevista));
@@ -456,10 +502,10 @@ export default function Emprestimos() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-40 p-2" align="end">
-                    <Button variant="ghost" size="sm" className="w-full justify-start" onClick={handleExportarExcel}>
+                    <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => handleOpenExportDialog('xlsx')}>
                       Excel (.xlsx)
                     </Button>
-                    <Button variant="ghost" size="sm" className="w-full justify-start" onClick={handleExportarPDF}>
+                    <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => handleOpenExportDialog('pdf')}>
                       PDF (.pdf)
                     </Button>
                   </PopoverContent>
@@ -764,6 +810,15 @@ export default function Emprestimos() {
           )}
         </CardContent>
       </Card>
+
+      <ExportPeriodDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        title="Exportar empréstimos"
+        description="Escolha o período para exportar os dados de empréstimos."
+        loading={exporting}
+        onConfirm={handleConfirmExport}
+      />
     </MainLayout>
   );
 }
