@@ -22,6 +22,14 @@ function isMissingProvisionTenantSignature(error) {
   );
 }
 
+function supportsWildcardSubdomain(baseDomain) {
+  const normalized = String(baseDomain || '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized.endsWith('.vercel.app')) return false;
+  if (normalized === 'localhost' || normalized.endsWith('.localhost')) return false;
+  return true;
+}
+
 export default function AdminTenants() {
   const { toast } = useToast();
 
@@ -36,6 +44,7 @@ export default function AdminTenants() {
   const [inviteCpf, setInviteCpf] = useState('');
 
   const baseDomain = useMemo(() => DEFAULT_BASE_DOMAIN.trim(), []);
+  const wildcardEnabled = useMemo(() => supportsWildcardSubdomain(baseDomain), [baseDomain]);
 
   const fetchTenants = useCallback(async () => {
     setLoading(true);
@@ -87,7 +96,7 @@ export default function AdminTenants() {
         _escola_nome: nomeEscola,
         _subdominio: subdominio,
         _plano: plano,
-        _base_domain: baseDomain,
+        _base_domain: wildcardEnabled ? baseDomain : null,
         _invite_cpf: inviteCpf || null,
         _invite_expires_hours: 72,
       });
@@ -98,7 +107,7 @@ export default function AdminTenants() {
           _escola_nome: nomeEscola,
           _subdominio: subdominio,
           _plano: plano,
-          _base_domain: baseDomain,
+          _base_domain: wildcardEnabled ? baseDomain : null,
           _invite_email: null,
           _invite_expires_hours: 72,
         }));
@@ -177,8 +186,17 @@ export default function AdminTenants() {
 
               <div className="md:col-span-2 flex items-center justify-between rounded-md border p-3 text-sm">
                 <span>Domínio base usado no link:</span>
-                <Badge variant="outline">{baseDomain}</Badge>
+                <Badge variant="outline">
+                  {wildcardEnabled ? baseDomain : 'fallback local (?tenant=...)'}
+                </Badge>
               </div>
+
+              {!wildcardEnabled && (
+                <div className="md:col-span-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-muted-foreground">
+                  `vercel.app` não suporta wildcard de subdomínio para onboarding de tenant.
+                  O sistema vai gerar link compatível no domínio atual com `?tenant=...`.
+                </div>
+              )}
 
               <div className="md:col-span-2">
                 <Button type="submit" disabled={creating} className="w-full">
