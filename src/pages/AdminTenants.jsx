@@ -13,6 +13,15 @@ import { supabase } from '@/integrations/supabase/client';
 
 const DEFAULT_BASE_DOMAIN = import.meta.env.VITE_APP_BASE_DOMAIN || 'bibliotec-ai-core.vercel.app';
 
+function isMissingProvisionTenantSignature(error) {
+  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  return (
+    error?.code === 'PGRST202'
+    || error?.status === 404
+    || message.includes('could not find the function public.provision_tenant')
+  );
+}
+
 export default function AdminTenants() {
   const { toast } = useToast();
 
@@ -74,7 +83,7 @@ export default function AdminTenants() {
     setCreating(true);
 
     try {
-      const { data, error } = await supabase.rpc('provision_tenant', {
+      let { data, error } = await supabase.rpc('provision_tenant', {
         _escola_nome: nomeEscola,
         _subdominio: subdominio,
         _plano: plano,
@@ -82,6 +91,18 @@ export default function AdminTenants() {
         _invite_cpf: inviteCpf || null,
         _invite_expires_hours: 72,
       });
+
+      // Compatibilidade com bancos que ainda têm a assinatura antiga (_invite_email).
+      if (error && isMissingProvisionTenantSignature(error)) {
+        ({ data, error } = await supabase.rpc('provision_tenant', {
+          _escola_nome: nomeEscola,
+          _subdominio: subdominio,
+          _plano: plano,
+          _base_domain: baseDomain,
+          _invite_email: null,
+          _invite_expires_hours: 72,
+        }));
+      }
 
       if (error) throw error;
 
@@ -97,7 +118,9 @@ export default function AdminTenants() {
       console.error(error);
       toast({
         title: 'Falha ao provisionar tenant',
-        description: error.message || 'Erro inesperado',
+        description: isMissingProvisionTenantSignature(error)
+          ? 'A função provision_tenant no Supabase está desatualizada. Aplique as migrations mais recentes e tente novamente.'
+          : (error.message || 'Erro inesperado'),
         variant: 'destructive',
       });
     } finally {
