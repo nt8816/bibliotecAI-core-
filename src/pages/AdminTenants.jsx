@@ -36,6 +36,7 @@ export default function AdminTenants() {
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [creatingInviteTenantId, setCreatingInviteTenantId] = useState(null);
   const [latestInvite, setLatestInvite] = useState(null);
 
   const [nomeEscola, setNomeEscola] = useState('');
@@ -134,6 +135,34 @@ export default function AdminTenants() {
       });
     } finally {
       setCreating(false);
+    }
+  };
+
+  const createInviteForTenant = async (tenant) => {
+    if (!tenant?.id) return;
+
+    setCreatingInviteTenantId(tenant.id);
+    try {
+      const { data, error } = await supabase.rpc('create_tenant_admin_invite', {
+        _tenant_id: tenant.id,
+        _invite_cpf: null,
+        _base_domain: wildcardEnabled ? baseDomain : null,
+        _invite_expires_hours: 72,
+      });
+
+      if (error) throw error;
+
+      setLatestInvite(data);
+      toast({ title: 'Novo link gerado', description: `Link temporário da escola ${tenant.nome} atualizado.` });
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: 'Falha ao gerar novo link',
+        description: error?.message || 'Erro inesperado',
+        variant: 'destructive',
+      });
+    } finally {
+      setCreatingInviteTenantId(null);
     }
   };
 
@@ -254,6 +283,7 @@ export default function AdminTenants() {
                     <TableHead>Schema</TableHead>
                     <TableHead>Plano</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -267,6 +297,16 @@ export default function AdminTenants() {
                         <Badge variant={tenant.ativo ? 'outline' : 'destructive'}>
                           {tenant.ativo ? 'ativo' : 'inativo'}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => createInviteForTenant(tenant)}
+                          disabled={creatingInviteTenantId === tenant.id}
+                        >
+                          {creatingInviteTenantId === tenant.id ? 'Gerando...' : 'Gerar novo link'}
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}

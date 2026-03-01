@@ -305,7 +305,14 @@ export default function Livros() {
         if (error) throw error;
         toast({ title: 'Sucesso', description: 'Livro atualizado com sucesso.' });
       } else {
-        const { error } = await supabase.from('livros').insert(formData);
+        if (!escolaId) {
+          throw new Error('Seu usuário não está vinculado a uma escola.');
+        }
+
+        const { error } = await supabase.from('livros').insert({
+          ...formData,
+          escola_id: escolaId,
+        });
         if (error) throw error;
         toast({ title: 'Sucesso', description: 'Livro cadastrado com sucesso.' });
       }
@@ -612,6 +619,10 @@ export default function Livros() {
 
   const importarLivros = async () => {
     if (importLivros.length === 0) return;
+    if (!escolaId) {
+      toast({ variant: 'destructive', title: 'Escola não vinculada', description: 'Não foi possível identificar a escola para importação.' });
+      return;
+    }
 
     setImporting(true);
     try {
@@ -632,6 +643,7 @@ export default function Livros() {
             ano: l.ano || '',
             disponivel: true,
             sinopse: l.sinopse || '',
+            escola_id: escolaId,
           };
 
           const { error } = await supabase.from('livros').insert(payload);

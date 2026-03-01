@@ -93,6 +93,7 @@ export default function Usuarios() {
   const [importing, setImporting] = useState(false);
   const [tipoUsuarioImport, setTipoUsuarioImport] = useState('aluno');
   const [turmasDisponiveis, setTurmasDisponiveis] = useState([]);
+  const [currentEscolaId, setCurrentEscolaId] = useState(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState('xlsx');
   const [exporting, setExporting] = useState(false);
@@ -131,6 +132,24 @@ export default function Usuarios() {
     }
   }, [toast]);
 
+  const fetchCurrentEscola = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('usuarios_biblioteca')
+        .select('escola_id')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      setCurrentEscolaId(data?.escola_id || null);
+    } catch (error) {
+      console.error('Error fetching current escola:', error);
+    }
+  }, [user?.id]);
+
   const fetchTurmas = useCallback(async () => {
     try {
       const { data, error } = await supabase.from('salas_cursos').select('nome, tipo').order('nome');
@@ -150,7 +169,8 @@ export default function Usuarios() {
   useEffect(() => {
     fetchUsuarios();
     fetchTurmas();
-  }, [fetchUsuarios, fetchTurmas]);
+    fetchCurrentEscola();
+  }, [fetchCurrentEscola, fetchUsuarios, fetchTurmas]);
 
   const handleRealtimeChange = useCallback(() => {
     fetchUsuarios();
@@ -237,6 +257,15 @@ export default function Usuarios() {
       return;
     }
 
+    if (!currentEscolaId) {
+      toast({
+        variant: 'destructive',
+        title: 'Escola não vinculada',
+        description: 'Seu usuário não está vinculado a uma escola. Não é possível cadastrar usuários.',
+      });
+      return;
+    }
+
     setSaving(true);
     try {
       if (editingUsuario) {
@@ -258,7 +287,11 @@ export default function Usuarios() {
             description: 'Login e senha iniciais do aluno são a matrícula.',
           });
         } else {
-          const { error } = await supabase.from('usuarios_biblioteca').insert(formData);
+          const payload = {
+            ...formData,
+            escola_id: currentEscolaId,
+          };
+          const { error } = await supabase.from('usuarios_biblioteca').insert(payload);
           if (error) throw error;
           toast({ title: 'Sucesso', description: 'Usuário cadastrado com sucesso.' });
         }
