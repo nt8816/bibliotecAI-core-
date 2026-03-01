@@ -21,7 +21,7 @@ export default function OnboardingGestor() {
   const [invalidInvite, setInvalidInvite] = useState(false);
 
   const [nome, setNome] = useState('');
-  const [email, setEmail] = useState('');
+  const [cpf, setCpf] = useState('');
   const [senha, setSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
 
@@ -39,8 +39,8 @@ export default function OnboardingGestor() {
       }
 
       setInvite(data);
-      if (data.email) {
-        setEmail(data.email);
+      if (data.cpf) {
+        setCpf(String(data.cpf));
       }
     } catch (_error) {
       setInvalidInvite(true);
@@ -55,6 +55,12 @@ export default function OnboardingGestor() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const cpfDigits = cpf.replace(/\D/g, '');
+
+    if (cpfDigits.length !== 11) {
+      toast({ title: 'CPF inválido', description: 'Informe um CPF com 11 dígitos.', variant: 'destructive' });
+      return;
+    }
 
     if (senha.length < 6) {
       toast({ title: 'Senha inválida', description: 'Use ao menos 6 caracteres.', variant: 'destructive' });
@@ -70,7 +76,7 @@ export default function OnboardingGestor() {
 
     try {
       const data = await invokeEdgeFunction('registrar-gestor-tenant', {
-        body: { token, nome, email, senha },
+        body: { token, nome, cpf: cpfDigits, senha },
         requireAuth: false,
         fallbackErrorMessage: 'Não foi possível concluir o cadastro',
       });
@@ -80,7 +86,7 @@ export default function OnboardingGestor() {
       }
 
       const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
+        email: data?.login_email || `${cpfDigits}@temp.bibliotecai.com`,
         password: senha,
       });
 
@@ -138,7 +144,7 @@ export default function OnboardingGestor() {
           </div>
           <CardTitle>Onboarding do Gestor</CardTitle>
           <CardDescription>
-            Escola: <strong>{invite?.escola_nome}</strong>
+            Escola: <strong>{invite?.escola_nome}</strong>. Use seu CPF como login.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -148,19 +154,19 @@ export default function OnboardingGestor() {
               <Input id="nome" value={nome} onChange={(e) => setNome(e.target.value)} required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="cpf">CPF (login)</Label>
               <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="cpf"
+                inputMode="numeric"
+                value={cpf}
+                onChange={(e) => setCpf(e.target.value)}
                 required
-                readOnly={Boolean(invite?.email)}
+                readOnly={Boolean(invite?.cpf)}
               />
             </div>
-            {invite?.email && (
+            {invite?.cpf && (
               <p className="text-xs text-muted-foreground">
-                Este convite está vinculado ao email acima.
+                Este convite está vinculado ao CPF acima.
               </p>
             )}
             <div className="space-y-2">

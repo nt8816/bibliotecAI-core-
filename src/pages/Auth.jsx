@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 const loginSchema = z.object({
-  login: z.string().trim().min(2, 'Informe seu email ou matrícula'),
+  login: z.string().trim().min(2, 'Informe seu CPF ou matrícula'),
   password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
 });
 
@@ -43,64 +43,71 @@ export default function Auth() {
       return signIn(normalized.toLowerCase(), password);
     }
 
+    const cpfDigits = normalized.replace(/\D/g, '');
+    const cpfCandidate = cpfDigits.length === 11 ? `${cpfDigits}@temp.bibliotecai.com` : null;
     const matriculaCompacta = normalized.replace(/\s+/g, '');
     const matriculaSomenteAlfanumerica = normalized.replace(/[^A-Za-z0-9]/g, '');
     const matriculaCandidates = [...new Set([matriculaCompacta, matriculaSomenteAlfanumerica].filter(Boolean))];
-    const candidates = matriculaCandidates.map((matricula) => `${matricula}@temp.bibliotecai.com`);
-    const enableMatriculaRpc = String(import.meta.env.VITE_ENABLE_MATRICULA_RPC || '').toLowerCase() === 'true';
+    const candidates = [...matriculaCandidates.map((matricula) => `${matricula}@temp.bibliotecai.com`)];
+    if (cpfCandidate) candidates.unshift(cpfCandidate);
 
-    if (enableMatriculaRpc) {
-      const { data: emailPorMatricula, error: emailError } = await supabase.rpc('get_login_email_by_matricula', {
-        _matricula: normalized,
-      });
+    const [cpfRes, emailMatriculaRes, activatedRes] = await Promise.all([
+      supabase.rpc('get_login_email_by_cpf', { _cpf: normalized }),
+      supabase.rpc('get_login_email_by_matricula', { _matricula: normalized }),
+      supabase.rpc('is_matricula_login_activated', { _matricula: normalized }),
+    ]);
 
-      const { data: temContaAtivada, error: activatedError } = await supabase.rpc('is_matricula_login_activated', {
-        _matricula: normalized,
-      });
+    const cpfMissingRpc = cpfRes.error && (cpfRes.error.code === 'PGRST202' || cpfRes.error.status === 404);
+    const matriculaMissingRpc =
+      (emailMatriculaRes.error && (emailMatriculaRes.error.code === 'PGRST202' || emailMatriculaRes.error.status === 404))
+      || (activatedRes.error && (activatedRes.error.code === 'PGRST202' || activatedRes.error.status === 404));
 
-      const isMissingRpc =
-        (activatedError && (activatedError.code === 'PGRST202' || activatedError.status === 404))
-        || (emailError && (emailError.code === 'PGRST202' || emailError.status === 404));
+    if (cpfRes.error && !cpfMissingRpc) {
+      return { error: cpfRes.error };
+    }
 
-      if (activatedError && !isMissingRpc) {
-        return { error: activatedError };
+    if (activatedRes.error && !matriculaMissingRpc) {
+      return { error: activatedRes.error };
+    }
+
+    if (!cpfRes.error && cpfRes.data) {
+      candidates.unshift(String(cpfRes.data).toLowerCase());
+    }
+
+    if (!matriculaMissingRpc && activatedRes.data === false) {
+      let activationData;
+      try {
+        activationData = await invokeEdgeFunction('ativar-aluno-matricula', {
+          body: {
+            matricula: normalized,
+            senha: password,
+          },
+          requireAuth: false,
+          fallbackErrorMessage: 'Não foi possível ativar sua conta por matrícula.',
+        });
+      } catch (activationInvokeError) {
+        return {
+          error: {
+            message: activationInvokeError.message || 'Não foi possível ativar sua conta por matrícula.',
+          },
+        };
       }
 
-      if (!isMissingRpc && temContaAtivada === false) {
-        let activationData;
-        try {
-          activationData = await invokeEdgeFunction('ativar-aluno-matricula', {
-            body: {
-              matricula: normalized,
-              senha: password,
-            },
-            requireAuth: false,
-            fallbackErrorMessage: 'Não foi possível ativar sua conta por matrícula.',
-          });
-        } catch (activationInvokeError) {
-          return {
-            error: {
-              message: activationInvokeError.message || 'Não foi possível ativar sua conta por matrícula.',
-            },
-          };
-        }
-
-        if (!activationData?.success) {
-          return {
-            error: {
-              message: activationData?.error || 'Não foi possível ativar sua conta por matrícula.',
-            },
-          };
-        }
-
-        if (activationData?.email) {
-          candidates.unshift(String(activationData.email).toLowerCase());
-        }
+      if (!activationData?.success) {
+        return {
+          error: {
+            message: activationData?.error || 'Não foi possível ativar sua conta por matrícula.',
+          },
+        };
       }
 
-      if (!emailError && emailPorMatricula) {
-        candidates.unshift(String(emailPorMatricula).toLowerCase());
+      if (activationData?.email) {
+        candidates.unshift(String(activationData.email).toLowerCase());
       }
+    }
+
+    if (!emailMatriculaRes.error && emailMatriculaRes.data) {
+      candidates.unshift(String(emailMatriculaRes.data).toLowerCase());
     }
 
     let lastError = null;
@@ -153,7 +160,7 @@ export default function Auth() {
           title: 'Erro ao entrar',
           description:
             error.message === 'Invalid login credentials'
-              ? 'Email/matrícula ou senha incorretos'
+              ? 'CPF/matrícula ou senha incorretos'
               : error.message,
         });
 
@@ -182,24 +189,24 @@ export default function Auth() {
       <div className="auth-orb auth-orb-2" aria-hidden="true" />
       <div className="auth-orb auth-orb-3" aria-hidden="true" />
 
-      <Card className="auth-login-card w-full max-w-[560px] sm:max-w-md bg-white border-primary/20 shadow-xl" translate="no">
+      <Card className="auth-login-card w-full max-w-[560px] sm:max-w-md border-border/70 shadow-2xl" translate="no">
         <CardHeader className="text-center space-y-3 px-4 pt-5 pb-3 sm:px-6 sm:pt-6 sm:pb-3">
           <div className="auth-logo-wrap mx-auto w-16 h-16 rounded-full bg-primary flex items-center justify-center">
             <Library className="w-8 h-8 text-primary-foreground" />
           </div>
           <CardTitle className="text-2xl font-bold">BibliotecAI</CardTitle>
-          <CardDescription>Entre com email ou matrícula. Para aluno, use a matrícula também na senha inicial.</CardDescription>
+          <CardDescription>Entre com CPF (gestor) ou matrícula (aluno). Para aluno, use a matrícula também na senha inicial.</CardDescription>
         </CardHeader>
 
         <CardContent className="px-4 pb-5 sm:px-6 sm:pb-6 pt-0">
           <form onSubmit={handleSubmit} className="space-y-4 auth-login-form w-full">
             <div className="space-y-2 auth-field auth-field-1">
-              <Label htmlFor="login">Email ou matrícula</Label>
+              <Label htmlFor="login">CPF ou matrícula</Label>
               <Input
                 id="login"
                 type="text"
                 autoComplete="username"
-                placeholder="seu@email.com ou 202400123"
+                placeholder="CPF (somente números) ou matrícula"
                 value={formData.login}
                 onChange={(e) => setFormData({ ...formData, login: e.target.value })}
                 disabled={loading}

@@ -245,6 +245,9 @@ export default function Convite() {
                 <p className="text-sm text-muted-foreground">
                   Para alunos, a matrícula será usada como usuário e senha inicial.
                 </p>
+                <p className="text-xs text-muted-foreground">
+                  Depois do primeiro acesso, você pode alterar sua senha em Configurações.
+                </p>
               </>
             ) : (
               <>

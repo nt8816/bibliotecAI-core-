@@ -24,7 +24,7 @@ export default function AdminTenants() {
   const [nomeEscola, setNomeEscola] = useState('');
   const [subdominio, setSubdominio] = useState('');
   const [plano, setPlano] = useState('trial');
-  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteCpf, setInviteCpf] = useState('');
 
   const baseDomain = useMemo(() => DEFAULT_BASE_DOMAIN.trim(), []);
 
@@ -79,7 +79,7 @@ export default function AdminTenants() {
         _subdominio: subdominio,
         _plano: plano,
         _base_domain: baseDomain,
-        _invite_email: inviteEmail || null,
+        _invite_cpf: inviteCpf || null,
         _invite_expires_hours: 72,
       });
 
@@ -89,7 +89,7 @@ export default function AdminTenants() {
       setNomeEscola('');
       setSubdominio('');
       setPlano('trial');
-      setInviteEmail('');
+      setInviteCpf('');
 
       toast({ title: 'Tenant criado', description: `Escola ${data.escola_nome} provisionada com sucesso.` });
       fetchTenants();
@@ -115,7 +115,7 @@ export default function AdminTenants() {
               Provisionar Nova Escola
             </CardTitle>
             <CardDescription>
-              Cria tenant, schema dedicado e link temporário para o gestor finalizar cadastro.
+              Cria tenant, schema dedicado e link temporário para o gestor finalizar cadastro por CPF.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -142,13 +142,13 @@ export default function AdminTenants() {
               </div>
 
               <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="inviteEmail">Email do gestor (opcional)</Label>
+                <Label htmlFor="inviteCpf">CPF do gestor (opcional)</Label>
                 <Input
-                  id="inviteEmail"
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="gestor@escola.com"
+                  id="inviteCpf"
+                  inputMode="numeric"
+                  value={inviteCpf}
+                  onChange={(e) => setInviteCpf(e.target.value)}
+                  placeholder="Somente números"
                 />
               </div>
 

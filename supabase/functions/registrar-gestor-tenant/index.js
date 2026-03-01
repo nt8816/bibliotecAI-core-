@@ -11,7 +11,6 @@ const jsonResponse = (body, status = 200) =>
     status,
   });
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TOKEN_REGEX = /^[a-f0-9]{32,128}$/;
 
 Deno.serve(async (req) => {
@@ -27,12 +26,12 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'JSON inválido no corpo da requisição' }, 400);
     }
 
-    const { token, nome, email, senha } = payload;
+    const { token, nome, cpf, senha } = payload;
     const normalizedToken = (token || '').toString().trim().toLowerCase();
     const normalizedNome = (nome || '').toString().trim();
-    const normalizedEmail = (email || '').toString().trim().toLowerCase();
+    const normalizedCpf = (cpf || '').toString().replace(/\D/g, '');
 
-    if (!normalizedToken || !normalizedNome || !normalizedEmail || !senha) {
+    if (!normalizedToken || !normalizedNome || !normalizedCpf || !senha) {
       return jsonResponse({ success: false, error: 'Dados incompletos' }, 400);
     }
 
@@ -44,8 +43,8 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Nome inválido' }, 400);
     }
 
-    if (!EMAIL_REGEX.test(normalizedEmail)) {
-      return jsonResponse({ success: false, error: 'Email inválido' }, 400);
+    if (normalizedCpf.length !== 11) {
+      return jsonResponse({ success: false, error: 'CPF inválido' }, 400);
     }
 
     if (senha.length < 6) {
@@ -79,9 +78,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Link inválido ou expirado' }, 400);
     }
 
-    if (inviteCtx.email && inviteCtx.email !== normalizedEmail) {
+    if (inviteCtx.cpf && inviteCtx.cpf !== normalizedCpf) {
       return jsonResponse(
-        { success: false, error: 'Este convite está vinculado a outro email' },
+        { success: false, error: 'Este convite está vinculado a outro CPF' },
         403,
       );
     }
@@ -99,8 +98,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Link inválido ou já utilizado' }, 400);
     }
 
+    const authEmail = `${normalizedCpf}@temp.bibliotecai.com`;
     const { data: createdUser, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
-      email: normalizedEmail,
+      email: authEmail,
       password: senha,
       email_confirm: true,
       user_metadata: { nome: normalizedNome },
@@ -134,7 +134,8 @@ Deno.serve(async (req) => {
     const profilePayload = {
       user_id: userId,
       nome: normalizedNome,
-      email: normalizedEmail,
+      email: authEmail,
+      cpf: normalizedCpf,
       tipo: 'gestor',
       escola_id: inviteCtx.escola_id,
       matricula: null,
@@ -197,7 +198,8 @@ Deno.serve(async (req) => {
 
     return jsonResponse({
       success: true,
-      email: normalizedEmail,
+      login: normalizedCpf,
+      login_email: authEmail,
       role: 'gestor',
       tenant_subdomain: inviteCtx.subdominio,
     });

@@ -37,7 +37,13 @@ export default function Configuracoes() {
   const { theme, setTheme } = useTheme();
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [updatingPassword, setUpdatingPassword] = useState(false);
   const [profile, setProfile] = useState(emptyProfile);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
 
   const roleBadgeLabel = useMemo(() => roleLabel[userRole] || 'sem papel', [userRole]);
   const canEditTurma = userRole === 'aluno' || userRole === 'professor';
@@ -132,6 +138,46 @@ export default function Configuracoes() {
       });
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    if (!passwordForm.newPassword || passwordForm.newPassword.length < 6) {
+      toast({
+        variant: 'destructive',
+        title: 'Senha inválida',
+        description: 'A nova senha deve ter pelo menos 6 caracteres.',
+      });
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast({
+        variant: 'destructive',
+        title: 'Confirmação inválida',
+        description: 'A confirmação da nova senha não confere.',
+      });
+      return;
+    }
+
+    setUpdatingPassword(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: passwordForm.newPassword });
+      if (error) throw error;
+
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      toast({
+        title: 'Senha atualizada',
+        description: 'Sua senha de acesso foi alterada com sucesso.',
+      });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao alterar senha',
+        description: error?.message || 'Não foi possível alterar sua senha agora.',
+      });
+    } finally {
+      setUpdatingPassword(false);
     }
   };
 
@@ -258,6 +304,51 @@ export default function Configuracoes() {
               <p className="text-sm text-muted-foreground break-all">{user?.email || '-'}</p>
               <div>
                 <Badge variant="secondary">{roleBadgeLabel}</Badge>
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-3 space-y-3">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Senha de acesso</p>
+                <p className="text-xs text-muted-foreground">Você pode alterar sua senha quando quiser.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="currentPassword">Senha atual (opcional)</Label>
+                  <Input
+                    id="currentPassword"
+                    type="password"
+                    value={passwordForm.currentPassword}
+                    onChange={(e) => setPasswordForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
+                    disabled={updatingPassword}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="newPassword">Nova senha</Label>
+                  <Input
+                    id="newPassword"
+                    type="password"
+                    value={passwordForm.newPassword}
+                    onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
+                    disabled={updatingPassword}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="confirmPassword">Confirmar nova senha</Label>
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+                    disabled={updatingPassword}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button type="button" variant="outline" onClick={handleUpdatePassword} disabled={updatingPassword}>
+                  {updatingPassword ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                  Alterar senha
+                </Button>
               </div>
             </div>
           </CardContent>

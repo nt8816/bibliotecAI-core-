@@ -246,11 +246,10 @@ html.a11y-reduce-motion *::after {
   }
 
   .auth-login-card {
-    @apply relative z-10;
+    @apply relative z-10 border border-border/70 bg-card/95 backdrop-blur-sm;
     width: min(100%, 34rem);
     max-width: calc(100vw - 1.5rem);
     overflow: hidden;
-    background: #fff;
     transform: none;
     transition: none;
     animation: none;

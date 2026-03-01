@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -121,6 +122,7 @@ function createAiImageDataUrl(prompt) {
 export default function PainelAluno() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const [alunoId, setAlunoId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -172,6 +174,7 @@ export default function PainelAluno() {
 
   const [atividadeTexto, setAtividadeTexto] = useState({});
   const [saving, setSaving] = useState(false);
+  const [showAccessChoice, setShowAccessChoice] = useState(false);
   const [optionalFeaturesEnabled, setOptionalFeaturesEnabled] = useState(ENABLE_OPTIONAL_STUDENT_FEATURES);
   const warnedMissingFeaturesRef = useRef(false);
   const fetchInFlightRef = useRef(null);
@@ -335,6 +338,40 @@ export default function PainelAluno() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const key = `onboarding:aluno:${user.id}`;
+    if (localStorage.getItem(key) === 'done') return;
+
+    setShowAccessChoice(true);
+    setTimeout(() => {
+      toast({
+        title: 'Bem-vindo ao BibliotecAI',
+        description: 'Você receberá dicas rápidas para aprender o sistema.',
+      });
+    }, 250);
+    setTimeout(() => {
+      toast({
+        title: 'Passo 1 de 3',
+        description: 'Use o Catálogo para solicitar livros e montar sua lista de desejos.',
+      });
+    }, 2100);
+    setTimeout(() => {
+      toast({
+        title: 'Passo 2 de 3',
+        description: 'No painel você acompanha sugestões, atividades e solicitações.',
+      });
+    }, 4200);
+  }, [toast, user?.id]);
+
+  const finalizeAlunoOnboarding = () => {
+    if (user?.id) {
+      localStorage.setItem(`onboarding:aluno:${user.id}`, 'done');
+    }
+    setShowAccessChoice(false);
+  };
 
   useEffect(() => {
     if (studioSlides.length < 2) return;
@@ -1819,6 +1856,48 @@ export default function PainelAluno() {
             </Button>
             <Button onClick={handleRequestLoan} disabled={saving}>
               {saving ? 'Enviando...' : 'Enviar solicitação'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showAccessChoice}
+        onOpenChange={(open) => {
+          setShowAccessChoice(open);
+          if (!open) finalizeAlunoOnboarding();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Acesso do aluno</DialogTitle>
+            <DialogDescription>
+              Seu acesso inicial usa matrícula como login e senha. Você pode manter agora ou criar uma nova senha.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+            Lembrete: você pode alterar sua senha quando quiser em Configurações.
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                finalizeAlunoOnboarding();
+                toast({
+                  title: 'Acesso mantido',
+                  description: 'Você pode alterar a senha depois em Configurações.',
+                });
+              }}
+            >
+              Manter matrícula por enquanto
+            </Button>
+            <Button
+              onClick={() => {
+                finalizeAlunoOnboarding();
+                navigate('/configuracoes');
+              }}
+            >
+              Criar nova senha agora
             </Button>
           </div>
         </DialogContent>
