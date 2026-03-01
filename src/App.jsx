@@ -25,6 +25,7 @@ const GerenciarTokens = lazy(() => import('./pages/GerenciarTokens.jsx'));
 const Convite = lazy(() => import('./pages/Convite'));
 const ConfiguracaoEscola = lazy(() => import('./pages/ConfiguracaoEscola'));
 const AdminTenants = lazy(() => import('./pages/AdminTenants'));
+const AdminAcesso = lazy(() => import('./pages/AdminAcesso'));
 const OnboardingGestor = lazy(() => import('./pages/OnboardingGestor'));
 const Configuracoes = lazy(() => import('./pages/Configuracoes'));
 const ComunidadeAluno = lazy(() => import('./pages/aluno/ComunidadeAluno'));
@@ -58,6 +59,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/auth" element={<Auth />} />
+      <Route path="/admin/acesso" element={<AdminAcesso />} />
       <Route path="/convite/:token" element={<Convite />} />
       <Route path="/onboarding/:token" element={<OnboardingGestor />} />
       <Route
@@ -69,6 +71,11 @@ function AppRoutes() {
         )}
       />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+      <Route
+        path="/admin"
+        element={<Navigate to="/admin/tenants" replace />}
+      />
 
       <Route
         path="/admin/tenants"

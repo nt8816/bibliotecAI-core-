@@ -115,7 +115,7 @@ export default function AdminTenants() {
               Provisionar Nova Escola
             </CardTitle>
             <CardDescription>
-              Cria tenant, schema dedicado e link temporário para o gestor finalizar cadastro por CPF.
+              Primeiro crie a escola. Em seguida o sistema gera o link de acesso inicial da gestão por CPF.
             </CardDescription>
           </CardHeader>
           <CardContent>

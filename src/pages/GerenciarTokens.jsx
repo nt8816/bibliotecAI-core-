@@ -49,7 +49,7 @@ export default function GerenciarTokens() {
         return;
       }
 
-      const [usuariosRes, rolesRes, usuariosUtilizadoresRes] = await Promise.all([
+      const [usuariosRes, rolesRes, usuariosUtilizadoresRes, rolesUtilizadoresRes] = await Promise.all([
         criadorIds.length
           ? supabase.from('usuarios_biblioteca').select('user_id, nome').in('user_id', criadorIds)
           : Promise.resolve({ data: [], error: null }),
@@ -58,6 +58,9 @@ export default function GerenciarTokens() {
           : Promise.resolve({ data: [], error: null }),
         utilizadorIds.length
           ? supabase.from('usuarios_biblioteca').select('user_id, nome').in('user_id', utilizadorIds)
+          : Promise.resolve({ data: [], error: null }),
+        utilizadorIds.length
+          ? supabase.from('user_roles').select('user_id, role').in('user_id', utilizadorIds)
           : Promise.resolve({ data: [], error: null }),
       ]);
 
@@ -73,7 +76,10 @@ export default function GerenciarTokens() {
 
       const utilizadoresMap = {};
       (usuariosUtilizadoresRes.data || []).forEach((u) => {
-        utilizadoresMap[u.user_id] = u.nome;
+        utilizadoresMap[u.user_id] = { ...(utilizadoresMap[u.user_id] || {}), nome: u.nome };
+      });
+      (rolesUtilizadoresRes.data || []).forEach((r) => {
+        utilizadoresMap[r.user_id] = { ...(utilizadoresMap[r.user_id] || {}), role: r.role };
       });
       setUtilizadoresInfo(utilizadoresMap);
     } catch (error) {
@@ -323,7 +329,7 @@ export default function GerenciarTokens() {
                     <TableHead>Cargo (convite)</TableHead>
                     <TableHead>Criado por</TableHead>
                     <TableHead>Utilizado por</TableHead>
-                    <TableHead>Categoria</TableHead>
+                    <TableHead>Categoria (utilizador)</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Criado em</TableHead>
                     <TableHead>Expira em</TableHead>
@@ -335,9 +341,11 @@ export default function GerenciarTokens() {
                     <TableRow key={token.id}>
                       <TableCell>{getRoleBadge(token.role_destino)}</TableCell>
                       <TableCell>{criadoresInfo[token.criado_por]?.nome || '—'}</TableCell>
-                      <TableCell>{token.usado_por ? (utilizadoresInfo[token.usado_por] || 'Usuário não encontrado') : '—'}</TableCell>
+                      <TableCell>{token.usado_por ? (utilizadoresInfo[token.usado_por]?.nome || 'Usuário não encontrado') : '—'}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary">{getRoleLabel(criadoresInfo[token.criado_por]?.role)}</Badge>
+                        <Badge variant="secondary">
+                          {token.usado_por ? getRoleLabel(utilizadoresInfo[token.usado_por]?.role) : '—'}
+                        </Badge>
                       </TableCell>
                       <TableCell>{getStatusBadge(token)}</TableCell>
                       <TableCell>{format(new Date(token.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}</TableCell>
