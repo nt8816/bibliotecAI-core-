@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
 const DEFAULT_ERROR_MESSAGE = 'Não foi possível concluir a operação.';
+const ANON_BEARER = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 const isUnauthorized = (error) => {
   const status = error?.context?.status;
@@ -65,6 +66,9 @@ export const invokeEdgeFunction = async (
     if (requireAuth) {
       const accessToken = await getAccessToken();
       finalHeaders.Authorization = `Bearer ${accessToken}`;
+    } else if (!finalHeaders.Authorization && ANON_BEARER) {
+      // Algumas Edge Functions exigem cabeçalho Authorization mesmo em rotas públicas.
+      finalHeaders.Authorization = `Bearer ${ANON_BEARER}`;
     }
 
     return supabase.functions.invoke(functionName, { body, headers: finalHeaders });
