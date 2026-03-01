@@ -56,6 +56,8 @@ const normalizeMatricula = (value) =>
     .replace(/\s+/g, '');
 
 const isValidMatricula = (value) => MATRICULA_REGEX.test(normalizeMatricula(value));
+const isTempLoginEmail = (value) => /@temp\.bibliotecai\.com$/i.test(String(value || '').trim());
+const getVisibleEmail = (nome, email) => (isTempLoginEmail(email) ? nome : (email || '-'));
 
 const loadXlsx = async () => import('xlsx');
 const loadPdf = async () => {
@@ -365,7 +367,7 @@ export default function Usuarios() {
     const headers = ['Nome', 'Email', 'Tipo', 'Matrícula', 'CPF', 'Turma', 'Telefone'];
     const data = usuariosSelecionados.map((u) => [
       u.nome,
-      u.email,
+      getVisibleEmail(u.nome, u.email),
       getTipoLabel(u.tipo),
       u.matricula || '-',
       u.cpf || '-',
@@ -394,7 +396,7 @@ export default function Usuarios() {
       doc.text(`Total: ${usuariosSelecionados.length} | ${periodLabel} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
 
       const headers = ['Nome', 'Email', 'Tipo', 'Matrícula', 'Turma', 'Telefone'];
-      const data = usuariosSelecionados.map((u) => [u.nome, u.email, getTipoLabel(u.tipo), u.matricula || '-', u.turma || '-', u.telefone || '-']);
+      const data = usuariosSelecionados.map((u) => [u.nome, getVisibleEmail(u.nome, u.email), getTipoLabel(u.tipo), u.matricula || '-', u.turma || '-', u.telefone || '-']);
 
       autoTable(doc, { head: [headers], body: data, startY: 40, styles: { fontSize: 8 }, headStyles: { fillColor: [46, 125, 50] } });
       doc.save('usuarios.pdf');
@@ -841,7 +843,7 @@ export default function Usuarios() {
                                     <TableRow key={`${u.matricula}-${idx}`}>
                                       <TableCell className="font-medium">{u.nome}</TableCell>
                                       <TableCell>{u.matricula}</TableCell>
-                                      <TableCell>{u.email || '-'}</TableCell>
+                                      <TableCell>{getVisibleEmail(u.nome, u.email)}</TableCell>
                                       <TableCell>{u.turma || '-'}</TableCell>
                                       <TableCell>
                                         <div className="flex flex-col gap-1">
@@ -972,7 +974,7 @@ export default function Usuarios() {
                             <strong>Aluno:</strong> {selectedAlunoForPassword?.nome || '—'}
                           </p>
                           <p className="text-muted-foreground mt-1 break-all">
-                            {selectedAlunoForPassword?.email || 'Sem email'}
+                            {getVisibleEmail(selectedAlunoForPassword?.nome || 'Aluno', selectedAlunoForPassword?.email)}
                           </p>
                         </div>
 
@@ -1083,7 +1085,7 @@ export default function Usuarios() {
                           )}
                           <div className="min-w-0">
                             <p className="font-semibold truncate">{usuario.nome}</p>
-                            <p className="text-xs text-muted-foreground break-all">{usuario.email}</p>
+                            <p className="text-xs text-muted-foreground break-all">{getVisibleEmail(usuario.nome, usuario.email)}</p>
                           </div>
                         </div>
                         <Badge variant={getTipoBadgeVariant(usuario.tipo)}>{getTipoLabel(usuario.tipo)}</Badge>
@@ -1171,7 +1173,7 @@ export default function Usuarios() {
                           </TableCell>
                         )}
                         <TableCell className="font-medium">{usuario.nome}</TableCell>
-                        <TableCell>{usuario.email}</TableCell>
+                        <TableCell>{getVisibleEmail(usuario.nome, usuario.email)}</TableCell>
                         <TableCell><Badge variant={getTipoBadgeVariant(usuario.tipo)}>{getTipoLabel(usuario.tipo)}</Badge></TableCell>
                         <TableCell>{usuario.matricula}</TableCell>
                         <TableCell>{usuario.turma}</TableCell>

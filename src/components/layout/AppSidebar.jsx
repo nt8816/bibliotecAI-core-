@@ -45,6 +45,10 @@ export function AppSidebar() {
   const totalPendencias = counts.atrasados + counts.solicitacoesPendentes;
   const hasPendencias = totalPendencias > 0;
   const settingsPath = '/configuracoes';
+  const isTempLoginEmail = /@temp\.bibliotecai\.com$/i.test(String(user?.email || ''));
+  const visibleUserIdentity = isTempLoginEmail
+    ? (user?.user_metadata?.nome || 'Usuário')
+    : (user?.email || 'Usuário');
 
   const handleSignOut = async () => {
     await signOut();
@@ -207,7 +211,7 @@ export function AppSidebar() {
         {!collapsed && user && (
           <div className="mb-3 px-2 space-y-2">
             <Badge className={getRoleBadge().className}>{getRoleBadge().label}</Badge>
-            <p className="text-sm text-sidebar-foreground/70 truncate">{user.email}</p>
+            <p className="text-sm text-sidebar-foreground/70 truncate">{visibleUserIdentity}</p>
           </div>
         )}
 

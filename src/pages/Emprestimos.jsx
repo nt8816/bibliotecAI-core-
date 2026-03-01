@@ -48,6 +48,14 @@ function formatDateBR(value) {
   }
 }
 
+function isTempLoginEmail(value) {
+  return /@temp\.bibliotecai\.com$/i.test(String(value || '').trim());
+}
+
+function getVisibleEmail(nome, email) {
+  return isTempLoginEmail(email) ? (nome || '-') : (email || '-');
+}
+
 export default function Emprestimos() {
   const [searchParams] = useSearchParams();
   const [emprestimos, setEmprestimos] = useState([]);
@@ -276,7 +284,7 @@ export default function Emprestimos() {
       e.livros?.titulo || '-',
       e.livros?.autor || '-',
       e.usuarios_biblioteca?.nome || '-',
-      e.usuarios_biblioteca?.email || '-',
+      getVisibleEmail(e.usuarios_biblioteca?.nome, e.usuarios_biblioteca?.email),
       formatDateBR(e.data_emprestimo),
       formatDateBR(e.data_devolucao_prevista),
       e.data_devolucao_real ? formatDateBR(e.data_devolucao_real) : '-',
@@ -384,7 +392,7 @@ export default function Emprestimos() {
   }, [canManageLoans, requestedTab]);
 
   const filteredUsuarios = usuarios.filter(
-    (u) => u.nome.toLowerCase().includes(searchUsuario.toLowerCase()) || u.email.toLowerCase().includes(searchUsuario.toLowerCase()),
+    (u) => u.nome.toLowerCase().includes(searchUsuario.toLowerCase()) || String(u.email || '').toLowerCase().includes(searchUsuario.toLowerCase()),
   );
 
   const filteredLivrosDialog = livrosDisponiveis.filter(
@@ -411,7 +419,7 @@ export default function Emprestimos() {
               <p className="text-muted-foreground">Usuário</p>
               <p className="text-right truncate">{emprestimo.usuarios_biblioteca?.nome || '-'}</p>
               <p className="text-muted-foreground">E-mail</p>
-              <p className="text-right truncate">{emprestimo.usuarios_biblioteca?.email || '-'}</p>
+              <p className="text-right truncate">{getVisibleEmail(emprestimo.usuarios_biblioteca?.nome, emprestimo.usuarios_biblioteca?.email)}</p>
               <p className="text-muted-foreground">Empréstimo</p>
               <p className="text-right">{formatDateBR(emprestimo.data_emprestimo)}</p>
               <p className="text-muted-foreground">Devolução prevista</p>
@@ -462,7 +470,7 @@ export default function Emprestimos() {
                 </TableCell>
                 <TableCell>
                   <p className="font-medium">{emprestimo.usuarios_biblioteca?.nome}</p>
-                  <p className="text-sm text-muted-foreground">{emprestimo.usuarios_biblioteca?.email}</p>
+                  <p className="text-sm text-muted-foreground">{getVisibleEmail(emprestimo.usuarios_biblioteca?.nome, emprestimo.usuarios_biblioteca?.email)}</p>
                 </TableCell>
                 <TableCell>{formatDateBR(emprestimo.data_emprestimo)}</TableCell>
                 <TableCell>{formatDateBR(emprestimo.data_devolucao_prevista)}</TableCell>
@@ -587,7 +595,7 @@ export default function Emprestimos() {
                                   }}
                                 >
                                   <p className="font-medium">{u.nome}</p>
-                                  <p className="text-xs text-muted-foreground">{u.email}</p>
+                                  <p className="text-xs text-muted-foreground">{getVisibleEmail(u.nome, u.email)}</p>
                                 </button>
                               ))
                             )}

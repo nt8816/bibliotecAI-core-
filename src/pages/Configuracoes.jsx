@@ -31,6 +31,8 @@ const roleLabel = {
   aluno: 'Aluno',
 };
 
+const isTempLoginEmail = (value) => /@temp\.bibliotecai\.com$/i.test(String(value || '').trim());
+
 export default function Configuracoes() {
   const { userRole, user } = useAuth();
   const { toast } = useToast();
@@ -46,6 +48,10 @@ export default function Configuracoes() {
   });
 
   const roleBadgeLabel = useMemo(() => roleLabel[userRole] || 'sem papel', [userRole]);
+  const visibleAccountIdentity = useMemo(
+    () => (isTempLoginEmail(user?.email) ? (profile.nome || user?.user_metadata?.nome || 'Usuário') : (user?.email || '-')),
+    [profile.nome, user?.email, user?.user_metadata?.nome],
+  );
   const canEditTurma = userRole === 'aluno' || userRole === 'professor';
   const showMatricula = userRole === 'aluno';
 
@@ -205,7 +211,7 @@ export default function Configuracoes() {
 
               <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" value={user?.email || ''} disabled />
+                <Input id="email" value={visibleAccountIdentity} disabled />
               </div>
 
               <div className="space-y-1.5">
@@ -301,7 +307,7 @@ export default function Configuracoes() {
                 <UserRound className="size-4" />
                 Conta atual
               </div>
-              <p className="text-sm text-muted-foreground break-all">{user?.email || '-'}</p>
+              <p className="text-sm text-muted-foreground break-all">{visibleAccountIdentity}</p>
               <div>
                 <Badge variant="secondary">{roleBadgeLabel}</Badge>
               </div>
