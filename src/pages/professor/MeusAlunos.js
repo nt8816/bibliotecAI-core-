@@ -46,7 +46,6 @@ export default function MeusAlunos() {
             const { data, error } = await supabase
                 .from('salas_cursos')
                 .select('nome, tipo')
-                .eq('tipo', 'sala')
                 .order('nome');
             if (error)
                 throw error;
