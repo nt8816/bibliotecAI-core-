@@ -16,6 +16,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
+const isTempLoginEmail = (value) => /@temp\.bibliotecai\.com$/i.test(String(value || ''));
+
+const getDisplayName = (nome, email, fallback = 'Usuário') => {
+  const cleanNome = String(nome || '').trim();
+  if (cleanNome) return cleanNome;
+  if (email && !isTempLoginEmail(email)) return String(email);
+  return fallback;
+};
+
 export default function GerenciarTokens() {
   const [tokens, setTokens] = useState([]);
   const [criadoresInfo, setCriadoresInfo] = useState({});
@@ -150,7 +159,7 @@ export default function GerenciarTokens() {
       setCriadoresInfo((prev) => ({
         ...prev,
         [user.id]: {
-          nome: perfilRes.data?.nome || user.email || 'Usuário',
+          nome: getDisplayName(perfilRes.data?.nome, user.email),
           role: roleRes.data?.role || 'gestor',
         },
       }));
