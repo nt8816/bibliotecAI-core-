@@ -63,9 +63,9 @@ export default function Auth() {
     if (cpfCandidate) candidates.unshift(cpfCandidate);
 
     const [cpfRes, emailMatriculaRes, activatedRes] = await Promise.all([
-      supabase.rpc('get_login_email_by_cpf', { _cpf: normalized }),
-      supabase.rpc('get_login_email_by_matricula', { _matricula: normalized }),
-      supabase.rpc('is_matricula_login_activated', { _matricula: normalized }),
+      supabase.rpc('get_login_email_by_cpf', { _cpf: cpfDigits || normalized }),
+      supabase.rpc('get_login_email_by_matricula', { _matricula: matriculaCompacta || normalized }),
+      supabase.rpc('is_matricula_login_activated', { _matricula: matriculaCompacta || normalized }),
     ]);
 
     const cpfMissingRpc = cpfRes.error && (cpfRes.error.code === 'PGRST202' || cpfRes.error.status === 404);
@@ -90,7 +90,7 @@ export default function Auth() {
       try {
         activationData = await invokeEdgeFunction('ativar-aluno-matricula', {
           body: {
-            matricula: normalized,
+            matricula: matriculaCompacta || normalized,
             senha: password,
           },
           requireAuth: false,

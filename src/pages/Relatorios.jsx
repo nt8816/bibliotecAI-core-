@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { BarChart3, BookOpen, TrendingUp, Users, CalendarDays, AlertTriangle } from 'lucide-react';
+import { BarChart3, BookOpen, TrendingUp, Users, CalendarDays, AlertTriangle, Download } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -20,10 +20,21 @@ import {
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
+import { ExportPeriodDialog } from '@/components/export/ExportPeriodDialog';
+import { useToast } from '@/hooks/use-toast';
 
 const PIE_COLORS = ['hsl(122, 46%, 34%)', 'hsl(43, 96%, 56%)'];
+const loadXlsx = async () => import('xlsx');
+const loadPdf = async () => {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ]);
+  return { jsPDF, autoTable };
+};
 
 function monthKey(dateValue) {
   const d = new Date(dateValue);
@@ -48,6 +59,7 @@ function buildLastMonths(size = 12) {
 }
 
 export default function Relatorios() {
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalLivros: 0,
@@ -63,6 +75,12 @@ export default function Relatorios() {
   const [emprestimosDetalhados, setEmprestimosDetalhados] = useState([]);
   const [rankingMes, setRankingMes] = useState(String(new Date().getMonth() + 1));
   const [rankingAno, setRankingAno] = useState(String(new Date().getFullYear()));
+  const [rankingMode, setRankingMode] = useState('month');
+  const [rankingStartDate, setRankingStartDate] = useState('');
+  const [rankingEndDate, setRankingEndDate] = useState('');
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState('xlsx');
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -188,6 +206,8 @@ export default function Relatorios() {
   const rankingAlunos = useMemo(() => {
     const monthNumber = Number(rankingMes);
     const yearNumber = Number(rankingAno);
+    const startDate = rankingStartDate ? new Date(`${rankingStartDate}T00:00:00`) : null;
+    const endDate = rankingEndDate ? new Date(`${rankingEndDate}T23:59:59`) : null;
     const map = new Map();
 
     emprestimosDetalhados.forEach((emp) => {
@@ -201,8 +221,13 @@ export default function Relatorios() {
       if (!dateRef) return;
       const date = new Date(dateRef);
       if (Number.isNaN(date.getTime())) return;
-      if (date.getFullYear() !== yearNumber) return;
-      if (monthNumber >= 1 && monthNumber <= 12 && date.getMonth() + 1 !== monthNumber) return;
+      if (rankingMode === 'period') {
+        if (!startDate || !endDate) return;
+        if (date < startDate || date > endDate) return;
+      } else {
+        if (date.getFullYear() !== yearNumber) return;
+        if (monthNumber >= 1 && monthNumber <= 12 && date.getMonth() + 1 !== monthNumber) return;
+      }
 
       const current = map.get(userId) || { id: userId, nome, turma: emp?.usuarios_biblioteca?.turma || '-', leituras: 0 };
       current.leituras += 1;
@@ -210,11 +235,134 @@ export default function Relatorios() {
     });
 
     return Array.from(map.values()).sort((a, b) => b.leituras - a.leituras).slice(0, 10);
-  }, [emprestimosDetalhados, rankingAno, rankingMes]);
+  }, [emprestimosDetalhados, rankingAno, rankingMes, rankingMode, rankingStartDate, rankingEndDate]);
+
+  const getPeriodLabel = (period) => {
+    if (period.mode === 'total') return 'Período total';
+    return `Período: ${period.startDate} a ${period.endDate}`;
+  };
+
+  const filtrarEmprestimosPorPeriodo = (period) => {
+    if (period.mode === 'total') return emprestimosDetalhados;
+    const start = new Date(`${period.startDate}T00:00:00`);
+    const end = new Date(`${period.endDate}T23:59:59`);
+    return emprestimosDetalhados.filter((item) => {
+      const ref = item?.data_emprestimo || item?.created_at;
+      if (!ref) return false;
+      const d = new Date(ref);
+      if (Number.isNaN(d.getTime())) return false;
+      return d >= start && d <= end;
+    });
+  };
+
+  const exportarRelatoriosExcel = async (dataRows, periodLabel) => {
+    const XLSX = await loadXlsx();
+    const headers = ['Data', 'Aluno', 'Turma', 'Livro', 'Status'];
+    const rows = dataRows.map((item) => [
+      item?.data_emprestimo ? format(new Date(item.data_emprestimo), 'dd/MM/yyyy') : '-',
+      item?.usuarios_biblioteca?.nome || '-',
+      item?.usuarios_biblioteca?.turma || '-',
+      item?.livros?.titulo || '-',
+      item?.status || '-',
+    ]);
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Relatorios');
+    XLSX.writeFile(wb, 'relatorios_gerais.xlsx');
+    return periodLabel;
+  };
+
+  const exportarRelatoriosPdf = async (dataRows, periodLabel) => {
+    const { jsPDF, autoTable } = await loadPdf();
+    const doc = new jsPDF('landscape');
+    doc.setFontSize(14);
+    doc.text('Relatórios Gerais - Biblioteca', 14, 16);
+    doc.setFontSize(10);
+    doc.text(periodLabel, 14, 23);
+
+    const headers = [['Data', 'Aluno', 'Turma', 'Livro', 'Status']];
+    const rows = dataRows.map((item) => [
+      item?.data_emprestimo ? format(new Date(item.data_emprestimo), 'dd/MM/yyyy') : '-',
+      item?.usuarios_biblioteca?.nome || '-',
+      item?.usuarios_biblioteca?.turma || '-',
+      item?.livros?.titulo || '-',
+      item?.status || '-',
+    ]);
+
+    autoTable(doc, {
+      head: headers,
+      body: rows,
+      startY: 30,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [46, 125, 50] },
+    });
+    doc.save('relatorios_gerais.pdf');
+    return periodLabel;
+  };
+
+  const handleOpenExportDialog = (formatName) => {
+    setExportFormat(formatName);
+    setExportDialogOpen(true);
+  };
+
+  const handleConfirmExport = async (period) => {
+    const filtered = filtrarEmprestimosPorPeriodo(period);
+    if (!filtered.length) {
+      toast({
+        variant: 'destructive',
+        title: 'Sem dados',
+        description: 'Não há registros no período selecionado para exportar.',
+      });
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const periodLabel = getPeriodLabel(period);
+      if (exportFormat === 'pdf') {
+        await exportarRelatoriosPdf(filtered, periodLabel);
+      } else {
+        await exportarRelatoriosExcel(filtered, periodLabel);
+      }
+      setExportDialogOpen(false);
+      toast({ title: 'Exportado!', description: `Arquivo gerado com sucesso. ${periodLabel}` });
+    } catch (error) {
+      console.error('Erro ao exportar relatórios:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'Não foi possível exportar os relatórios.',
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <MainLayout title="Relatórios">
       <div className="space-y-4 sm:space-y-6">
+        <Card>
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Exportar relatórios</p>
+                <p className="text-xs text-muted-foreground">Escolha formato e período (total ou específico).</p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => handleOpenExportDialog('xlsx')}>
+                  <Download className="w-4 h-4 mr-2" />
+                  Excel (.xlsx)
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handleOpenExportDialog('pdf')}>
+                  <Download className="w-4 h-4 mr-2" />
+                  PDF (.pdf)
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
           {statCards.map((card) => (
             <Card key={card.title}>
@@ -372,35 +520,74 @@ export default function Relatorios() {
           <CardHeader className="pb-2">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <CardTitle className="text-base">Ranking de Leitura dos Alunos</CardTitle>
-              <div className="grid grid-cols-2 gap-2 w-full sm:w-auto">
+              <div className="space-y-2 w-full sm:w-auto">
                 <div className="space-y-1">
-                  <Label htmlFor="ranking-mes">Mês</Label>
+                  <Label htmlFor="ranking-mode">Modo</Label>
                   <select
-                    id="ranking-mes"
-                    value={rankingMes}
-                    onChange={(e) => setRankingMes(e.target.value)}
+                    id="ranking-mode"
+                    value={rankingMode}
+                    onChange={(e) => setRankingMode(e.target.value)}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   >
-                    {Array.from({ length: 12 }).map((_, index) => (
-                      <option key={index + 1} value={String(index + 1)}>
-                        {String(index + 1).padStart(2, '0')}
-                      </option>
-                    ))}
+                    <option value="month">Mês/Ano</option>
+                    <option value="period">Período específico</option>
                   </select>
                 </div>
-                <div className="space-y-1">
-                  <Label htmlFor="ranking-ano">Ano</Label>
-                  <select
-                    id="ranking-ano"
-                    value={rankingAno}
-                    onChange={(e) => setRankingAno(e.target.value)}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    {anosDisponiveis.map((ano) => (
-                      <option key={ano} value={ano}>{ano}</option>
-                    ))}
-                  </select>
-                </div>
+                {rankingMode === 'period' ? (
+                  <div className="grid grid-cols-2 gap-2 w-full sm:w-auto">
+                    <div className="space-y-1">
+                      <Label htmlFor="ranking-start">Início</Label>
+                      <input
+                        id="ranking-start"
+                        type="date"
+                        value={rankingStartDate}
+                        onChange={(e) => setRankingStartDate(e.target.value)}
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="ranking-end">Fim</Label>
+                      <input
+                        id="ranking-end"
+                        type="date"
+                        value={rankingEndDate}
+                        onChange={(e) => setRankingEndDate(e.target.value)}
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 w-full sm:w-auto">
+                    <div className="space-y-1">
+                      <Label htmlFor="ranking-mes">Mês</Label>
+                      <select
+                        id="ranking-mes"
+                        value={rankingMes}
+                        onChange={(e) => setRankingMes(e.target.value)}
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        {Array.from({ length: 12 }).map((_, index) => (
+                          <option key={index + 1} value={String(index + 1)}>
+                            {String(index + 1).padStart(2, '0')}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="ranking-ano">Ano</Label>
+                      <select
+                        id="ranking-ano"
+                        value={rankingAno}
+                        onChange={(e) => setRankingAno(e.target.value)}
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        {anosDisponiveis.map((ano) => (
+                          <option key={ano} value={ano}>{ano}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </CardHeader>
@@ -433,6 +620,14 @@ export default function Relatorios() {
         </Card>
 
       </div>
+      <ExportPeriodDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        title="Exportar relatórios"
+        description="Escolha o período para exportar os dados consolidados de empréstimos."
+        loading={exporting}
+        onConfirm={handleConfirmExport}
+      />
     </MainLayout>
   );
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Copy, Building2, Link as LinkIcon } from 'lucide-react';
+import { Plus, Copy, Building2, Link as LinkIcon, Power } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,6 +37,7 @@ export default function AdminTenants() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [creatingInviteTenantId, setCreatingInviteTenantId] = useState(null);
+  const [togglingTenantId, setTogglingTenantId] = useState(null);
   const [latestInvite, setLatestInvite] = useState(null);
 
   const [nomeEscola, setNomeEscola] = useState('');
@@ -163,6 +164,36 @@ export default function AdminTenants() {
       });
     } finally {
       setCreatingInviteTenantId(null);
+    }
+  };
+
+  const toggleTenantStatus = async (tenant) => {
+    if (!tenant?.id) return;
+    const nextStatus = !tenant.ativo;
+
+    setTogglingTenantId(tenant.id);
+    try {
+      const { error } = await supabase
+        .from('tenants')
+        .update({ ativo: nextStatus })
+        .eq('id', tenant.id);
+
+      if (error) throw error;
+
+      setTenants((prev) => prev.map((item) => (item.id === tenant.id ? { ...item, ativo: nextStatus } : item)));
+      toast({
+        title: nextStatus ? 'Tenant ativado' : 'Tenant inativado',
+        description: `${tenant.nome} agora está ${nextStatus ? 'ativo' : 'inativo'}.`,
+      });
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: 'Falha ao atualizar status',
+        description: error?.message || 'Erro inesperado',
+        variant: 'destructive',
+      });
+    } finally {
+      setTogglingTenantId(null);
     }
   };
 
@@ -299,14 +330,27 @@ export default function AdminTenants() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => createInviteForTenant(tenant)}
-                          disabled={creatingInviteTenantId === tenant.id}
-                        >
-                          {creatingInviteTenantId === tenant.id ? 'Gerando...' : 'Gerar novo link'}
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => createInviteForTenant(tenant)}
+                            disabled={creatingInviteTenantId === tenant.id || !tenant.ativo}
+                          >
+                            {creatingInviteTenantId === tenant.id ? 'Gerando...' : 'Gerar novo link'}
+                          </Button>
+                          <Button
+                            variant={tenant.ativo ? 'destructive' : 'outline'}
+                            size="sm"
+                            onClick={() => toggleTenantStatus(tenant)}
+                            disabled={togglingTenantId === tenant.id}
+                          >
+                            <Power className="w-4 h-4 mr-1" />
+                            {togglingTenantId === tenant.id
+                              ? 'Salvando...'
+                              : tenant.ativo ? 'Inativar' : 'Ativar'}
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
