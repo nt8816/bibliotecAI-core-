@@ -3,6 +3,8 @@ import { useState, useEffect, createContext, useContext } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 const AuthContext = createContext(undefined);
 const rolePriority = ['super_admin', 'gestor', 'bibliotecaria', 'professor', 'aluno'];
+const FIXED_TENANT_ADMIN_EMAIL = 'nt@gmail.com';
+const isFixedTenantAdminEmail = (value) => String(value || '').trim().toLowerCase() === FIXED_TENANT_ADMIN_EMAIL;
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [session, setSession] = useState(null);
@@ -17,7 +19,7 @@ export function AuthProvider({ children }) {
             // Defer role fetching with setTimeout to avoid deadlock
             if (session?.user) {
                 setTimeout(() => {
-                    fetchUserRole(session.user.id);
+                    fetchUserRole(session.user.id, session.user.email);
                 }, 0);
             }
             else {
@@ -30,13 +32,18 @@ export function AuthProvider({ children }) {
             setSession(session);
             setUser(session?.user ?? null);
             if (session?.user) {
-                fetchUserRole(session.user.id);
+                fetchUserRole(session.user.id, session.user.email);
             }
             setLoading(false);
         });
         return () => subscription.unsubscribe();
     }, []);
-    const fetchUserRole = async (userId) => {
+    const fetchUserRole = async (userId, userEmail) => {
+        if (isFixedTenantAdminEmail(userEmail)) {
+            setRoles(['super_admin']);
+            setUserRole('super_admin');
+            return;
+        }
         try {
             const { data, error } = await supabase
                 .from('user_roles')

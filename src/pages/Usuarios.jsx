@@ -54,6 +54,12 @@ const normalizeMatricula = (value) =>
   String(value || '')
     .trim()
     .replace(/\s+/g, '');
+const normalizeHeader = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9/]+/g, '');
 
 const isValidMatricula = (value) => MATRICULA_REGEX.test(normalizeMatricula(value));
 const isTempLoginEmail = (value) => /@temp\.bibliotecai\.com$/i.test(String(value || '').trim());
@@ -458,31 +464,58 @@ export default function Usuarios() {
         return;
       }
 
-      const headers = jsonData[0].map((h) => String(h).toLowerCase().trim());
-      const nomeIdx = headers.findIndex((h) => h.includes('nome'));
-      const matriculaIdx = headers.findIndex((h) => h.includes('matricula') || h.includes('matrícula'));
-      const emailIdx = headers.findIndex((h) => h.includes('email') || h.includes('e-mail'));
-      const turmaIdx = headers.findIndex((h) => h.includes('turma') || h.includes('sala') || h.includes('curso'));
+      const headers = jsonData[0].map((h) => normalizeHeader(h));
+      const hasHeaderAlias = (header, aliases) => aliases.some((alias) => header === alias || header.includes(alias));
+      const nomeIdx = headers.findIndex((h) => hasHeaderAlias(h, ['nome']));
+      const matriculaIdx = headers.findIndex((h) => hasHeaderAlias(h, ['matricula/ra', 'matricula', 'ra']));
+      const emailIdx = headers.findIndex((h) => hasHeaderAlias(h, ['email', 'e-mail']));
+      const turmaIdx = headers.findIndex((h) => hasHeaderAlias(h, ['turma', 'sala', 'curso']));
 
-      if (nomeIdx === -1 || matriculaIdx === -1) {
-        toast({ title: 'Colunas obrigatórias não encontradas', description: 'O arquivo deve conter "Nome" e "Matrícula".', variant: 'destructive' });
+      if (tipoUsuarioImport === 'aluno' && (nomeIdx === -1 || matriculaIdx === -1)) {
+        toast({
+          title: 'Colunas obrigatórias não encontradas',
+          description: 'Para alunos, a planilha deve conter: "Nome", "Matrícula/RA" e opcionalmente "Turma".',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (tipoUsuarioImport !== 'aluno' && (nomeIdx === -1 || emailIdx === -1)) {
+        toast({
+          title: 'Colunas obrigatórias não encontradas',
+          description: 'A planilha deve conter "Nome" e "Email".',
+          variant: 'destructive',
+        });
         return;
       }
 
       const imported = [];
       for (let i = 1; i < jsonData.length; i += 1) {
         const row = jsonData[i];
-        if (!row[nomeIdx] || !row[matriculaIdx]) continue;
+        const nome = row[nomeIdx] ? String(row[nomeIdx]).trim() : '';
+        const matricula = matriculaIdx >= 0 && row[matriculaIdx] ? normalizeMatricula(row[matriculaIdx]) : '';
+        const email = emailIdx >= 0 && row[emailIdx] ? String(row[emailIdx]).trim() : undefined;
+        const turma = turmaIdx >= 0 && row[turmaIdx] ? String(row[turmaIdx]).trim() : undefined;
 
-        const matricula = normalizeMatricula(row[matriculaIdx]);
+        if (tipoUsuarioImport === 'aluno') {
+          if (!nome || !matricula) continue;
+          imported.push({
+            nome,
+            matricula,
+            turma,
+            status: isValidMatricula(matricula) ? 'pendente' : 'erro',
+            mensagem: isValidMatricula(matricula) ? undefined : 'Matrícula/RA inválido (mínimo 6 caracteres).',
+          });
+          continue;
+        }
 
+        if (!nome || !email) continue;
         imported.push({
-          nome: String(row[nomeIdx]).trim(),
+          nome,
           matricula,
-          email: emailIdx >= 0 && row[emailIdx] ? String(row[emailIdx]).trim() : undefined,
-          turma: turmaIdx >= 0 && row[turmaIdx] ? String(row[turmaIdx]).trim() : undefined,
-          status: isValidMatricula(matricula) ? 'pendente' : 'erro',
-          mensagem: isValidMatricula(matricula) ? undefined : 'Matrícula inválida (mínimo 6 caracteres).',
+          email,
+          turma,
+          status: 'pendente',
         });
       }
 
@@ -501,7 +534,12 @@ export default function Usuarios() {
     setImporting(true);
 
     try {
-      const { data: escola } = await supabase.from('escolas').select('id').eq('gestor_id', user.id).maybeSingle();
+      let escolaId = currentEscolaId;
+      if (tipoUsuarioImport !== 'aluno' && !escolaId) {
+        const { data: escola, error: escolaError } = await supabase.from('escolas').select('id').eq('gestor_id', user.id).maybeSingle();
+        if (escolaError) throw escolaError;
+        escolaId = escola?.id || null;
+      }
 
       const updated = [...importUsuarios];
 
@@ -535,7 +573,7 @@ export default function Usuarios() {
               email,
               turma: u.turma,
               tipo: tipoUsuarioImport,
-              escola_id: escola?.id,
+              escola_id: escolaId,
             });
             error = response.error;
           }
@@ -564,11 +602,18 @@ export default function Usuarios() {
 
   const baixarModelo = () => {
     loadXlsx().then((XLSX) => {
-      const ws = XLSX.utils.aoa_to_sheet([
-        ['Nome', 'Matrícula', 'Email', 'Turma'],
-        ['João Silva', '2024001', 'joao@email.com', '3º Ano A'],
-        ['Maria Santos', '2024002', 'maria@email.com', '3º Ano B'],
-      ]);
+      const isAlunoImport = tipoUsuarioImport === 'aluno';
+      const ws = XLSX.utils.aoa_to_sheet(isAlunoImport
+        ? [
+            ['Nome', 'Matrícula/RA', 'Turma'],
+            ['João Silva', '2024001', '3º Ano A'],
+            ['Maria Santos', '2024002', '3º Ano B'],
+          ]
+        : [
+            ['Nome', 'Email', 'Matrícula', 'Turma'],
+            ['Ana Souza', 'ana@escola.com', 'PROF001', '3º Ano A'],
+            ['Carlos Lima', 'carlos@escola.com', 'PROF002', '3º Ano B'],
+          ]);
 
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Usuários');
@@ -778,7 +823,9 @@ export default function Usuarios() {
                       <DialogHeader>
                         <DialogTitle>Importar Usuários em Massa</DialogTitle>
                         <DialogDescription>
-                          Envie uma planilha para cadastrar vários usuários de uma vez.
+                          {tipoUsuarioImport === 'aluno'
+                            ? 'Para alunos, use as colunas: Nome, Matrícula/RA e Turma.'
+                            : 'Envie uma planilha para cadastrar vários usuários de uma vez.'}
                         </DialogDescription>
                       </DialogHeader>
 
@@ -833,7 +880,7 @@ export default function Usuarios() {
                                   <TableRow>
                                     <TableHead>Nome</TableHead>
                                     <TableHead>Matrícula</TableHead>
-                                    <TableHead>Email</TableHead>
+                                    {tipoUsuarioImport !== 'aluno' && <TableHead>Email</TableHead>}
                                     <TableHead>Turma</TableHead>
                                     <TableHead>Status</TableHead>
                                   </TableRow>
@@ -843,7 +890,7 @@ export default function Usuarios() {
                                     <TableRow key={`${u.matricula}-${idx}`}>
                                       <TableCell className="font-medium">{u.nome}</TableCell>
                                       <TableCell>{u.matricula}</TableCell>
-                                      <TableCell>{getVisibleEmail(u.nome, u.email)}</TableCell>
+                                      {tipoUsuarioImport !== 'aluno' && <TableCell>{getVisibleEmail(u.nome, u.email)}</TableCell>}
                                       <TableCell>{u.turma || '-'}</TableCell>
                                       <TableCell>
                                         <div className="flex flex-col gap-1">

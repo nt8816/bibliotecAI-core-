@@ -29,11 +29,20 @@ export default function OnboardingGestor() {
     if (!token) return;
 
     try {
+      const normalizedToken = decodeURIComponent(String(token || '')).trim();
+      if (!normalizedToken) {
+        setInvalidInvite(true);
+        return;
+      }
+
       const { data, error } = await supabase
-        .rpc('get_tenant_invite_context', { _token: token })
+        .rpc('get_tenant_invite_context', { _token: normalizedToken })
         .maybeSingle();
 
       if (error || !data) {
+        if (error) {
+          console.error('get_tenant_invite_context error:', error);
+        }
         setInvalidInvite(true);
         return;
       }

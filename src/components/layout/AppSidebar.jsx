@@ -3,6 +3,8 @@ import {
   BookOpen,
   Users,
   BookMarked,
+  ClipboardList,
+  FlaskConical,
   BarChart3,
   LogOut,
   Link as LinkIcon,
@@ -69,7 +71,6 @@ export function AppSidebar() {
         ...commonItems,
         { title: 'Livros', url: '/livros', icon: BookOpen },
         { title: 'Usuários', url: '/usuarios', icon: Users },
-        { title: 'Empréstimos', url: '/emprestimos', icon: BookMarked },
         { title: 'Relatórios', url: '/relatorios', icon: BarChart3 },
         { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
       ];
@@ -87,7 +88,7 @@ export function AppSidebar() {
 
     if (userRole === 'professor') {
       return [
-        ...commonItems,
+        { title: 'Dashboard', url: '/professor/dashboard', icon: LayoutDashboard },
         { title: 'Livros', url: '/livros', icon: BookOpen },
         { title: 'Meus Alunos', url: '/professor/alunos', icon: GraduationCap },
         { title: 'Sugestões e Atividades', url: '/professor/painel', icon: Lightbulb },
@@ -96,7 +97,10 @@ export function AppSidebar() {
     }
 
     return [
-      { title: 'Meu Painel', url: '/aluno/painel', icon: BookOpen },
+      { title: 'Meu Perfil', url: '/aluno/perfil', icon: LayoutDashboard },
+      { title: 'Biblioteca', url: '/aluno/biblioteca', icon: BookOpen },
+      { title: 'Laboratório', url: '/aluno/laboratorio', icon: FlaskConical },
+      { title: 'Atividades', url: '/aluno/atividades', icon: ClipboardList },
       { title: 'Comunidade', url: '/aluno/comunidade', icon: MessageSquare },
     ];
   };
@@ -250,7 +254,7 @@ export function AppSidebar() {
                       <button
                         type="button"
                         className="w-full rounded-md border p-2 text-sm flex items-center justify-between gap-2 text-left hover:bg-accent transition-colors"
-                        onClick={() => navigate('/emprestimos?tab=solicitacoes')}
+                        onClick={() => navigate(userRole === 'aluno' ? '/aluno/atividades' : '/emprestimos?tab=solicitacoes')}
                       >
                         <span>Solicitações pendentes</span>
                         <Badge>{counts.solicitacoesPendentes}</Badge>
@@ -258,7 +262,7 @@ export function AppSidebar() {
                       <button
                         type="button"
                         className="w-full rounded-md border p-2 text-sm flex items-center justify-between gap-2 text-left hover:bg-accent transition-colors"
-                        onClick={() => navigate('/emprestimos?tab=ativos&status=atrasados')}
+                        onClick={() => navigate(userRole === 'aluno' ? '/aluno/biblioteca' : '/emprestimos?tab=ativos&status=atrasados')}
                       >
                         <span>Empréstimos atrasados</span>
                         <Badge variant="destructive">{counts.atrasados}</Badge>
@@ -267,7 +271,11 @@ export function AppSidebar() {
                         size="sm"
                         className="w-full"
                         onClick={() =>
-                          navigate(counts.solicitacoesPendentes > 0 ? '/emprestimos?tab=solicitacoes' : '/emprestimos?tab=ativos')
+                          navigate(
+                            userRole === 'aluno'
+                              ? '/aluno/atividades'
+                              : (counts.solicitacoesPendentes > 0 ? '/emprestimos?tab=solicitacoes' : '/emprestimos?tab=ativos'),
+                          )
                         }
                       >
                         Abrir painel de empréstimos

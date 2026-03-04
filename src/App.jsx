@@ -169,6 +169,14 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/professor/dashboard"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/professor/relatorios"
         element={
           <ProtectedRoute>
@@ -178,6 +186,38 @@ function AppRoutes() {
       />
       <Route
         path="/aluno/painel"
+        element={
+          <ProtectedRoute>
+            <Navigate to="/aluno/perfil" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/aluno/perfil"
+        element={
+          <ProtectedRoute>
+            <PainelAluno />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/aluno/biblioteca"
+        element={
+          <ProtectedRoute>
+            <PainelAluno />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/aluno/laboratorio"
+        element={
+          <ProtectedRoute>
+            <PainelAluno />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/aluno/atividades"
         element={
           <ProtectedRoute>
             <PainelAluno />
