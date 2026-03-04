@@ -2,6 +2,10 @@ import { supabase } from '@/integrations/supabase/client';
 
 const DEFAULT_ERROR_MESSAGE = 'Não foi possível concluir a operação.';
 const JWT_REFRESH_BUFFER_SECONDS = 60;
+const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+const envUrl = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_URL = envUrl || (projectId ? `https://${projectId}.supabase.co` : '');
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 const decodeJwtPayload = (token) => {
   try {
@@ -100,14 +104,48 @@ export const invokeEdgeFunction = async (
   } = {},
 ) => {
   const invokeOnce = async ({ forceRefresh = false } = {}) => {
-    const finalHeaders = { ...(headers || {}) };
+    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+      throw new Error('Configuração do Supabase ausente no ambiente.');
+    }
+
+    const finalHeaders = {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      ...(headers || {}),
+    };
 
     if (requireAuth) {
       const accessToken = await getAccessToken({ forceRefresh });
       finalHeaders.Authorization = `Bearer ${accessToken}`;
     }
 
-    return supabase.functions.invoke(functionName, { body, headers: finalHeaders });
+    if (body !== undefined && !finalHeaders['Content-Type']) {
+      finalHeaders['Content-Type'] = 'application/json';
+    }
+
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/${functionName}`, {
+      method: 'POST',
+      headers: finalHeaders,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+
+    if (!response.ok) {
+      return {
+        data: null,
+        error: {
+          message: `HTTP ${response.status}`,
+          context: response,
+        },
+      };
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await response.json().catch(() => null);
+      return { data, error: null };
+    }
+
+    const text = await response.text().catch(() => '');
+    return { data: text, error: null };
   };
 
   let result = await invokeOnce();
@@ -119,6 +157,11 @@ export const invokeEdgeFunction = async (
       if (signOutOnAuthFailure) await supabase.auth.signOut();
       throw new Error('Sua sessão expirou. Faça login novamente.');
     }
+  }
+
+  if (result.error && requireAuth && isUnauthorized(result.error) && signOutOnAuthFailure) {
+    await supabase.auth.signOut();
+    throw new Error('Sua sessão expirou. Faça login novamente.');
   }
 
   if (result.error) {
