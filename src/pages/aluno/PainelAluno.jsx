@@ -42,7 +42,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 
@@ -96,11 +95,44 @@ async function fileToDataUrl(file) {
 }
 
 async function generateImageWithGemini(prompt) {
-  const data = await invokeEdgeFunction('gerar-imagem-ia', {
-    body: { prompt },
-    requireAuth: false,
-    fallbackErrorMessage: 'Nao foi possivel gerar imagem com Gemini.',
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+  const baseUrl = supabaseUrl || (projectId ? `https://${projectId}.supabase.co` : '');
+
+  if (!baseUrl || !publishableKey) {
+    throw new Error('Configuracao do Supabase ausente para gerar imagem.');
+  }
+
+  const headers = {
+    'Content-Type': 'application/json',
+    apikey: publishableKey,
+  };
+
+  // Legacy anon keys are JWTs and can satisfy verify_jwt at the function gateway.
+  if (String(publishableKey).startsWith('eyJ')) {
+    headers.Authorization = `Bearer ${publishableKey}`;
+  }
+
+  const response = await fetch(`${baseUrl}/functions/v1/gerar-imagem-ia`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ prompt }),
   });
+
+  if (!response.ok) {
+    let message = 'Nao foi possivel gerar imagem com Gemini.';
+    try {
+      const payload = await response.json();
+      message = payload?.error || payload?.message || message;
+    } catch {
+      const text = await response.text().catch(() => '');
+      if (text?.trim()) message = text.trim();
+    }
+    throw new Error(message);
+  }
+
+  const data = await response.json().catch(() => ({}));
 
   const imageDataUrl = data?.imageDataUrl;
   if (!imageDataUrl || typeof imageDataUrl !== 'string') {
