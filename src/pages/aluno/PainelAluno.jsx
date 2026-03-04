@@ -119,37 +119,59 @@ async function generateImageWithGemini(prompt) {
     throw new Error('Configure VITE_GEMINI_API_KEY para usar a geracao de imagem com Gemini.');
   }
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_IMAGE_MODEL)}:generateContent`;
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': GEMINI_API_KEY,
-    },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseModalities: ['Image'],
-        imageConfig: { aspectRatio: '16:9' },
+  const modelsToTry = [
+    GEMINI_IMAGE_MODEL,
+    'gemini-3.1-flash-image-preview',
+    'gemini-2.5-flash-image',
+    'gemini-3-pro-image-preview',
+    'gemini-2.0-flash-exp-image-generation',
+  ].filter(Boolean);
+
+  const uniqueModels = [...new Set(modelsToTry)];
+  const errors = [];
+
+  for (const model of uniqueModels) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
-    }),
-  });
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseModalities: ['TEXT', 'IMAGE'],
+          imageConfig: { aspectRatio: '16:9' },
+        },
+      }),
+    });
 
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const apiMessage = payload?.error?.message || `Falha na API Gemini (HTTP ${response.status}).`;
-    throw new Error(apiMessage);
+    const payload = await response.json().catch(() => ({}));
+
+    if (response.ok) {
+      const imageDataUrl = extractGeminiImageDataUrl(payload);
+      if (imageDataUrl) return imageDataUrl;
+
+      const finishReason = payload?.candidates?.[0]?.finishReason || 'SEM_IMAGEM';
+      errors.push(`${model}: respondeu sem imagem (${finishReason})`);
+      continue;
+    }
+
+    const message = payload?.error?.message || `HTTP ${response.status}`;
+    errors.push(`${model}: ${response.status} - ${message}`);
+
+    const retryable = /(quota exceeded|resource_exhausted|rate limit|not found|unknown model)/i.test(String(message));
+    if (retryable) continue;
+
+    throw new Error(`${model}: ${message}`);
   }
 
-  const imageDataUrl = extractGeminiImageDataUrl(payload);
-  if (!imageDataUrl) {
-    throw new Error('A API Gemini nao retornou imagem para este prompt.');
-  }
-
-  return imageDataUrl;
+  throw new Error(`Nao foi possivel gerar imagem. Tentativas: ${errors.join(' | ')}`);
 }
 
 export default function PainelAluno() {
+
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
