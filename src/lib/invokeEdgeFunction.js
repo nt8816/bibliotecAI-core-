@@ -1,7 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 
 const DEFAULT_ERROR_MESSAGE = 'Não foi possível concluir a operação.';
-const ANON_BEARER = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 const isUnauthorized = (error) => {
   const status = error?.context?.status;
@@ -34,19 +33,23 @@ export const extractFunctionErrorMessage = async (error, fallback = DEFAULT_ERRO
   return error.message || fallback;
 };
 
-const getAccessToken = async () => {
+const getAccessToken = async ({ forceRefresh = false } = {}) => {
+  if (forceRefresh) {
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError) throw new Error('Sessão expirada. Faça login novamente.');
+
+    const refreshedToken = refreshData?.session?.access_token;
+    if (!refreshedToken) throw new Error('Sessão inválida. Faça login novamente.');
+    return refreshedToken;
+  }
+
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) throw new Error(sessionError.message || 'Não foi possível validar sua sessão.');
 
   const session = sessionData?.session;
-  if (!session?.refresh_token) throw new Error('Sessão inválida. Faça login novamente.');
+  if (!session?.access_token) throw new Error('Sessão inválida. Faça login novamente.');
 
-  const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-  if (refreshError) throw new Error('Sessão expirada. Faça login novamente.');
-
-  const accessToken = refreshData?.session?.access_token || session?.access_token;
-  if (!accessToken) throw new Error('Sessão inválida. Faça login novamente.');
-  return accessToken;
+  return session.access_token;
 };
 
 export const invokeEdgeFunction = async (
@@ -60,15 +63,12 @@ export const invokeEdgeFunction = async (
     signOutOnAuthFailure = false,
   } = {},
 ) => {
-  const invokeOnce = async () => {
+  const invokeOnce = async ({ forceRefresh = false } = {}) => {
     const finalHeaders = { ...(headers || {}) };
 
     if (requireAuth) {
-      const accessToken = await getAccessToken();
+      const accessToken = await getAccessToken({ forceRefresh });
       finalHeaders.Authorization = `Bearer ${accessToken}`;
-    } else if (!finalHeaders.Authorization && ANON_BEARER) {
-      // Algumas Edge Functions exigem cabeçalho Authorization mesmo em rotas públicas.
-      finalHeaders.Authorization = `Bearer ${ANON_BEARER}`;
     }
 
     return supabase.functions.invoke(functionName, { body, headers: finalHeaders });
@@ -77,12 +77,12 @@ export const invokeEdgeFunction = async (
   let result = await invokeOnce();
 
   if (result.error && requireAuth && retryOnUnauthorized && isUnauthorized(result.error)) {
-    const { error: refreshError } = await supabase.auth.refreshSession();
-    if (refreshError) {
+    try {
+      result = await invokeOnce({ forceRefresh: true });
+    } catch {
       if (signOutOnAuthFailure) await supabase.auth.signOut();
       throw new Error('Sua sessão expirou. Faça login novamente.');
     }
-    result = await invokeOnce();
   }
 
   if (result.error) {
