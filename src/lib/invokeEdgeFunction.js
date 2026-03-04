@@ -1,6 +1,36 @@
 import { supabase } from '@/integrations/supabase/client';
 
 const DEFAULT_ERROR_MESSAGE = 'Não foi possível concluir a operação.';
+const JWT_REFRESH_BUFFER_SECONDS = 60;
+
+const decodeJwtPayload = (token) => {
+  try {
+    const part = String(token || '').split('.')[1];
+    if (!part) return null;
+    const normalized = part.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const json = atob(padded);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+};
+
+const isTokenLikelyInvalidForCurrentProject = (token) => {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return true;
+
+  const nowInSeconds = Math.floor(Date.now() / 1000);
+  if (!payload.exp || Number(payload.exp) <= nowInSeconds + JWT_REFRESH_BUFFER_SECONDS) {
+    return true;
+  }
+
+  const expectedProjectRef = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+  if (!expectedProjectRef) return false;
+  if (payload.ref && String(payload.ref) !== String(expectedProjectRef)) return true;
+
+  return false;
+};
 
 const isUnauthorized = (error) => {
   const status = error?.context?.status;
@@ -39,7 +69,9 @@ const getAccessToken = async ({ forceRefresh = false } = {}) => {
     if (refreshError) throw new Error('Sessão expirada. Faça login novamente.');
 
     const refreshedToken = refreshData?.session?.access_token;
-    if (!refreshedToken) throw new Error('Sessão inválida. Faça login novamente.');
+    if (!refreshedToken || isTokenLikelyInvalidForCurrentProject(refreshedToken)) {
+      throw new Error('Sessão inválida. Faça login novamente.');
+    }
     return refreshedToken;
   }
 
@@ -47,9 +79,13 @@ const getAccessToken = async ({ forceRefresh = false } = {}) => {
   if (sessionError) throw new Error(sessionError.message || 'Não foi possível validar sua sessão.');
 
   const session = sessionData?.session;
-  if (!session?.access_token) throw new Error('Sessão inválida. Faça login novamente.');
+  const accessToken = session?.access_token;
+  if (!accessToken) throw new Error('Sessão inválida. Faça login novamente.');
+  if (isTokenLikelyInvalidForCurrentProject(accessToken)) {
+    return getAccessToken({ forceRefresh: true });
+  }
 
-  return session.access_token;
+  return accessToken;
 };
 
 export const invokeEdgeFunction = async (
