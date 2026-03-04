@@ -1,8 +1,8 @@
-import { Fragment, useEffect, useState, useCallback, useRef } from 'react';
-import { Plus, Pencil, Trash2, Search, BookOpen, Sparkles, Loader2, Info, Download, Upload, FileSpreadsheet, FileText, AlertCircle, CheckCircle } from 'lucide-react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { Plus, Pencil, Trash2, Search, BookOpen, Sparkles, Loader2, Info, Download, Upload, FileSpreadsheet, FileText, AlertCircle, CheckCircle, SlidersHorizontal, X } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -88,6 +89,8 @@ export default function Livros() {
   const [livros, setLivros] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [areaFilter, setAreaFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingLivro, setEditingLivro] = useState(null);
@@ -688,29 +691,52 @@ export default function Livros() {
     return <Badge variant="secondary">Pendente</Badge>;
   };
 
-  const filteredLivros = livros.filter(
-    (livro) =>
-      livro.titulo.toLowerCase().includes(searchTerm.toLowerCase())
-      || livro.autor.toLowerCase().includes(searchTerm.toLowerCase())
-      || (livro.tombo || '').toLowerCase().includes(searchTerm.toLowerCase())
+  const areaOptions = useMemo(
+    () =>
+      [...new Set(livros.map((livro) => String(livro.area || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [livros],
   );
+
+  const filteredLivros = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return livros.filter((livro) => {
+      const searchMatches = !term
+        || livro.titulo.toLowerCase().includes(term)
+        || livro.autor.toLowerCase().includes(term)
+        || (livro.tombo || '').toLowerCase().includes(term)
+        || (livro.area || '').toLowerCase().includes(term);
+
+      const areaMatches = areaFilter === 'all' || (livro.area || '').trim() === areaFilter;
+      const statusMatches = statusFilter === 'all'
+        || (statusFilter === 'disponivel' && livro.disponivel)
+        || (statusFilter === 'emprestado' && !livro.disponivel);
+
+      return searchMatches && areaMatches && statusMatches;
+    });
+  }, [livros, searchTerm, areaFilter, statusFilter]);
+
+  const totalLivros = livros.length;
+  const totalDisponiveis = livros.filter((livro) => livro.disponivel).length;
+  const totalEmprestados = totalLivros - totalDisponiveis;
+  const hasActiveFilters = Boolean(searchTerm.trim()) || areaFilter !== 'all' || statusFilter !== 'all';
 
   return (
     <MainLayout title="Livros">
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <CardTitle className="flex items-center gap-2">
-              <BookOpen className="w-5 h-5" />
-              Gerenciamento de Livros
-            </CardTitle>
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-primary" />
+                Acervo da Biblioteca
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Organize livros, acompanhe disponibilidade e mantenha o catálogo em dia.
+              </CardDescription>
+            </div>
 
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input placeholder="Buscar livros..." className="pl-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-              </div>
-
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm">
@@ -960,16 +986,96 @@ export default function Livros() {
           </div>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <div className="rounded-lg border bg-muted/20 p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total</p>
+              <p className="mt-1 text-2xl font-semibold">{totalLivros}</p>
+            </div>
+            <div className="rounded-lg border bg-muted/20 p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Disponíveis</p>
+              <p className="mt-1 text-2xl font-semibold text-green-700">{totalDisponiveis}</p>
+            </div>
+            <div className="rounded-lg border bg-muted/20 p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Emprestados</p>
+              <p className="mt-1 text-2xl font-semibold text-amber-700">{totalEmprestados}</p>
+            </div>
+            <div className="rounded-lg border bg-muted/20 p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Áreas</p>
+              <p className="mt-1 text-2xl font-semibold">{areaOptions.length}</p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border bg-background p-4">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="relative w-full sm:w-80">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por título, autor, tombo ou área..."
+                    className="pl-9"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+
+                <Select value={areaFilter} onValueChange={setAreaFilter}>
+                  <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectValue placeholder="Filtrar por área" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as áreas</SelectItem>
+                    {areaOptions.map((area) => (
+                      <SelectItem key={area} value={area}>{area}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectValue placeholder="Filtrar por status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os status</SelectItem>
+                    <SelectItem value="disponivel">Disponíveis</SelectItem>
+                    <SelectItem value="emprestado">Emprestados</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="gap-1">
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  {filteredLivros.length} exibidos
+                </Badge>
+                {hasActiveFilters && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 gap-1"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setAreaFilter('all');
+                      setStatusFilter('all');
+                    }}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    Limpar filtros
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+
           {loading ? (
             <p className="text-center text-muted-foreground py-8">Carregando...</p>
           ) : filteredLivros.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">{searchTerm ? 'Nenhum livro encontrado' : 'Nenhum livro cadastrado'}</p>
+            <p className="text-center text-muted-foreground py-8">{hasActiveFilters ? 'Nenhum livro encontrado com os filtros atuais.' : 'Nenhum livro cadastrado'}</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-lg border">
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/40">
                     <TableHead>Título</TableHead>
                     <TableHead>Autor</TableHead>
                     <TableHead>Área</TableHead>
@@ -983,13 +1089,13 @@ export default function Livros() {
                 </TableHeader>
                 <TableBody>
                   {filteredLivros.map((livro) => (
-                    <TableRow key={livro.id}>
+                    <TableRow key={livro.id} className="align-top">
                       <TableCell className="font-medium">{livro.titulo}</TableCell>
-                      <TableCell>{livro.autor}</TableCell>
-                      <TableCell>{livro.area}</TableCell>
-                      <TableCell>{livro.tombo}</TableCell>
-                      <TableCell>{livro.editora}</TableCell>
-                      <TableCell>{livro.ano}</TableCell>
+                      <TableCell>{livro.autor || '—'}</TableCell>
+                      <TableCell>{livro.area ? <Badge variant="outline">{livro.area}</Badge> : '—'}</TableCell>
+                      <TableCell>{livro.tombo || '—'}</TableCell>
+                      <TableCell>{livro.editora || '—'}</TableCell>
+                      <TableCell>{livro.ano || '—'}</TableCell>
                       <TableCell className="max-w-[200px]">
                         {livro.sinopse ? (
                           <TooltipProvider>
