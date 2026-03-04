@@ -54,6 +54,11 @@ export default function Configuracoes() {
   );
   const canEditTurma = userRole === 'aluno' || userRole === 'professor';
   const showMatricula = userRole === 'aluno';
+  const isAluno = userRole === 'aluno';
+  const isGestao = userRole === 'gestor' || userRole === 'bibliotecaria' || userRole === 'super_admin';
+  const showEmailInProfile = !isAluno && !isGestao;
+  const showTelefoneInProfile = !isAluno && !isGestao;
+  const showCpfInProfile = !isAluno;
 
   const loadProfile = useCallback(async () => {
     if (!user?.id) {
@@ -209,30 +214,36 @@ export default function Configuracoes() {
                 />
               </div>
 
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" value={visibleAccountIdentity} disabled />
-              </div>
+              {showEmailInProfile && (
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" value={visibleAccountIdentity} disabled />
+                </div>
+              )}
 
-              <div className="space-y-1.5">
-                <Label htmlFor="telefone">Telefone</Label>
-                <Input
-                  id="telefone"
-                  value={profile.telefone}
-                  disabled={loadingProfile || savingProfile}
-                  onChange={(e) => setProfile((prev) => ({ ...prev, telefone: e.target.value }))}
-                />
-              </div>
+              {showTelefoneInProfile && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="telefone">Telefone</Label>
+                  <Input
+                    id="telefone"
+                    value={profile.telefone}
+                    disabled={loadingProfile || savingProfile}
+                    onChange={(e) => setProfile((prev) => ({ ...prev, telefone: e.target.value }))}
+                  />
+                </div>
+              )}
 
-              <div className="space-y-1.5">
-                <Label htmlFor="cpf">CPF</Label>
-                <Input
-                  id="cpf"
-                  value={profile.cpf}
-                  disabled={loadingProfile || savingProfile}
-                  onChange={(e) => setProfile((prev) => ({ ...prev, cpf: e.target.value }))}
-                />
-              </div>
+              {showCpfInProfile && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="cpf">CPF</Label>
+                  <Input
+                    id="cpf"
+                    value={profile.cpf}
+                    disabled={loadingProfile || savingProfile}
+                    onChange={(e) => setProfile((prev) => ({ ...prev, cpf: e.target.value }))}
+                  />
+                </div>
+              )}
 
               {canEditTurma && (
                 <div className="space-y-1.5">

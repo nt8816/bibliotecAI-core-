@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -35,7 +35,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
@@ -123,6 +123,7 @@ export default function PainelAluno() {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [alunoId, setAlunoId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -176,6 +177,9 @@ export default function PainelAluno() {
   const [saving, setSaving] = useState(false);
   const [showAccessChoice, setShowAccessChoice] = useState(false);
   const [optionalFeaturesEnabled, setOptionalFeaturesEnabled] = useState(ENABLE_OPTIONAL_STUDENT_FEATURES);
+  const [resumoLivroId, setResumoLivroId] = useState('');
+  const [resumoTexto, setResumoTexto] = useState('');
+  const [resumosCriados, setResumosCriados] = useState([]);
   const warnedMissingFeaturesRef = useRef(false);
   const fetchInFlightRef = useRef(null);
   const realtimeDebounceRef = useRef(null);
@@ -563,6 +567,16 @@ export default function PainelAluno() {
     [livros, searchTerm],
   );
 
+  const meusLivros = useMemo(
+    () => emprestimos.filter((e) => e.status === 'ativo' || e.status === 'devolvido'),
+    [emprestimos],
+  );
+
+  const audiobooksLiberados = useMemo(() => {
+    const livrosComEmprestimo = new Set(meusLivros.map((item) => item.livro_id).filter(Boolean));
+    return audiobookCatalogo.filter((audio) => livrosComEmprestimo.has(audio.livro_id));
+  }, [audiobookCatalogo, meusLivros]);
+
   const speakText = (text) => {
     if (speaking) {
       speechSynthesis.cancel();
@@ -924,18 +938,71 @@ export default function PainelAluno() {
     setQuizResultado({ acertos, total: quiz.length });
   };
 
+  const activeSection = useMemo(() => {
+    if (location.pathname === '/aluno/biblioteca') return 'biblioteca';
+    if (location.pathname === '/aluno/laboratorio') return 'laboratorio';
+    if (location.pathname === '/aluno/atividades') return 'atividades';
+    return 'perfil';
+  }, [location.pathname]);
+
+  const pageTitle = useMemo(() => {
+    if (activeSection === 'biblioteca') return 'Biblioteca';
+    if (activeSection === 'laboratorio') return 'Laboratório';
+    if (activeSection === 'atividades') return 'Atividades';
+    return 'Meu Perfil';
+  }, [activeSection]);
+
+  const gerarResumo = () => {
+    const livro = livros.find((item) => item.id === resumoLivroId);
+    if (!livro) {
+      toast({ variant: 'destructive', title: 'Selecione um livro', description: 'Escolha um livro para gerar o resumo.' });
+      return;
+    }
+    const base = livro.sinopse ? `Sinopse base: ${livro.sinopse}` : 'Sinopse não cadastrada no momento.';
+    setResumoTexto(
+      `Resumo de "${livro.titulo}"\n\nTema principal:\n- \n\nPersonagens ou pontos-chave:\n- \n\nMinha reflexão:\n- \n\n${base}`,
+    );
+  };
+
+  const salvarResumo = () => {
+    const livro = livros.find((item) => item.id === resumoLivroId);
+    if (!livro || !resumoTexto.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Resumo incompleto',
+        description: 'Selecione um livro e escreva o resumo antes de salvar.',
+      });
+      return;
+    }
+
+    setResumosCriados((prev) => [
+      {
+        id: crypto.randomUUID(),
+        livroId: livro.id,
+        livroTitulo: livro.titulo,
+        texto: resumoTexto.trim(),
+        criadoEm: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
+    toast({ title: 'Resumo salvo no laboratório' });
+    setResumoTexto('');
+  };
+
   if (loading) {
     return (
-      <MainLayout title="Meu Painel">
+      <MainLayout title={pageTitle}>
         <p className="text-center text-muted-foreground py-8">Carregando...</p>
       </MainLayout>
     );
   }
 
   return (
-    <MainLayout title="Meu Painel">
+    <MainLayout title={pageTitle}>
       <div className="space-y-4 sm:space-y-6">
-        <Card className="relative overflow-hidden student-gamify-hero border-primary/20">
+        {activeSection === 'perfil' && (
+          <>
+            <Card className="relative overflow-hidden student-gamify-hero border-primary/20">
           <div className="student-gamify-orb student-gamify-orb-a" />
           <div className="student-gamify-orb student-gamify-orb-b" />
           <CardContent className="relative p-4 sm:p-6 space-y-4">
@@ -959,492 +1026,280 @@ export default function PainelAluno() {
               <p className="text-xs text-muted-foreground">{Math.round(progressoNivel)}% do nível atual</p>
             </div>
           </CardContent>
-        </Card>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <BookOpen className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Livros já lidos</p>
-                  <p className="text-xl font-bold">{livrosLidos}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
-                  <Trophy className="w-5 h-5 text-warning" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Pontos conquistados</p>
-                  <p className="text-xl font-bold">{pontosGanhos}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-info/10 flex items-center justify-center">
-                  <CheckCircle2 className="w-5 h-5 text-info" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Atividades pendentes</p>
-                  <p className="text-xl font-bold">{atividadesPendentes}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center">
-                  <BellRing className="w-5 h-5 text-destructive" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Notificações</p>
-                  <p className="text-xl font-bold">{notificacoes.length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Medal className="w-4 h-4" />
-              Selos e conquistas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {selos.map((selo) => (
-                <div
-                  key={selo.id}
-                  className={`rounded-xl border p-3 transition-all ${
-                    selo.desbloqueado ? 'bg-primary/5 border-primary/30 student-badge-unlocked' : 'bg-muted/40'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${selo.desbloqueado ? 'bg-primary/15' : 'bg-muted'}`}>
-                      <selo.icon className={`w-5 h-5 ${selo.desbloqueado ? 'text-primary' : 'text-muted-foreground'}`} />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-sm">{selo.nome}</p>
-                      <p className="text-xs text-muted-foreground">{selo.descricao}</p>
-                      <Badge variant={selo.desbloqueado ? 'outline' : 'secondary'} className="mt-2">
-                        {selo.desbloqueado ? 'Desbloqueado' : 'Em progresso'}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <BellRing className="w-4 h-4" />
-              Avisos importantes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {notificacoes.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Sem alertas no momento.</p>
-            ) : (
-              <div className="space-y-2">
-                {notificacoes.map((n) => (
-                  <div key={n.id} className="p-3 border rounded-lg flex items-start gap-3">
-                    {n.tipo === 'atraso' ? (
-                      <AlertTriangle className="w-4 h-4 text-destructive mt-0.5" />
-                    ) : n.tipo === 'atividade' ? (
-                      <Clock className="w-4 h-4 text-warning mt-0.5" />
-                    ) : (
-                      <Sparkles className="w-4 h-4 text-primary mt-0.5" />
-                    )}
-                    <div>
-                      <p className="text-sm font-medium">{n.titulo}</p>
-                      <p className="text-xs text-muted-foreground">{n.descricao}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Tabs defaultValue="atividades">
-          <TabsList className="w-full overflow-x-auto whitespace-nowrap justify-start gap-1 sm:gap-2">
-            <TabsTrigger value="atividades" className="gap-1 shrink-0">
-              <CheckCircle2 className="w-4 h-4" /> Atividades e Pontos
-            </TabsTrigger>
-            <TabsTrigger value="audiobooks" className="gap-1 shrink-0">
-              <Headphones className="w-4 h-4" /> Audiobooks
-            </TabsTrigger>
-            <TabsTrigger value="criacao" className="gap-1 shrink-0">
-              <ImagePlus className="w-4 h-4" /> Criação IA
-            </TabsTrigger>
-            <TabsTrigger value="jogos" className="gap-1 shrink-0">
-              <Trophy className="w-4 h-4" /> Jogos
-            </TabsTrigger>
-            <TabsTrigger value="catalogo" className="gap-1 shrink-0">
-              <BookOpen className="w-4 h-4" /> Catálogo
-            </TabsTrigger>
-            <TabsTrigger value="desejos" className="gap-1 shrink-0">
-              <Heart className="w-4 h-4" /> Desejos ({wishlist.length})
-            </TabsTrigger>
-            <TabsTrigger value="avaliacoes" className="gap-1 shrink-0">
-              <Star className="w-4 h-4" /> Avaliações
-            </TabsTrigger>
-            <TabsTrigger value="sugestoes" className="gap-1 shrink-0">
-              <Sparkles className="w-4 h-4" /> Sugestões
-            </TabsTrigger>
-            <TabsTrigger value="solicitacoes" className="gap-1 shrink-0">
-              <BookMarked className="w-4 h-4" /> Solicitações ({solicitacoes.filter((s) => s.status === 'pendente').length})
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="atividades">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Atividades enviadas pelo professor</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {atividadesComEntrega.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">Nenhuma atividade recebida.</p>
-                ) : (
-                  <div className="space-y-4">
-                    {atividadesComEntrega.map((atividade) => (
-                      <div key={atividade.id} className="p-4 border rounded-lg space-y-3">
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                          <div>
-                            <p className="font-semibold">{atividade.titulo}</p>
-                            <p className="text-xs text-muted-foreground">{atividade.livros?.titulo || 'Livro não informado'}</p>
-                            {atividade.descricao && <p className="text-sm mt-1">{atividade.descricao}</p>}
-                          </div>
-                          <div className="text-right">
-                            <Badge variant="outline">Pontos possíveis: {Number(atividade.pontos_extras || 0)}</Badge>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Entrega: {formatDateBR(atividade.data_entrega)}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Minha entrega</Label>
-                          <Textarea
-                            rows={3}
-                            placeholder="Escreva sua resposta, resumo ou reflexão..."
-                            value={atividadeTexto[atividade.id] ?? atividade.entrega?.texto_entrega ?? ''}
-                            onChange={(e) =>
-                              setAtividadeTexto((prev) => ({
-                                ...prev,
-                                [atividade.id]: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="flex items-center gap-2 text-sm">
-                            {atividade.entrega ? (
-                              <>
-                                <Badge
-                                  variant={
-                                    atividade.entrega.status === 'aprovada'
-                                      ? 'default'
-                                      : atividade.entrega.status === 'revisar'
-                                        ? 'destructive'
-                                        : 'secondary'
-                                  }
-                                >
-                                  {atividade.entrega.status}
-                                </Badge>
-                                <span className="text-muted-foreground">
-                                  Pontos recebidos: {Number(atividade.entrega.pontos_ganhos || 0)}
-                                </span>
-                              </>
-                            ) : (
-                              <Badge variant="outline">Ainda não enviado</Badge>
-                            )}
-                          </div>
-
-                          <Button onClick={() => handleEnviarAtividade(atividade)} disabled={saving}>
-                            <Send className="w-4 h-4 mr-2" />
-                            {atividade.entrega ? 'Atualizar entrega' : 'Enviar atividade'}
-                          </Button>
-                        </div>
-
-                        {atividade.entrega?.feedback_professor && (
-                          <div className="p-3 bg-muted rounded-md">
-                            <p className="text-xs text-muted-foreground">Feedback do professor</p>
-                            <p className="text-sm">{atividade.entrega.feedback_professor}</p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
             </Card>
-          </TabsContent>
 
-          <TabsContent value="audiobooks" className="space-y-4">
-            {!optionalFeaturesEnabled && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
               <Card>
                 <CardContent className="p-4">
-                  <p className="text-sm text-muted-foreground">
-                    Audiobooks indisponíveis neste ambiente. Para habilitar, ative `VITE_ENABLE_OPTIONAL_STUDENT_FEATURES=true`
-                    e aplique a migration no Supabase.
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center"
+                      onClick={() => navigate('/aluno/biblioteca')}
+                      aria-label="Ir para Biblioteca"
+                    >
+                      <BookOpen className="w-5 h-5 text-primary" />
+                    </button>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Livros já lidos</p>
+                      <p className="text-xl font-bold">{livrosLidos}</p>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
-            )}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Adicionar audiobook da biblioteca</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Livro</Label>
-                    <select
-                      value={audiobookForm.livro_id || 'none'}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        const livroId = v === 'none' ? '' : v;
-                        const livro = livros.find((item) => item.id === livroId);
-                        setAudiobookForm((prev) => ({
-                          ...prev,
-                          livro_id: livroId,
-                          titulo: livro ? livro.titulo : prev.titulo,
-                          autor: livro ? livro.autor : prev.autor,
-                        }));
-                      }}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center"
+                      onClick={() => navigate('/aluno/atividades')}
+                      aria-label="Ir para Atividades"
                     >
-                      <option value="none">Selecione</option>
-                      {livros
-                        .filter((l) => l.disponivel)
-                        .map((livro) => (
-                          <option key={livro.id} value={livro.id}>
-                            {livro.titulo}
-                          </option>
-                        ))}
-                    </select>
+                      <Trophy className="w-5 h-5 text-warning" />
+                    </button>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Pontos conquistados</p>
+                      <p className="text-xl font-bold">{pontosGanhos}</p>
+                    </div>
                   </div>
+                </CardContent>
+              </Card>
 
-                  <div className="space-y-2">
-                    <Label>Duração (min)</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={audiobookForm.duracao_minutos}
-                      onChange={(e) => setAudiobookForm((prev) => ({ ...prev, duracao_minutos: e.target.value }))}
-                    />
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="w-10 h-10 rounded-lg bg-info/10 flex items-center justify-center"
+                      onClick={() => navigate('/aluno/atividades')}
+                      aria-label="Ir para Atividades pendentes"
+                    >
+                      <CheckCircle2 className="w-5 h-5 text-info" />
+                    </button>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Atividades pendentes</p>
+                      <p className="text-xl font-bold">{atividadesPendentes}</p>
+                    </div>
                   </div>
-                </div>
+                </CardContent>
+              </Card>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Título do audiobook</Label>
-                    <Input
-                      value={audiobookForm.titulo}
-                      onChange={(e) => setAudiobookForm((prev) => ({ ...prev, titulo: e.target.value }))}
-                    />
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center"
+                      onClick={() => navigate('/aluno/atividades')}
+                      aria-label="Ir para avisos"
+                    >
+                      <BellRing className="w-5 h-5 text-destructive" />
+                    </button>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Notificações</p>
+                      <p className="text-xl font-bold">{notificacoes.length}</p>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Autor</Label>
-                    <Input
-                      value={audiobookForm.autor}
-                      onChange={(e) => setAudiobookForm((prev) => ({ ...prev, autor: e.target.value }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Arquivo de áudio (até 50MB)</Label>
-                  <Input type="file" accept="audio/*" onChange={(e) => handleSelectAudiobookFile(e.target.files)} />
-                  {audiobookFileNome && <p className="text-xs text-muted-foreground">Arquivo selecionado: {audiobookFileNome}</p>}
-                </div>
-
-                <div className="flex justify-end">
-                  <Button onClick={handleCriarAudiobook} disabled={saving || !optionalFeaturesEnabled}>
-                    <PlusCircle className="w-4 h-4 mr-2" /> Adicionar ao catálogo
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Catálogo de audiobooks</CardTitle>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Medal className="w-4 h-4" />
+                  Selos e conquistas
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                {audiobookCatalogo.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">Nenhum audiobook cadastrado.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {audiobookCatalogo.map((audio) => {
-                      const estaNaMinhaLista = meusAudiobooks.some((item) => item.audiobook_id === audio.id);
-                      return (
-                        <div key={audio.id} className="p-3 border rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                          <div>
-                            <p className="font-medium">{audio.titulo}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {audio.autor || audio.livros?.autor || '-'}
-                              {audio.duracao_minutos ? ` • ${audio.duracao_minutos} min` : ''}
-                            </p>
-                            <p className="text-xs text-muted-foreground">Livro base: {audio.livros?.titulo || '-'}</p>
-                          </div>
-
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <div className="min-w-[220px]">
-                              <audio controls src={audio.audio_url} className="h-9 w-full" preload="metadata" />
-                            </div>
-                            <Button
-                              size="sm"
-                              variant={estaNaMinhaLista ? 'secondary' : 'default'}
-                              onClick={() => toggleMeuAudiobook(audio.id)}
-                              disabled={!optionalFeaturesEnabled}
-                            >
-                              <Headphones className="w-4 h-4 mr-1" />
-                              {estaNaMinhaLista ? 'Remover da minha lista' : 'Adicionar à minha lista'}
-                            </Button>
-                          </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {selos.map((selo) => (
+                    <div
+                      key={selo.id}
+                      className={`rounded-xl border p-3 transition-all ${
+                        selo.desbloqueado ? 'bg-primary/5 border-primary/30 student-badge-unlocked' : 'bg-muted/40'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${selo.desbloqueado ? 'bg-primary/15' : 'bg-muted'}`}>
+                          <selo.icon className={`w-5 h-5 ${selo.desbloqueado ? 'text-primary' : 'text-muted-foreground'}`} />
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Minha lista de audiobooks</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {meusAudiobooks.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">Você ainda não adicionou audiobooks.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {meusAudiobooks.map((item) => (
-                      <div key={item.id} className="p-3 border rounded-lg flex items-center justify-between gap-3">
                         <div>
-                          <p className="font-medium">{item.audiobooks_biblioteca?.titulo || 'Audiobook'}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {item.audiobooks_biblioteca?.autor || item.audiobooks_biblioteca?.livros?.autor || '-'}
-                          </p>
+                          <p className="font-semibold text-sm">{selo.nome}</p>
+                          <p className="text-xs text-muted-foreground">{selo.descricao}</p>
+                          <Badge variant={selo.desbloqueado ? 'outline' : 'secondary'} className="mt-2">
+                            {selo.desbloqueado ? 'Desbloqueado' : 'Em progresso'}
+                          </Badge>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => toggleMeuAudiobook(item.audiobook_id)} disabled={!optionalFeaturesEnabled}>
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <BellRing className="w-4 h-4" />
+                  Avisos importantes
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {notificacoes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Sem alertas no momento.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {notificacoes.map((n) => (
+                      <div key={n.id} className="p-3 border rounded-lg flex items-start gap-3">
+                        {n.tipo === 'atraso' ? (
+                          <AlertTriangle className="w-4 h-4 text-destructive mt-0.5" />
+                        ) : n.tipo === 'atividade' ? (
+                          <Clock className="w-4 h-4 text-warning mt-0.5" />
+                        ) : (
+                          <Sparkles className="w-4 h-4 text-primary mt-0.5" />
+                        )}
+                        <div>
+                          <p className="text-sm font-medium">{n.titulo}</p>
+                          <p className="text-xs text-muted-foreground">{n.descricao}</p>
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+          </>
+        )}
 
-          <TabsContent value="criacao" className="space-y-4">
+        {activeSection !== 'perfil' && (
+          <Tabs value={activeSection}>
+            <TabsContent value="atividades" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Atividades enviadas pelo professor</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {atividadesComEntrega.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">Nenhuma atividade recebida.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {atividadesComEntrega.map((atividade) => (
+                        <div key={atividade.id} className="p-4 border rounded-lg space-y-3">
+                          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                            <div>
+                              <p className="font-semibold">{atividade.titulo}</p>
+                              <p className="text-xs text-muted-foreground">{atividade.livros?.titulo || 'Livro não informado'}</p>
+                              {atividade.descricao && <p className="text-sm mt-1">{atividade.descricao}</p>}
+                            </div>
+                            <div className="text-right">
+                              <Badge variant="outline">Pontos possíveis: {Number(atividade.pontos_extras || 0)}</Badge>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Entrega: {formatDateBR(atividade.data_entrega)}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>Minha entrega</Label>
+                            <Textarea
+                              rows={3}
+                              placeholder="Escreva sua resposta, resumo ou reflexão..."
+                              value={atividadeTexto[atividade.id] ?? atividade.entrega?.texto_entrega ?? ''}
+                              onChange={(e) =>
+                                setAtividadeTexto((prev) => ({
+                                  ...prev,
+                                  [atividade.id]: e.target.value,
+                                }))
+                              }
+                            />
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 text-sm">
+                              {atividade.entrega ? (
+                                <>
+                                  <Badge
+                                    variant={
+                                      atividade.entrega.status === 'aprovada'
+                                        ? 'default'
+                                        : atividade.entrega.status === 'revisar'
+                                          ? 'destructive'
+                                          : 'secondary'
+                                    }
+                                  >
+                                    {atividade.entrega.status}
+                                  </Badge>
+                                  <span className="text-muted-foreground">
+                                    Pontos recebidos: {Number(atividade.entrega.pontos_ganhos || 0)}
+                                  </span>
+                                </>
+                              ) : (
+                                <Badge variant="outline">Ainda não enviado</Badge>
+                              )}
+                            </div>
+
+                            <Button onClick={() => handleEnviarAtividade(atividade)} disabled={saving}>
+                              <Send className="w-4 h-4 mr-2" />
+                              {atividade.entrega ? 'Atualizar entrega' : 'Enviar atividade'}
+                            </Button>
+                          </div>
+
+                          {atividade.entrega?.feedback_professor && (
+                            <div className="p-3 bg-muted rounded-md">
+                              <p className="text-xs text-muted-foreground">Feedback do professor</p>
+                              <p className="text-sm">{atividade.entrega.feedback_professor}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Sugestões dos professores</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {sugestoes.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">Nenhuma sugestão recebida.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {sugestoes.map((s) => (
+                        <div key={s.id} className="p-3 border rounded-lg">
+                          <p className="font-medium">{s.livros?.titulo}</p>
+                          <p className="text-xs text-muted-foreground">{s.livros?.autor}</p>
+                          {s.mensagem && <p className="text-sm mt-1 text-muted-foreground italic">"{s.mensagem}"</p>}
+                          <p className="text-xs text-muted-foreground mt-1">{formatDateBR(s.created_at)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+          <TabsContent value="laboratorio" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Estúdio Criativo (imagens + IA + animação)</CardTitle>
+                <CardTitle className="text-base">Gerar imagens</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid md:grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Título do projeto</Label>
-                    <Input value={studioTitulo} onChange={(e) => setStudioTitulo(e.target.value)} placeholder="Ex.: Minha história visual" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Audiobook para anexar (opcional)</Label>
-                    <select
-                      value={studioAudiobookId || 'none'}
-                      onChange={(e) => setStudioAudiobookId(e.target.value === 'none' ? '' : e.target.value)}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    >
-                      <option value="none">Não anexar audiobook</option>
-                      {audiobookCatalogo.map((audio) => (
-                        <option key={audio.id} value={audio.id}>
-                          {audio.titulo}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                <div className="flex gap-2">
+                  <Input value={studioPrompt} onChange={(e) => setStudioPrompt(e.target.value)} placeholder="Descreva a imagem" />
+                  <Button type="button" variant="outline" onClick={handleGerarImagemIA}>
+                    <Sparkles className="w-4 h-4 mr-1" /> Gerar
+                  </Button>
                 </div>
-
-                <div className="space-y-2">
-                  <Label>Descrição</Label>
-                  <Textarea
-                    rows={3}
-                    value={studioDescricao}
-                    onChange={(e) => setStudioDescricao(e.target.value)}
-                    placeholder="Descreva seu projeto para compartilhar na comunidade."
-                  />
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Adicionar imagens do dispositivo</Label>
-                    <Input type="file" accept="image/*" multiple onChange={(e) => handleAdicionarSlides(e.target.files)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Gerar imagem com IA (integrada)</Label>
-                    <div className="flex gap-2">
-                      <Input value={studioPrompt} onChange={(e) => setStudioPrompt(e.target.value)} placeholder="Ex.: castelo encantado" />
-                      <Button type="button" variant="outline" onClick={handleGerarImagemIA}>
-                        <Sparkles className="w-4 h-4 mr-1" /> Gerar
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Áudio de fundo para animação (até 50MB)</Label>
-                  <Input type="file" accept="audio/*" onChange={(e) => handleAudioFundo(e.target.files)} />
-                  {studioAudioFundoUrl && <audio controls src={studioAudioFundoUrl} className="w-full h-10" preload="metadata" />}
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Prévia da animação básica</Label>
-                  <div className="relative rounded-lg border bg-muted/20 overflow-hidden aspect-video">
-                    {studioSlides.length === 0 ? (
-                      <div className="h-full w-full flex items-center justify-center text-sm text-muted-foreground">
-                        Adicione imagens para iniciar a animação.
-                      </div>
-                    ) : (
-                      <img
-                        src={studioSlides[studioPreviewIndex % studioSlides.length]?.url}
-                        alt="Prévia"
-                        className="h-full w-full object-cover transition-all duration-700"
-                      />
-                    )}
-                  </div>
-                </div>
-
                 {studioSlides.length > 0 && (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {studioSlides.map((slide, index) => (
                       <div key={slide.id} className="relative">
-                        <img src={slide.url} alt={`Slide ${index + 1}`} className="h-24 w-full object-cover rounded-md border" />
-                        <Badge variant="secondary" className="absolute left-1 top-1 text-[10px]">
-                          {slide.origem === 'ia' ? 'IA' : 'Upload'}
-                        </Badge>
+                        <img src={slide.url} alt={`Imagem ${index + 1}`} className="h-24 w-full object-cover rounded-md border" />
                         <Button
                           type="button"
                           size="sm"
@@ -1458,114 +1313,11 @@ export default function PainelAluno() {
                     ))}
                   </div>
                 )}
-
-                <div className="flex justify-end">
-                  <Button onClick={handlePublicarStudio} disabled={!optionalFeaturesEnabled || saving}>
-                    <ImagePlus className="w-4 h-4 mr-2" /> Compartilhar na comunidade
-                  </Button>
-                </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="jogos" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Criador de Jogos com IA (quiz de leitura)</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid md:grid-cols-3 gap-3">
-                  <div className="space-y-2">
-                    <Label>Livro</Label>
-                    <select
-                      value={quizLivroId || 'none'}
-                      onChange={(e) => setQuizLivroId(e.target.value === 'none' ? '' : e.target.value)}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    >
-                      <option value="none">Selecione</option>
-                      {livros.map((livro) => (
-                        <option key={livro.id} value={livro.id}>
-                          {livro.titulo}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <Label>Tema do quiz</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        value={quizTema}
-                        onChange={(e) => setQuizTema(e.target.value)}
-                        placeholder="Ex.: personagens, mensagens do livro, interpretação"
-                      />
-                      <Button type="button" onClick={gerarQuizComIA}>
-                        <Sparkles className="w-4 h-4 mr-1" /> Gerar
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                {quiz.length > 0 && (
-                  <div className="space-y-4">
-                    {quiz.map((pergunta, index) => (
-                      <div key={index} className="p-3 rounded-lg border space-y-2">
-                        <p className="font-medium text-sm">
-                          {index + 1}. {pergunta.enunciado}
-                        </p>
-                        <div className="grid gap-2">
-                          {pergunta.opcoes.map((opcao, opcaoIndex) => (
-                            <button
-                              key={opcaoIndex}
-                              type="button"
-                              onClick={() => setQuizRespostas((prev) => ({ ...prev, [index]: opcaoIndex }))}
-                              className={`rounded-md border px-3 py-2 text-left text-sm transition ${
-                                Number(quizRespostas[index]) === opcaoIndex ? 'border-primary bg-primary/10' : 'hover:bg-muted/50'
-                              }`}
-                            >
-                              {opcao}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-
-                    <div className="flex items-center gap-2">
-                      <Button type="button" onClick={corrigirQuiz}>
-                        Corrigir quiz
-                      </Button>
-                      {quizResultado && (
-                        <Badge variant="secondary">
-                          Resultado: {quizResultado.acertos}/{quizResultado.total}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Minigames rápidos</CardTitle>
-              </CardHeader>
-              <CardContent className="grid md:grid-cols-3 gap-3">
-                <div className="rounded-lg border p-3">
-                  <p className="font-medium">Desafio relâmpago</p>
-                  <p className="text-sm text-muted-foreground">Responda 3 perguntas em 60 segundos para ganhar pontos.</p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="font-medium">Verdadeiro ou falso</p>
-                  <p className="text-sm text-muted-foreground">Afirmações sobre o livro para revisar compreensão.</p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="font-medium">Sequência da história</p>
-                  <p className="text-sm text-muted-foreground">Organize eventos na ordem correta e treine memória.</p>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="catalogo" className="space-y-4">
+          <TabsContent value="biblioteca" className="space-y-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
@@ -1575,6 +1327,54 @@ export default function PainelAluno() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Meus livros</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {meusLivros.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Você ainda não tem livros aprovados/emprestados.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {meusLivros.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between rounded-md border p-3">
+                        <div>
+                          <p className="text-sm font-medium">{item.livros?.titulo || 'Livro'}</p>
+                          <p className="text-xs text-muted-foreground">{item.livros?.autor || '-'}</p>
+                        </div>
+                        <Badge variant={item.status === 'ativo' ? 'default' : 'secondary'}>
+                          {item.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Audiobooks liberados</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {audiobooksLiberados.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Para ouvir audiobooks, solicite o livro e aguarde aprovação da bibliotecária.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {audiobooksLiberados.map((audio) => (
+                      <div key={audio.id} className="rounded-md border p-3 space-y-2">
+                        <p className="font-medium">{audio.titulo}</p>
+                        <p className="text-xs text-muted-foreground">{audio.autor || audio.livros?.autor || '-'}</p>
+                        <audio controls src={audio.audio_url} className="w-full h-10" preload="metadata" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredLivros.slice(0, 40).map((livro) => (
@@ -1742,7 +1542,7 @@ export default function PainelAluno() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="solicitacoes">
+          <TabsContent value="biblioteca">
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Minhas solicitações de empréstimo</CardTitle>
@@ -1795,6 +1595,7 @@ export default function PainelAluno() {
             </Card>
           </TabsContent>
         </Tabs>
+        )}
       </div>
 
       <Dialog open={reviewDialog} onOpenChange={setReviewDialog}>

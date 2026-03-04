@@ -13,7 +13,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 export default function Dashboard() {
-  const { userRole, user } = useAuth();
+  const { userRole, user, isBibliotecaria } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [stats, setStats] = useState({
@@ -25,6 +25,7 @@ export default function Dashboard() {
   const [atividades, setAtividades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showGestorWelcome, setShowGestorWelcome] = useState(false);
+  const [escolasAtivas, setEscolasAtivas] = useState([]);
 
   const fetchInFlightRef = useRef(null);
   const realtimeDebounceRef = useRef(null);
@@ -33,7 +34,7 @@ export default function Dashboard() {
     if (fetchInFlightRef.current) return fetchInFlightRef.current;
 
     const request = (async () => {
-      const [livrosResult, usuariosResult, emprestimosAtivosResult, atrasadosResult, emprestimosRecentesResult] = await Promise.allSettled([
+      const [livrosResult, usuariosResult, emprestimosAtivosResult, atrasadosResult, emprestimosRecentesResult, escolasAtivasResult] = await Promise.allSettled([
         supabase.from('livros').select('*', { count: 'exact', head: true }),
         supabase.from('usuarios_biblioteca').select('*', { count: 'exact', head: true }),
         supabase.from('emprestimos').select('*', { count: 'exact', head: true }).eq('status', 'ativo'),
@@ -47,6 +48,7 @@ export default function Dashboard() {
           .select('id, data_emprestimo, data_devolucao_real, status, livros(titulo), usuarios_biblioteca(nome)')
           .order('created_at', { ascending: false })
           .limit(5),
+        supabase.from('tenants').select('id, nome, subdominio, ativo').eq('ativo', true).order('nome'),
       ]);
 
       setStats({
@@ -67,6 +69,10 @@ export default function Dashboard() {
         }));
 
         setAtividades(atividadesFormatadas);
+      }
+
+      if (escolasAtivasResult.status === 'fulfilled') {
+        setEscolasAtivas(escolasAtivasResult.value.data || []);
       }
 
       setLoading(false);
@@ -144,6 +150,7 @@ export default function Dashboard() {
       icon: BookOpen,
       color: 'text-primary',
       bgColor: 'bg-primary/10',
+      path: '/livros',
     },
     {
       title: 'Total de Usuários',
@@ -151,6 +158,7 @@ export default function Dashboard() {
       icon: Users,
       color: 'text-info',
       bgColor: 'bg-info/10',
+      path: '/usuarios',
     },
     {
       title: 'Leituras Ativas',
@@ -158,6 +166,7 @@ export default function Dashboard() {
       icon: BookMarked,
       color: 'text-secondary',
       bgColor: 'bg-secondary/10',
+      path: isBibliotecaria ? '/emprestimos' : '/relatorios',
     },
     {
       title: 'Alertas de Atraso',
@@ -165,15 +174,12 @@ export default function Dashboard() {
       icon: AlertTriangle,
       color: 'text-warning',
       bgColor: 'bg-warning/10',
+      path: isBibliotecaria ? '/emprestimos?tab=ativos&status=atrasados' : '/relatorios',
     },
   ];
 
   if (userRole === 'aluno') {
-    return <Navigate to="/aluno/painel" replace />;
-  }
-
-  if (userRole === 'professor') {
-    return <Navigate to="/professor/painel" replace />;
+    return <Navigate to="/aluno/perfil" replace />;
   }
 
   return (
@@ -188,14 +194,46 @@ export default function Dashboard() {
                     <p className="text-sm text-muted-foreground">{card.title}</p>
                     <p className="mt-1 text-3xl font-bold">{loading ? '...' : card.value}</p>
                   </div>
-                  <div className={`flex h-12 w-12 items-center justify-center rounded-lg ${card.bgColor}`}>
+                  <button
+                    type="button"
+                    className={`flex h-12 w-12 items-center justify-center rounded-lg ${card.bgColor}`}
+                    onClick={() => navigate(card.path)}
+                    aria-label={`Abrir ${card.title}`}
+                  >
                     <card.icon className={`h-6 w-6 ${card.color}`} />
-                  </div>
+                  </button>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
+
+        {userRole === 'super_admin' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Escolas em funcionamento</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {escolasAtivas.length === 0 ? (
+                <p className="text-muted-foreground">Nenhuma escola ativa no momento.</p>
+              ) : (
+                <div className="space-y-2">
+                  {escolasAtivas.map((escola) => (
+                    <div key={escola.id} className="flex items-center justify-between rounded-md border p-3">
+                      <div>
+                        <p className="font-medium">{escola.nome}</p>
+                        <p className="text-xs text-muted-foreground">{escola.subdominio}</p>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => navigate('/admin/tenants')}>
+                        Ver detalhes
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -78,12 +78,16 @@ export default function Emprestimos() {
   const [exportFormat, setExportFormat] = useState('xlsx');
   const [exporting, setExporting] = useState(false);
 
-  const { isGestor, isBibliotecaria } = useAuth();
+  const { isBibliotecaria } = useAuth();
   const { toast } = useToast();
   const { trackEvent } = usePrivateTelemetry();
-  const canManageLoans = isGestor || isBibliotecaria;
+  const canManageLoans = isBibliotecaria;
   const requestedTab = searchParams.get('tab');
   const requestedStatus = searchParams.get('status');
+
+  if (!isBibliotecaria) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const fetchData = useCallback(async () => {
     try {

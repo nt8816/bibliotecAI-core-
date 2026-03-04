@@ -172,7 +172,7 @@ export default function Convite() {
   };
 
   const getRedirectPathByRole = (role) => {
-    if (role === 'aluno') return '/aluno/painel';
+    if (role === 'aluno') return '/aluno/perfil';
     if (role === 'professor') return '/professor/painel';
     if (role === 'bibliotecaria') return '/dashboard';
     return '/dashboard';

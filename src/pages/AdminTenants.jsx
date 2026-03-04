@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Copy, Building2, Link as LinkIcon, Power } from 'lucide-react';
+import { Plus, Copy, Building2, Link as LinkIcon, Power, KeyRound, ExternalLink } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 const DEFAULT_BASE_DOMAIN = import.meta.env.VITE_APP_BASE_DOMAIN || 'bibliotec-ai-core.vercel.app';
 
@@ -38,6 +39,8 @@ export default function AdminTenants() {
   const [creating, setCreating] = useState(false);
   const [creatingInviteTenantId, setCreatingInviteTenantId] = useState(null);
   const [togglingTenantId, setTogglingTenantId] = useState(null);
+  const [resettingGestorTenantId, setResettingGestorTenantId] = useState(null);
+  const [lastResetPassword, setLastResetPassword] = useState(null);
   const [latestInvite, setLatestInvite] = useState(null);
 
   const [nomeEscola, setNomeEscola] = useState('');
@@ -47,13 +50,22 @@ export default function AdminTenants() {
 
   const baseDomain = useMemo(() => DEFAULT_BASE_DOMAIN.trim(), []);
   const wildcardEnabled = useMemo(() => supportsWildcardSubdomain(baseDomain), [baseDomain]);
+  const latestInviteUrl = useMemo(() => {
+    const raw = String(latestInvite?.onboarding_url || '').trim();
+    if (!raw) return '';
+    try {
+      return new URL(raw, window.location.origin).toString();
+    } catch {
+      return raw;
+    }
+  }, [latestInvite?.onboarding_url]);
 
   const fetchTenants = useCallback(async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('tenants')
-        .select('id, nome, subdominio, schema_name, plano, ativo, created_at')
+        .select('id, escola_id, nome, subdominio, schema_name, plano, ativo, created_at')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -167,6 +179,47 @@ export default function AdminTenants() {
     }
   };
 
+  const getTenantAccessUrl = useCallback((tenant) => {
+    if (!tenant?.subdominio) return '';
+    if (wildcardEnabled) return `https://${tenant.subdominio}.${baseDomain}`;
+    return `${window.location.origin}/?tenant=${tenant.subdominio}`;
+  }, [baseDomain, wildcardEnabled]);
+
+  const resetGestorPassword = async (tenant) => {
+    if (!tenant?.escola_id) {
+      toast({ title: 'Escola inválida', description: 'Tenant sem escola vinculada.', variant: 'destructive' });
+      return;
+    }
+
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+    let senha = '';
+    for (let i = 0; i < 10; i += 1) senha += chars.charAt(Math.floor(Math.random() * chars.length));
+
+    setResettingGestorTenantId(tenant.id);
+    try {
+      const data = await invokeEdgeFunction('redefinir-senha-gestor', {
+        body: { escola_id: tenant.escola_id, nova_senha: senha },
+        requireAuth: true,
+        signOutOnAuthFailure: true,
+        fallbackErrorMessage: 'Não foi possível redefinir a senha do gestor.',
+      });
+
+      if (!data?.success) throw new Error(data?.error || 'Não foi possível redefinir a senha do gestor.');
+
+      setLastResetPassword({
+        tenantNome: tenant.nome,
+        gestorNome: data?.gestor_nome || 'Gestor',
+        gestorEmail: data?.gestor_email || '-',
+        senha: data?.senha_temporaria || senha,
+      });
+      toast({ title: 'Senha redefinida', description: `Nova senha temporária do gestor de ${tenant.nome} gerada.` });
+    } catch (error) {
+      toast({ title: 'Falha ao redefinir senha', description: error?.message || 'Erro inesperado', variant: 'destructive' });
+    } finally {
+      setResettingGestorTenantId(null);
+    }
+  };
+
   const toggleTenantStatus = async (tenant) => {
     if (!tenant?.id) return;
     const nextStatus = !tenant.ativo;
@@ -268,7 +321,7 @@ export default function AdminTenants() {
           </CardContent>
         </Card>
 
-        {latestInvite?.onboarding_url && (
+        {latestInviteUrl && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -280,15 +333,43 @@ export default function AdminTenants() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="rounded-md border p-3 text-sm break-all">{latestInvite.onboarding_url}</div>
+              <div className="rounded-md border p-3 text-sm break-all">{latestInviteUrl}</div>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => copyText(latestInvite.onboarding_url, 'Link copiado')}>
+                <Button variant="outline" onClick={() => copyText(latestInviteUrl, 'Link copiado')}>
                   <Copy className="w-4 h-4 mr-2" />
                   Copiar link
                 </Button>
                 <Button variant="outline" onClick={() => copyText(latestInvite.invite_token, 'Token copiado')}>
                   <Copy className="w-4 h-4 mr-2" />
                   Copiar token
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {lastResetPassword && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <KeyRound className="w-5 h-5" />
+                Nova senha temporária do gestor
+              </CardTitle>
+              <CardDescription>
+                Compartilhe esta senha com o gestor de forma segura e peça para alterar no primeiro acesso.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-md border p-3 text-sm">
+                <p><span className="font-medium">Escola:</span> {lastResetPassword.tenantNome}</p>
+                <p><span className="font-medium">Gestor:</span> {lastResetPassword.gestorNome}</p>
+                <p><span className="font-medium">Email:</span> {lastResetPassword.gestorEmail}</p>
+                <p className="mt-2"><span className="font-medium">Senha temporária:</span> <code>{lastResetPassword.senha}</code></p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => copyText(lastResetPassword.senha, 'Senha copiada')}>
+                  <Copy className="w-4 h-4 mr-2" />
+                  Copiar senha
                 </Button>
               </div>
             </CardContent>
@@ -331,6 +412,24 @@ export default function AdminTenants() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.open(getTenantAccessUrl(tenant), '_blank', 'noopener,noreferrer')}
+                            disabled={!tenant.ativo}
+                          >
+                            <ExternalLink className="w-4 h-4 mr-1" />
+                            Abrir escola
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => resetGestorPassword(tenant)}
+                            disabled={!tenant.ativo || resettingGestorTenantId === tenant.id}
+                          >
+                            <KeyRound className="w-4 h-4 mr-1" />
+                            {resettingGestorTenantId === tenant.id ? 'Gerando senha...' : 'Nova senha gestor'}
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
