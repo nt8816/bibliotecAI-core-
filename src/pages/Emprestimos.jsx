@@ -85,10 +85,6 @@ export default function Emprestimos() {
   const requestedTab = searchParams.get('tab');
   const requestedStatus = searchParams.get('status');
 
-  if (!isBibliotecaria) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
   const fetchData = useCallback(async () => {
     try {
       const [emprestimosRes, livrosRes, usuariosRes, solicitacoesRes] = await Promise.all([
@@ -394,6 +390,10 @@ export default function Emprestimos() {
     const isValidTab = ['ativos', 'historico', ...(canManageLoans ? ['solicitacoes'] : [])].includes(nextTab);
     setActiveTab(isValidTab ? nextTab : defaultTab);
   }, [canManageLoans, requestedTab]);
+
+  if (!isBibliotecaria) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const filteredUsuarios = usuarios.filter(
     (u) => u.nome.toLowerCase().includes(searchUsuario.toLowerCase()) || String(u.email || '').toLowerCase().includes(searchUsuario.toLowerCase()),
