@@ -44,7 +44,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
-const GEMINI_IMAGE_MODEL = import.meta.env.VITE_GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image-preview';
+const GEMINI_IMAGE_MODEL = import.meta.env.VITE_GEMINI_IMAGE_MODEL || 'gemini-2.0-flash-preview-image-generation';
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 
 function formatDateBR(dateValue) {
@@ -114,6 +114,16 @@ function extractGeminiImageDataUrl(payload) {
   return null;
 }
 
+function extractImagenDataUrl(payload) {
+  const predictions = ensureArray(payload?.predictions);
+  const first = predictions[0];
+  const base64Data = first?.bytesBase64Encoded || first?.bytes_base64_encoded;
+  if (!base64Data) return null;
+
+  const mimeType = first?.mimeType || first?.mime_type || 'image/png';
+  return `data:${mimeType};base64,${base64Data}`;
+}
+
 async function generateImageWithGemini(prompt) {
   if (!GEMINI_API_KEY) {
     throw new Error('Configure VITE_GEMINI_API_KEY para usar a geracao de imagem com Gemini.');
@@ -121,40 +131,53 @@ async function generateImageWithGemini(prompt) {
 
   const modelsToTry = [
     GEMINI_IMAGE_MODEL,
+    'gemini-2.0-flash-preview-image-generation',
+    'gemini-2.0-flash-exp-image-generation',
+    'gemini-2.5-flash-image-preview',
+    'imagen-3.0-generate-002',
     'gemini-3.1-flash-image-preview',
     'gemini-2.5-flash-image',
     'gemini-3-pro-image-preview',
-    'gemini-2.0-flash-exp-image-generation',
   ].filter(Boolean);
 
   const uniqueModels = [...new Set(modelsToTry)];
   const errors = [];
 
   for (const model of uniqueModels) {
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+    const isImagenModel = model.startsWith('imagen-');
+    const endpoint = isImagenModel
+      ? `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:predict?key=${encodeURIComponent(GEMINI_API_KEY)}`
+      : `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
 
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseModalities: ['TEXT', 'IMAGE'],
-          imageConfig: { aspectRatio: '16:9' },
-        },
-      }),
+      body: JSON.stringify(
+        isImagenModel
+          ? {
+              instances: [{ prompt }],
+              parameters: { sampleCount: 1, aspectRatio: '16:9' },
+            }
+          : {
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              generationConfig: {
+                responseModalities: ['TEXT', 'IMAGE'],
+                imageConfig: { aspectRatio: '16:9' },
+              },
+            },
+      ),
     });
 
     const payload = await response.json().catch(() => ({}));
 
     if (response.ok) {
-      const imageDataUrl = extractGeminiImageDataUrl(payload);
+      const imageDataUrl = isImagenModel ? extractImagenDataUrl(payload) : extractGeminiImageDataUrl(payload);
       if (imageDataUrl) return imageDataUrl;
 
-      const finishReason = payload?.candidates?.[0]?.finishReason || 'SEM_IMAGEM';
-      errors.push(`${model}: respondeu sem imagem (${finishReason})`);
+      const finishReason = payload?.candidates?.[0]?.finishReason || payload?.predictions?.[0]?.safetyAttributes || 'SEM_IMAGEM';
+      errors.push(`${model}: respondeu sem imagem (${JSON.stringify(finishReason)})`);
       continue;
     }
 
