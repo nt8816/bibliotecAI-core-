@@ -44,6 +44,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
+const GEMINI_IMAGE_MODEL = import.meta.env.VITE_GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image-preview';
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 
 function formatDateBR(dateValue) {
   if (!dateValue) return '-';
@@ -75,12 +77,6 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function safeText(value, fallback = '-') {
-  if (value === null || value === undefined) return fallback;
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
-  return fallback;
-}
-
 function isMissingTableError(error) {
   const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
   return (
@@ -100,23 +96,57 @@ async function fileToDataUrl(file) {
   });
 }
 
-function createAiImageDataUrl(prompt) {
-  const normalized = safeText(prompt, 'Criacao IA').slice(0, 60);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720">
-    <defs>
-      <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#0ea5e9" />
-        <stop offset="50%" stop-color="#2563eb" />
-        <stop offset="100%" stop-color="#22c55e" />
-      </linearGradient>
-    </defs>
-    <rect width="100%" height="100%" fill="url(#g)" />
-    <circle cx="1050" cy="120" r="180" fill="rgba(255,255,255,0.14)" />
-    <circle cx="180" cy="640" r="220" fill="rgba(255,255,255,0.12)" />
-    <text x="80" y="340" font-size="54" font-family="Arial, sans-serif" fill="white">Imagem IA</text>
-    <text x="80" y="420" font-size="34" font-family="Arial, sans-serif" fill="white">${normalized.replace(/[<&>"]/g, '')}</text>
-  </svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+function extractGeminiImageDataUrl(payload) {
+  const candidates = ensureArray(payload?.candidates);
+
+  for (const candidate of candidates) {
+    const parts = ensureArray(candidate?.content?.parts);
+    for (const part of parts) {
+      const inlineData = part?.inlineData || part?.inline_data;
+      const base64Data = inlineData?.data;
+      if (!base64Data) continue;
+
+      const mimeType = inlineData?.mimeType || inlineData?.mime_type || 'image/png';
+      return `data:${mimeType};base64,${base64Data}`;
+    }
+  }
+
+  return null;
+}
+
+async function generateImageWithGemini(prompt) {
+  if (!GEMINI_API_KEY) {
+    throw new Error('Configure VITE_GEMINI_API_KEY para usar a geracao de imagem com Gemini.');
+  }
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_IMAGE_MODEL)}:generateContent`;
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': GEMINI_API_KEY,
+    },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseModalities: ['Image'],
+        imageConfig: { aspectRatio: '16:9' },
+      },
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const apiMessage = payload?.error?.message || `Falha na API Gemini (HTTP ${response.status}).`;
+    throw new Error(apiMessage);
+  }
+
+  const imageDataUrl = extractGeminiImageDataUrl(payload);
+  if (!imageDataUrl) {
+    throw new Error('A API Gemini nao retornou imagem para este prompt.');
+  }
+
+  return imageDataUrl;
 }
 
 export default function PainelAluno() {
@@ -163,6 +193,7 @@ export default function PainelAluno() {
   const [studioTitulo, setStudioTitulo] = useState('');
   const [studioDescricao, setStudioDescricao] = useState('');
   const [studioPrompt, setStudioPrompt] = useState('');
+  const [gerandoImagemIA, setGerandoImagemIA] = useState(false);
   const [studioAudiobookId, setStudioAudiobookId] = useState('');
   const [studioSlides, setStudioSlides] = useState([]);
   const [studioAudioFundoUrl, setStudioAudioFundoUrl] = useState('');
@@ -822,25 +853,38 @@ export default function PainelAluno() {
     }
   };
 
-  const handleGerarImagemIA = () => {
-    if (!studioPrompt.trim()) {
+  const handleGerarImagemIA = async () => {
+    const prompt = studioPrompt.trim();
+    if (!prompt) {
       toast({ variant: 'destructive', title: 'Informe o prompt', description: 'Descreva a imagem para gerar com IA.' });
       return;
     }
     if (studioSlides.length >= 8) {
-      toast({ variant: 'destructive', title: 'Limite atingido', description: 'Use no máximo 8 imagens por animação.' });
+      toast({ variant: 'destructive', title: 'Limite atingido', description: 'Use no maximo 8 imagens por animacao.' });
       return;
     }
 
-    setStudioSlides((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        url: createAiImageDataUrl(studioPrompt),
-        origem: 'ia',
-        legenda: studioPrompt.trim().slice(0, 80),
-      },
-    ]);
+    setGerandoImagemIA(true);
+    try {
+      const imageDataUrl = await generateImageWithGemini(prompt);
+      setStudioSlides((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          url: imageDataUrl,
+          origem: 'ia',
+          legenda: prompt.slice(0, 80),
+        },
+      ]);
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Falha ao gerar imagem',
+        description: error?.message || 'Nao foi possivel gerar imagem com Gemini.',
+      });
+    } finally {
+      setGerandoImagemIA(false);
+    }
   };
 
   const handleAudioFundo = async (files) => {
@@ -1291,8 +1335,8 @@ export default function PainelAluno() {
               <CardContent className="space-y-4">
                 <div className="flex gap-2">
                   <Input value={studioPrompt} onChange={(e) => setStudioPrompt(e.target.value)} placeholder="Descreva a imagem" />
-                  <Button type="button" variant="outline" onClick={handleGerarImagemIA}>
-                    <Sparkles className="w-4 h-4 mr-1" /> Gerar
+                  <Button type="button" variant="outline" onClick={handleGerarImagemIA} disabled={gerandoImagemIA}>
+                    <Sparkles className="w-4 h-4 mr-1" /> {gerandoImagemIA ? 'Gerando...' : 'Gerar'}
                   </Button>
                 </div>
                 {studioSlides.length > 0 && (
