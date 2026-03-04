@@ -39,6 +39,24 @@ const emptyAtividade = {
   aluno_id: '',
 };
 
+function getDateInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function isDateTodayOrAfter(dateString) {
+  if (!dateString) return true;
+
+  const selectedDate = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(selectedDate.getTime())) return false;
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return selectedDate >= today;
+}
+
 function formatDateBR(dateValue) {
   if (!dateValue) return '-';
   try {
@@ -61,6 +79,7 @@ function isMissingTableError(error) {
 export default function PainelProfessor() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const minEntregaDate = useMemo(() => getDateInputValue(new Date()), []);
 
   const [livros, setLivros] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
@@ -248,6 +267,15 @@ export default function PainelProfessor() {
   const handleSaveAtividade = async () => {
     if (!atividadeForm.titulo.trim() || !atividadeForm.aluno_id || !atividadeForm.livro_id) {
       toast({ variant: 'destructive', title: 'Campos obrigatórios', description: 'Preencha título, aluno e livro.' });
+      return;
+    }
+
+    if (!isDateTodayOrAfter(atividadeForm.data_entrega)) {
+      toast({
+        variant: 'destructive',
+        title: 'Data inválida',
+        description: 'A data de entrega deve ser hoje ou uma data futura.',
+      });
       return;
     }
 
@@ -509,6 +537,7 @@ export default function PainelProfessor() {
                             <Label>Data de entrega</Label>
                             <Input
                               type="date"
+                              min={minEntregaDate}
                               value={atividadeForm.data_entrega}
                               onChange={(e) => setAtividadeForm((prev) => ({ ...prev, data_entrega: e.target.value }))}
                             />
