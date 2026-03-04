@@ -44,14 +44,33 @@ export const invokeEdgeFunction = async (
     signOutOnAuthFailure = false,
   } = {},
 ) => {
-  const invokeOnce = async () => {
-    // Let the Supabase SDK attach the current auth session token.
-    // For public functions we can explicitly remove Authorization.
+  const getAccessToken = async ({ forceRefresh = false } = {}) => {
+    if (forceRefresh) {
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) throw refreshError;
+      const refreshedToken = refreshData?.session?.access_token;
+      if (!refreshedToken) throw new Error('Sessão inválida. Faça login novamente.');
+      return refreshedToken;
+    }
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    const accessToken = sessionData?.session?.access_token;
+    if (!accessToken) throw new Error('Sessão inválida. Faça login novamente.');
+    return accessToken;
+  };
+
+  const invokeOnce = async ({ forceRefresh = false } = {}) => {
     const finalHeaders = { ...(headers || {}) };
-    if (!requireAuth) {
+
+    if (requireAuth) {
+      const accessToken = await getAccessToken({ forceRefresh });
+      finalHeaders.Authorization = `Bearer ${accessToken}`;
+    } else {
       delete finalHeaders.Authorization;
       delete finalHeaders.authorization;
     }
+
     return supabase.functions.invoke(functionName, { body, headers: finalHeaders });
   };
 
@@ -59,9 +78,7 @@ export const invokeEdgeFunction = async (
 
   if (result.error && requireAuth && retryOnUnauthorized && isUnauthorized(result.error)) {
     try {
-      const { error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError) throw refreshError;
-      result = await invokeOnce();
+      result = await invokeOnce({ forceRefresh: true });
     } catch {
       if (signOutOnAuthFailure) await supabase.auth.signOut();
       throw new Error('Sua sessão expirou. Faça login novamente.');
@@ -80,4 +97,3 @@ export const invokeEdgeFunction = async (
 
   return result.data;
 };
-
