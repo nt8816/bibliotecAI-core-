@@ -12,6 +12,8 @@ import { SuperAdminRoute } from '@/components/SuperAdminRoute';
 import { ThemeProvider } from '@/components/theme-provider';
 
 import { PrivateTelemetryTracker } from '@/components/PrivateTelemetryTracker';
+import { AppShellState } from '@/components/AppShellState';
+import { ConnectivityStatus } from '@/components/ConnectivityStatus';
 
 const Auth = lazy(() => import('./pages/Auth'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -49,7 +51,12 @@ function AppRoutes() {
   const { loading, isTenantHost, tenant, error } = useTenant();
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Carregando tenant...</div>;
+    return (
+      <AppShellState
+        title="Preparando seu ambiente"
+        description="Estamos identificando o tenant e carregando configurações iniciais."
+      />
+    );
   }
 
   if (isTenantHost && !tenant) {
@@ -247,9 +254,17 @@ const App = () => (
             <TooltipProvider>
               <Toaster />
               <Sonner />
+              <ConnectivityStatus />
               <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
                 <PrivateTelemetryTracker />
-                <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Carregando...</div>}>
+                <Suspense
+                  fallback={(
+                    <AppShellState
+                      title="Carregando módulo"
+                      description="Aguarde enquanto abrimos a próxima tela."
+                    />
+                  )}
+                >
                   <AppRoutes />
                 </Suspense>
               </BrowserRouter>
