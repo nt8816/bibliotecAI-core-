@@ -98,7 +98,6 @@ async function fileToDataUrl(file) {
 async function generateImageWithGemini(prompt) {
   const data = await invokeEdgeFunction('gerar-imagem-ia', {
     body: { prompt },
-    signOutOnAuthFailure: true,
     fallbackErrorMessage: 'Nao foi possivel gerar imagem com Gemini.',
   });
 
