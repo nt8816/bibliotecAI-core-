@@ -46,7 +46,7 @@ describe('invokeEdgeFunction', () => {
     expect(url).toContain('/functions/v1/gerar-imagem-ia');
     expect(options.method).toBe('POST');
     expect(options.headers.apikey).toBeTruthy();
-    expect(options.headers.Authorization).toBeUndefined();
+    expect(options.headers.Authorization).toMatch(/^Bearer\s+/);
     expect(options.headers.authorization).toBeUndefined();
   });
 });
