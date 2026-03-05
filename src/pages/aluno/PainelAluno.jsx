@@ -41,6 +41,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 
@@ -93,6 +94,21 @@ async function fileToDataUrl(file) {
   });
 }
 
+async function generateImageWithIA(prompt) {
+  const data = await invokeEdgeFunction('gerar-imagem-ia', {
+    body: { prompt },
+    requireAuth: false,
+    fallbackErrorMessage: 'Nao foi possivel gerar imagem no momento.',
+  });
+
+  const imageDataUrl = data?.imageDataUrl;
+  if (!imageDataUrl || typeof imageDataUrl !== 'string') {
+    throw new Error('A API respondeu sem imagem.');
+  }
+
+  return imageDataUrl;
+}
+
 export default function PainelAluno() {
 
   const { user } = useAuth();
@@ -137,6 +153,8 @@ export default function PainelAluno() {
 
   const [studioTitulo, setStudioTitulo] = useState('');
   const [studioDescricao, setStudioDescricao] = useState('');
+  const [studioPrompt, setStudioPrompt] = useState('');
+  const [gerandoImagemIA, setGerandoImagemIA] = useState(false);
   const [studioAudiobookId, setStudioAudiobookId] = useState('');
   const [studioSlides, setStudioSlides] = useState([]);
   const [studioAudioFundoUrl, setStudioAudioFundoUrl] = useState('');
@@ -796,6 +814,40 @@ export default function PainelAluno() {
     }
   };
 
+  const handleGerarImagemIA = async () => {
+    const prompt = studioPrompt.trim();
+    if (!prompt) {
+      toast({ variant: 'destructive', title: 'Informe o prompt', description: 'Descreva a imagem para gerar.' });
+      return;
+    }
+    if (studioSlides.length >= 8) {
+      toast({ variant: 'destructive', title: 'Limite atingido', description: 'Use no maximo 8 imagens por animacao.' });
+      return;
+    }
+
+    setGerandoImagemIA(true);
+    try {
+      const imageDataUrl = await generateImageWithIA(prompt);
+      setStudioSlides((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          url: imageDataUrl,
+          origem: 'ia',
+          legenda: prompt.slice(0, 80),
+        },
+      ]);
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Falha ao gerar imagem',
+        description: error?.message || 'Nao foi possivel gerar imagem no momento.',
+      });
+    } finally {
+      setGerandoImagemIA(false);
+    }
+  };
+
   const handleAudioFundo = async (files) => {
     const file = files?.[0];
     if (!file) return;
@@ -821,6 +873,7 @@ export default function PainelAluno() {
     setSaving(true);
     try {
       const tags = [];
+      if (studioSlides.some((slide) => slide.origem === 'ia')) tags.push('ia');
       if (studioAudioFundoUrl) tags.push('audio-fundo');
 
       const { error } = await supabase.from('comunidade_posts').insert({
@@ -840,6 +893,7 @@ export default function PainelAluno() {
       toast({ title: 'Projeto compartilhado na comunidade!' });
       setStudioTitulo('');
       setStudioDescricao('');
+      setStudioPrompt('');
       setStudioAudiobookId('');
       setStudioSlides([]);
       setStudioAudioFundoUrl('');
@@ -1237,13 +1291,21 @@ export default function PainelAluno() {
           <TabsContent value="laboratorio" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Imagens do laboratÃ³rio</CardTitle>
+                <CardTitle className="text-base">Gerar imagens</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Adicionar imagens (atÃ© 8)</Label>
+                  <Label>Prompt da imagem</Label>
+                  <div className="flex gap-2">
+                    <Input value={studioPrompt} onChange={(e) => setStudioPrompt(e.target.value)} placeholder="Descreva a imagem" />
+                    <Button type="button" variant="outline" onClick={handleGerarImagemIA} disabled={gerandoImagemIA}>
+                      <Sparkles className="w-4 h-4 mr-1" /> {gerandoImagemIA ? 'Gerando...' : 'Gerar'}
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Adicionar imagens do computador (atÃ© 8)</Label>
                   <Input type="file" accept="image/*" multiple onChange={(e) => handleAdicionarSlides(e.target.files)} />
-                  <p className="text-xs text-muted-foreground">A geraÃ§Ã£o por IA foi removida deste ambiente.</p>
                 </div>
                 {studioSlides.length > 0 && (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
