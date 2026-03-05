@@ -11,7 +11,6 @@ import {
   Clock,
   Headphones,
   Heart,
-  ImagePlus,
   PlayCircle,
   PlusCircle,
   Search,
@@ -94,54 +93,6 @@ async function fileToDataUrl(file) {
   });
 }
 
-async function generateImageWithGemini(prompt) {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-  const baseUrl = supabaseUrl || (projectId ? `https://${projectId}.supabase.co` : '');
-
-  if (!baseUrl || !publishableKey) {
-    throw new Error('Configuracao do Supabase ausente para gerar imagem.');
-  }
-
-  const headers = {
-    'Content-Type': 'application/json',
-    apikey: publishableKey,
-  };
-
-  // Legacy anon keys are JWTs and can satisfy verify_jwt at the function gateway.
-  if (String(publishableKey).startsWith('eyJ')) {
-    headers.Authorization = `Bearer ${publishableKey}`;
-  }
-
-  const response = await fetch(`${baseUrl}/functions/v1/gerar-imagem-ia`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ prompt }),
-  });
-
-  if (!response.ok) {
-    let message = 'Nao foi possivel gerar imagem com Gemini.';
-    try {
-      const payload = await response.json();
-      message = payload?.error || payload?.message || message;
-    } catch {
-      const text = await response.text().catch(() => '');
-      if (text?.trim()) message = text.trim();
-    }
-    throw new Error(message);
-  }
-
-  const data = await response.json().catch(() => ({}));
-
-  const imageDataUrl = data?.imageDataUrl;
-  if (!imageDataUrl || typeof imageDataUrl !== 'string') {
-    throw new Error('A API respondeu sem imagem.');
-  }
-
-  return imageDataUrl;
-}
-
 export default function PainelAluno() {
 
   const { user } = useAuth();
@@ -186,8 +137,6 @@ export default function PainelAluno() {
 
   const [studioTitulo, setStudioTitulo] = useState('');
   const [studioDescricao, setStudioDescricao] = useState('');
-  const [studioPrompt, setStudioPrompt] = useState('');
-  const [gerandoImagemIA, setGerandoImagemIA] = useState(false);
   const [studioAudiobookId, setStudioAudiobookId] = useState('');
   const [studioSlides, setStudioSlides] = useState([]);
   const [studioAudioFundoUrl, setStudioAudioFundoUrl] = useState('');
@@ -847,40 +796,6 @@ export default function PainelAluno() {
     }
   };
 
-  const handleGerarImagemIA = async () => {
-    const prompt = studioPrompt.trim();
-    if (!prompt) {
-      toast({ variant: 'destructive', title: 'Informe o prompt', description: 'Descreva a imagem para gerar com IA.' });
-      return;
-    }
-    if (studioSlides.length >= 8) {
-      toast({ variant: 'destructive', title: 'Limite atingido', description: 'Use no maximo 8 imagens por animacao.' });
-      return;
-    }
-
-    setGerandoImagemIA(true);
-    try {
-      const imageDataUrl = await generateImageWithGemini(prompt);
-      setStudioSlides((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          url: imageDataUrl,
-          origem: 'ia',
-          legenda: prompt.slice(0, 80),
-        },
-      ]);
-    } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Falha ao gerar imagem',
-        description: error?.message || 'Nao foi possivel gerar imagem com Gemini.',
-      });
-    } finally {
-      setGerandoImagemIA(false);
-    }
-  };
-
   const handleAudioFundo = async (files) => {
     const file = files?.[0];
     if (!file) return;
@@ -906,7 +821,6 @@ export default function PainelAluno() {
     setSaving(true);
     try {
       const tags = [];
-      if (studioSlides.some((slide) => slide.origem === 'ia')) tags.push('ia');
       if (studioAudioFundoUrl) tags.push('audio-fundo');
 
       const { error } = await supabase.from('comunidade_posts').insert({
@@ -926,7 +840,6 @@ export default function PainelAluno() {
       toast({ title: 'Projeto compartilhado na comunidade!' });
       setStudioTitulo('');
       setStudioDescricao('');
-      setStudioPrompt('');
       setStudioAudiobookId('');
       setStudioSlides([]);
       setStudioAudioFundoUrl('');
@@ -1324,14 +1237,13 @@ export default function PainelAluno() {
           <TabsContent value="laboratorio" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Gerar imagens</CardTitle>
+                <CardTitle className="text-base">Imagens do laboratÃ³rio</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <Input value={studioPrompt} onChange={(e) => setStudioPrompt(e.target.value)} placeholder="Descreva a imagem" />
-                  <Button type="button" variant="outline" onClick={handleGerarImagemIA} disabled={gerandoImagemIA}>
-                    <Sparkles className="w-4 h-4 mr-1" /> {gerandoImagemIA ? 'Gerando...' : 'Gerar'}
-                  </Button>
+                <div className="space-y-2">
+                  <Label>Adicionar imagens (atÃ© 8)</Label>
+                  <Input type="file" accept="image/*" multiple onChange={(e) => handleAdicionarSlides(e.target.files)} />
+                  <p className="text-xs text-muted-foreground">A geraÃ§Ã£o por IA foi removida deste ambiente.</p>
                 </div>
                 {studioSlides.length > 0 && (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
