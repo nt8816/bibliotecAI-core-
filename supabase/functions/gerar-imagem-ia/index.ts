@@ -4,6 +4,10 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
+const HF_DEFAULT_MODEL = "black-forest-labs/FLUX.1-dev";
+const HF_DEFAULT_PROVIDER = "fal-ai";
+const HF_DEFAULT_STEPS = 5;
+
 const DEFAULT_MODELS = [
   "gemini-2.0-flash-exp-image-generation",
   "gemini-2.0-flash-preview-image-generation",
@@ -14,6 +18,100 @@ const DEFAULT_MODELS = [
 const ensureArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
 const stripModelPrefix = (name: string): string => String(name || "").replace(/^models\//, "").trim();
+
+const uint8ToBase64 = (bytes: Uint8Array): string => {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.slice(i, i + chunk));
+  }
+  return btoa(binary);
+};
+
+const blobToDataUrl = async (blob: Blob): Promise<string> => {
+  const mime = blob.type || "image/png";
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  return `data:${mime};base64,${uint8ToBase64(bytes)}`;
+};
+
+const extractHfDataUrl = (payload: any): string | null => {
+  const data = ensureArray(payload?.data);
+  const first = data[0] as any;
+  if (first?.b64_json) return `data:image/png;base64,${first.b64_json}`;
+  if (first?.url && typeof first.url === "string" && first.url.startsWith("data:image/")) return first.url;
+  if (typeof payload?.image === "string" && payload.image.startsWith("data:image/")) return payload.image;
+  if (typeof payload?.image_base64 === "string") return `data:image/png;base64,${payload.image_base64}`;
+  return null;
+};
+
+const toFiniteInt = (value: unknown, fallback: number): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+};
+
+const generateWithHuggingFace = async (
+  token: string,
+  prompt: string,
+  model: string,
+  provider: string,
+  numInferenceSteps: number,
+): Promise<{ imageDataUrl: string; model: string; provider: string }> => {
+  const routerEndpoint = `https://router.huggingface.co/${encodeURIComponent(provider)}/v1/images/generations`;
+  const routerResponse = await fetch(routerEndpoint, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      prompt,
+      n: 1,
+      response_format: "b64_json",
+      parameters: { num_inference_steps: numInferenceSteps },
+    }),
+  });
+
+  if (routerResponse.ok) {
+    const contentType = String(routerResponse.headers.get("content-type") || "").toLowerCase();
+    if (contentType.startsWith("image/")) {
+      return {
+        imageDataUrl: await blobToDataUrl(await routerResponse.blob()),
+        model,
+        provider,
+      };
+    }
+
+    const payload = await routerResponse.json().catch(() => ({}));
+    const imageDataUrl = extractHfDataUrl(payload);
+    if (imageDataUrl) return { imageDataUrl, model, provider };
+  }
+
+  const inferenceEndpoint = `https://api-inference.huggingface.co/models/${encodeURIComponent(model)}`;
+  const inferenceResponse = await fetch(inferenceEndpoint, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      inputs: prompt,
+      parameters: { num_inference_steps: numInferenceSteps },
+    }),
+  });
+
+  if (!inferenceResponse.ok) {
+    const errorPayload = await inferenceResponse.json().catch(() => ({}));
+    const message = String(errorPayload?.error || errorPayload?.message || `HTTP ${inferenceResponse.status}`);
+    throw new Error(`Hugging Face falhou: ${inferenceResponse.status} - ${message}`);
+  }
+
+  return {
+    imageDataUrl: await blobToDataUrl(await inferenceResponse.blob()),
+    model,
+    provider,
+  };
+};
 
 const extractGeminiImageDataUrl = (payload: any): string | null => {
   const candidates = ensureArray(payload?.candidates);
@@ -80,16 +178,8 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Metodo nao permitido." }), { status: 405, headers: corsHeaders });
     }
 
-    const geminiApiKey = Deno.env.get("GEMINI_API_KEY")?.trim();
-    if (!geminiApiKey) {
-      return new Response(JSON.stringify({ error: "Secret GEMINI_API_KEY nao configurado." }), {
-        status: 500,
-        headers: corsHeaders,
-      });
-    }
-
     const body = await req.json().catch(() => ({}));
-    const prompt = String(body?.prompt || "").trim();
+    const prompt = String(body?.prompt || body?.inputs || "").trim();
     if (!prompt) {
       return new Response(JSON.stringify({ error: "Informe o prompt para gerar a imagem." }), {
         status: 400,
@@ -97,10 +187,33 @@ Deno.serve(async (req) => {
       });
     }
 
+    const hfToken = Deno.env.get("HF_TOKEN")?.trim();
+    if (hfToken) {
+      const model = String(body?.model || Deno.env.get("HF_IMAGE_MODEL") || HF_DEFAULT_MODEL).trim();
+      const provider = String(body?.provider || Deno.env.get("HF_IMAGE_PROVIDER") || HF_DEFAULT_PROVIDER).trim();
+      const numInferenceSteps = toFiniteInt(body?.parameters?.num_inference_steps, HF_DEFAULT_STEPS);
+
+      try {
+        const result = await generateWithHuggingFace(hfToken, prompt, model, provider, numInferenceSteps);
+        return new Response(JSON.stringify(result), { status: 200, headers: corsHeaders });
+      } catch (hfError) {
+        const message = hfError instanceof Error ? hfError.message : "Erro desconhecido no Hugging Face";
+        return new Response(JSON.stringify({ error: message }), { status: 502, headers: corsHeaders });
+      }
+    }
+
     const configuredModels = String(Deno.env.get("GEMINI_IMAGE_MODEL") || "")
       .split(",")
       .map(stripModelPrefix)
       .filter(Boolean);
+
+    const geminiApiKey = Deno.env.get("GEMINI_API_KEY")?.trim();
+    if (!geminiApiKey) {
+      return new Response(JSON.stringify({ error: "Secret HF_TOKEN ou GEMINI_API_KEY nao configurado." }), {
+        status: 500,
+        headers: corsHeaders,
+      });
+    }
 
     const listedModels = await loadSupportedModels(geminiApiKey);
     const modelsToTry = [...new Set([...configuredModels, ...listedModels, ...DEFAULT_MODELS.map(stripModelPrefix)])];
@@ -161,4 +274,3 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: message }), { status: 500, headers: corsHeaders });
   }
 });
-
