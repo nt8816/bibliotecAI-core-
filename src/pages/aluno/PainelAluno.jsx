@@ -96,7 +96,12 @@ async function fileToDataUrl(file) {
 
 async function generateImageWithIA(prompt) {
   const data = await invokeEdgeFunction('gerar-imagem-ia', {
-    body: { prompt },
+    body: {
+      prompt,
+      provider: 'fal-ai',
+      model: 'black-forest-labs/FLUX.1-dev',
+      parameters: { num_inference_steps: 5 },
+    },
     requireAuth: false,
     fallbackErrorMessage: 'Nao foi possivel gerar imagem no momento.',
   });

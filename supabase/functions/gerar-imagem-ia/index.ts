@@ -86,31 +86,9 @@ const generateWithHuggingFace = async (
     const imageDataUrl = extractHfDataUrl(payload);
     if (imageDataUrl) return { imageDataUrl, model, provider };
   }
-
-  const inferenceEndpoint = `https://api-inference.huggingface.co/models/${encodeURIComponent(model)}`;
-  const inferenceResponse = await fetch(inferenceEndpoint, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      inputs: prompt,
-      parameters: { num_inference_steps: numInferenceSteps },
-    }),
-  });
-
-  if (!inferenceResponse.ok) {
-    const errorPayload = await inferenceResponse.json().catch(() => ({}));
-    const message = String(errorPayload?.error || errorPayload?.message || `HTTP ${inferenceResponse.status}`);
-    throw new Error(`Hugging Face falhou: ${inferenceResponse.status} - ${message}`);
-  }
-
-  return {
-    imageDataUrl: await blobToDataUrl(await inferenceResponse.blob()),
-    model,
-    provider,
-  };
+  const errorPayload = await routerResponse.json().catch(() => ({}));
+  const message = String(errorPayload?.error || errorPayload?.message || `HTTP ${routerResponse.status}`);
+  throw new Error(`Hugging Face falhou (${provider}/${model}): ${routerResponse.status} - ${message}`);
 };
 
 const extractGeminiImageDataUrl = (payload: any): string | null => {
@@ -187,7 +165,22 @@ Deno.serve(async (req) => {
       });
     }
 
+    const requestedModel = String(body?.model || "").trim();
+    const requestedProvider = String(body?.provider || "").trim();
+    const wantsHuggingFace =
+      Boolean(requestedProvider) ||
+      requestedModel.includes("/") ||
+      requestedModel.toLowerCase().includes("flux") ||
+      Boolean(Deno.env.get("HF_IMAGE_MODEL") || Deno.env.get("HF_IMAGE_PROVIDER"));
+
     const hfToken = Deno.env.get("HF_TOKEN")?.trim();
+    if (wantsHuggingFace && !hfToken) {
+      return new Response(
+        JSON.stringify({ error: "HF_TOKEN nao configurado. Defina o secret da Hugging Face para usar FLUX." }),
+        { status: 500, headers: corsHeaders },
+      );
+    }
+
     if (hfToken) {
       const model = String(body?.model || Deno.env.get("HF_IMAGE_MODEL") || HF_DEFAULT_MODEL).trim();
       const provider = String(body?.provider || Deno.env.get("HF_IMAGE_PROVIDER") || HF_DEFAULT_PROVIDER).trim();
