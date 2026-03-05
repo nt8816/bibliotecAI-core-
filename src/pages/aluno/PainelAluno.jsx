@@ -114,6 +114,16 @@ async function generateImageWithIA(prompt) {
   return imageDataUrl;
 }
 
+async function generateTextWithIA(task, input, fallbackErrorMessage) {
+  const data = await invokeEdgeFunction('gerar-texto-ia', {
+    body: { task, input },
+    requireAuth: false,
+    fallbackErrorMessage: fallbackErrorMessage || 'Nao foi possivel gerar texto com IA no momento.',
+  });
+
+  return data;
+}
+
 export default function PainelAluno() {
 
   const { user } = useAuth();
@@ -169,6 +179,7 @@ export default function PainelAluno() {
   const [quiz, setQuiz] = useState([]);
   const [quizRespostas, setQuizRespostas] = useState({});
   const [quizResultado, setQuizResultado] = useState(null);
+  const [gerandoQuizIA, setGerandoQuizIA] = useState(false);
 
   const [atividadeTexto, setAtividadeTexto] = useState({});
   const [saving, setSaving] = useState(false);
@@ -177,6 +188,9 @@ export default function PainelAluno() {
   const [resumoLivroId, setResumoLivroId] = useState('');
   const [resumoTexto, setResumoTexto] = useState('');
   const [resumosCriados, setResumosCriados] = useState([]);
+  const [gerandoResumoIA, setGerandoResumoIA] = useState(false);
+  const [desafioIA, setDesafioIA] = useState(null);
+  const [gerandoDesafioIA, setGerandoDesafioIA] = useState(false);
   const warnedMissingFeaturesRef = useRef(false);
   const fetchInFlightRef = useRef(null);
   const realtimeDebounceRef = useRef(null);
@@ -913,33 +927,53 @@ export default function PainelAluno() {
     }
   };
 
-  const gerarQuizComIA = () => {
+  const gerarQuizComIA = async () => {
     const livro = livros.find((item) => item.id === quizLivroId);
     if (!livro) {
       toast({ variant: 'destructive', title: 'Selecione um livro', description: 'Escolha um livro para gerar o quiz.' });
       return;
     }
     const tema = quizTema.trim() || 'compreensão da leitura';
-    const perguntas = [
-      {
-        enunciado: `Qual é o foco principal do tema "${tema}" no livro "${livro.titulo}"?`,
-        opcoes: ['Personagens e conflitos', 'Resumo sem contexto', 'Apenas a capa', 'Dados aleatórios'],
-        correta: 0,
-      },
-      {
-        enunciado: `Qual estratégia melhora o aprendizado após ler "${livro.titulo}"?`,
-        opcoes: ['Criar resumo e discutir', 'Não revisar nada', 'Ignorar personagens', 'Pular capítulos'],
-        correta: 0,
-      },
-      {
-        enunciado: `Qual atitude demonstra leitura crítica sobre "${livro.titulo}"?`,
-        opcoes: ['Relacionar com a vida real', 'Memorizar sem entender', 'Copiar respostas', 'Ler só o título'],
-        correta: 0,
-      },
-    ];
-    setQuiz(perguntas);
-    setQuizRespostas({});
-    setQuizResultado(null);
+
+    setGerandoQuizIA(true);
+    try {
+      const data = await generateTextWithIA(
+        'quiz_leitura',
+        {
+          titulo: livro.titulo,
+          autor: livro.autor,
+          sinopse: livro.sinopse || '',
+          tema,
+          quantidade: 3,
+        },
+        'Nao foi possivel gerar quiz com IA no momento.',
+      );
+
+      const perguntasRaw = ensureArray(data?.data?.perguntas);
+      const perguntas = perguntasRaw
+        .map((item) => ({
+          enunciado: String(item?.enunciado || '').trim(),
+          opcoes: ensureArray(item?.opcoes).map((opcao) => String(opcao || '').trim()).filter(Boolean).slice(0, 4),
+          correta: Number(item?.correta),
+        }))
+        .filter((item) => item.enunciado && item.opcoes.length === 4 && Number.isInteger(item.correta) && item.correta >= 0 && item.correta <= 3)
+        .slice(0, 5);
+
+      if (perguntas.length === 0) throw new Error('A IA respondeu sem perguntas válidas.');
+
+      setQuiz(perguntas);
+      setQuizRespostas({});
+      setQuizResultado(null);
+      toast({ title: 'Quiz gerado com IA!' });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao gerar quiz',
+        description: error?.message || 'Não foi possível gerar quiz com IA.',
+      });
+    } finally {
+      setGerandoQuizIA(false);
+    }
   };
 
   const corrigirQuiz = () => {
@@ -962,16 +996,66 @@ export default function PainelAluno() {
     return 'Meu Perfil';
   }, [activeSection]);
 
-  const gerarResumo = () => {
+  const gerarResumo = async () => {
     const livro = livros.find((item) => item.id === resumoLivroId);
     if (!livro) {
       toast({ variant: 'destructive', title: 'Selecione um livro', description: 'Escolha um livro para gerar o resumo.' });
       return;
     }
-    const base = livro.sinopse ? `Sinopse base: ${livro.sinopse}` : 'Sinopse não cadastrada no momento.';
-    setResumoTexto(
-      `Resumo de "${livro.titulo}"\n\nTema principal:\n- \n\nPersonagens ou pontos-chave:\n- \n\nMinha reflexão:\n- \n\n${base}`,
-    );
+
+    setGerandoResumoIA(true);
+    try {
+      const data = await generateTextWithIA(
+        'resumo_estudo',
+        {
+          titulo: livro.titulo,
+          autor: livro.autor,
+          sinopse: livro.sinopse || '',
+        },
+        'Nao foi possivel gerar resumo com IA no momento.',
+      );
+
+      const texto = String(data?.data?.texto || data?.text || '').trim();
+      if (!texto) throw new Error('A IA respondeu sem texto.');
+      setResumoTexto(texto);
+      toast({ title: 'Resumo gerado com IA!' });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao gerar resumo',
+        description: error?.message || 'Não foi possível gerar resumo com IA.',
+      });
+    } finally {
+      setGerandoResumoIA(false);
+    }
+  };
+
+  const gerarDesafioGamificacao = async () => {
+    setGerandoDesafioIA(true);
+    try {
+      const data = await generateTextWithIA(
+        'gamificacao_desafio',
+        {
+          nome: user?.user_metadata?.nome || user?.email || 'Aluno',
+          nivel: nivelAtual,
+          xp: pontosExperiencia,
+          livrosLidos,
+        },
+        'Nao foi possivel gerar desafio de gamificacao no momento.',
+      );
+      const desafio = data?.data;
+      if (!desafio?.titulo || !desafio?.desafio) throw new Error('A IA respondeu sem desafio válido.');
+      setDesafioIA(desafio);
+      toast({ title: 'Desafio de gamificação gerado!' });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro no desafio IA',
+        description: error?.message || 'Não foi possível gerar desafio agora.',
+      });
+    } finally {
+      setGerandoDesafioIA(false);
+    }
   };
 
   const salvarResumo = () => {
@@ -1036,6 +1120,32 @@ export default function PainelAluno() {
               <p className="text-xs text-muted-foreground">{Math.round(progressoNivel)}% do nível atual</p>
             </div>
           </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Flame className="w-4 h-4" />
+                  Desafio IA do dia
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button type="button" variant="outline" onClick={gerarDesafioGamificacao} disabled={gerandoDesafioIA}>
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  {gerandoDesafioIA ? 'Gerando desafio...' : 'Gerar desafio de gamificação'}
+                </Button>
+                {desafioIA && (
+                  <div className="rounded-lg border p-3 space-y-1">
+                    <p className="text-sm font-semibold">{desafioIA.titulo}</p>
+                    <p className="text-sm text-muted-foreground">{desafioIA.desafio}</p>
+                    {desafioIA.recompensa && (
+                      <Badge variant="outline" className="mt-1">
+                        Recompensa: {desafioIA.recompensa}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </CardContent>
             </Card>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
@@ -1326,6 +1436,124 @@ export default function PainelAluno() {
                         >
                           <Trash2 className="w-3 h-3" />
                         </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Quiz com IA</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <select
+                    className="h-10 rounded-md border bg-background px-3 text-sm"
+                    value={quizLivroId}
+                    onChange={(e) => setQuizLivroId(e.target.value)}
+                  >
+                    <option value="">Selecione um livro</option>
+                    {livros.map((livro) => (
+                      <option key={livro.id} value={livro.id}>
+                        {livro.titulo}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    value={quizTema}
+                    onChange={(e) => setQuizTema(e.target.value)}
+                    placeholder="Tema do quiz (ex.: interpretação)"
+                  />
+                  <Button type="button" variant="outline" onClick={gerarQuizComIA} disabled={gerandoQuizIA}>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    {gerandoQuizIA ? 'Gerando quiz...' : 'Gerar quiz IA'}
+                  </Button>
+                </div>
+
+                {quiz.length > 0 && (
+                  <div className="space-y-3">
+                    {quiz.map((pergunta, index) => (
+                      <div key={`${pergunta.enunciado}-${index}`} className="rounded-md border p-3 space-y-2">
+                        <p className="text-sm font-medium">{index + 1}. {pergunta.enunciado}</p>
+                        <div className="space-y-1">
+                          {pergunta.opcoes.map((opcao, opcaoIndex) => (
+                            <label key={`${index}-${opcaoIndex}`} className="flex items-center gap-2 text-sm">
+                              <input
+                                type="radio"
+                                name={`quiz-${index}`}
+                                checked={Number(quizRespostas[index]) === opcaoIndex}
+                                onChange={() =>
+                                  setQuizRespostas((prev) => ({
+                                    ...prev,
+                                    [index]: opcaoIndex,
+                                  }))
+                                }
+                              />
+                              <span>{opcao}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+
+                    <div className="flex items-center gap-2">
+                      <Button type="button" onClick={corrigirQuiz}>
+                        Corrigir quiz
+                      </Button>
+                      {quizResultado && (
+                        <Badge variant="outline">
+                          Acertos: {quizResultado.acertos}/{quizResultado.total}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Resumo com IA</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <select
+                    className="h-10 rounded-md border bg-background px-3 text-sm"
+                    value={resumoLivroId}
+                    onChange={(e) => setResumoLivroId(e.target.value)}
+                  >
+                    <option value="">Selecione um livro</option>
+                    {livros.map((livro) => (
+                      <option key={livro.id} value={livro.id}>
+                        {livro.titulo}
+                      </option>
+                    ))}
+                  </select>
+                  <Button type="button" variant="outline" onClick={gerarResumo} disabled={gerandoResumoIA}>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    {gerandoResumoIA ? 'Gerando resumo...' : 'Gerar resumo IA'}
+                  </Button>
+                  <Button type="button" onClick={salvarResumo}>
+                    Salvar resumo
+                  </Button>
+                </div>
+
+                <Textarea
+                  rows={8}
+                  value={resumoTexto}
+                  onChange={(e) => setResumoTexto(e.target.value)}
+                  placeholder="O resumo gerado aparecerá aqui..."
+                />
+
+                {resumosCriados.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold">Resumos salvos</p>
+                    {resumosCriados.slice(0, 5).map((resumo) => (
+                      <div key={resumo.id} className="rounded-md border p-3">
+                        <p className="text-xs text-muted-foreground">{resumo.livroTitulo}</p>
+                        <p className="text-sm line-clamp-3">{resumo.texto}</p>
                       </div>
                     ))}
                   </div>

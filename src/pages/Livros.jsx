@@ -270,21 +270,48 @@ export default function Livros() {
 
     setBuscandoSinopse(true);
     try {
-      const resultado = await buscarSinopseOpenLibrary(formData.titulo, formData.autor);
-      if (!resultado) {
-        toast({ title: 'Não encontrado', description: 'Livro não encontrado na base. Preencha manualmente.' });
+      const [iaResult, openLibraryResult] = await Promise.allSettled([
+        invokeEdgeFunction('gerar-texto-ia', {
+          body: {
+            task: 'sinopse_livro',
+            input: {
+              titulo: formData.titulo,
+              autor: formData.autor,
+              area: formData.area,
+              sinopseBase: formData.sinopse,
+            },
+          },
+          requireAuth: false,
+          fallbackErrorMessage: 'Não foi possível gerar sinopse por IA.',
+        }),
+        buscarSinopseOpenLibrary(formData.titulo, formData.autor),
+      ]);
+
+      const iaPayload = iaResult.status === 'fulfilled' ? iaResult.value : null;
+      const iaSinopse = String(iaPayload?.data?.sinopse || iaPayload?.text || '').trim();
+      const resultado = openLibraryResult.status === 'fulfilled' ? openLibraryResult.value : null;
+
+      if (!iaSinopse && !resultado) {
+        toast({ title: 'Não encontrado', description: 'Não foi possível buscar ou gerar sinopse agora.' });
         return;
       }
 
       const updates = {};
-      if (resultado.sinopse) updates.sinopse = resultado.sinopse;
-      if (!formData.autor && resultado.autoData.autor) updates.autor = resultado.autoData.autor;
-      if (!formData.ano && resultado.autoData.ano) updates.ano = resultado.autoData.ano;
-      if (!formData.editora && resultado.autoData.editora) updates.editora = resultado.autoData.editora;
+      if (iaSinopse) updates.sinopse = iaSinopse;
+      else if (resultado?.sinopse) updates.sinopse = resultado.sinopse;
+
+      if (!formData.autor && resultado?.autoData?.autor) updates.autor = resultado.autoData.autor;
+      if (!formData.ano && resultado?.autoData?.ano) updates.ano = resultado.autoData.ano;
+      if (!formData.editora && resultado?.autoData?.editora) updates.editora = resultado.autoData.editora;
 
       if (Object.keys(updates).length > 0) {
         setFormData((prev) => ({ ...prev, ...updates }));
-        toast({ title: 'Dados encontrados!', description: 'Informações preenchidas automaticamente.' });
+        toast({
+          title: 'Dados preenchidos',
+          description: iaSinopse
+            ? 'Sinopse gerada por IA e dados complementados automaticamente.'
+            : 'Informações preenchidas automaticamente.',
+        });
       } else {
         toast({ title: 'Sem novos dados', description: 'Nenhuma informação adicional encontrada.' });
       }
