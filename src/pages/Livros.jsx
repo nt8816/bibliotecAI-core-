@@ -875,15 +875,14 @@ export default function Livros() {
               )}
 
               {canManageBooks && (
-                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button onClick={() => handleOpenDialog()}>
-                      <Plus className="w-4 h-4 mr-2" />
-                      Adicionar
-                    </Button>
-                  </DialogTrigger>
+                <>
+                  <Button onClick={() => handleOpenDialog()}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Adicionar
+                  </Button>
+                  <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
 
-                  <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" translate="no">
                     <DialogHeader>
                       <DialogTitle>{editingLivro ? 'Editar Livro' : 'Novo Livro'}</DialogTitle>
                       <DialogDescription>
@@ -894,11 +893,11 @@ export default function Livros() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
                       <div className="space-y-2">
                         <Label htmlFor="titulo">Título *</Label>
-                        <Input id="titulo" value={formData.titulo} onChange={(e) => setFormData({ ...formData, titulo: e.target.value })} />
+                        <Input id="titulo" value={formData.titulo} onChange={(e) => setFormData({ ...formData, titulo: e.target.value })} autoComplete="off" />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="autor">Autor</Label>
-                        <Input id="autor" value={formData.autor} onChange={(e) => setFormData({ ...formData, autor: e.target.value })} />
+                        <Input id="autor" value={formData.autor} onChange={(e) => setFormData({ ...formData, autor: e.target.value })} autoComplete="off" />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="area">Área</Label>
@@ -1010,7 +1009,18 @@ export default function Livros() {
                             {buscandoSinopse ? 'Buscando...' : 'Buscar sinopse'}
                           </Button>
                         </div>
-                        <Textarea id="sinopse" placeholder="Digite a sinopse ou use o botão acima..." className="min-h-[120px] resize-y" value={formData.sinopse || ''} onChange={(e) => setFormData({ ...formData, sinopse: e.target.value })} />
+                        <Textarea
+                          id="sinopse"
+                          placeholder="Digite a sinopse ou use o botão acima..."
+                          className="min-h-[120px] resize-y"
+                          value={formData.sinopse || ''}
+                          onChange={(e) => setFormData({ ...formData, sinopse: e.target.value })}
+                          autoComplete="off"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          translate="no"
+                          data-gramm="false"
+                        />
                       </div>
                     </div>
 
@@ -1020,6 +1030,7 @@ export default function Livros() {
                     </div>
                   </DialogContent>
                 </Dialog>
+                </>
               )}
             </div>
           </div>
@@ -1145,8 +1156,8 @@ export default function Livros() {
                                   Ver sinopse
                                 </button>
                               </TooltipTrigger>
-                              <TooltipContent side="left" className="max-w-xs">
-                                <p className="text-xs" translate="yes">{livro.sinopse.slice(0, 200)}{livro.sinopse.length > 200 ? '...' : ''}</p>
+                              <TooltipContent side="left" className="max-w-xs" translate="no">
+                                <p className="text-xs">{livro.sinopse.slice(0, 200)}{livro.sinopse.length > 200 ? '...' : ''}</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
@@ -1178,14 +1189,14 @@ export default function Livros() {
 
           {sinopseExpandida && (
             <Dialog open={!!sinopseExpandida} onOpenChange={() => setSinopseExpandida(null)}>
-              <DialogContent className="max-w-lg">
+              <DialogContent className="max-w-lg" translate="no">
                 <DialogHeader>
                   <DialogTitle>Sinopse</DialogTitle>
                   <DialogDescription>
                     Visualização completa da sinopse selecionada.
                   </DialogDescription>
                 </DialogHeader>
-                <p className="text-sm leading-relaxed whitespace-pre-wrap" translate="yes">{livros.find((l) => l.id === sinopseExpandida)?.sinopse || 'Sem sinopse.'}</p>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">{livros.find((l) => l.id === sinopseExpandida)?.sinopse || 'Sem sinopse.'}</p>
               </DialogContent>
             </Dialog>
           )}
