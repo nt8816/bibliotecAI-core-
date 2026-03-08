@@ -277,7 +277,14 @@ export default function ComunidadeAluno() {
   };
 
   const handleCriarPost = async () => {
-    if (!enabled || !alunoId || !escolaId) return;
+    if (!enabled || !alunoId || !escolaId) {
+      toast({
+        variant: 'destructive',
+        title: 'Comunidade indisponível',
+        description: 'Não foi possível publicar agora. Verifique se as tabelas/migrations estão atualizadas.',
+      });
+      return;
+    }
     if (!postConteudo.trim() && imageDataUrls.length === 0 && !postAudiobookId) {
       toast({
         variant: 'destructive',
@@ -342,7 +349,14 @@ export default function ComunidadeAluno() {
   };
 
   const toggleLikePost = async (postId) => {
-    if (!enabled || !alunoId) return;
+    if (!enabled || !alunoId) {
+      toast({
+        variant: 'destructive',
+        title: 'Comunidade indisponível',
+        description: 'Não foi possível curtir agora.',
+      });
+      return;
+    }
     if (likingPostIds.has(postId)) return;
 
     setLikingPostIds((prev) => {

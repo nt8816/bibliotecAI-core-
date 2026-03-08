@@ -311,7 +311,11 @@ export default function PainelAluno() {
 
         if (missingAnyNewTable && !warnedMissingFeaturesRef.current) {
           warnedMissingFeaturesRef.current = true;
-          setOptionalFeaturesEnabled(false);
+          toast({
+            variant: 'destructive',
+            title: 'Recursos do laboratório incompletos',
+            description: 'Algumas tabelas novas não existem no banco. Aplique as migrations mais recentes do Supabase.',
+          });
         }
 
         const maybeError = [
@@ -725,7 +729,14 @@ export default function PainelAluno() {
   };
 
   const handleSaveReview = async () => {
-    if (!alunoId || !reviewLivro || !escolaId) return;
+    if (!alunoId || !reviewLivro || !escolaId) {
+      toast({
+        variant: 'destructive',
+        title: 'Perfil incompleto',
+        description: 'Não foi possível identificar seu vínculo com a escola para salvar a resenha.',
+      });
+      return;
+    }
 
     setSaving(true);
     try {
@@ -818,7 +829,14 @@ export default function PainelAluno() {
 
   const handleEnviarAtividade = async (atividade) => {
     if (!alunoId) return;
-    if (!optionalFeaturesEnabled) return;
+    if (!optionalFeaturesEnabled) {
+      toast({
+        variant: 'destructive',
+        title: 'Recurso indisponível',
+        description: 'Entrega de atividades desativada neste ambiente.',
+      });
+      return;
+    }
 
     const texto = (atividadeTexto[atividade.id] || '').trim();
     if (!texto) {
@@ -855,8 +873,22 @@ export default function PainelAluno() {
   };
 
   const handleCriarAudiobook = async () => {
-    if (!alunoId || !escolaId) return;
-    if (!optionalFeaturesEnabled) return;
+    if (!alunoId || !escolaId) {
+      toast({
+        variant: 'destructive',
+        title: 'Perfil incompleto',
+        description: 'Não foi possível identificar sua escola para criar audiobook.',
+      });
+      return;
+    }
+    if (!optionalFeaturesEnabled) {
+      toast({
+        variant: 'destructive',
+        title: 'Recurso indisponível',
+        description: 'Audiobooks estão desativados neste ambiente.',
+      });
+      return;
+    }
 
     const livro = livros.find((item) => item.id === audiobookForm.livro_id);
     if (!livro || !audiobookFileDataUrl) {
@@ -903,7 +935,14 @@ export default function PainelAluno() {
 
   const toggleMeuAudiobook = async (audiobookId) => {
     if (!alunoId) return;
-    if (!optionalFeaturesEnabled) return;
+    if (!optionalFeaturesEnabled) {
+      toast({
+        variant: 'destructive',
+        title: 'Recurso indisponível',
+        description: 'Audiobooks estão desativados neste ambiente.',
+      });
+      return;
+    }
 
     const existente = meusAudiobooks.find((item) => item.audiobook_id === audiobookId);
 
@@ -1019,7 +1058,14 @@ export default function PainelAluno() {
   };
 
   const handlePublicarStudio = async () => {
-    if (!optionalFeaturesEnabled || !alunoId || !escolaId) return;
+    if (!optionalFeaturesEnabled || !alunoId || !escolaId) {
+      toast({
+        variant: 'destructive',
+        title: 'Laboratório indisponível',
+        description: 'Não foi possível publicar agora. Verifique se as migrations do banco foram aplicadas.',
+      });
+      return;
+    }
     if (studioSlides.length === 0) {
       toast({ variant: 'destructive', title: 'Sem imagens', description: 'Adicione pelo menos uma imagem para compartilhar.' });
       return;
@@ -1091,7 +1137,14 @@ export default function PainelAluno() {
   };
 
   const salvarProjetoStudioNoLaboratorio = async () => {
-    if (!optionalFeaturesEnabled || !alunoId || !escolaId) return;
+    if (!optionalFeaturesEnabled || !alunoId || !escolaId) {
+      toast({
+        variant: 'destructive',
+        title: 'Laboratório indisponível',
+        description: 'Não foi possível salvar agora. Verifique as configurações do banco.',
+      });
+      return;
+    }
     if (studioSlides.length === 0) {
       toast({ variant: 'destructive', title: 'Sem imagens', description: 'Adicione pelo menos uma imagem para salvar.' });
       return;
@@ -1183,7 +1236,14 @@ export default function PainelAluno() {
   };
 
   const salvarQuizNoLaboratorio = async (publicarNaComunidade = false) => {
-    if (!optionalFeaturesEnabled || !alunoId || !escolaId) return;
+    if (!optionalFeaturesEnabled || !alunoId || !escolaId) {
+      toast({
+        variant: 'destructive',
+        title: 'Laboratório indisponível',
+        description: 'Não foi possível salvar o quiz agora. Verifique as migrations do banco.',
+      });
+      return;
+    }
     if (quiz.length === 0) {
       toast({ variant: 'destructive', title: 'Sem quiz', description: 'Gere um quiz antes de salvar.' });
       return;
@@ -1287,7 +1347,14 @@ export default function PainelAluno() {
   }, [activeSection]);
 
   const gerarResumo = async () => {
-    if (!alunoId || !escolaId) return;
+    if (!alunoId || !escolaId) {
+      toast({
+        variant: 'destructive',
+        title: 'Perfil incompleto',
+        description: 'Não foi possível identificar sua escola para gerar o resumo.',
+      });
+      return;
+    }
     const livro = livros.find((item) => item.id === resumoLivroId);
     if (!livro) {
       toast({ variant: 'destructive', title: 'Selecione um livro', description: 'Escolha um livro para gerar o resumo.' });
@@ -1901,77 +1968,6 @@ export default function PainelAluno() {
                         <p className="text-sm line-clamp-3">{resumo.texto}</p>
                       </div>
                     ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Audiobooks da escola</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <select
-                    className="h-10 rounded-md border bg-background px-3 text-sm"
-                    value={audiobookForm.livro_id}
-                    onChange={(e) => setAudiobookForm((prev) => ({ ...prev, livro_id: e.target.value }))}
-                  >
-                    <option value="">Livro do acervo</option>
-                    {livros.map((livro) => (
-                      <option key={livro.id} value={livro.id}>
-                        {livro.titulo}
-                      </option>
-                    ))}
-                  </select>
-                  <Input
-                    value={audiobookForm.titulo}
-                    onChange={(e) => setAudiobookForm((prev) => ({ ...prev, titulo: e.target.value }))}
-                    placeholder="Título do audiobook (opcional)"
-                  />
-                  <Input
-                    value={audiobookForm.autor}
-                    onChange={(e) => setAudiobookForm((prev) => ({ ...prev, autor: e.target.value }))}
-                    placeholder="Autor (opcional)"
-                  />
-                  <Input
-                    value={audiobookForm.duracao_minutos}
-                    onChange={(e) => setAudiobookForm((prev) => ({ ...prev, duracao_minutos: e.target.value }))}
-                    placeholder="Duração em minutos (opcional)"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Arquivo de áudio</Label>
-                  <Input type="file" accept="audio/*" onChange={(e) => handleSelectAudiobookFile(e.target.files)} />
-                  {audiobookFileNome && <p className="text-xs text-muted-foreground">Arquivo: {audiobookFileNome}</p>}
-                </div>
-
-                <Button type="button" variant="outline" onClick={handleCriarAudiobook} disabled={saving}>
-                  Publicar audiobook no acervo
-                </Button>
-
-                {audiobookCatalogo.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nenhum audiobook disponível para sua escola.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {audiobookCatalogo.slice(0, 20).map((audio) => {
-                      const meu = meusAudiobooks.some((item) => item.audiobook_id === audio.id);
-                      return (
-                        <div key={audio.id} className="rounded-md border p-3 space-y-2">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                              <p className="font-medium">{audio.titulo}</p>
-                              <p className="text-xs text-muted-foreground">{audio.autor || audio?.livros?.autor || '-'}</p>
-                            </div>
-                            <Button type="button" size="sm" variant={meu ? 'default' : 'outline'} onClick={() => toggleMeuAudiobook(audio.id)}>
-                              {meu ? 'Nos meus audiobooks' : 'Adicionar aos meus'}
-                            </Button>
-                          </div>
-                          <audio controls src={audio.audio_url} preload="metadata" className="w-full h-10" />
-                        </div>
-                      );
-                    })}
                   </div>
                 )}
               </CardContent>
