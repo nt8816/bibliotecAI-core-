@@ -56,6 +56,27 @@ function isMissingTableError(error) {
   );
 }
 
+function isMissingColumnError(error, columnName, tableName) {
+  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  const column = String(columnName || '').toLowerCase();
+  const table = String(tableName || '').toLowerCase();
+  return (
+    message.includes(`could not find the '${column}' column`) &&
+    (!table || message.includes(`'${table}'`) || message.includes(`"${table}"`))
+  );
+}
+
+async function insertCommunityPostCompat(payload) {
+  const { error } = await supabase.from('comunidade_posts').insert(payload);
+
+  if (error && Object.hasOwn(payload, 'escola_id') && isMissingColumnError(error, 'escola_id', 'comunidade_posts')) {
+    const { escola_id: _ignored, ...fallbackPayload } = payload;
+    return await supabase.from('comunidade_posts').insert(fallbackPayload);
+  }
+
+  return { error };
+}
+
 async function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -296,7 +317,7 @@ export default function ComunidadeAluno() {
 
     setSaving(true);
     try {
-      const { error } = await supabase.from('comunidade_posts').insert({
+      const { error } = await insertCommunityPostCompat({
         autor_id: alunoId,
         escola_id: escolaId,
         livro_id: postLivroId || null,

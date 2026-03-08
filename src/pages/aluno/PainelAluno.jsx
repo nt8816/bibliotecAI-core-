@@ -90,6 +90,40 @@ function isMissingTableError(error) {
   );
 }
 
+function isMissingColumnError(error, columnName, tableName) {
+  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  const column = String(columnName || '').toLowerCase();
+  const table = String(tableName || '').toLowerCase();
+  return (
+    message.includes(`could not find the '${column}' column`) &&
+    (!table || message.includes(`'${table}'`) || message.includes(`"${table}"`))
+  );
+}
+
+async function insertCommunityPostCompat(payload, options = {}) {
+  const expectSingleId = options.expectSingleId === true;
+
+  const runInsert = async (insertPayload) => {
+    let query = supabase.from('comunidade_posts').insert(insertPayload);
+    if (expectSingleId) {
+      query = query.select('id').single();
+    }
+    return await query;
+  };
+
+  let result = await runInsert(payload);
+  if (
+    result.error
+    && Object.hasOwn(payload, 'escola_id')
+    && isMissingColumnError(result.error, 'escola_id', 'comunidade_posts')
+  ) {
+    const { escola_id: _ignored, ...fallbackPayload } = payload;
+    result = await runInsert(fallbackPayload);
+  }
+
+  return result;
+}
+
 async function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -821,9 +855,8 @@ export default function PainelAluno() {
 
       let comunidadePostId = null;
       if (shareReviewToCommunity && reviewTexto.trim()) {
-        const { data: postData, error: postError } = await supabase
-          .from('comunidade_posts')
-          .insert({
+        const { data: postData, error: postError } = await insertCommunityPostCompat(
+          {
             autor_id: alunoId,
             escola_id: escolaId,
             livro_id: reviewLivro.id,
@@ -832,9 +865,9 @@ export default function PainelAluno() {
             conteudo: reviewTexto.trim(),
             imagem_urls: [],
             tags: ['resenha'],
-          })
-          .select('id')
-          .single();
+          },
+          { expectSingleId: true },
+        );
         if (postError) throw postError;
         comunidadePostId = postData?.id || null;
       }
@@ -1148,9 +1181,8 @@ export default function PainelAluno() {
         'Criação de mídia com imagens em sequência e áudio de fundo feita no estúdio do aluno.';
       const imagemUrls = studioSlides.map((slide) => slide.url);
 
-      const { data: postCriado, error } = await supabase
-        .from('comunidade_posts')
-        .insert({
+      const { data: postCriado, error } = await insertCommunityPostCompat(
+        {
           autor_id: alunoId,
           escola_id: escolaId,
           livro_id: null,
@@ -1160,9 +1192,9 @@ export default function PainelAluno() {
           conteudo,
           imagem_urls: imagemUrls,
           tags,
-        })
-        .select('id')
-        .single();
+        },
+        { expectSingleId: true },
+      );
       if (error) throw error;
 
       await salvarCriacaoLaboratorio({
@@ -1326,9 +1358,8 @@ export default function PainelAluno() {
           .map((pergunta, index) => `${index + 1}) ${pergunta.enunciado}`)
           .join('\n');
 
-        const { data: postCriado, error: postError } = await supabase
-          .from('comunidade_posts')
-          .insert({
+        const { data: postCriado, error: postError } = await insertCommunityPostCompat(
+          {
             autor_id: alunoId,
             escola_id: escolaId,
             livro_id: livro?.id || null,
@@ -1337,9 +1368,9 @@ export default function PainelAluno() {
             conteudo: `Quiz criado no laboratório (${descricao}).\n${resumoQuestoes}`,
             imagem_urls: [],
             tags: ['quiz', 'ia'],
-          })
-          .select('id')
-          .single();
+          },
+          { expectSingleId: true },
+        );
         if (postError) throw postError;
         postId = postCriado?.id || null;
       }
