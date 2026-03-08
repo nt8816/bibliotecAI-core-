@@ -191,6 +191,7 @@ export default function PainelAluno() {
   const [resumoTexto, setResumoTexto] = useState('');
   const [resumosCriados, setResumosCriados] = useState([]);
   const [criacoesLaboratorio, setCriacoesLaboratorio] = useState([]);
+  const [labCriacoesMissingTable, setLabCriacoesMissingTable] = useState(false);
   const [shareReviewToCommunity, setShareReviewToCommunity] = useState(false);
   const [gerandoResumoIA, setGerandoResumoIA] = useState(false);
   const [desafioIA, setDesafioIA] = useState(null);
@@ -199,6 +200,30 @@ export default function PainelAluno() {
   const fetchInFlightRef = useRef(null);
   const realtimeDebounceRef = useRef(null);
   const audioPlayerRef = useRef(null);
+  const localCriacoesKey = useMemo(
+    () => (user?.id ? `laboratorio_criacoes_local:${user.id}` : ''),
+    [user?.id],
+  );
+
+  const loadLocalCriacoes = useCallback(() => {
+    if (!localCriacoesKey) return [];
+    try {
+      const raw = localStorage.getItem(localCriacoesKey);
+      const parsed = JSON.parse(raw || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }, [localCriacoesKey]);
+
+  const saveLocalCriacoes = useCallback((items) => {
+    if (!localCriacoesKey) return;
+    try {
+      localStorage.setItem(localCriacoesKey, JSON.stringify(items));
+    } catch {
+      // ignore local storage failures
+    }
+  }, [localCriacoesKey]);
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -307,7 +332,7 @@ export default function PainelAluno() {
         }
 
         const missingAnyNewTable =
-          entregasOpt.missing || audioCatalogoOpt.missing || meusAudiobooksOpt.missing || criacoesLaboratorioOpt.missing;
+          entregasOpt.missing || audioCatalogoOpt.missing || meusAudiobooksOpt.missing;
 
         if (missingAnyNewTable && !warnedMissingFeaturesRef.current) {
           warnedMissingFeaturesRef.current = true;
@@ -317,6 +342,7 @@ export default function PainelAluno() {
             description: 'Algumas tabelas novas não existem no banco. Aplique as migrations mais recentes do Supabase.',
           });
         }
+        setLabCriacoesMissingTable(criacoesLaboratorioOpt.missing);
 
         const maybeError = [
           livrosRes.error,
@@ -340,7 +366,9 @@ export default function PainelAluno() {
         setEntregas(entregasOpt.data);
         setAudiobookCatalogo(audioCatalogoOpt.data);
         setMeusAudiobooks(meusAudiobooksOpt.data);
-        setCriacoesLaboratorio(criacoesLaboratorioOpt.data);
+        setCriacoesLaboratorio(
+          criacoesLaboratorioOpt.missing ? loadLocalCriacoes() : criacoesLaboratorioOpt.data,
+        );
 
         const entregaInicial = {};
         entregasOpt.data.forEach((entrega) => {
@@ -728,6 +756,43 @@ export default function PainelAluno() {
     }
   };
 
+  const salvarCriacaoLaboratorio = async (payload) => {
+    const baseItem = {
+      id: crypto.randomUUID(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      ...payload,
+    };
+
+    if (labCriacoesMissingTable) {
+      setCriacoesLaboratorio((prev) => {
+        const next = [baseItem, ...ensureArray(prev)];
+        saveLocalCriacoes(next);
+        return next;
+      });
+      return;
+    }
+
+    const { error } = await supabase.from('laboratorio_criacoes').insert(payload);
+    if (!error) return;
+
+    if (isMissingTableError(error)) {
+      setLabCriacoesMissingTable(true);
+      setCriacoesLaboratorio((prev) => {
+        const next = [baseItem, ...ensureArray(prev)];
+        saveLocalCriacoes(next);
+        return next;
+      });
+      toast({
+        title: 'Laboratório em modo local',
+        description: 'Salvamos esta criação no navegador porque a tabela ainda não existe no banco.',
+      });
+      return;
+    }
+
+    throw error;
+  };
+
   const handleSaveReview = async () => {
     if (!alunoId || !reviewLivro || !escolaId) {
       toast({
@@ -774,7 +839,7 @@ export default function PainelAluno() {
         comunidadePostId = postData?.id || null;
       }
 
-      await supabase.from('laboratorio_criacoes').insert({
+      await salvarCriacaoLaboratorio({
         aluno_id: alunoId,
         escola_id: escolaId,
         livro_id: reviewLivro.id,
@@ -1100,7 +1165,7 @@ export default function PainelAluno() {
         .single();
       if (error) throw error;
 
-      await supabase.from('laboratorio_criacoes').insert({
+      await salvarCriacaoLaboratorio({
         aluno_id: alunoId,
         escola_id: escolaId,
         tipo: 'imagem',
@@ -1156,7 +1221,7 @@ export default function PainelAluno() {
       if (studioSlides.some((slide) => slide.origem === 'ia')) tags.push('ia');
       if (studioAudioFundoUrl) tags.push('audio-fundo');
 
-      await supabase.from('laboratorio_criacoes').insert({
+      await salvarCriacaoLaboratorio({
         aluno_id: alunoId,
         escola_id: escolaId,
         tipo: 'imagem',
@@ -1279,7 +1344,7 @@ export default function PainelAluno() {
         postId = postCriado?.id || null;
       }
 
-      const { error } = await supabase.from('laboratorio_criacoes').insert({
+      await salvarCriacaoLaboratorio({
         aluno_id: alunoId,
         escola_id: escolaId,
         livro_id: livro?.id || null,
@@ -1295,7 +1360,6 @@ export default function PainelAluno() {
         publicado_comunidade: Boolean(postId),
         comunidade_post_id: postId,
       });
-      if (error) throw error;
 
       toast({ title: publicarNaComunidade ? 'Quiz salvo e compartilhado!' : 'Quiz salvo no laboratório!' });
       await fetchData();
@@ -1320,11 +1384,30 @@ export default function PainelAluno() {
       if (criacao.comunidade_post_id) {
         await supabase.from('comunidade_posts').delete().eq('id', criacao.comunidade_post_id);
       }
-      const { error } = await supabase.from('laboratorio_criacoes').delete().eq('id', criacao.id);
-      if (error) throw error;
+      if (labCriacoesMissingTable) {
+        setCriacoesLaboratorio((prev) => {
+          const next = ensureArray(prev).filter((item) => item.id !== criacao.id);
+          saveLocalCriacoes(next);
+          return next;
+        });
+      } else {
+        const { error } = await supabase.from('laboratorio_criacoes').delete().eq('id', criacao.id);
+        if (error) {
+          if (isMissingTableError(error)) {
+            setLabCriacoesMissingTable(true);
+            setCriacoesLaboratorio((prev) => {
+              const next = ensureArray(prev).filter((item) => item.id !== criacao.id);
+              saveLocalCriacoes(next);
+              return next;
+            });
+          } else {
+            throw error;
+          }
+        }
+      }
 
       toast({ title: 'Criação removida.' });
-      await fetchData();
+      if (!labCriacoesMissingTable) await fetchData();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro ao apagar', description: error?.message || 'Não foi possível apagar.' });
     } finally {
@@ -1440,8 +1523,7 @@ export default function PainelAluno() {
         },
         tags: ['resumo', 'ia'],
       };
-      const { error } = await supabase.from('laboratorio_criacoes').insert(payload);
-      if (error) throw error;
+      await salvarCriacaoLaboratorio(payload);
 
       setResumosCriados((prev) => [
         {
