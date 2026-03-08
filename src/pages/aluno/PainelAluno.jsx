@@ -144,6 +144,7 @@ export default function PainelAluno() {
   const [meusAudiobooks, setMeusAudiobooks] = useState([]);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [bibliotecaView, setBibliotecaView] = useState('meus_livros');
   const [speaking, setSpeaking] = useState(false);
 
   const [reviewDialog, setReviewDialog] = useState(false);
@@ -582,10 +583,27 @@ export default function PainelAluno() {
     [emprestimos],
   );
 
-  const audiobooksLiberados = useMemo(() => {
-    const livrosComEmprestimo = new Set(meusLivros.map((item) => item.livro_id).filter(Boolean));
-    return audiobookCatalogo.filter((audio) => livrosComEmprestimo.has(audio.livro_id));
-  }, [audiobookCatalogo, meusLivros]);
+  const filteredMeusLivros = useMemo(
+    () =>
+      meusLivros.filter((item) => {
+        const t = searchTerm.toLowerCase();
+        const titulo = String(item?.livros?.titulo || '').toLowerCase();
+        const autor = String(item?.livros?.autor || '').toLowerCase();
+        return titulo.includes(t) || autor.includes(t);
+      }),
+    [meusLivros, searchTerm],
+  );
+
+  const filteredSolicitacoes = useMemo(
+    () =>
+      solicitacoes.filter((item) => {
+        const t = searchTerm.toLowerCase();
+        const titulo = String(item?.livros?.titulo || '').toLowerCase();
+        const autor = String(item?.livros?.autor || '').toLowerCase();
+        return titulo.includes(t) || autor.includes(t);
+      }),
+    [solicitacoes, searchTerm],
+  );
 
   const speakText = async (text) => {
     const stopPlayback = () => {
@@ -1638,115 +1656,176 @@ export default function PainelAluno() {
             </div>
 
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Meus livros</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {meusLivros.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Você ainda não tem livros aprovados/emprestados.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {meusLivros.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between rounded-md border p-3">
-                        <div>
-                          <p className="text-sm font-medium">{item.livros?.titulo || 'Livro'}</p>
-                          <p className="text-xs text-muted-foreground">{item.livros?.autor || '-'}</p>
-                        </div>
-                        <Badge variant={item.status === 'ativo' ? 'default' : 'secondary'}>
-                          {item.status}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+              <CardContent className="pt-6 space-y-4">
+                <div className="flex flex-wrap gap-2 rounded-lg border p-1 bg-muted/20">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={bibliotecaView === 'meus_livros' ? 'default' : 'ghost'}
+                    onClick={() => setBibliotecaView('meus_livros')}
+                  >
+                    Meus livros
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={bibliotecaView === 'minhas_solicitacoes' ? 'default' : 'ghost'}
+                    onClick={() => setBibliotecaView('minhas_solicitacoes')}
+                  >
+                    Minhas solicitações
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={bibliotecaView === 'biblioteca' ? 'default' : 'ghost'}
+                    onClick={() => setBibliotecaView('biblioteca')}
+                  >
+                    Biblioteca
+                  </Button>
+                </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Audiobooks liberados</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {audiobooksLiberados.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Para ouvir audiobooks, solicite o livro e aguarde aprovação da bibliotecária.
-                  </p>
-                ) : (
+                {bibliotecaView === 'meus_livros' && (
                   <div className="space-y-3">
-                    {audiobooksLiberados.map((audio) => (
-                      <div key={audio.id} className="rounded-md border p-3 space-y-2">
-                        <p className="font-medium">{audio.titulo}</p>
-                        <p className="text-xs text-muted-foreground">{audio.autor || audio.livros?.autor || '-'}</p>
-                        <audio controls src={audio.audio_url} className="w-full h-10" preload="metadata" />
+                    <p className="text-sm font-semibold">Meus livros</p>
+                    {filteredMeusLivros.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Você ainda não tem livros aprovados/emprestados.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                        {filteredMeusLivros.map((item) => (
+                          <div key={item.id} className="rounded-xl border overflow-hidden bg-card">
+                            <div className="h-24 bg-gradient-to-br from-primary/25 via-primary/10 to-transparent p-3 flex items-start justify-end">
+                              <Badge variant={item.status === 'ativo' ? 'default' : 'secondary'}>
+                                {item.status}
+                              </Badge>
+                            </div>
+                            <div className="p-3 space-y-1.5">
+                              <p className="text-sm font-semibold line-clamp-2">{item.livros?.titulo || 'Livro'}</p>
+                              <p className="text-xs text-muted-foreground line-clamp-1">{item.livros?.autor || '-'}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Empréstimo: {formatDateBR(item.data_emprestimo)}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
+                  </div>
+                )}
+
+                {bibliotecaView === 'biblioteca' && (
+                  <div className="space-y-3">
+                    <p className="text-sm font-semibold">Biblioteca</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {filteredLivros.slice(0, 80).map((livro) => (
+                        <div key={livro.id} className="rounded-xl border overflow-hidden bg-card">
+                          <div className="h-24 bg-gradient-to-br from-secondary/30 via-secondary/10 to-transparent p-3 flex items-start justify-between gap-2">
+                            <Badge variant="outline" className="text-xs">{livro.area || 'Geral'}</Badge>
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => toggleWishlist(livro.id)}>
+                              <Heart className={`w-4 h-4 ${wishlist.includes(livro.id) ? 'fill-destructive text-destructive' : ''}`} />
+                            </Button>
+                          </div>
+                          <div className="p-3 space-y-2">
+                            <p className="font-semibold line-clamp-2">{livro.titulo}</p>
+                            <p className="text-sm text-muted-foreground line-clamp-1">{livro.autor}</p>
+                            <Badge variant={livro.disponivel ? 'default' : 'secondary'} className="text-xs">
+                              {livro.disponivel ? 'Disponível' : 'Emprestado'}
+                            </Badge>
+
+                            {livro.sinopse && (
+                              <div>
+                                <p className="text-xs text-muted-foreground line-clamp-2" translate="yes">{livro.sinopse}</p>
+                                <Button size="sm" variant="ghost" className="h-6 px-1 text-xs mt-1" onClick={() => speakText(livro.sinopse || '')}>
+                                  {speaking ? <VolumeX className="w-3 h-3 mr-1" /> : <Volume2 className="w-3 h-3 mr-1" />}
+                                  {speaking ? 'Parar' : 'Ouvir sinopse'}
+                                </Button>
+                              </div>
+                            )}
+
+                            <div className="flex gap-1 pt-1">
+                              {livro.disponivel && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs h-7"
+                                  onClick={() => {
+                                    setRequestLivro(livro);
+                                    setRequestDialog(true);
+                                  }}
+                                >
+                                  <Send className="w-3 h-3 mr-1" /> Solicitar
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs h-7"
+                                onClick={() => {
+                                  setReviewLivro(livro);
+                                  setReviewNota(5);
+                                  setReviewTexto('');
+                                  setReviewDialog(true);
+                                }}
+                              >
+                                <Star className="w-3 h-3 mr-1" /> Avaliar
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {bibliotecaView === 'minhas_solicitacoes' && (
+                  <div className="space-y-3">
+                    <p className="text-sm font-semibold">Minhas solicitações de empréstimo</p>
+                    {filteredSolicitacoes.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-8">Você ainda não fez solicitações.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {filteredSolicitacoes.map((solicitacao) => (
+                          <div key={solicitacao.id} className="p-3 border rounded-lg space-y-2">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="font-medium">{solicitacao.livros?.titulo || 'Livro'}</p>
+                                <p className="text-xs text-muted-foreground">{solicitacao.livros?.autor || '-'}</p>
+                              </div>
+                              <Badge
+                                variant={
+                                  solicitacao.status === 'aprovada'
+                                    ? 'default'
+                                    : solicitacao.status === 'recusada'
+                                      ? 'destructive'
+                                      : 'secondary'
+                                }
+                              >
+                                {solicitacao.status}
+                              </Badge>
+                            </div>
+
+                            <p className="text-xs text-muted-foreground">Solicitado em: {formatDateBR(solicitacao.created_at)}</p>
+
+                            {solicitacao.mensagem && (
+                              <div className="rounded-md border bg-muted/30 p-2">
+                                <p className="text-xs text-muted-foreground">Sua mensagem</p>
+                                <p className="text-sm">{solicitacao.mensagem}</p>
+                              </div>
+                            )}
+
+                            {solicitacao.resposta && (
+                              <div className="rounded-md border bg-primary/5 p-2">
+                                <p className="text-xs text-muted-foreground">Resposta da biblioteca</p>
+                                <p className="text-sm">{solicitacao.resposta}</p>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
             </Card>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredLivros.slice(0, 40).map((livro) => (
-                <Card key={livro.id} className="p-4">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold truncate">{livro.titulo}</p>
-                      <p className="text-sm text-muted-foreground">{livro.autor}</p>
-                      <div className="flex gap-1 mt-1">
-                        <Badge variant="outline" className="text-xs">
-                          {livro.area || 'Geral'}
-                        </Badge>
-                        <Badge variant={livro.disponivel ? 'default' : 'secondary'} className="text-xs">
-                          {livro.disponivel ? 'Disponível' : 'Emprestado'}
-                        </Badge>
-                      </div>
-                    </div>
-                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => toggleWishlist(livro.id)}>
-                      <Heart className={`w-4 h-4 ${wishlist.includes(livro.id) ? 'fill-destructive text-destructive' : ''}`} />
-                    </Button>
-                  </div>
-
-                  {livro.sinopse && (
-                    <div className="mt-2">
-                      <p className="text-xs text-muted-foreground line-clamp-2" translate="yes">{livro.sinopse}</p>
-                      <Button size="sm" variant="ghost" className="h-6 px-1 text-xs mt-1" onClick={() => speakText(livro.sinopse || '')}>
-                        {speaking ? <VolumeX className="w-3 h-3 mr-1" /> : <Volume2 className="w-3 h-3 mr-1" />}
-                        {speaking ? 'Parar' : 'Ouvir sinopse'}
-                      </Button>
-                    </div>
-                  )}
-
-                  <div className="flex gap-1 mt-2">
-                    {livro.disponivel && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs h-7"
-                        onClick={() => {
-                          setRequestLivro(livro);
-                          setRequestDialog(true);
-                        }}
-                      >
-                        <Send className="w-3 h-3 mr-1" /> Solicitar
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs h-7"
-                      onClick={() => {
-                        setReviewLivro(livro);
-                        setReviewNota(5);
-                        setReviewTexto('');
-                        setReviewDialog(true);
-                      }}
-                    >
-                      <Star className="w-3 h-3 mr-1" /> Avaliar
-                    </Button>
-                  </div>
-                </Card>
-              ))}
-            </div>
           </TabsContent>
 
           <TabsContent value="desejos">
@@ -1851,58 +1930,6 @@ export default function PainelAluno() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="biblioteca">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Minhas solicitações de empréstimo</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {solicitacoes.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">Você ainda não fez solicitações.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {solicitacoes.map((solicitacao) => (
-                      <div key={solicitacao.id} className="p-3 border rounded-lg space-y-2">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="font-medium">{solicitacao.livros?.titulo || 'Livro'}</p>
-                            <p className="text-xs text-muted-foreground">{solicitacao.livros?.autor || '-'}</p>
-                          </div>
-                          <Badge
-                            variant={
-                              solicitacao.status === 'aprovada'
-                                ? 'default'
-                                : solicitacao.status === 'recusada'
-                                  ? 'destructive'
-                                  : 'secondary'
-                            }
-                          >
-                            {solicitacao.status}
-                          </Badge>
-                        </div>
-
-                        <p className="text-xs text-muted-foreground">Solicitado em: {formatDateBR(solicitacao.created_at)}</p>
-
-                        {solicitacao.mensagem && (
-                          <div className="rounded-md border bg-muted/30 p-2">
-                            <p className="text-xs text-muted-foreground">Sua mensagem</p>
-                            <p className="text-sm">{solicitacao.mensagem}</p>
-                          </div>
-                        )}
-
-                        {solicitacao.resposta && (
-                          <div className="rounded-md border bg-primary/5 p-2">
-                            <p className="text-xs text-muted-foreground">Resposta da biblioteca</p>
-                            <p className="text-sm">{solicitacao.resposta}</p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
         </Tabs>
         )}
       </div>
