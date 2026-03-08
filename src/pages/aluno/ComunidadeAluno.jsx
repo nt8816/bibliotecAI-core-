@@ -86,6 +86,19 @@ async function fileToDataUrl(file) {
   });
 }
 
+function dataUrlToFile(dataUrl, filename = 'compartilhamento.jpg') {
+  const parts = String(dataUrl || '').split(',');
+  if (parts.length < 2) throw new Error('Imagem inválida.');
+  const mimeMatch = parts[0].match(/:(.*?);/);
+  const mime = mimeMatch?.[1] || 'image/jpeg';
+  const binary = atob(parts[1]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new File([bytes], filename, { type: mime });
+}
+
 export default function ComunidadeAluno() {
   const { user, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
   const { toast } = useToast();
@@ -113,6 +126,11 @@ export default function ComunidadeAluno() {
   const [postComIA, setPostComIA] = useState(false);
   const [imageDataUrls, setImageDataUrls] = useState([]);
   const [selectedImageUrl, setSelectedImageUrl] = useState('');
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [sharePost, setSharePost] = useState(null);
+  const [shareTitulo, setShareTitulo] = useState('');
+  const [shareImageDataUrl, setShareImageDataUrl] = useState('');
+  const [sharing, setSharing] = useState(false);
   const [postEmEdicao, setPostEmEdicao] = useState(null);
   const [editTitulo, setEditTitulo] = useState('');
   const [editConteudo, setEditConteudo] = useState('');
@@ -348,24 +366,60 @@ export default function ComunidadeAluno() {
     }
   };
 
-  const handleCompartilharPost = async (post) => {
-    const textoCompartilhamento = `${safeText(post?.titulo, 'Post da comunidade')} - ${safeText(post?.conteudo, '')}`;
+  const openShareDialog = (post) => {
+    if (!post?.id) return;
+    setSharePost(post);
+    setShareTitulo(safeText(post?.titulo, 'Post da comunidade'));
+    setShareImageDataUrl(ensureArray(post?.imagem_urls)[0] || '');
+    setShareDialogOpen(true);
+  };
+
+  const handleSelectShareImage = async (files) => {
+    const file = files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setShareImageDataUrl(dataUrl);
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível processar a imagem.' });
+    }
+  };
+
+  const handleCompartilharPost = async () => {
+    if (!sharePost?.id) return;
+
+    const titulo = shareTitulo.trim() || safeText(sharePost?.titulo, 'Post da comunidade');
+    const conteudo = safeText(sharePost?.conteudo, '');
+    const textoCompartilhamento = `${titulo}${conteudo ? ` - ${conteudo}` : ''}`;
+    const imageUrl = shareImageDataUrl || ensureArray(sharePost?.imagem_urls)[0] || '';
+
+    setSharing(true);
     try {
       if (navigator.share) {
-        await navigator.share({
-          title: safeText(post?.titulo, 'Comunidade de leitura'),
+        const payload = {
+          title: titulo || 'Comunidade de leitura',
           text: textoCompartilhamento,
-        });
+        };
+        if (imageUrl && navigator.canShare) {
+          const shareFile = dataUrlToFile(imageUrl, 'compartilhamento-comunidade.jpg');
+          if (navigator.canShare({ files: [shareFile] })) {
+            payload.files = [shareFile];
+          }
+        }
+        await navigator.share(payload);
       } else if (navigator.clipboard) {
         await navigator.clipboard.writeText(textoCompartilhamento);
-        toast({ title: 'Texto copiado', description: 'Conteúdo copiado para compartilhar.' });
+        toast({ title: 'Conteúdo copiado', description: 'Texto copiado para compartilhar.' });
       } else {
         throw new Error('Compartilhamento indisponível neste dispositivo.');
       }
+      setShareDialogOpen(false);
     } catch (error) {
       if (error?.name !== 'AbortError') {
         toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível compartilhar este conteúdo.' });
       }
+    } finally {
+      setSharing(false);
     }
   };
 
@@ -615,7 +669,7 @@ export default function ComunidadeAluno() {
                         <Heart className={`w-4 h-4 mr-1 ${likedPostIds.has(post.id) ? 'fill-destructive text-destructive' : ''}`} />
                         {likesByPost.get(post.id) || 0}
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleCompartilharPost(post)} disabled={!enabled}>
+                      <Button variant="ghost" size="sm" onClick={() => openShareDialog(post)} disabled={!enabled}>
                         Compartilhar
                       </Button>
                       {podeEditarPost(post) && (
@@ -804,6 +858,68 @@ export default function ComunidadeAluno() {
               <Button onClick={salvarEdicaoPost} disabled={saving}>
                 <Send className="w-4 h-4 mr-2" />
                 {saving ? 'Salvando...' : 'Salvar alterações'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={shareDialogOpen}
+        onOpenChange={(open) => {
+          setShareDialogOpen(open);
+          if (!open) {
+            setSharePost(null);
+            setShareTitulo('');
+            setShareImageDataUrl('');
+          }
+        }}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="w-4 h-4" /> Compartilhar post
+            </DialogTitle>
+            <DialogDescription>Adicione um título e uma foto antes de compartilhar.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Título</Label>
+              <Input
+                value={shareTitulo}
+                onChange={(e) => setShareTitulo(e.target.value)}
+                placeholder="Digite o título do compartilhamento"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Foto (opcional)</Label>
+              <Input type="file" accept="image/*" onChange={(e) => handleSelectShareImage(e.target.files)} />
+              {shareImageDataUrl && (
+                <div className="relative w-fit">
+                  <img
+                    src={shareImageDataUrl}
+                    alt="Prévia da foto do compartilhamento"
+                    className="w-40 h-28 object-cover rounded-md border"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShareImageDataUrl('')}
+                    className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShareDialogOpen(false)} disabled={sharing}>
+                Cancelar
+              </Button>
+              <Button onClick={handleCompartilharPost} disabled={sharing || !enabled || !sharePost}>
+                <Send className="w-4 h-4 mr-2" /> {sharing ? 'Compartilhando...' : 'Compartilhar'}
               </Button>
             </div>
           </div>
