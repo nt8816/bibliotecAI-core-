@@ -72,7 +72,9 @@ const buildTextPromptFromTask = (task, input) => {
   if (safeTask === 'sinopse_livro') {
     return [
       'Gere uma sinopse curta e clara em português do Brasil para uso escolar.',
-      'Responda SOMENTE com JSON válido no formato: {"sinopse":"..."}',
+      'Se possível, também complete metadados bibliográficos básicos.',
+      'Responda SOMENTE com JSON válido no formato: {"sinopse":"...","autor":"...","ano":"...","editora":"..."}',
+      'Quando não souber um campo, use string vazia.',
       `Dados do livro: ${inputJson}`,
     ].join('\n');
   }

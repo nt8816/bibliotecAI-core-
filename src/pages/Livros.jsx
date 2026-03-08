@@ -271,43 +271,57 @@ export default function Livros() {
 
     setBuscandoSinopse(true);
     try {
-      const [iaResult, openLibraryResult] = await Promise.allSettled([
-        generateTextWithCloudflare({
-          task: 'sinopse_livro',
-          input: {
-            titulo: formData.titulo,
-            autor: formData.autor,
-            area: formData.area,
-            sinopseBase: formData.sinopse,
-          },
-          fallbackErrorMessage: 'Não foi possível gerar sinopse por IA.',
-        }),
-        buscarSinopseOpenLibrary(formData.titulo, formData.autor),
-      ]);
+      const resultado = await buscarSinopseOpenLibrary(formData.titulo, formData.autor);
+      const freeSinopse = String(resultado?.sinopse || '').trim();
+      const freeAutor = String(resultado?.autoData?.autor || '').trim();
+      const freeAno = String(resultado?.autoData?.ano || '').trim();
+      const freeEditora = String(resultado?.autoData?.editora || '').trim();
 
-      const iaPayload = iaResult.status === 'fulfilled' ? iaResult.value : null;
-      const iaSinopse = String(iaPayload?.data?.sinopse || iaPayload?.text || '').trim();
-      const resultado = openLibraryResult.status === 'fulfilled' ? openLibraryResult.value : null;
+      const precisaIA = !freeSinopse || (!formData.autor && !freeAutor) || (!formData.ano && !freeAno) || (!formData.editora && !freeEditora);
 
-      if (!iaSinopse && !resultado) {
+      let iaData = null;
+      if (precisaIA) {
+        try {
+          const iaPayload = await generateTextWithCloudflare({
+            task: 'sinopse_livro',
+            input: {
+              titulo: formData.titulo,
+              autor: formData.autor,
+              area: formData.area,
+              sinopseBase: formData.sinopse,
+            },
+            fallbackErrorMessage: 'Não foi possível gerar sinopse por IA.',
+          });
+          iaData = iaPayload?.data || null;
+        } catch {
+          iaData = null;
+        }
+      }
+
+      const iaSinopse = String(iaData?.sinopse || '').trim();
+      const iaAutor = String(iaData?.autor || '').trim();
+      const iaAno = String(iaData?.ano || '').trim();
+      const iaEditora = String(iaData?.editora || '').trim();
+
+      if (!freeSinopse && !iaSinopse && !freeAutor && !iaAutor && !freeAno && !iaAno && !freeEditora && !iaEditora) {
         toast({ title: 'Não encontrado', description: 'Não foi possível buscar ou gerar sinopse agora.' });
         return;
       }
 
       const updates = {};
-      if (iaSinopse) updates.sinopse = iaSinopse;
-      else if (resultado?.sinopse) updates.sinopse = resultado.sinopse;
+      if (freeSinopse) updates.sinopse = freeSinopse;
+      else if (iaSinopse) updates.sinopse = iaSinopse;
 
-      if (!formData.autor && resultado?.autoData?.autor) updates.autor = resultado.autoData.autor;
-      if (!formData.ano && resultado?.autoData?.ano) updates.ano = resultado.autoData.ano;
-      if (!formData.editora && resultado?.autoData?.editora) updates.editora = resultado.autoData.editora;
+      if (!formData.autor && (freeAutor || iaAutor)) updates.autor = freeAutor || iaAutor;
+      if (!formData.ano && (freeAno || iaAno)) updates.ano = freeAno || iaAno;
+      if (!formData.editora && (freeEditora || iaEditora)) updates.editora = freeEditora || iaEditora;
 
       if (Object.keys(updates).length > 0) {
         setFormData((prev) => ({ ...prev, ...updates }));
         toast({
           title: 'Dados preenchidos',
-          description: iaSinopse
-            ? 'Sinopse gerada por IA e dados complementados automaticamente.'
+          description: precisaIA
+            ? 'Informações completadas com fallback de IA.'
             : 'Informações preenchidas automaticamente.',
         });
       } else {
@@ -996,7 +1010,7 @@ export default function Livros() {
                             {buscandoSinopse ? 'Buscando...' : 'Buscar sinopse'}
                           </Button>
                         </div>
-                        <Textarea id="sinopse" placeholder="Digite a sinopse ou use o botão acima..." className="min-h-[120px] resize-y" value={formData.sinopse || ''} onChange={(e) => setFormData({ ...formData, sinopse: e.target.value })} translate="yes" />
+                        <Textarea id="sinopse" placeholder="Digite a sinopse ou use o botão acima..." className="min-h-[120px] resize-y" value={formData.sinopse || ''} onChange={(e) => setFormData({ ...formData, sinopse: e.target.value })} />
                       </div>
                     </div>
 
