@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Copy, Building2, Link as LinkIcon, Power, KeyRound, ExternalLink } from 'lucide-react';
+import { Plus, Copy, Building2, Link as LinkIcon, Power, KeyRound, ExternalLink, Sparkles, Volume2 } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { generateAudioWithCloudflare } from '@/lib/cloudflareAiApi';
 
 const DEFAULT_BASE_DOMAIN = import.meta.env.VITE_APP_BASE_DOMAIN || 'bibliotec-ai-core.vercel.app';
 
@@ -42,6 +43,11 @@ export default function AdminTenants() {
   const [resettingGestorTenantId, setResettingGestorTenantId] = useState(null);
   const [lastResetPassword, setLastResetPassword] = useState(null);
   const [latestInvite, setLatestInvite] = useState(null);
+  const [massTenantId, setMassTenantId] = useState('');
+  const [massLimit, setMassLimit] = useState(8);
+  const [massRunning, setMassRunning] = useState(false);
+  const [massProgress, setMassProgress] = useState({ done: 0, total: 0 });
+  const [massSummary, setMassSummary] = useState(null);
 
   const [nomeEscola, setNomeEscola] = useState('');
   const [subdominio, setSubdominio] = useState('');
@@ -250,6 +256,123 @@ export default function AdminTenants() {
     }
   };
 
+  const gerarAudiosEmMassa = async () => {
+    const tenant = tenants.find((item) => item.id === massTenantId);
+    if (!tenant?.escola_id) {
+      toast({ title: 'Selecione uma escola', description: 'Escolha um tenant com escola vinculada.', variant: 'destructive' });
+      return;
+    }
+
+    const limite = Math.min(30, Math.max(1, Number(massLimit) || 1));
+    setMassRunning(true);
+    setMassProgress({ done: 0, total: 0 });
+    setMassSummary(null);
+
+    try {
+      const { data: livros, error: livrosError } = await supabase
+        .from('livros')
+        .select('id, titulo, autor, sinopse, escola_id')
+        .eq('escola_id', tenant.escola_id)
+        .order('titulo', { ascending: true })
+        .limit(limite);
+      if (livrosError) throw livrosError;
+
+      const acervo = livros || [];
+      if (acervo.length === 0) {
+        toast({ title: 'Acervo vazio', description: 'Não há livros nessa escola para gerar áudio.' });
+        return;
+      }
+
+      const { data: autoresPost, error: autoresError } = await supabase
+        .from('usuarios_biblioteca')
+        .select('id')
+        .eq('escola_id', tenant.escola_id)
+        .order('created_at', { ascending: true })
+        .limit(1);
+      if (autoresError) throw autoresError;
+      const autorComunidadeId = autoresPost?.[0]?.id || null;
+
+      const success = [];
+      const failed = [];
+      setMassProgress({ done: 0, total: acervo.length });
+
+      for (let index = 0; index < acervo.length; index += 1) {
+        const livro = acervo[index];
+        try {
+          const roteiro = [
+            `Título: ${livro.titulo}`,
+            livro.autor ? `Autor: ${livro.autor}` : '',
+            livro.sinopse
+              ? `Narração sugerida: ${livro.sinopse}`
+              : 'Narração sugerida: Este áudio apresenta o livro, seus temas principais e incentiva a leitura.',
+          ]
+            .filter(Boolean)
+            .join('\n');
+
+          const { audioDataUrl } = await generateAudioWithCloudflare({
+            text: roteiro,
+            fallbackErrorMessage: `Falha ao gerar áudio do livro "${livro.titulo}".`,
+          });
+
+          const { data: audioCriado, error: insertAudioError } = await supabase
+            .from('audiobooks_biblioteca')
+            .insert({
+              livro_id: livro.id,
+              escola_id: tenant.escola_id,
+              titulo: `${livro.titulo} (Audiobook IA)`,
+              autor: livro.autor || null,
+              audio_url: audioDataUrl,
+              criado_por: autorComunidadeId,
+            })
+            .select('id')
+            .single();
+          if (insertAudioError) throw insertAudioError;
+
+          if (autorComunidadeId) {
+            const { error: postError } = await supabase.from('comunidade_posts').insert({
+              autor_id: autorComunidadeId,
+              escola_id: tenant.escola_id,
+              livro_id: livro.id,
+              audiobook_id: audioCriado?.id || null,
+              tipo: 'dica',
+              titulo: `Novo audiobook do acervo: ${livro.titulo}`,
+              conteudo: 'Audiobook gerado em massa pelo Super Admin para esta escola.',
+              imagem_urls: [],
+              tags: ['audiobook', 'ia', 'super-admin'],
+            });
+            if (postError) throw postError;
+          }
+
+          success.push(livro.titulo);
+        } catch (error) {
+          failed.push(`${livro.titulo}: ${error?.message || 'Erro desconhecido'}`);
+        } finally {
+          setMassProgress((prev) => ({ ...prev, done: prev.done + 1 }));
+        }
+      }
+
+      setMassSummary({
+        tenantNome: tenant.nome,
+        total: acervo.length,
+        success,
+        failed,
+      });
+
+      toast({
+        title: 'Geração em massa concluída',
+        description: `${success.length} de ${acervo.length} audiobooks gerados para ${tenant.nome}.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Falha na geração em massa',
+        description: error?.message || 'Não foi possível gerar os audiobooks.',
+        variant: 'destructive',
+      });
+    } finally {
+      setMassRunning(false);
+    }
+  };
+
   return (
     <MainLayout title="Admin de Inquilinos">
       <div className="space-y-6">
@@ -455,6 +578,72 @@ export default function AdminTenants() {
                   ))}
                 </TableBody>
               </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Volume2 className="w-5 h-5" />
+              Geração em Massa de Áudios
+            </CardTitle>
+            <CardDescription>
+              Gere audiobooks automaticamente usando o acervo da escola selecionada e publique na comunidade escolar.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="massTenant">Escola (tenant)</Label>
+                <select
+                  id="massTenant"
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  value={massTenantId}
+                  onChange={(e) => setMassTenantId(e.target.value)}
+                  disabled={massRunning}
+                >
+                  <option value="">Selecione uma escola</option>
+                  {tenants.filter((t) => t.ativo).map((tenant) => (
+                    <option key={tenant.id} value={tenant.id}>
+                      {tenant.nome} ({tenant.subdominio})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="massLimit">Qtd. de livros</Label>
+                <Input
+                  id="massLimit"
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={massLimit}
+                  onChange={(e) => setMassLimit(e.target.value)}
+                  disabled={massRunning}
+                />
+              </div>
+            </div>
+
+            <Button type="button" onClick={gerarAudiosEmMassa} disabled={massRunning || !massTenantId}>
+              <Sparkles className="w-4 h-4 mr-2" />
+              {massRunning ? `Gerando... ${massProgress.done}/${massProgress.total || 0}` : 'Gerar áudios em massa'}
+            </Button>
+
+            {massSummary && (
+              <div className="rounded-md border p-3 space-y-2 text-sm">
+                <p><span className="font-medium">Escola:</span> {massSummary.tenantNome}</p>
+                <p><span className="font-medium">Processados:</span> {massSummary.total}</p>
+                <p><span className="font-medium">Sucessos:</span> {massSummary.success.length}</p>
+                <p><span className="font-medium">Falhas:</span> {massSummary.failed.length}</p>
+                {massSummary.failed.length > 0 && (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/5 p-2">
+                    {massSummary.failed.slice(0, 5).map((item) => (
+                      <p key={item} className="text-xs text-destructive">{item}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>

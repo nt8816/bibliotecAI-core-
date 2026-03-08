@@ -21,6 +21,7 @@ import {
   Flame,
   Gift,
   Crown,
+  Expand,
   Trash2,
   Trophy,
   Volume2,
@@ -130,6 +131,7 @@ export default function PainelAluno() {
   const location = useLocation();
 
   const [alunoId, setAlunoId] = useState(null);
+  const [escolaId, setEscolaId] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [livros, setLivros] = useState([]);
@@ -173,6 +175,7 @@ export default function PainelAluno() {
   const [studioSlides, setStudioSlides] = useState([]);
   const [studioAudioFundoUrl, setStudioAudioFundoUrl] = useState('');
   const [studioPreviewIndex, setStudioPreviewIndex] = useState(0);
+  const [selectedStudioImageUrl, setSelectedStudioImageUrl] = useState('');
   const [quizLivroId, setQuizLivroId] = useState('');
   const [quizTema, setQuizTema] = useState('');
   const [quiz, setQuiz] = useState([]);
@@ -187,6 +190,8 @@ export default function PainelAluno() {
   const [resumoLivroId, setResumoLivroId] = useState('');
   const [resumoTexto, setResumoTexto] = useState('');
   const [resumosCriados, setResumosCriados] = useState([]);
+  const [criacoesLaboratorio, setCriacoesLaboratorio] = useState([]);
+  const [shareReviewToCommunity, setShareReviewToCommunity] = useState(false);
   const [gerandoResumoIA, setGerandoResumoIA] = useState(false);
   const [desafioIA, setDesafioIA] = useState(null);
   const [gerandoDesafioIA, setGerandoDesafioIA] = useState(false);
@@ -204,7 +209,7 @@ export default function PainelAluno() {
       try {
         const { data: perfil, error: perfilError } = await supabase
           .from('usuarios_biblioteca')
-          .select('id')
+          .select('id, escola_id')
           .eq('user_id', user.id)
           .order('updated_at', { ascending: false, nullsFirst: false })
           .order('created_at', { ascending: false })
@@ -213,6 +218,7 @@ export default function PainelAluno() {
 
         if (perfilError || !perfil) throw perfilError || new Error('Perfil do aluno não encontrado.');
         setAlunoId(perfil.id);
+        setEscolaId(perfil.escola_id || null);
 
         const [
           livrosRes,
@@ -266,6 +272,7 @@ export default function PainelAluno() {
         let entregasOpt = { data: [], missing: false };
         let audioCatalogoOpt = { data: [], missing: false };
         let meusAudiobooksOpt = { data: [], missing: false };
+        let criacoesLaboratorioOpt = { data: [], missing: false };
 
         if (optionalFeaturesEnabled) {
           // Probe only one new table first to avoid multiple 404 calls when migration is missing.
@@ -274,7 +281,7 @@ export default function PainelAluno() {
           );
 
           if (!entregasOpt.missing) {
-            [audioCatalogoOpt, meusAudiobooksOpt] = await Promise.all([
+            [audioCatalogoOpt, meusAudiobooksOpt, criacoesLaboratorioOpt] = await Promise.all([
               optionalQuery(
                 supabase
                   .from('audiobooks_biblioteca')
@@ -288,12 +295,19 @@ export default function PainelAluno() {
                   .eq('aluno_id', perfil.id)
                   .order('created_at', { ascending: false }),
               ),
+              optionalQuery(
+                supabase
+                  .from('laboratorio_criacoes')
+                  .select('*')
+                  .eq('aluno_id', perfil.id)
+                  .order('created_at', { ascending: false }),
+              ),
             ]);
           }
         }
 
         const missingAnyNewTable =
-          entregasOpt.missing || audioCatalogoOpt.missing || meusAudiobooksOpt.missing;
+          entregasOpt.missing || audioCatalogoOpt.missing || meusAudiobooksOpt.missing || criacoesLaboratorioOpt.missing;
 
         if (missingAnyNewTable && !warnedMissingFeaturesRef.current) {
           warnedMissingFeaturesRef.current = true;
@@ -322,6 +336,7 @@ export default function PainelAluno() {
         setEntregas(entregasOpt.data);
         setAudiobookCatalogo(audioCatalogoOpt.data);
         setMeusAudiobooks(meusAudiobooksOpt.data);
+        setCriacoesLaboratorio(criacoesLaboratorioOpt.data);
 
         const entregaInicial = {};
         entregasOpt.data.forEach((entrega) => {
@@ -418,6 +433,7 @@ export default function PainelAluno() {
   useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'atividades_entregas' : null, onChange: onRealtimeChange });
   useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'audiobooks_biblioteca' : null, onChange: onRealtimeChange });
   useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'aluno_audiobooks' : null, onChange: onRealtimeChange });
+  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'laboratorio_criacoes' : null, onChange: onRealtimeChange });
 
   const atividadesComEntrega = useMemo(() => {
     const entregaByAtividade = new Map(entregas.map((e) => [e.atividade_id, e]));
@@ -709,7 +725,7 @@ export default function PainelAluno() {
   };
 
   const handleSaveReview = async () => {
-    if (!alunoId || !reviewLivro) return;
+    if (!alunoId || !reviewLivro || !escolaId) return;
 
     setSaving(true);
     try {
@@ -727,10 +743,47 @@ export default function PainelAluno() {
 
       if (error) throw error;
 
+      let comunidadePostId = null;
+      if (shareReviewToCommunity && reviewTexto.trim()) {
+        const { data: postData, error: postError } = await supabase
+          .from('comunidade_posts')
+          .insert({
+            autor_id: alunoId,
+            escola_id: escolaId,
+            livro_id: reviewLivro.id,
+            tipo: 'resenha',
+            titulo: `Resenha: ${reviewLivro.titulo}`,
+            conteudo: reviewTexto.trim(),
+            imagem_urls: [],
+            tags: ['resenha'],
+          })
+          .select('id')
+          .single();
+        if (postError) throw postError;
+        comunidadePostId = postData?.id || null;
+      }
+
+      await supabase.from('laboratorio_criacoes').insert({
+        aluno_id: alunoId,
+        escola_id: escolaId,
+        livro_id: reviewLivro.id,
+        tipo: 'resenha',
+        titulo: `Resenha: ${reviewLivro.titulo}`,
+        descricao: reviewTexto.trim() || null,
+        conteudo_json: {
+          nota: reviewNota,
+          resenha: reviewTexto.trim() || null,
+        },
+        tags: ['resenha'],
+        publicado_comunidade: Boolean(comunidadePostId),
+        comunidade_post_id: comunidadePostId,
+      });
+
       toast({ title: 'Avaliação salva!' });
       setReviewDialog(false);
       setReviewLivro(null);
       setReviewTexto('');
+      setShareReviewToCommunity(false);
       await fetchData();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível salvar.' });
@@ -802,7 +855,7 @@ export default function PainelAluno() {
   };
 
   const handleCriarAudiobook = async () => {
-    if (!alunoId) return;
+    if (!alunoId || !escolaId) return;
     if (!optionalFeaturesEnabled) return;
 
     const livro = livros.find((item) => item.id === audiobookForm.livro_id);
@@ -819,6 +872,7 @@ export default function PainelAluno() {
     try {
       const payload = {
         livro_id: livro.id,
+        escola_id: escolaId,
         titulo: audiobookForm.titulo.trim() || livro.titulo,
         autor: audiobookForm.autor.trim() || livro.autor,
         duracao_minutos: audiobookForm.duracao_minutos ? Number(audiobookForm.duracao_minutos) : null,
@@ -965,7 +1019,7 @@ export default function PainelAluno() {
   };
 
   const handlePublicarStudio = async () => {
-    if (!optionalFeaturesEnabled || !alunoId) return;
+    if (!optionalFeaturesEnabled || !alunoId || !escolaId) return;
     if (studioSlides.length === 0) {
       toast({ variant: 'destructive', title: 'Sem imagens', description: 'Adicione pelo menos uma imagem para compartilhar.' });
       return;
@@ -977,19 +1031,44 @@ export default function PainelAluno() {
       if (studioSlides.some((slide) => slide.origem === 'ia')) tags.push('ia');
       if (studioAudioFundoUrl) tags.push('audio-fundo');
 
-      const { error } = await supabase.from('comunidade_posts').insert({
-        autor_id: alunoId,
-        livro_id: null,
-        audiobook_id: studioAudiobookId || null,
-        tipo: 'dica',
-        titulo: studioTitulo.trim() || 'Projeto criativo do aluno',
-        conteudo:
-          studioDescricao.trim() ||
-          'Criação de mídia com imagens em sequência e áudio de fundo feita no estúdio do aluno.',
-        imagem_urls: studioSlides.map((slide) => slide.url),
-        tags,
-      });
+      const titulo = studioTitulo.trim() || 'Projeto criativo do aluno';
+      const conteudo =
+        studioDescricao.trim() ||
+        'Criação de mídia com imagens em sequência e áudio de fundo feita no estúdio do aluno.';
+      const imagemUrls = studioSlides.map((slide) => slide.url);
+
+      const { data: postCriado, error } = await supabase
+        .from('comunidade_posts')
+        .insert({
+          autor_id: alunoId,
+          escola_id: escolaId,
+          livro_id: null,
+          audiobook_id: studioAudiobookId || null,
+          tipo: 'dica',
+          titulo,
+          conteudo,
+          imagem_urls: imagemUrls,
+          tags,
+        })
+        .select('id')
+        .single();
       if (error) throw error;
+
+      await supabase.from('laboratorio_criacoes').insert({
+        aluno_id: alunoId,
+        escola_id: escolaId,
+        tipo: 'imagem',
+        titulo,
+        descricao: conteudo,
+        conteudo_json: {
+          prompt: studioPrompt.trim() || null,
+          audiobook_id: studioAudiobookId || null,
+        },
+        imagem_urls: imagemUrls,
+        tags,
+        publicado_comunidade: true,
+        comunidade_post_id: postCriado?.id || null,
+      });
 
       toast({ title: 'Projeto compartilhado na comunidade!' });
       setStudioTitulo('');
@@ -998,12 +1077,51 @@ export default function PainelAluno() {
       setStudioAudiobookId('');
       setStudioSlides([]);
       setStudioAudioFundoUrl('');
+      setSelectedStudioImageUrl('');
+      await fetchData();
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Erro',
         description: error?.message || 'Não foi possível compartilhar o projeto criativo.',
       });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const salvarProjetoStudioNoLaboratorio = async () => {
+    if (!optionalFeaturesEnabled || !alunoId || !escolaId) return;
+    if (studioSlides.length === 0) {
+      toast({ variant: 'destructive', title: 'Sem imagens', description: 'Adicione pelo menos uma imagem para salvar.' });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const tags = [];
+      if (studioSlides.some((slide) => slide.origem === 'ia')) tags.push('ia');
+      if (studioAudioFundoUrl) tags.push('audio-fundo');
+
+      await supabase.from('laboratorio_criacoes').insert({
+        aluno_id: alunoId,
+        escola_id: escolaId,
+        tipo: 'imagem',
+        titulo: studioTitulo.trim() || 'Projeto criativo do aluno',
+        descricao:
+          studioDescricao.trim() || 'Projeto salvo no laboratório do aluno para edição/compartilhamento posterior.',
+        conteudo_json: {
+          prompt: studioPrompt.trim() || null,
+          audiobook_id: studioAudiobookId || null,
+        },
+        imagem_urls: studioSlides.map((slide) => slide.url),
+        tags,
+      });
+
+      toast({ title: 'Projeto salvo no laboratório!' });
+      await fetchData();
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível salvar o projeto.' });
     } finally {
       setSaving(false);
     }
@@ -1064,6 +1182,96 @@ export default function PainelAluno() {
     setQuizResultado({ acertos, total: quiz.length });
   };
 
+  const salvarQuizNoLaboratorio = async (publicarNaComunidade = false) => {
+    if (!optionalFeaturesEnabled || !alunoId || !escolaId) return;
+    if (quiz.length === 0) {
+      toast({ variant: 'destructive', title: 'Sem quiz', description: 'Gere um quiz antes de salvar.' });
+      return;
+    }
+
+    const livro = livros.find((item) => item.id === quizLivroId);
+    let postId = null;
+    const titulo = livro?.titulo ? `Quiz IA: ${livro.titulo}` : 'Quiz IA do aluno';
+    const descricao = quizTema.trim() || 'compreensão da leitura';
+
+    setSaving(true);
+    try {
+      if (publicarNaComunidade) {
+        const resumoQuestoes = quiz
+          .map((pergunta, index) => `${index + 1}) ${pergunta.enunciado}`)
+          .join('\n');
+
+        const { data: postCriado, error: postError } = await supabase
+          .from('comunidade_posts')
+          .insert({
+            autor_id: alunoId,
+            escola_id: escolaId,
+            livro_id: livro?.id || null,
+            tipo: 'dica',
+            titulo,
+            conteudo: `Quiz criado no laboratório (${descricao}).\n${resumoQuestoes}`,
+            imagem_urls: [],
+            tags: ['quiz', 'ia'],
+          })
+          .select('id')
+          .single();
+        if (postError) throw postError;
+        postId = postCriado?.id || null;
+      }
+
+      const { error } = await supabase.from('laboratorio_criacoes').insert({
+        aluno_id: alunoId,
+        escola_id: escolaId,
+        livro_id: livro?.id || null,
+        tipo: 'quiz',
+        titulo,
+        descricao,
+        conteudo_json: {
+          perguntas: quiz,
+          respostas: quizRespostas,
+          resultado: quizResultado,
+        },
+        tags: ['quiz', 'ia'],
+        publicado_comunidade: Boolean(postId),
+        comunidade_post_id: postId,
+      });
+      if (error) throw error;
+
+      toast({ title: publicarNaComunidade ? 'Quiz salvo e compartilhado!' : 'Quiz salvo no laboratório!' });
+      await fetchData();
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao salvar quiz',
+        description: error?.message || 'Não foi possível salvar o quiz.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const apagarCriacaoLaboratorio = async (criacao) => {
+    if (!criacao?.id) return;
+    const ok = window.confirm('Deseja apagar esta criação do laboratório?');
+    if (!ok) return;
+
+    setSaving(true);
+    try {
+      if (criacao.comunidade_post_id) {
+        await supabase.from('comunidade_posts').delete().eq('id', criacao.comunidade_post_id);
+      }
+      const { error } = await supabase.from('laboratorio_criacoes').delete().eq('id', criacao.id);
+      if (error) throw error;
+
+      toast({ title: 'Criação removida.' });
+      await fetchData();
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao apagar', description: error?.message || 'Não foi possível apagar.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const activeSection = useMemo(() => {
     if (location.pathname === '/aluno/biblioteca') return 'biblioteca';
     if (location.pathname === '/aluno/laboratorio') return 'laboratorio';
@@ -1079,6 +1287,7 @@ export default function PainelAluno() {
   }, [activeSection]);
 
   const gerarResumo = async () => {
+    if (!alunoId || !escolaId) return;
     const livro = livros.find((item) => item.id === resumoLivroId);
     if (!livro) {
       toast({ variant: 'destructive', title: 'Selecione um livro', description: 'Escolha um livro para gerar o resumo.' });
@@ -1140,7 +1349,7 @@ export default function PainelAluno() {
     }
   };
 
-  const salvarResumo = () => {
+  const salvarResumo = async () => {
     const livro = livros.find((item) => item.id === resumoLivroId);
     if (!livro || !resumoTexto.trim()) {
       toast({
@@ -1151,18 +1360,38 @@ export default function PainelAluno() {
       return;
     }
 
-    setResumosCriados((prev) => [
-      {
-        id: crypto.randomUUID(),
-        livroId: livro.id,
-        livroTitulo: livro.titulo,
-        texto: resumoTexto.trim(),
-        criadoEm: new Date().toISOString(),
-      },
-      ...prev,
-    ]);
-    toast({ title: 'Resumo salvo no laboratório' });
-    setResumoTexto('');
+    try {
+      const payload = {
+        aluno_id: alunoId,
+        escola_id: escolaId,
+        livro_id: livro.id,
+        tipo: 'resumo',
+        titulo: `Resumo: ${livro.titulo}`,
+        descricao: resumoTexto.trim().slice(0, 260),
+        conteudo_json: {
+          texto: resumoTexto.trim(),
+        },
+        tags: ['resumo', 'ia'],
+      };
+      const { error } = await supabase.from('laboratorio_criacoes').insert(payload);
+      if (error) throw error;
+
+      setResumosCriados((prev) => [
+        {
+          id: crypto.randomUUID(),
+          livroId: livro.id,
+          livroTitulo: livro.titulo,
+          texto: resumoTexto.trim(),
+          criadoEm: new Date().toISOString(),
+        },
+        ...prev,
+      ]);
+      toast({ title: 'Resumo salvo no laboratório' });
+      setResumoTexto('');
+      await fetchData();
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível salvar o resumo.' });
+    }
   };
 
   if (loading) {
@@ -1508,7 +1737,27 @@ export default function PainelAluno() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {studioSlides.map((slide, index) => (
                       <div key={slide.id} className="relative">
-                        <img src={slide.url} alt={`Imagem ${index + 1}`} className="h-24 w-full object-cover rounded-md border" />
+                        <button
+                          type="button"
+                          className="w-full"
+                          onClick={() => setSelectedStudioImageUrl(slide.url)}
+                          title="Ampliar imagem"
+                        >
+                          <img
+                            src={slide.url}
+                            alt={`Imagem ${index + 1}`}
+                            className="h-24 w-full object-cover rounded-md border cursor-zoom-in"
+                          />
+                        </button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="absolute left-1 top-1 h-6 w-6 p-0"
+                          onClick={() => setSelectedStudioImageUrl(slide.url)}
+                        >
+                          <Expand className="w-3 h-3" />
+                        </Button>
                         <Button
                           type="button"
                           size="sm"
@@ -1522,6 +1771,14 @@ export default function PainelAluno() {
                     ))}
                   </div>
                 )}
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" onClick={salvarProjetoStudioNoLaboratorio} disabled={saving || studioSlides.length === 0}>
+                    Salvar projeto
+                  </Button>
+                  <Button type="button" onClick={handlePublicarStudio} disabled={saving || studioSlides.length === 0}>
+                    Compartilhar na comunidade
+                  </Button>
+                </div>
               </CardContent>
             </Card>
 
@@ -1580,9 +1837,15 @@ export default function PainelAluno() {
                       </div>
                     ))}
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button type="button" onClick={corrigirQuiz}>
                         Corrigir quiz
+                      </Button>
+                      <Button type="button" variant="outline" onClick={() => salvarQuizNoLaboratorio(false)} disabled={saving}>
+                        Salvar quiz
+                      </Button>
+                      <Button type="button" variant="outline" onClick={() => salvarQuizNoLaboratorio(true)} disabled={saving}>
+                        Compartilhar quiz
                       </Button>
                       {quizResultado && (
                         <Badge variant="outline">
@@ -1636,6 +1899,117 @@ export default function PainelAluno() {
                       <div key={resumo.id} className="rounded-md border p-3">
                         <p className="text-xs text-muted-foreground">{resumo.livroTitulo}</p>
                         <p className="text-sm line-clamp-3">{resumo.texto}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Audiobooks da escola</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <select
+                    className="h-10 rounded-md border bg-background px-3 text-sm"
+                    value={audiobookForm.livro_id}
+                    onChange={(e) => setAudiobookForm((prev) => ({ ...prev, livro_id: e.target.value }))}
+                  >
+                    <option value="">Livro do acervo</option>
+                    {livros.map((livro) => (
+                      <option key={livro.id} value={livro.id}>
+                        {livro.titulo}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    value={audiobookForm.titulo}
+                    onChange={(e) => setAudiobookForm((prev) => ({ ...prev, titulo: e.target.value }))}
+                    placeholder="Título do audiobook (opcional)"
+                  />
+                  <Input
+                    value={audiobookForm.autor}
+                    onChange={(e) => setAudiobookForm((prev) => ({ ...prev, autor: e.target.value }))}
+                    placeholder="Autor (opcional)"
+                  />
+                  <Input
+                    value={audiobookForm.duracao_minutos}
+                    onChange={(e) => setAudiobookForm((prev) => ({ ...prev, duracao_minutos: e.target.value }))}
+                    placeholder="Duração em minutos (opcional)"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Arquivo de áudio</Label>
+                  <Input type="file" accept="audio/*" onChange={(e) => handleSelectAudiobookFile(e.target.files)} />
+                  {audiobookFileNome && <p className="text-xs text-muted-foreground">Arquivo: {audiobookFileNome}</p>}
+                </div>
+
+                <Button type="button" variant="outline" onClick={handleCriarAudiobook} disabled={saving}>
+                  Publicar audiobook no acervo
+                </Button>
+
+                {audiobookCatalogo.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nenhum audiobook disponível para sua escola.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {audiobookCatalogo.slice(0, 20).map((audio) => {
+                      const meu = meusAudiobooks.some((item) => item.audiobook_id === audio.id);
+                      return (
+                        <div key={audio.id} className="rounded-md border p-3 space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="font-medium">{audio.titulo}</p>
+                              <p className="text-xs text-muted-foreground">{audio.autor || audio?.livros?.autor || '-'}</p>
+                            </div>
+                            <Button type="button" size="sm" variant={meu ? 'default' : 'outline'} onClick={() => toggleMeuAudiobook(audio.id)}>
+                              {meu ? 'Nos meus audiobooks' : 'Adicionar aos meus'}
+                            </Button>
+                          </div>
+                          <audio controls src={audio.audio_url} preload="metadata" className="w-full h-10" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Criações salvas no laboratório</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {criacoesLaboratorio.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nenhuma criação salva ainda.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {criacoesLaboratorio.slice(0, 20).map((criacao) => (
+                      <div key={criacao.id} className="rounded-md border p-3 space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="font-medium">{criacao.titulo || 'Criação sem título'}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {criacao.tipo} • {formatDateBR(criacao.created_at)}
+                            </p>
+                          </div>
+                          <Button type="button" size="sm" variant="destructive" onClick={() => apagarCriacaoLaboratorio(criacao)} disabled={saving}>
+                            <Trash2 className="w-3 h-3 mr-1" />
+                            Apagar
+                          </Button>
+                        </div>
+                        {ensureArray(criacao.imagem_urls).length > 0 && (
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            {ensureArray(criacao.imagem_urls).slice(0, 4).map((img, index) => (
+                              <button type="button" key={`${criacao.id}-${index}`} onClick={() => setSelectedStudioImageUrl(img)}>
+                                <img src={img} alt={`Criação ${index + 1}`} className="h-20 w-full rounded-md border object-cover cursor-zoom-in" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {criacao.descricao && <p className="text-sm text-muted-foreground">{criacao.descricao}</p>}
                       </div>
                     ))}
                   </div>
@@ -1763,6 +2137,7 @@ export default function PainelAluno() {
                                   setReviewLivro(livro);
                                   setReviewNota(5);
                                   setReviewTexto('');
+                                  setShareReviewToCommunity(false);
                                   setReviewDialog(true);
                                 }}
                               >
@@ -1955,6 +2330,15 @@ export default function PainelAluno() {
                 rows={4}
               />
             </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={shareReviewToCommunity}
+                onChange={(e) => setShareReviewToCommunity(e.target.checked)}
+                className="h-4 w-4 rounded border border-input"
+              />
+              Compartilhar esta resenha na comunidade da escola
+            </label>
           </div>
 
           <div className="flex justify-end gap-2">
@@ -1995,6 +2379,22 @@ export default function PainelAluno() {
               {saving ? 'Enviando...' : 'Enviar solicitação'}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(selectedStudioImageUrl)} onOpenChange={(open) => !open && setSelectedStudioImageUrl('')}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Visualização ampliada</DialogTitle>
+            <DialogDescription>Clique fora para fechar. Use a imagem em tamanho maior para analisar detalhes.</DialogDescription>
+          </DialogHeader>
+          {selectedStudioImageUrl && (
+            <img
+              src={selectedStudioImageUrl}
+              alt="Imagem ampliada do laboratório"
+              className="w-full max-h-[75vh] object-contain rounded-md border"
+            />
+          )}
         </DialogContent>
       </Dialog>
 

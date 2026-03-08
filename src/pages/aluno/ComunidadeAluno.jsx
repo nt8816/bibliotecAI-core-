@@ -70,6 +70,7 @@ export default function ComunidadeAluno() {
   const { toast } = useToast();
 
   const [alunoId, setAlunoId] = useState(null);
+  const [escolaId, setEscolaId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -103,7 +104,7 @@ export default function ComunidadeAluno() {
     try {
       const { data: perfil, error: perfilError } = await supabase
         .from('usuarios_biblioteca')
-        .select('id')
+        .select('id, escola_id')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
@@ -112,6 +113,7 @@ export default function ComunidadeAluno() {
 
       if (perfilError || !perfil) throw perfilError || new Error('Perfil do aluno não encontrado.');
       setAlunoId(perfil.id);
+      setEscolaId(perfil.escola_id || null);
 
       const { data: livrosData, error: livrosError } = await supabase.from('livros').select('id, titulo').order('titulo');
       if (livrosError) throw livrosError;
@@ -275,7 +277,7 @@ export default function ComunidadeAluno() {
   };
 
   const handleCriarPost = async () => {
-    if (!enabled || !alunoId) return;
+    if (!enabled || !alunoId || !escolaId) return;
     if (!postConteudo.trim() && imageDataUrls.length === 0 && !postAudiobookId) {
       toast({
         variant: 'destructive',
@@ -289,6 +291,7 @@ export default function ComunidadeAluno() {
     try {
       const { error } = await supabase.from('comunidade_posts').insert({
         autor_id: alunoId,
+        escola_id: escolaId,
         livro_id: postLivroId || null,
         audiobook_id: postAudiobookId || null,
         tipo: postTipo,
