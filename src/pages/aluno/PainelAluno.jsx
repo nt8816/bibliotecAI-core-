@@ -41,7 +41,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import {
   generateAudioWithCloudflare,
   generateImageWithCloudflare,
@@ -100,21 +99,10 @@ async function fileToDataUrl(file) {
 }
 
 async function generateImageWithIA(prompt) {
-  let data;
-  try {
-    data = await generateImageWithCloudflare({
-      prompt,
-      fallbackErrorMessage: 'Nao foi possivel gerar imagem no momento.',
-    });
-  } catch {
-    data = await invokeEdgeFunction('gerar-imagem-ia', {
-      body: {
-        prompt,
-      },
-      requireAuth: false,
-      fallbackErrorMessage: 'Nao foi possivel gerar imagem no momento.',
-    });
-  }
+  const data = await generateImageWithCloudflare({
+    prompt,
+    fallbackErrorMessage: 'Nao foi possivel gerar imagem no momento.',
+  });
 
   const imageDataUrl = data?.imageDataUrl;
   if (!imageDataUrl || typeof imageDataUrl !== 'string') {
@@ -125,20 +113,11 @@ async function generateImageWithIA(prompt) {
 }
 
 async function generateTextWithIA(task, input, fallbackErrorMessage) {
-  let data;
-  try {
-    data = await generateTextWithCloudflare({
-      task,
-      input,
-      fallbackErrorMessage: fallbackErrorMessage || 'Nao foi possivel gerar texto com IA no momento.',
-    });
-  } catch {
-    data = await invokeEdgeFunction('gerar-texto-ia', {
-      body: { task, input },
-      requireAuth: false,
-      fallbackErrorMessage: fallbackErrorMessage || 'Nao foi possivel gerar texto com IA no momento.',
-    });
-  }
+  const data = await generateTextWithCloudflare({
+    task,
+    input,
+    fallbackErrorMessage: fallbackErrorMessage || 'Nao foi possivel gerar texto com IA no momento.',
+  });
 
   return data;
 }

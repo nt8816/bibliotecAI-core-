@@ -272,34 +272,16 @@ export default function Livros() {
     setBuscandoSinopse(true);
     try {
       const [iaResult, openLibraryResult] = await Promise.allSettled([
-        (async () => {
-          try {
-            return await generateTextWithCloudflare({
-              task: 'sinopse_livro',
-              input: {
-                titulo: formData.titulo,
-                autor: formData.autor,
-                area: formData.area,
-                sinopseBase: formData.sinopse,
-              },
-              fallbackErrorMessage: 'Não foi possível gerar sinopse por IA.',
-            });
-          } catch {
-            return await invokeEdgeFunction('gerar-texto-ia', {
-              body: {
-                task: 'sinopse_livro',
-                input: {
-                  titulo: formData.titulo,
-                  autor: formData.autor,
-                  area: formData.area,
-                  sinopseBase: formData.sinopse,
-                },
-              },
-              requireAuth: false,
-              fallbackErrorMessage: 'Não foi possível gerar sinopse por IA.',
-            });
-          }
-        })(),
+        generateTextWithCloudflare({
+          task: 'sinopse_livro',
+          input: {
+            titulo: formData.titulo,
+            autor: formData.autor,
+            area: formData.area,
+            sinopseBase: formData.sinopse,
+          },
+          fallbackErrorMessage: 'Não foi possível gerar sinopse por IA.',
+        }),
         buscarSinopseOpenLibrary(formData.titulo, formData.autor),
       ]);
 
