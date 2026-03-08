@@ -395,7 +395,7 @@ export default function PainelAluno() {
       }
     });
     return request;
-  }, [optionalFeaturesEnabled, toast, user]);
+  }, [loadLocalCriacoes, optionalFeaturesEnabled, toast, user]);
 
   useEffect(() => {
     fetchData();
