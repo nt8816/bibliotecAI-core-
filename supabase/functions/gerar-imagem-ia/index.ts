@@ -170,18 +170,11 @@ Deno.serve(async (req) => {
     const wantsHuggingFace =
       Boolean(requestedProvider) ||
       requestedModel.includes("/") ||
-      requestedModel.toLowerCase().includes("flux") ||
-      Boolean(Deno.env.get("HF_IMAGE_MODEL") || Deno.env.get("HF_IMAGE_PROVIDER"));
+      requestedModel.toLowerCase().includes("flux");
 
     const hfToken = Deno.env.get("HF_TOKEN")?.trim();
-    if (wantsHuggingFace && !hfToken) {
-      return new Response(
-        JSON.stringify({ error: "HF_TOKEN nao configurado. Defina o secret da Hugging Face para usar FLUX." }),
-        { status: 500, headers: corsHeaders },
-      );
-    }
-
-    if (hfToken) {
+    let hfErrorMessage = "";
+    if (wantsHuggingFace && hfToken) {
       const model = String(body?.model || Deno.env.get("HF_IMAGE_MODEL") || HF_DEFAULT_MODEL).trim();
       const provider = String(body?.provider || Deno.env.get("HF_IMAGE_PROVIDER") || HF_DEFAULT_PROVIDER).trim();
       const numInferenceSteps = toFiniteInt(body?.parameters?.num_inference_steps, HF_DEFAULT_STEPS);
@@ -190,9 +183,10 @@ Deno.serve(async (req) => {
         const result = await generateWithHuggingFace(hfToken, prompt, model, provider, numInferenceSteps);
         return new Response(JSON.stringify(result), { status: 200, headers: corsHeaders });
       } catch (hfError) {
-        const message = hfError instanceof Error ? hfError.message : "Erro desconhecido no Hugging Face";
-        return new Response(JSON.stringify({ error: message }), { status: 502, headers: corsHeaders });
+        hfErrorMessage = hfError instanceof Error ? hfError.message : "Erro desconhecido no Hugging Face";
       }
+    } else if (wantsHuggingFace && !hfToken) {
+      hfErrorMessage = "HF_TOKEN nao configurado para a solicitacao Hugging Face.";
     }
 
     const configuredModels = String(Deno.env.get("GEMINI_IMAGE_MODEL") || "")
@@ -202,7 +196,7 @@ Deno.serve(async (req) => {
 
     const geminiApiKey = Deno.env.get("GEMINI_API_KEY")?.trim();
     if (!geminiApiKey) {
-      return new Response(JSON.stringify({ error: "Secret HF_TOKEN ou GEMINI_API_KEY nao configurado." }), {
+      return new Response(JSON.stringify({ error: hfErrorMessage || "Secret HF_TOKEN ou GEMINI_API_KEY nao configurado." }), {
         status: 500,
         headers: corsHeaders,
       });
@@ -258,8 +252,12 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (hfErrorMessage && errors.length === 0) {
+      return new Response(JSON.stringify({ error: hfErrorMessage }), { status: 502, headers: corsHeaders });
+    }
+
     return new Response(
-      JSON.stringify({ error: `Nao foi possivel gerar imagem. Tentativas: ${errors.join(" | ") || "sem detalhes"}` }),
+      JSON.stringify({ error: `Nao foi possivel gerar imagem. Tentativas: ${[hfErrorMessage, ...errors].filter(Boolean).join(" | ") || "sem detalhes"}` }),
       { status: 502, headers: corsHeaders },
     );
   } catch (error) {
