@@ -34,13 +34,21 @@ const parseResponseBody = async (response) => {
 };
 
 const extractErrorMessage = (parsed, fallback) => {
+  const normalize = (value) => {
+    const message = String(value || '').trim();
+    if (!message) return fallback;
+    if (message.includes("Cannot read properties of undefined (reading 'run')")) {
+      return 'Worker Cloudflare sem binding/configuracao de modelo para /image. Revise wrangler.toml e o handler do endpoint.';
+    }
+    return message;
+  };
+
   if (parsed.kind === 'json') {
     const payload = ensureObject(parsed.payload);
-    return String(payload.error || payload.message || fallback).trim();
+    return normalize(payload.error || payload.message || fallback);
   }
   if (parsed.kind === 'text') {
-    const text = String(parsed.payload || '').trim();
-    return text || fallback;
+    return normalize(parsed.payload);
   }
   return fallback;
 };

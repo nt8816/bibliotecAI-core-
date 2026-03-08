@@ -41,6 +41,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import {
   generateAudioWithCloudflare,
   generateImageWithCloudflare,
@@ -99,13 +100,24 @@ async function fileToDataUrl(file) {
 }
 
 async function generateImageWithIA(prompt) {
-  const data = await generateImageWithCloudflare({
-    prompt,
-    provider: 'fal-ai',
-    model: 'black-forest-labs/FLUX.1-dev',
-    parameters: { num_inference_steps: 5 },
-    fallbackErrorMessage: 'Nao foi possivel gerar imagem no momento.',
-  });
+  let data;
+  try {
+    data = await generateImageWithCloudflare({
+      prompt,
+      fallbackErrorMessage: 'Nao foi possivel gerar imagem no momento.',
+    });
+  } catch {
+    data = await invokeEdgeFunction('gerar-imagem-ia', {
+      body: {
+        prompt,
+        provider: 'fal-ai',
+        model: 'black-forest-labs/FLUX.1-dev',
+        parameters: { num_inference_steps: 5 },
+      },
+      requireAuth: false,
+      fallbackErrorMessage: 'Nao foi possivel gerar imagem no momento.',
+    });
+  }
 
   const imageDataUrl = data?.imageDataUrl;
   if (!imageDataUrl || typeof imageDataUrl !== 'string') {
@@ -116,11 +128,20 @@ async function generateImageWithIA(prompt) {
 }
 
 async function generateTextWithIA(task, input, fallbackErrorMessage) {
-  const data = await generateTextWithCloudflare({
-    task,
-    input,
-    fallbackErrorMessage: fallbackErrorMessage || 'Nao foi possivel gerar texto com IA no momento.',
-  });
+  let data;
+  try {
+    data = await generateTextWithCloudflare({
+      task,
+      input,
+      fallbackErrorMessage: fallbackErrorMessage || 'Nao foi possivel gerar texto com IA no momento.',
+    });
+  } catch {
+    data = await invokeEdgeFunction('gerar-texto-ia', {
+      body: { task, input },
+      requireAuth: false,
+      fallbackErrorMessage: fallbackErrorMessage || 'Nao foi possivel gerar texto com IA no momento.',
+    });
+  }
 
   return data;
 }
