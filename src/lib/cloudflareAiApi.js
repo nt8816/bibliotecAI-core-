@@ -41,7 +41,7 @@ const extractErrorMessage = (parsed, fallback) => {
     const message = String(value || '').trim();
     if (!message) return fallback;
     if (message.includes("Cannot read properties of undefined (reading 'run')")) {
-      return 'Worker Cloudflare sem binding/configuracao de modelo para /image. Revise wrangler.toml e o handler do endpoint.';
+      return 'Worker Cloudflare sem binding/configuração de modelo para /image. Revise wrangler.toml e o handler do endpoint.';
     }
     return message;
   };
@@ -71,16 +71,16 @@ const buildTextPromptFromTask = (task, input) => {
 
   if (safeTask === 'sinopse_livro') {
     return [
-      'Gere uma sinopse curta e clara em portugues do Brasil para uso escolar.',
-      'Responda SOMENTE com JSON valido no formato: {"sinopse":"..."}',
+      'Gere uma sinopse curta e clara em português do Brasil para uso escolar.',
+      'Responda SOMENTE com JSON válido no formato: {"sinopse":"..."}',
       `Dados do livro: ${inputJson}`,
     ].join('\n');
   }
 
   if (safeTask === 'quiz_leitura') {
     return [
-      'Crie um quiz de leitura em portugues do Brasil.',
-      'Responda SOMENTE com JSON valido no formato:',
+      'Crie um quiz de leitura em português do Brasil.',
+      'Responda SOMENTE com JSON válido no formato:',
       '{"perguntas":[{"enunciado":"...","opcoes":["A","B","C","D"],"correta":0}]}',
       'Use indice de resposta correta entre 0 e 3.',
       `Contexto: ${inputJson}`,
@@ -89,24 +89,24 @@ const buildTextPromptFromTask = (task, input) => {
 
   if (safeTask === 'resumo_estudo') {
     return [
-      'Crie um resumo de estudo em portugues do Brasil para aluno.',
-      'Responda SOMENTE com JSON valido no formato: {"texto":"..."}',
+      'Crie um resumo de estudo em português do Brasil para aluno.',
+      'Responda SOMENTE com JSON válido no formato: {"texto":"..."}',
       `Contexto: ${inputJson}`,
     ].join('\n');
   }
 
   if (safeTask === 'gamificacao_desafio') {
     return [
-      'Crie um desafio curto de gamificacao educacional para aluno.',
-      'Responda SOMENTE com JSON valido no formato:',
+      'Crie um desafio curto de gamificação educacional para aluno.',
+      'Responda SOMENTE com JSON válido no formato:',
       '{"titulo":"...","desafio":"...","recompensa":"..."}',
       `Dados: ${inputJson}`,
     ].join('\n');
   }
 
   return [
-    'Responda em portugues do Brasil.',
-    'Quando apropriado, responda com JSON valido.',
+    'Responda em português do Brasil.',
+    'Quando apropriado, responda com JSON válido.',
     `Tarefa: ${safeTask || 'geral'}`,
     `Entrada: ${inputJson}`,
   ].join('\n');
@@ -192,7 +192,7 @@ export const generateTextWithCloudflare = async ({
   task,
   input,
   prompt,
-  fallbackErrorMessage = 'Nao foi possivel gerar texto com IA no momento.',
+  fallbackErrorMessage = 'Não foi possível gerar texto com IA no momento.',
 } = {}) => {
   const finalPrompt = String(prompt || '').trim() || buildTextPromptFromTask(task, input);
   const parsed = await callBibliotecaAi('/text', { prompt: finalPrompt }, fallbackErrorMessage);
@@ -218,7 +218,7 @@ export const generateImageWithCloudflare = async ({
   model,
   provider,
   parameters,
-  fallbackErrorMessage = 'Nao foi possivel gerar imagem no momento.',
+  fallbackErrorMessage = 'Não foi possível gerar imagem no momento.',
 } = {}) => {
   const parsed = await callBibliotecaAi('/image', { prompt, model, provider, parameters }, fallbackErrorMessage);
 
@@ -229,7 +229,7 @@ export const generateImageWithCloudflare = async ({
   }
 
   if (parsed.kind === 'text') {
-    throw new Error('A API respondeu em formato invalido para imagem.');
+    throw new Error('A API respondeu em formato inválido para imagem.');
   }
 
   const payload = ensureObject(parsed.payload);
@@ -255,7 +255,7 @@ export const generateAudioWithCloudflare = async ({
   language = 'pt-BR',
   model,
   prompt,
-  fallbackErrorMessage = 'Nao foi possivel gerar audio no momento.',
+  fallbackErrorMessage = 'Não foi possível gerar áudio no momento.',
 } = {}) => {
   const textPrompt = String(prompt || text || '').trim();
   const parsed = await callBibliotecaAi(
@@ -271,7 +271,7 @@ export const generateAudioWithCloudflare = async ({
   }
 
   if (parsed.kind === 'text') {
-    throw new Error('A API respondeu em formato invalido para áudio.');
+    throw new Error('A API respondeu em formato inválido para áudio.');
   }
 
   const payload = ensureObject(parsed.payload);

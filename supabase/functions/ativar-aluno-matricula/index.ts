@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (alunoError) {
-      return jsonResponse({ success: false, error: 'Nao foi possivel consultar a matricula' }, 500);
+      return jsonResponse({ success: false, error: 'Não foi possível consultar a matrícula' }, 500);
     }
 
     if (!aluno) {
@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
     if (authError || !authData?.user?.id) {
       return jsonResponse({
         success: false,
-        error: authError?.message || 'Nao foi possivel ativar a conta',
+        error: authError?.message || 'Não foi possível ativar a conta',
       }, 400);
     }
 
@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
 
     if (roleError) {
       await adminClient.auth.admin.deleteUser(userId).catch(() => {});
-      return jsonResponse({ success: false, error: 'Nao foi possivel definir permissao do aluno' }, 500);
+      return jsonResponse({ success: false, error: 'Não foi possível definir permissão do aluno' }, 500);
     }
 
     const { error: profileError } = await adminClient
@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
 
     if (profileError) {
       await adminClient.auth.admin.deleteUser(userId).catch(() => {});
-      return jsonResponse({ success: false, error: 'Nao foi possivel vincular o perfil do aluno' }, 500);
+      return jsonResponse({ success: false, error: 'Não foi possível vincular o perfil do aluno' }, 500);
     }
 
     await adminClient

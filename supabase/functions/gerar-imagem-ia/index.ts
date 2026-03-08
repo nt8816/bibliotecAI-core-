@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
 
   try {
     if (req.method !== "POST") {
-      return new Response(JSON.stringify({ error: "Metodo nao permitido." }), { status: 405, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: "Método não permitido." }), { status: 405, headers: corsHeaders });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -257,7 +257,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ error: `Nao foi possivel gerar imagem. Tentativas: ${[hfErrorMessage, ...errors].filter(Boolean).join(" | ") || "sem detalhes"}` }),
+      JSON.stringify({ error: `Não foi possível gerar imagem. Tentativas: ${[hfErrorMessage, ...errors].filter(Boolean).join(" | ") || "sem detalhes"}` }),
       { status: 502, headers: corsHeaders },
     );
   } catch (error) {

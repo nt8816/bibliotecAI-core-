@@ -101,7 +101,7 @@ async function fileToDataUrl(file) {
 async function generateImageWithIA(prompt) {
   const data = await generateImageWithCloudflare({
     prompt,
-    fallbackErrorMessage: 'Nao foi possivel gerar imagem no momento.',
+    fallbackErrorMessage: 'Não foi possível gerar imagem no momento.',
   });
 
   const imageDataUrl = data?.imageDataUrl;
@@ -116,7 +116,7 @@ async function generateTextWithIA(task, input, fallbackErrorMessage) {
   const data = await generateTextWithCloudflare({
     task,
     input,
-    fallbackErrorMessage: fallbackErrorMessage || 'Nao foi possivel gerar texto com IA no momento.',
+    fallbackErrorMessage: fallbackErrorMessage || 'Não foi possível gerar texto com IA no momento.',
   });
 
   return data;
@@ -629,7 +629,7 @@ export default function PainelAluno() {
       const { audioDataUrl } = await generateAudioWithCloudflare({
         text: normalizedText,
         language: 'pt-BR',
-        fallbackErrorMessage: 'Nao foi possivel gerar audio da sinopse no momento.',
+        fallbackErrorMessage: 'Não foi possível gerar áudio da sinopse no momento.',
       });
 
       const audio = new Audio(audioDataUrl);
@@ -904,7 +904,7 @@ export default function PainelAluno() {
       return;
     }
     if (studioSlides.length >= 8) {
-      toast({ variant: 'destructive', title: 'Limite atingido', description: 'Use no maximo 8 imagens por animacao.' });
+      toast({ variant: 'destructive', title: 'Limite atingido', description: 'Use no máximo 8 imagens por animação.' });
       return;
     }
 
@@ -924,7 +924,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Falha ao gerar imagem',
-        description: error?.message || 'Nao foi possivel gerar imagem no momento.',
+        description: error?.message || 'Não foi possível gerar imagem no momento.',
       });
     } finally {
       setGerandoImagemIA(false);
@@ -1010,7 +1010,7 @@ export default function PainelAluno() {
           tema,
           quantidade: 3,
         },
-        'Nao foi possivel gerar quiz com IA no momento.',
+        'Não foi possível gerar quiz com IA no momento.',
       );
 
       const perguntasRaw = ensureArray(data?.data?.perguntas);
@@ -1076,7 +1076,7 @@ export default function PainelAluno() {
           autor: livro.autor,
           sinopse: livro.sinopse || '',
         },
-        'Nao foi possivel gerar resumo com IA no momento.',
+        'Não foi possível gerar resumo com IA no momento.',
       );
 
       const texto = String(data?.data?.texto || data?.text || '').trim();
@@ -1105,7 +1105,7 @@ export default function PainelAluno() {
           xp: pontosExperiencia,
           livrosLidos,
         },
-        'Nao foi possivel gerar desafio de gamificacao no momento.',
+        'Não foi possível gerar desafio de gamificação no momento.',
       );
       const desafio = data?.data;
       if (!desafio?.titulo || !desafio?.desafio) throw new Error('A IA respondeu sem desafio válido.');
@@ -1483,7 +1483,7 @@ export default function PainelAluno() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Adicionar imagens do computador (atÃ© 8)</Label>
+                  <Label>Adicionar imagens do computador (até 8)</Label>
                   <Input type="file" accept="image/*" multiple onChange={(e) => handleAdicionarSlides(e.target.files)} />
                 </div>
                 {studioSlides.length > 0 && (

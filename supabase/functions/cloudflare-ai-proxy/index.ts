@@ -17,14 +17,14 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
   try {
-    if (req.method !== "POST") return jsonResponse({ error: "Metodo nao permitido." }, 405);
+    if (req.method !== "POST") return jsonResponse({ error: "Método não permitido." }, 405);
 
     const payload = await req.json().catch(() => ({}));
     const path = String(payload?.path || "").trim();
     const body = payload?.body ?? {};
 
     if (!isAllowedPath(path)) {
-      return jsonResponse({ error: "Path invalido. Use /text, /image ou /audio." }, 400);
+      return jsonResponse({ error: "Caminho inválido. Use /text, /image ou /audio." }, 400);
     }
 
     const baseUrl = String(
