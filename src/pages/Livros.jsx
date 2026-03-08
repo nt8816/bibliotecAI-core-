@@ -20,6 +20,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { generateTextWithCloudflare } from '@/lib/cloudflareAiApi';
 import { ExportPeriodDialog } from '@/components/export/ExportPeriodDialog';
 
 const emptyLivro = {
@@ -271,17 +272,14 @@ export default function Livros() {
     setBuscandoSinopse(true);
     try {
       const [iaResult, openLibraryResult] = await Promise.allSettled([
-        invokeEdgeFunction('gerar-texto-ia', {
-          body: {
-            task: 'sinopse_livro',
-            input: {
-              titulo: formData.titulo,
-              autor: formData.autor,
-              area: formData.area,
-              sinopseBase: formData.sinopse,
-            },
+        generateTextWithCloudflare({
+          task: 'sinopse_livro',
+          input: {
+            titulo: formData.titulo,
+            autor: formData.autor,
+            area: formData.area,
+            sinopseBase: formData.sinopse,
           },
-          requireAuth: false,
           fallbackErrorMessage: 'Não foi possível gerar sinopse por IA.',
         }),
         buscarSinopseOpenLibrary(formData.titulo, formData.autor),

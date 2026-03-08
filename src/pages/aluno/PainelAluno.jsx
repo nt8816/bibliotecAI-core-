@@ -41,7 +41,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import {
+  generateAudioWithCloudflare,
+  generateImageWithCloudflare,
+  generateTextWithCloudflare,
+} from '@/lib/cloudflareAiApi';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 
@@ -95,14 +99,11 @@ async function fileToDataUrl(file) {
 }
 
 async function generateImageWithIA(prompt) {
-  const data = await invokeEdgeFunction('gerar-imagem-ia', {
-    body: {
-      prompt,
-      provider: 'fal-ai',
-      model: 'black-forest-labs/FLUX.1-dev',
-      parameters: { num_inference_steps: 5 },
-    },
-    requireAuth: false,
+  const data = await generateImageWithCloudflare({
+    prompt,
+    provider: 'fal-ai',
+    model: 'black-forest-labs/FLUX.1-dev',
+    parameters: { num_inference_steps: 5 },
     fallbackErrorMessage: 'Nao foi possivel gerar imagem no momento.',
   });
 
@@ -115,9 +116,9 @@ async function generateImageWithIA(prompt) {
 }
 
 async function generateTextWithIA(task, input, fallbackErrorMessage) {
-  const data = await invokeEdgeFunction('gerar-texto-ia', {
-    body: { task, input },
-    requireAuth: false,
+  const data = await generateTextWithCloudflare({
+    task,
+    input,
     fallbackErrorMessage: fallbackErrorMessage || 'Nao foi possivel gerar texto com IA no momento.',
   });
 
@@ -194,6 +195,7 @@ export default function PainelAluno() {
   const warnedMissingFeaturesRef = useRef(false);
   const fetchInFlightRef = useRef(null);
   const realtimeDebounceRef = useRef(null);
+  const audioPlayerRef = useRef(null);
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -588,20 +590,85 @@ export default function PainelAluno() {
     return audiobookCatalogo.filter((audio) => livrosComEmprestimo.has(audio.livro_id));
   }, [audiobookCatalogo, meusLivros]);
 
-  const speakText = (text) => {
-    if (speaking) {
-      speechSynthesis.cancel();
+  const speakText = async (text) => {
+    const stopPlayback = () => {
+      try {
+        speechSynthesis.cancel();
+      } catch {
+        // ignore
+      }
+
+      if (audioPlayerRef.current) {
+        try {
+          audioPlayerRef.current.pause();
+          audioPlayerRef.current.currentTime = 0;
+        } catch {
+          // ignore
+        }
+        audioPlayerRef.current = null;
+      }
       setSpeaking(false);
+    };
+
+    const playWithBrowserTTS = (value) => {
+      const utterance = new SpeechSynthesisUtterance(value || '');
+      utterance.lang = 'pt-BR';
+      utterance.rate = 0.9;
+      utterance.onend = () => setSpeaking(false);
+      utterance.onerror = () => setSpeaking(false);
+      speechSynthesis.speak(utterance);
+    };
+
+    if (speaking) {
+      stopPlayback();
       return;
     }
 
-    const utterance = new SpeechSynthesisUtterance(text || '');
-    utterance.lang = 'pt-BR';
-    utterance.rate = 0.9;
-    utterance.onend = () => setSpeaking(false);
+    const normalizedText = String(text || '').trim();
+    if (!normalizedText) return;
+
     setSpeaking(true);
-    speechSynthesis.speak(utterance);
+    try {
+      const { audioDataUrl } = await generateAudioWithCloudflare({
+        text: normalizedText,
+        language: 'pt-BR',
+        fallbackErrorMessage: 'Nao foi possivel gerar audio da sinopse no momento.',
+      });
+
+      const audio = new Audio(audioDataUrl);
+      audioPlayerRef.current = audio;
+      audio.onended = () => {
+        audioPlayerRef.current = null;
+        setSpeaking(false);
+      };
+      audio.onerror = () => {
+        audioPlayerRef.current = null;
+        playWithBrowserTTS(normalizedText);
+      };
+
+      await audio.play();
+    } catch {
+      playWithBrowserTTS(normalizedText);
+    }
   };
+
+  useEffect(
+    () => () => {
+      try {
+        speechSynthesis.cancel();
+      } catch {
+        // ignore
+      }
+      if (audioPlayerRef.current) {
+        try {
+          audioPlayerRef.current.pause();
+        } catch {
+          // ignore
+        }
+      }
+    },
+    [],
+  );
 
   const toggleWishlist = async (livroId) => {
     if (!alunoId) return;
