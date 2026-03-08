@@ -1,5 +1,8 @@
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+
 const DEFAULT_BASE_URL = 'https://api-bibliotecai.ntn3223.workers.dev';
 const API_BASE_URL = String(import.meta.env.VITE_BIBLIOTECA_AI_API_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
+const USE_PROXY = import.meta.env.VITE_BIBLIOTECA_AI_USE_PROXY !== 'false';
 
 const ensureObject = (value) => (value && typeof value === 'object' ? value : {});
 
@@ -53,7 +56,7 @@ const extractErrorMessage = (parsed, fallback) => {
   return fallback;
 };
 
-const callBibliotecaAi = async (path, body, fallbackErrorMessage) => {
+const callDirect = async (path, body, fallbackErrorMessage) => {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -61,11 +64,39 @@ const callBibliotecaAi = async (path, body, fallbackErrorMessage) => {
   });
 
   const parsed = await parseResponseBody(response);
-  if (!response.ok) {
-    throw new Error(extractErrorMessage(parsed, `${fallbackErrorMessage} (HTTP ${response.status})`));
+  if (!response.ok) throw new Error(extractErrorMessage(parsed, `${fallbackErrorMessage} (HTTP ${response.status})`));
+  return parsed;
+};
+
+const callViaProxy = async (path, body, fallbackErrorMessage) => {
+  const response = await invokeEdgeFunction('cloudflare-ai-proxy', {
+    body: { path, body: body || {} },
+    requireAuth: false,
+    fallbackErrorMessage,
+  });
+
+  if (typeof response === 'string') return { kind: 'text', payload: response };
+
+  // Binary payloads are returned by invokeEdgeFunction as Blob in browsers.
+  if (response instanceof Blob) {
+    const dataUrl = await blobToDataUrl(response);
+    const contentType = String(response.type || '').toLowerCase();
+    return { kind: 'binary', payload: { dataUrl, contentType } };
   }
 
-  return parsed;
+  return { kind: 'json', payload: response || {} };
+};
+
+const callBibliotecaAi = async (path, body, fallbackErrorMessage) => {
+  if (USE_PROXY) return callViaProxy(path, body, fallbackErrorMessage);
+
+  try {
+    return await callDirect(path, body, fallbackErrorMessage);
+  } catch (error) {
+    const isNetworkError = String(error?.message || '').toLowerCase().includes('failed to fetch');
+    if (!isNetworkError) throw error;
+    return callViaProxy(path, body, fallbackErrorMessage);
+  }
 };
 
 export const generateTextWithCloudflare = async ({
