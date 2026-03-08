@@ -2,7 +2,7 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 const DEFAULT_BASE_URL = 'https://api-bibliotecai.ntn3223.workers.dev';
 const API_BASE_URL = String(import.meta.env.VITE_BIBLIOTECA_AI_API_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
-const USE_PROXY = import.meta.env.VITE_BIBLIOTECA_AI_USE_PROXY !== 'false';
+const USE_PROXY = import.meta.env.VITE_BIBLIOTECA_AI_USE_PROXY === 'true';
 
 const ensureObject = (value) => (value && typeof value === 'object' ? value : {});
 
@@ -56,6 +56,95 @@ const extractErrorMessage = (parsed, fallback) => {
   return fallback;
 };
 
+const prettyJson = (value) => {
+  try {
+    return JSON.stringify(value ?? {}, null, 2);
+  } catch {
+    return '{}';
+  }
+};
+
+const buildTextPromptFromTask = (task, input) => {
+  const safeTask = String(task || '').trim().toLowerCase();
+  const safeInput = ensureObject(input);
+  const inputJson = prettyJson(safeInput);
+
+  if (safeTask === 'sinopse_livro') {
+    return [
+      'Gere uma sinopse curta e clara em portugues do Brasil para uso escolar.',
+      'Responda SOMENTE com JSON valido no formato: {"sinopse":"..."}',
+      `Dados do livro: ${inputJson}`,
+    ].join('\n');
+  }
+
+  if (safeTask === 'quiz_leitura') {
+    return [
+      'Crie um quiz de leitura em portugues do Brasil.',
+      'Responda SOMENTE com JSON valido no formato:',
+      '{"perguntas":[{"enunciado":"...","opcoes":["A","B","C","D"],"correta":0}]}',
+      'Use indice de resposta correta entre 0 e 3.',
+      `Contexto: ${inputJson}`,
+    ].join('\n');
+  }
+
+  if (safeTask === 'resumo_estudo') {
+    return [
+      'Crie um resumo de estudo em portugues do Brasil para aluno.',
+      'Responda SOMENTE com JSON valido no formato: {"texto":"..."}',
+      `Contexto: ${inputJson}`,
+    ].join('\n');
+  }
+
+  if (safeTask === 'gamificacao_desafio') {
+    return [
+      'Crie um desafio curto de gamificacao educacional para aluno.',
+      'Responda SOMENTE com JSON valido no formato:',
+      '{"titulo":"...","desafio":"...","recompensa":"..."}',
+      `Dados: ${inputJson}`,
+    ].join('\n');
+  }
+
+  return [
+    'Responda em portugues do Brasil.',
+    'Quando apropriado, responda com JSON valido.',
+    `Tarefa: ${safeTask || 'geral'}`,
+    `Entrada: ${inputJson}`,
+  ].join('\n');
+};
+
+const extractJsonFromText = (text) => {
+  const source = String(text || '').trim();
+  if (!source) return null;
+
+  try {
+    return JSON.parse(source);
+  } catch {
+    // ignore
+  }
+
+  const fenced = source.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced?.[1]) {
+    try {
+      return JSON.parse(fenced[1]);
+    } catch {
+      // ignore
+    }
+  }
+
+  const firstBrace = source.indexOf('{');
+  const lastBrace = source.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    const candidate = source.slice(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
+};
+
 const callDirect = async (path, body, fallbackErrorMessage) => {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
@@ -105,19 +194,23 @@ export const generateTextWithCloudflare = async ({
   prompt,
   fallbackErrorMessage = 'Nao foi possivel gerar texto com IA no momento.',
 } = {}) => {
-  const parsed = await callBibliotecaAi('/text', { task, input, prompt }, fallbackErrorMessage);
+  const finalPrompt = String(prompt || '').trim() || buildTextPromptFromTask(task, input);
+  const parsed = await callBibliotecaAi('/text', { prompt: finalPrompt }, fallbackErrorMessage);
 
   if (parsed.kind === 'text') {
     const text = String(parsed.payload || '').trim();
-    return { data: null, text };
+    const json = extractJsonFromText(text);
+    return { data: ensureObject(json), text };
   }
 
   const payload = ensureObject(parsed.payload);
-  const data = ensureObject(payload.data);
-  const text =
-    String(payload.text || data.text || payload.output || payload.response || '').trim();
+  const rawText = String(payload.text || payload.output || payload.response || '').trim();
+  const responseJson = typeof payload.response === 'object' ? ensureObject(payload.response) : null;
+  const textJson = extractJsonFromText(rawText);
+  const data = ensureObject(payload.data || responseJson || textJson);
+  const text = String(payload.text || data.text || rawText || '').trim();
 
-  return { data, text, raw: payload };
+  return { data, text, raw: payload, prompt: finalPrompt };
 };
 
 export const generateImageWithCloudflare = async ({
@@ -161,9 +254,15 @@ export const generateAudioWithCloudflare = async ({
   voice,
   language = 'pt-BR',
   model,
+  prompt,
   fallbackErrorMessage = 'Nao foi possivel gerar audio no momento.',
 } = {}) => {
-  const parsed = await callBibliotecaAi('/audio', { text, voice, language, model }, fallbackErrorMessage);
+  const textPrompt = String(prompt || text || '').trim();
+  const parsed = await callBibliotecaAi(
+    '/audio',
+    { prompt: textPrompt, text, voice, language, lang: language, model },
+    fallbackErrorMessage,
+  );
 
   if (parsed.kind === 'binary') {
     const audioDataUrl = String(parsed.payload?.dataUrl || '');
