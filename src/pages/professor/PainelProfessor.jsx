@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -29,6 +29,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { generateTextWithCloudflare } from '@/lib/cloudflareAiApi';
 
 const emptyAtividade = {
   titulo: '',
@@ -76,6 +77,64 @@ function isMissingTableError(error) {
   );
 }
 
+function ensureArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function encodeJsonBase64(value) {
+  try {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(value || {}))));
+  } catch {
+    return '';
+  }
+}
+
+function decodeJsonBase64(value) {
+  try {
+    const decoded = decodeURIComponent(escape(atob(String(value || ''))));
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
+function buildDescricaoWithForm(descricao, formulario) {
+  const clean = String(descricao || '').trim();
+  const perguntas = ensureArray(formulario?.perguntas);
+  if (perguntas.length === 0) return clean;
+  const encoded = encodeJsonBase64({ perguntas });
+  return `${clean}\n\n[FORM_CONFIG_V1]${encoded}`.trim();
+}
+
+function parseAtividadeMeta(descricao) {
+  const source = String(descricao || '');
+  const marker = '[FORM_CONFIG_V1]';
+  const idx = source.indexOf(marker);
+  if (idx < 0) return { descricaoLimpa: source, formulario: null };
+  const descricaoLimpa = source.slice(0, idx).trim();
+  const encoded = source.slice(idx + marker.length).trim();
+  const parsed = decodeJsonBase64(encoded);
+  const perguntas = ensureArray(parsed?.perguntas);
+  return {
+    descricaoLimpa,
+    formulario: perguntas.length > 0 ? { perguntas } : null,
+  };
+}
+
+function parseEntregaPayload(rawText) {
+  const source = String(rawText || '');
+  const marker = '[ENTREGA_PAYLOAD_V1]';
+  if (!source.startsWith(marker)) {
+    return { texto: source, imagens: [], respostas: {} };
+  }
+  const parsed = decodeJsonBase64(source.slice(marker.length).trim()) || {};
+  return {
+    texto: String(parsed?.texto || ''),
+    imagens: ensureArray(parsed?.imagens).filter((item) => typeof item === 'string'),
+    respostas: parsed?.respostas && typeof parsed.respostas === 'object' ? parsed.respostas : {},
+  };
+}
+
 export default function PainelProfessor() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -99,6 +158,9 @@ export default function PainelProfessor() {
 
   const [editingAtividade, setEditingAtividade] = useState(null);
   const [atividadeForm, setAtividadeForm] = useState(emptyAtividade);
+  const [atividadeFormularioPerguntas, setAtividadeFormularioPerguntas] = useState([]);
+  const [atividadeFormularioPrompt, setAtividadeFormularioPrompt] = useState('');
+  const [gerandoFormularioIA, setGerandoFormularioIA] = useState(false);
 
   const [avaliacaoForm, setAvaliacaoForm] = useState({});
   const [submissionFeaturesEnabled, setSubmissionFeaturesEnabled] = useState(true);
@@ -125,7 +187,7 @@ export default function PainelProfessor() {
         ? await supabase
             .from('atividades_entregas')
             .select(
-              '*, atividades_leitura(titulo, pontos_extras, data_entrega, livro_id, livros(titulo, autor)), usuarios_biblioteca!atividades_entregas_aluno_id_fkey(nome, turma)',
+              '*, atividades_leitura(titulo, descricao, pontos_extras, data_entrega, livro_id, livros(titulo, autor)), usuarios_biblioteca!atividades_entregas_aluno_id_fkey(nome, turma)',
             )
             .order('updated_at', { ascending: false })
         : { data: [], error: null };
@@ -145,7 +207,16 @@ export default function PainelProfessor() {
       setLivros(livrosRes.data || []);
       setUsuarios(usuariosRes.data || []);
       setSugestoes(sugestoesRes.data || []);
-      setAtividades(atividadesRes.data || []);
+      setAtividades(
+        (atividadesRes.data || []).map((atividade) => {
+          const meta = parseAtividadeMeta(atividade?.descricao);
+          return {
+            ...atividade,
+            descricao: meta.descricaoLimpa,
+            formulario: meta.formulario,
+          };
+        }),
+      );
       setEntregas(entregasRes);
 
       const inicial = {};
@@ -247,21 +318,90 @@ export default function PainelProfessor() {
 
   const handleOpenAtividadeDialog = (atividade = null) => {
     if (atividade) {
+      const meta = parseAtividadeMeta(atividade.descricao);
       setEditingAtividade(atividade);
       setAtividadeForm({
         titulo: atividade.titulo,
-        descricao: atividade.descricao || '',
+        descricao: meta.descricaoLimpa || '',
         pontos_extras: Number(atividade.pontos_extras || 0),
         data_entrega: atividade.data_entrega ? atividade.data_entrega.split('T')[0] : '',
         livro_id: atividade.livro_id,
         aluno_id: atividade.aluno_id,
       });
+      setAtividadeFormularioPerguntas(ensureArray(meta.formulario?.perguntas));
     } else {
       setEditingAtividade(null);
       setAtividadeForm(emptyAtividade);
+      setAtividadeFormularioPerguntas([]);
     }
+    setAtividadeFormularioPrompt('');
 
     setIsAtividadeDialogOpen(true);
+  };
+
+  const handleAdicionarPerguntaFormulario = () => {
+    setAtividadeFormularioPerguntas((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        pergunta: '',
+        tipo: 'texto',
+        opcoes: [],
+      },
+    ]);
+  };
+
+  const handleGerarFormularioIA = async () => {
+    if (!atividadeForm.titulo.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Informe o título',
+        description: 'Preencha o título da atividade para gerar um formulário com IA.',
+      });
+      return;
+    }
+
+    setGerandoFormularioIA(true);
+    try {
+      const promptBase = atividadeFormularioPrompt.trim() || atividadeForm.descricao || atividadeForm.titulo;
+      const ia = await generateTextWithCloudflare({
+        prompt: [
+          'Crie um formulário escolar em português para esta atividade.',
+          'Responda SOMENTE com JSON válido no formato:',
+          '{"perguntas":[{"id":"q1","pergunta":"...","tipo":"texto|multipla_escolha","opcoes":["..."]}]}',
+          'Crie de 3 a 6 perguntas objetivas e úteis.',
+          `Atividade: ${atividadeForm.titulo}`,
+          `Contexto: ${promptBase}`,
+        ].join('\n'),
+        fallbackErrorMessage: 'Não foi possível gerar formulário com IA.',
+      });
+
+      const perguntasRaw = ensureArray(ia?.data?.perguntas);
+      const perguntas = perguntasRaw
+        .map((item, idx) => ({
+          id: String(item?.id || `q_${idx + 1}`),
+          pergunta: String(item?.pergunta || '').trim(),
+          tipo: String(item?.tipo || 'texto') === 'multipla_escolha' ? 'multipla_escolha' : 'texto',
+          opcoes: ensureArray(item?.opcoes).map((op) => String(op || '').trim()).filter(Boolean).slice(0, 6),
+        }))
+        .filter((item) => item.pergunta)
+        .slice(0, 8);
+
+      if (perguntas.length === 0) {
+        throw new Error('A IA não retornou perguntas válidas.');
+      }
+
+      setAtividadeFormularioPerguntas(perguntas);
+      toast({ title: 'Formulário gerado com IA!' });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao gerar formulário',
+        description: error?.message || 'Não foi possível gerar o formulário com IA.',
+      });
+    } finally {
+      setGerandoFormularioIA(false);
+    }
   };
 
   const handleSaveAtividade = async () => {
@@ -286,7 +426,8 @@ export default function PainelProfessor() {
     try {
       const payload = {
         titulo: atividadeForm.titulo.trim(),
-        descricao: atividadeForm.descricao || null,
+        descricao:
+          buildDescricaoWithForm(atividadeForm.descricao || null, { perguntas: atividadeFormularioPerguntas }) || null,
         pontos_extras: Number(atividadeForm.pontos_extras || 0),
         data_entrega: atividadeForm.data_entrega ? new Date(atividadeForm.data_entrega).toISOString() : null,
         livro_id: atividadeForm.livro_id,
@@ -304,6 +445,10 @@ export default function PainelProfessor() {
 
       toast({ title: editingAtividade ? 'Atividade atualizada' : 'Atividade criada' });
       setIsAtividadeDialogOpen(false);
+      setEditingAtividade(null);
+      setAtividadeForm(emptyAtividade);
+      setAtividadeFormularioPerguntas([]);
+      setAtividadeFormularioPrompt('');
       await fetchData();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Falha ao salvar atividade.' });
@@ -443,13 +588,11 @@ export default function PainelProfessor() {
               <CardHeader>
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <CardTitle className="text-base">Criar e gerenciar atividades</CardTitle>
+                  <Button onClick={() => handleOpenAtividadeDialog()}>
+                    <Plus className="w-4 h-4 mr-2" /> Nova atividade
+                  </Button>
                   <Dialog open={isAtividadeDialogOpen} onOpenChange={setIsAtividadeDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button onClick={() => handleOpenAtividadeDialog()}>
-                        <Plus className="w-4 h-4 mr-2" /> Nova atividade
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" translate="no">
                       <DialogHeader>
                         <DialogTitle>{editingAtividade ? 'Editar atividade' : 'Nova atividade'}</DialogTitle>
                         <DialogDescription>Defina tarefa, livro, prazo e pontuação.</DialogDescription>
@@ -475,45 +618,145 @@ export default function PainelProfessor() {
                           />
                         </div>
 
+                        <div className="space-y-3 rounded-md border p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <Label className="text-sm">Formulário da atividade (manual ou IA)</Label>
+                            <Button type="button" size="sm" variant="outline" onClick={handleAdicionarPerguntaFormulario}>
+                              <Plus className="w-3.5 h-3.5 mr-1" /> Pergunta
+                            </Button>
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <Input
+                              placeholder="Tema para IA (opcional): interpretação de texto, revisão do capítulo..."
+                              value={atividadeFormularioPrompt}
+                              onChange={(e) => setAtividadeFormularioPrompt(e.target.value)}
+                            />
+                            <Button type="button" variant="outline" onClick={handleGerarFormularioIA} disabled={gerandoFormularioIA}>
+                              <Sparkles className="w-4 h-4 mr-1.5" />
+                              {gerandoFormularioIA ? 'Gerando...' : 'Gerar com IA'}
+                            </Button>
+                          </div>
+
+                          {atividadeFormularioPerguntas.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">Sem perguntas no formulário. Você pode manter atividade aberta (texto/imagem) ou adicionar perguntas.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {atividadeFormularioPerguntas.map((pergunta, idx) => (
+                                <div key={pergunta.id || idx} className="rounded-md border p-2 space-y-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="text-xs font-medium">Pergunta {idx + 1}</p>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7"
+                                      onClick={() =>
+                                        setAtividadeFormularioPerguntas((prev) => prev.filter((_, i) => i !== idx))
+                                      }
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                                    </Button>
+                                  </div>
+                                  <Input
+                                    placeholder="Digite a pergunta"
+                                    value={String(pergunta.pergunta || '')}
+                                    onChange={(e) =>
+                                      setAtividadeFormularioPerguntas((prev) =>
+                                        prev.map((item, i) => (i === idx ? { ...item, pergunta: e.target.value } : item)),
+                                      )
+                                    }
+                                  />
+                                  <select
+                                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    value={String(pergunta.tipo || 'texto')}
+                                    onChange={(e) =>
+                                      setAtividadeFormularioPerguntas((prev) =>
+                                        prev.map((item, i) =>
+                                          i === idx
+                                            ? {
+                                                ...item,
+                                                tipo: e.target.value === 'multipla_escolha' ? 'multipla_escolha' : 'texto',
+                                                opcoes: e.target.value === 'multipla_escolha' ? ensureArray(item.opcoes) : [],
+                                              }
+                                            : item,
+                                        ),
+                                      )
+                                    }
+                                  >
+                                    <option value="texto">Resposta aberta</option>
+                                    <option value="multipla_escolha">Múltipla escolha</option>
+                                  </select>
+                                  {String(pergunta.tipo) === 'multipla_escolha' && (
+                                    <Textarea
+                                      rows={2}
+                                      placeholder="Uma opção por linha"
+                                      value={ensureArray(pergunta.opcoes).join('\n')}
+                                      onChange={(e) =>
+                                        setAtividadeFormularioPerguntas((prev) =>
+                                          prev.map((item, i) =>
+                                            i === idx
+                                              ? {
+                                                  ...item,
+                                                  opcoes: e.target.value
+                                                    .split('\n')
+                                                    .map((opt) => opt.trim())
+                                                    .filter(Boolean)
+                                                    .slice(0, 6),
+                                                }
+                                              : item,
+                                          ),
+                                        )
+                                      }
+                                    />
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <Label>Aluno *</Label>
-                            <Select
+                            <select
+                              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                               value={atividadeForm.aluno_id || 'none'}
-                              onValueChange={(v) => setAtividadeForm((prev) => ({ ...prev, aluno_id: v === 'none' ? '' : v }))}
+                              onChange={(e) =>
+                                setAtividadeForm((prev) => ({
+                                  ...prev,
+                                  aluno_id: e.target.value === 'none' ? '' : e.target.value,
+                                }))
+                              }
                             >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Selecione" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">Selecione</SelectItem>
-                                {usuarios.map((u) => (
-                                  <SelectItem key={u.id} value={u.id}>
-                                    {u.nome} {u.turma ? `(${u.turma})` : ''}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              <option value="none">Selecione</option>
+                              {usuarios.map((u) => (
+                                <option key={u.id} value={u.id}>
+                                  {u.nome} {u.turma ? `(${u.turma})` : ''}
+                                </option>
+                              ))}
+                            </select>
                           </div>
 
                           <div className="space-y-2">
                             <Label>Livro *</Label>
-                            <Select
+                            <select
+                              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                               value={atividadeForm.livro_id || 'none'}
-                              onValueChange={(v) => setAtividadeForm((prev) => ({ ...prev, livro_id: v === 'none' ? '' : v }))}
+                              onChange={(e) =>
+                                setAtividadeForm((prev) => ({
+                                  ...prev,
+                                  livro_id: e.target.value === 'none' ? '' : e.target.value,
+                                }))
+                              }
                             >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Selecione" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">Selecione</SelectItem>
-                                {livros.map((l) => (
-                                  <SelectItem key={l.id} value={l.id}>
-                                    {l.titulo}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              <option value="none">Selecione</option>
+                              {livros.map((l) => (
+                                <option key={l.id} value={l.id}>
+                                  {l.titulo}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                         </div>
 
@@ -669,6 +912,14 @@ export default function PainelProfessor() {
                 ) : (
                   <div className="space-y-4">
                     {entregas.map((entrega) => {
+                      const entregaPayload = parseEntregaPayload(entrega.texto_entrega);
+                      const atividadeMetaEntrega = parseAtividadeMeta(entrega.atividades_leitura?.descricao);
+                      const labelByPerguntaId = new Map(
+                        ensureArray(atividadeMetaEntrega.formulario?.perguntas).map((pergunta, idx) => [
+                          String(pergunta?.id || `q_${idx + 1}`),
+                          String(pergunta?.pergunta || `Pergunta ${idx + 1}`),
+                        ]),
+                      );
                       const form = avaliacaoForm[entrega.id] || {
                         status: entrega.status || 'enviada',
                         pontos_ganhos: Number(entrega.pontos_ganhos || 0),
@@ -694,8 +945,34 @@ export default function PainelProfessor() {
 
                           <div className="p-3 bg-muted rounded-md">
                             <p className="text-xs text-muted-foreground mb-1">Resposta do aluno</p>
-                            <p className="text-sm whitespace-pre-wrap">{entrega.texto_entrega}</p>
+                            <p className="text-sm whitespace-pre-wrap">{entregaPayload.texto || 'Sem texto.'}</p>
                           </div>
+
+                          {Object.keys(entregaPayload.respostas || {}).length > 0 && (
+                            <div className="rounded-md border p-3">
+                              <p className="text-xs text-muted-foreground mb-1">Respostas do formulário</p>
+                              <div className="space-y-1">
+                                {Object.entries(entregaPayload.respostas).map(([perguntaId, resposta]) => (
+                                  <p key={perguntaId} className="text-sm">
+                                    <span className="font-medium">{labelByPerguntaId.get(perguntaId) || perguntaId}:</span> {String(resposta || '-')}
+                                  </p>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {entregaPayload.imagens.length > 0 && (
+                            <div className="rounded-md border p-3">
+                              <p className="text-xs text-muted-foreground mb-2">Imagens enviadas ({entregaPayload.imagens.length})</p>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                {entregaPayload.imagens.map((img, idx) => (
+                                  <a key={`${entrega.id}-img-${idx}`} href={img} target="_blank" rel="noreferrer">
+                                    <img src={img} alt={`Entrega ${idx + 1}`} className="w-full h-24 object-cover rounded-md border" />
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
 
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div className="space-y-2">
@@ -779,12 +1056,7 @@ export default function PainelProfessor() {
                   <CardTitle className="text-base">Sugestões de livros para alunos</CardTitle>
 
                   <Dialog open={isSugestaoDialogOpen} onOpenChange={setIsSugestaoDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button>
-                        <Send className="w-4 h-4 mr-2" /> Nova sugestão
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-lg">
+                    <DialogContent className="max-w-lg" translate="no">
                       <DialogHeader>
                         <DialogTitle>Enviar sugestão</DialogTitle>
                         <DialogDescription>Indique um livro com mensagem personalizada.</DialogDescription>
@@ -793,36 +1065,34 @@ export default function PainelProfessor() {
                       <div className="space-y-4 py-4">
                         <div className="space-y-2">
                           <Label>Aluno *</Label>
-                          <Select value={selectedAluno || 'none'} onValueChange={(v) => setSelectedAluno(v === 'none' ? '' : v)}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">Selecione</SelectItem>
-                              {usuarios.map((u) => (
-                                <SelectItem key={u.id} value={u.id}>
-                                  {u.nome} {u.turma ? `(${u.turma})` : ''}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <select
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            value={selectedAluno || 'none'}
+                            onChange={(e) => setSelectedAluno(e.target.value === 'none' ? '' : e.target.value)}
+                          >
+                            <option value="none">Selecione</option>
+                            {usuarios.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.nome} {u.turma ? `(${u.turma})` : ''}
+                              </option>
+                            ))}
+                          </select>
                         </div>
 
                         <div className="space-y-2">
                           <Label>Livro *</Label>
-                          <Select value={selectedLivro || 'none'} onValueChange={(v) => setSelectedLivro(v === 'none' ? '' : v)}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">Selecione</SelectItem>
-                              {livros.map((l) => (
-                                <SelectItem key={l.id} value={l.id}>
-                                  {l.titulo}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <select
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            value={selectedLivro || 'none'}
+                            onChange={(e) => setSelectedLivro(e.target.value === 'none' ? '' : e.target.value)}
+                          >
+                            <option value="none">Selecione</option>
+                            {livros.map((l) => (
+                              <option key={l.id} value={l.id}>
+                                {l.titulo}
+                              </option>
+                            ))}
+                          </select>
                         </div>
 
                         <div className="space-y-2">
@@ -846,6 +1116,9 @@ export default function PainelProfessor() {
                       </div>
                     </DialogContent>
                   </Dialog>
+                  <Button onClick={() => setIsSugestaoDialogOpen(true)}>
+                    <Send className="w-4 h-4 mr-2" /> Nova sugestão
+                  </Button>
                 </div>
               </CardHeader>
 

@@ -124,6 +124,63 @@ async function insertCommunityPostCompat(payload, options = {}) {
   return result;
 }
 
+function encodeJsonBase64(value) {
+  try {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(value || {}))));
+  } catch {
+    return '';
+  }
+}
+
+function decodeJsonBase64(value) {
+  try {
+    const decoded = decodeURIComponent(escape(atob(String(value || ''))));
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
+function extractAtividadeFormConfig(descricao) {
+  const source = String(descricao || '');
+  const marker = '[FORM_CONFIG_V1]';
+  const idx = source.indexOf(marker);
+  if (idx < 0) return { descricaoLimpa: source, formulario: null };
+
+  const descricaoLimpa = source.slice(0, idx).trim();
+  const encoded = source.slice(idx + marker.length).trim();
+  const parsed = decodeJsonBase64(encoded);
+  const perguntas = Array.isArray(parsed?.perguntas) ? parsed.perguntas : [];
+
+  return {
+    descricaoLimpa,
+    formulario: perguntas.length > 0 ? { perguntas } : null,
+  };
+}
+
+function serializeEntregaPayload(payload) {
+  return `[ENTREGA_PAYLOAD_V1]${encodeJsonBase64(payload || {})}`;
+}
+
+function parseEntregaPayload(rawText) {
+  const source = String(rawText || '');
+  const marker = '[ENTREGA_PAYLOAD_V1]';
+  if (!source.startsWith(marker)) {
+    return {
+      texto: source,
+      imagens: [],
+      respostas: {},
+    };
+  }
+
+  const parsed = decodeJsonBase64(source.slice(marker.length).trim()) || {};
+  return {
+    texto: String(parsed?.texto || ''),
+    imagens: Array.isArray(parsed?.imagens) ? parsed.imagens.filter((item) => typeof item === 'string') : [],
+    respostas: parsed?.respostas && typeof parsed.respostas === 'object' ? parsed.respostas : {},
+  };
+}
+
 async function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -181,6 +238,7 @@ export default function PainelAluno() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [bibliotecaView, setBibliotecaView] = useState('meus_livros');
+  const [solicitacoesView, setSolicitacoesView] = useState('em_andamento');
   const [speaking, setSpeaking] = useState(false);
 
   const [reviewDialog, setReviewDialog] = useState(false);
@@ -218,6 +276,8 @@ export default function PainelAluno() {
   const [gerandoQuizIA, setGerandoQuizIA] = useState(false);
 
   const [atividadeTexto, setAtividadeTexto] = useState({});
+  const [atividadeImagens, setAtividadeImagens] = useState({});
+  const [atividadeRespostas, setAtividadeRespostas] = useState({});
   const [saving, setSaving] = useState(false);
   const [showAccessChoice, setShowAccessChoice] = useState(false);
   const [optionalFeaturesEnabled, setOptionalFeaturesEnabled] = useState(ENABLE_OPTIONAL_STUDENT_FEATURES);
@@ -405,10 +465,17 @@ export default function PainelAluno() {
         );
 
         const entregaInicial = {};
+        const entregaImagensInicial = {};
+        const entregaRespostasInicial = {};
         entregasOpt.data.forEach((entrega) => {
-          entregaInicial[entrega.atividade_id] = entrega.texto_entrega;
+          const payload = parseEntregaPayload(entrega.texto_entrega);
+          entregaInicial[entrega.atividade_id] = payload.texto;
+          entregaImagensInicial[entrega.atividade_id] = payload.imagens;
+          entregaRespostasInicial[entrega.atividade_id] = payload.respostas;
         });
         setAtividadeTexto(entregaInicial);
+        setAtividadeImagens(entregaImagensInicial);
+        setAtividadeRespostas(entregaRespostasInicial);
       } catch (error) {
         const description = isMissingTableError(error)
           ? 'Tabelas novas não encontradas. Aplique a migration mais recente do Supabase.'
@@ -505,6 +572,7 @@ export default function PainelAluno() {
     const entregaByAtividade = new Map(entregas.map((e) => [e.atividade_id, e]));
     return atividades.map((atividade) => ({
       ...atividade,
+      atividadeMeta: extractAtividadeFormConfig(atividade.descricao),
       entrega: entregaByAtividade.get(atividade.id) || null,
     }));
   }, [atividades, entregas]);
@@ -660,10 +728,7 @@ export default function PainelAluno() {
     [livros, searchTerm],
   );
 
-  const meusLivros = useMemo(
-    () => emprestimos.filter((e) => e.status === 'ativo' || e.status === 'devolvido'),
-    [emprestimos],
-  );
+  const meusLivros = useMemo(() => emprestimos.filter((e) => e.status === 'ativo'), [emprestimos]);
 
   const filteredMeusLivros = useMemo(
     () =>
@@ -687,6 +752,53 @@ export default function PainelAluno() {
     [solicitacoes, searchTerm],
   );
 
+  const latestEmprestimoByLivro = useMemo(() => {
+    const map = new Map();
+    emprestimos.forEach((item) => {
+      if (!item?.livro_id) return;
+      const prev = map.get(item.livro_id);
+      if (!prev) {
+        map.set(item.livro_id, item);
+        return;
+      }
+      const prevDate = new Date(prev.updated_at || prev.created_at || 0).getTime();
+      const currDate = new Date(item.updated_at || item.created_at || 0).getTime();
+      if (currDate >= prevDate) map.set(item.livro_id, item);
+    });
+    return map;
+  }, [emprestimos]);
+
+  const classifySolicitacao = useCallback(
+    (solicitacao) => {
+      const emprestimo = latestEmprestimoByLivro.get(solicitacao?.livro_id);
+      if (emprestimo?.status === 'devolvido') return 'historico';
+      if (emprestimo?.status === 'ativo') return 'em_andamento';
+
+      const status = String(solicitacao?.status || '').toLowerCase();
+      if (status === 'aprovada' || status === 'aceita') return 'aceitos';
+      if (status === 'recusada' || status === 'negada' || status === 'cancelada') return 'historico';
+      return 'em_andamento';
+    },
+    [latestEmprestimoByLivro],
+  );
+
+  const solicitacoesGroups = useMemo(() => {
+    const grouped = {
+      em_andamento: [],
+      aceitos: [],
+      historico: [],
+    };
+    filteredSolicitacoes.forEach((item) => {
+      grouped[classifySolicitacao(item)].push(item);
+    });
+    return grouped;
+  }, [classifySolicitacao, filteredSolicitacoes]);
+
+  const solicitacoesExibidas = useMemo(
+    () => solicitacoesGroups[solicitacoesView] || [],
+    [solicitacoesGroups, solicitacoesView],
+  );
+
   const speakText = async (text) => {
     const stopPlayback = () => {
       try {
@@ -708,6 +820,11 @@ export default function PainelAluno() {
     };
 
     const playWithBrowserTTS = (value) => {
+      try {
+        speechSynthesis.cancel();
+      } catch {
+        // ignore
+      }
       const utterance = new SpeechSynthesisUtterance(value || '');
       utterance.lang = 'pt-BR';
       utterance.rate = 0.9;
@@ -937,8 +1054,23 @@ export default function PainelAluno() {
     }
 
     const texto = (atividadeTexto[atividade.id] || '').trim();
-    if (!texto) {
-      toast({ variant: 'destructive', title: 'Informe sua resposta', description: 'Escreva o conteúdo da entrega.' });
+    const imagens = ensureArray(atividadeImagens[atividade.id]);
+    const respostas = atividadeRespostas[atividade.id] && typeof atividadeRespostas[atividade.id] === 'object'
+      ? atividadeRespostas[atividade.id]
+      : {};
+
+    const temFormulario = Array.isArray(atividade?.atividadeMeta?.formulario?.perguntas)
+      && atividade.atividadeMeta.formulario.perguntas.length > 0;
+    const respostasPreenchidas = Object.values(respostas).some((value) => String(value || '').trim());
+
+    if (!texto && imagens.length === 0 && !respostasPreenchidas) {
+      toast({
+        variant: 'destructive',
+        title: 'Informe sua resposta',
+        description: temFormulario
+          ? 'Preencha o formulário, escreva uma resposta ou envie imagens.'
+          : 'Escreva o conteúdo da entrega ou envie imagens.',
+      });
       return;
     }
 
@@ -947,7 +1079,11 @@ export default function PainelAluno() {
       const payload = {
         atividade_id: atividade.id,
         aluno_id: alunoId,
-        texto_entrega: texto,
+        texto_entrega: serializeEntregaPayload({
+          texto,
+          imagens,
+          respostas,
+        }),
         status: 'enviada',
         enviado_em: new Date().toISOString(),
       };
@@ -967,6 +1103,20 @@ export default function PainelAluno() {
       });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSelectActivityImages = async (atividadeId, files) => {
+    const selected = Array.from(files || []).slice(0, 4);
+    if (selected.length === 0) return;
+    try {
+      const converted = await Promise.all(selected.map(fileToDataUrl));
+      setAtividadeImagens((prev) => ({
+        ...prev,
+        [atividadeId]: [...ensureArray(prev[atividadeId]), ...converted].slice(0, 4),
+      }));
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível processar as imagens da atividade.' });
     }
   };
 
@@ -1803,7 +1953,7 @@ export default function PainelAluno() {
                             <div>
                               <p className="font-semibold">{atividade.titulo}</p>
                               <p className="text-xs text-muted-foreground">{atividade.livros?.titulo || 'Livro não informado'}</p>
-                              {atividade.descricao && <p className="text-sm mt-1">{atividade.descricao}</p>}
+                              {atividade.atividadeMeta?.descricaoLimpa && <p className="text-sm mt-1">{atividade.atividadeMeta.descricaoLimpa}</p>}
                             </div>
                             <div className="text-right">
                               <Badge variant="outline">Pontos possíveis: {Number(atividade.pontos_extras || 0)}</Badge>
@@ -1818,7 +1968,7 @@ export default function PainelAluno() {
                             <Textarea
                               rows={3}
                               placeholder="Escreva sua resposta, resumo ou reflexão..."
-                              value={atividadeTexto[atividade.id] ?? atividade.entrega?.texto_entrega ?? ''}
+                              value={atividadeTexto[atividade.id] ?? parseEntregaPayload(atividade.entrega?.texto_entrega).texto ?? ''}
                               onChange={(e) =>
                                 setAtividadeTexto((prev) => ({
                                   ...prev,
@@ -1826,6 +1976,94 @@ export default function PainelAluno() {
                                 }))
                               }
                             />
+                          </div>
+
+                          {Array.isArray(atividade.atividadeMeta?.formulario?.perguntas)
+                            && atividade.atividadeMeta.formulario.perguntas.length > 0 && (
+                            <div className="space-y-3 rounded-md border p-3">
+                              <p className="text-sm font-medium">Formulário da atividade</p>
+                              {atividade.atividadeMeta.formulario.perguntas.map((pergunta, idx) => {
+                                const perguntaId = String(pergunta?.id || `q_${idx + 1}`);
+                                const respostaAtual = String(atividadeRespostas[atividade.id]?.[perguntaId] || '');
+                                const opcoes = ensureArray(pergunta?.opcoes);
+                                const tipo = String(pergunta?.tipo || 'texto');
+                                return (
+                                  <div key={perguntaId} className="space-y-1.5">
+                                    <Label className="text-xs">
+                                      {idx + 1}. {String(pergunta?.pergunta || 'Pergunta')}
+                                    </Label>
+                                    {tipo === 'multipla_escolha' && opcoes.length > 0 ? (
+                                      <select
+                                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                        value={respostaAtual || 'none'}
+                                        onChange={(e) =>
+                                          setAtividadeRespostas((prev) => ({
+                                            ...prev,
+                                            [atividade.id]: {
+                                              ...(prev[atividade.id] || {}),
+                                              [perguntaId]: e.target.value === 'none' ? '' : e.target.value,
+                                            },
+                                          }))
+                                        }
+                                      >
+                                        <option value="none">Selecione</option>
+                                        {opcoes.map((opcao, optionIndex) => (
+                                          <option key={`${perguntaId}-${optionIndex}`} value={String(opcao)}>
+                                            {String(opcao)}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <Textarea
+                                        rows={2}
+                                        placeholder="Digite sua resposta..."
+                                        value={respostaAtual}
+                                        onChange={(e) =>
+                                          setAtividadeRespostas((prev) => ({
+                                            ...prev,
+                                            [atividade.id]: {
+                                              ...(prev[atividade.id] || {}),
+                                              [perguntaId]: e.target.value,
+                                            },
+                                          }))
+                                        }
+                                      />
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          <div className="space-y-2">
+                            <Label>Imagens da atividade (opcional, até 4)</Label>
+                            <Input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              onChange={(e) => handleSelectActivityImages(atividade.id, e.target.files)}
+                            />
+                            {ensureArray(atividadeImagens[atividade.id]).length > 0 && (
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                {ensureArray(atividadeImagens[atividade.id]).map((img, imageIndex) => (
+                                  <div key={`${atividade.id}-img-${imageIndex}`} className="relative">
+                                    <img src={img} alt={`Atividade ${imageIndex + 1}`} className="w-full h-20 object-cover rounded-md border" />
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setAtividadeImagens((prev) => ({
+                                          ...prev,
+                                          [atividade.id]: ensureArray(prev[atividade.id]).filter((_, i) => i !== imageIndex),
+                                        }))
+                                      }
+                                      className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2216,7 +2454,7 @@ export default function PainelAluno() {
 
                             {livro.sinopse && (
                               <div>
-                                <p className="text-xs text-muted-foreground line-clamp-2" translate="yes">{livro.sinopse}</p>
+                                <p className="text-xs text-muted-foreground line-clamp-2" translate="no">{livro.sinopse}</p>
                                 <Button size="sm" variant="ghost" className="h-6 px-1 text-xs mt-1" onClick={() => speakText(livro.sinopse || '')}>
                                   {speaking ? <VolumeX className="w-3 h-3 mr-1" /> : <Volume2 className="w-3 h-3 mr-1" />}
                                   {speaking ? 'Parar' : 'Ouvir sinopse'}
@@ -2263,11 +2501,37 @@ export default function PainelAluno() {
                 {bibliotecaView === 'minhas_solicitacoes' && (
                   <div className="space-y-3">
                     <p className="text-sm font-semibold">Minhas solicitações de empréstimo</p>
-                    {filteredSolicitacoes.length === 0 ? (
+                    <div className="flex flex-wrap gap-2 rounded-lg border p-1 bg-muted/20">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={solicitacoesView === 'em_andamento' ? 'default' : 'ghost'}
+                        onClick={() => setSolicitacoesView('em_andamento')}
+                      >
+                        Em andamento ({solicitacoesGroups.em_andamento.length})
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={solicitacoesView === 'aceitos' ? 'default' : 'ghost'}
+                        onClick={() => setSolicitacoesView('aceitos')}
+                      >
+                        Aceitos ({solicitacoesGroups.aceitos.length})
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={solicitacoesView === 'historico' ? 'default' : 'ghost'}
+                        onClick={() => setSolicitacoesView('historico')}
+                      >
+                        Histórico ({solicitacoesGroups.historico.length})
+                      </Button>
+                    </div>
+                    {solicitacoesExibidas.length === 0 ? (
                       <p className="text-center text-muted-foreground py-8">Você ainda não fez solicitações.</p>
                     ) : (
                       <div className="space-y-3">
-                        {filteredSolicitacoes.map((solicitacao) => (
+                        {solicitacoesExibidas.map((solicitacao) => (
                           <div key={solicitacao.id} className="p-3 border rounded-lg space-y-2">
                             <div className="flex items-center justify-between gap-3">
                               <div>
