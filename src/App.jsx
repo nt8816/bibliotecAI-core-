@@ -192,12 +192,36 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/professor"
+        element={(
+          <ProtectedRoute>
+            <Navigate to="/professor/dashboard" replace />
+          </ProtectedRoute>
+        )}
+      />
+      <Route
+        path="/professor/atividades"
+        element={(
+          <ProtectedRoute>
+            <Navigate to="/professor/painel" replace />
+          </ProtectedRoute>
+        )}
+      />
+      <Route
         path="/aluno/painel"
         element={
           <ProtectedRoute>
             <Navigate to="/aluno/perfil" replace />
           </ProtectedRoute>
         }
+      />
+      <Route
+        path="/aluno"
+        element={(
+          <ProtectedRoute>
+            <Navigate to="/aluno/perfil" replace />
+          </ProtectedRoute>
+        )}
       />
       <Route
         path="/aluno/perfil"
@@ -238,6 +262,30 @@ function AppRoutes() {
             <ComunidadeAluno />
           </ProtectedRoute>
         }
+      />
+      <Route
+        path="/gestao"
+        element={(
+          <ProtectedRoute>
+            <Navigate to="/dashboard" replace />
+          </ProtectedRoute>
+        )}
+      />
+      <Route
+        path="/gestor"
+        element={(
+          <ProtectedRoute>
+            <Navigate to="/dashboard" replace />
+          </ProtectedRoute>
+        )}
+      />
+      <Route
+        path="/bibliotecaria"
+        element={(
+          <ProtectedRoute>
+            <Navigate to="/dashboard" replace />
+          </ProtectedRoute>
+        )}
       />
 
       <Route path="*" element={<NotFound />} />

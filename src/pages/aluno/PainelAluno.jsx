@@ -214,6 +214,49 @@ async function generateTextWithIA(task, input, fallbackErrorMessage) {
   return data;
 }
 
+function extractResumoTextoFromIAResponse(data) {
+  const direct = String(data?.data?.texto || data?.data?.resumo || '').trim();
+  if (direct) return direct;
+
+  const raw = String(data?.text || '').trim();
+  if (!raw) return '';
+
+  const parseJsonPayload = (value) => {
+    try {
+      const parsed = JSON.parse(value);
+      const texto = String(parsed?.texto || parsed?.resumo || '').trim();
+      return texto || '';
+    } catch {
+      return '';
+    }
+  };
+
+  const parsedRaw = parseJsonPayload(raw);
+  if (parsedRaw) return parsedRaw;
+
+  if (raw.startsWith('{') && !raw.endsWith('}')) {
+    const parsedClosed = parseJsonPayload(`${raw}}`);
+    if (parsedClosed) return parsedClosed;
+  }
+
+  const keyMatch = raw.match(/"(?:texto|resumo)"\s*:\s*"([\s\S]*?)"\s*\}?$/i);
+  if (keyMatch?.[1]) {
+    return String(keyMatch[1])
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '\t')
+      .replace(/\\\\/g, '\\')
+      .trim();
+  }
+
+  return raw
+    .replace(/^\{\s*/, '')
+    .replace(/\s*\}$/, '')
+    .replace(/^"(?:texto|resumo)"\s*:\s*/i, '')
+    .replace(/^"+|"+$/g, '')
+    .trim();
+}
+
 export default function PainelAluno() {
 
   const { user } = useAuth();
@@ -285,6 +328,7 @@ export default function PainelAluno() {
   const [resumoTexto, setResumoTexto] = useState('');
   const [resumosCriados, setResumosCriados] = useState([]);
   const [criacoesLaboratorio, setCriacoesLaboratorio] = useState([]);
+  const [filtroCriacoesLaboratorio, setFiltroCriacoesLaboratorio] = useState('todas');
   const [labCriacoesMissingTable, setLabCriacoesMissingTable] = useState(false);
   const [shareReviewToCommunity, setShareReviewToCommunity] = useState(false);
   const [gerandoResumoIA, setGerandoResumoIA] = useState(false);
@@ -294,30 +338,6 @@ export default function PainelAluno() {
   const fetchInFlightRef = useRef(null);
   const realtimeDebounceRef = useRef(null);
   const audioPlayerRef = useRef(null);
-  const localCriacoesKey = useMemo(
-    () => (user?.id ? `laboratorio_criacoes_local:${user.id}` : ''),
-    [user?.id],
-  );
-
-  const loadLocalCriacoes = useCallback(() => {
-    if (!localCriacoesKey) return [];
-    try {
-      const raw = localStorage.getItem(localCriacoesKey);
-      const parsed = JSON.parse(raw || '[]');
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }, [localCriacoesKey]);
-
-  const saveLocalCriacoes = useCallback((items) => {
-    if (!localCriacoesKey) return;
-    try {
-      localStorage.setItem(localCriacoesKey, JSON.stringify(items));
-    } catch {
-      // ignore local storage failures
-    }
-  }, [localCriacoesKey]);
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -426,7 +446,7 @@ export default function PainelAluno() {
         }
 
         const missingAnyNewTable =
-          entregasOpt.missing || audioCatalogoOpt.missing || meusAudiobooksOpt.missing;
+          entregasOpt.missing || audioCatalogoOpt.missing || meusAudiobooksOpt.missing || criacoesLaboratorioOpt.missing;
 
         if (missingAnyNewTable && !warnedMissingFeaturesRef.current) {
           warnedMissingFeaturesRef.current = true;
@@ -460,9 +480,7 @@ export default function PainelAluno() {
         setEntregas(entregasOpt.data);
         setAudiobookCatalogo(audioCatalogoOpt.data);
         setMeusAudiobooks(meusAudiobooksOpt.data);
-        setCriacoesLaboratorio(
-          criacoesLaboratorioOpt.missing ? loadLocalCriacoes() : criacoesLaboratorioOpt.data,
-        );
+        setCriacoesLaboratorio(criacoesLaboratorioOpt.data);
 
         const entregaInicial = {};
         const entregaImagensInicial = {};
@@ -496,7 +514,7 @@ export default function PainelAluno() {
       }
     });
     return request;
-  }, [loadLocalCriacoes, optionalFeaturesEnabled, toast, user]);
+  }, [optionalFeaturesEnabled, toast, user]);
 
   useEffect(() => {
     fetchData();
@@ -908,20 +926,8 @@ export default function PainelAluno() {
   };
 
   const salvarCriacaoLaboratorio = async (payload) => {
-    const baseItem = {
-      id: crypto.randomUUID(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      ...payload,
-    };
-
     if (labCriacoesMissingTable) {
-      setCriacoesLaboratorio((prev) => {
-        const next = [baseItem, ...ensureArray(prev)];
-        saveLocalCriacoes(next);
-        return next;
-      });
-      return;
+      throw new Error('Tabela laboratorio_criacoes não encontrada. Aplique as migrations do Supabase.');
     }
 
     const { error } = await supabase.from('laboratorio_criacoes').insert(payload);
@@ -929,16 +935,7 @@ export default function PainelAluno() {
 
     if (isMissingTableError(error)) {
       setLabCriacoesMissingTable(true);
-      setCriacoesLaboratorio((prev) => {
-        const next = [baseItem, ...ensureArray(prev)];
-        saveLocalCriacoes(next);
-        return next;
-      });
-      toast({
-        title: 'Laboratório em modo local',
-        description: 'Salvamos esta criação no navegador porque a tabela ainda não existe no banco.',
-      });
-      return;
+      throw new Error('Tabela laboratorio_criacoes não encontrada. Aplique as migrations do Supabase.');
     }
 
     throw error;
@@ -1566,29 +1563,20 @@ export default function PainelAluno() {
         await supabase.from('comunidade_posts').delete().eq('id', criacao.comunidade_post_id);
       }
       if (labCriacoesMissingTable) {
-        setCriacoesLaboratorio((prev) => {
-          const next = ensureArray(prev).filter((item) => item.id !== criacao.id);
-          saveLocalCriacoes(next);
-          return next;
-        });
-      } else {
-        const { error } = await supabase.from('laboratorio_criacoes').delete().eq('id', criacao.id);
-        if (error) {
-          if (isMissingTableError(error)) {
-            setLabCriacoesMissingTable(true);
-            setCriacoesLaboratorio((prev) => {
-              const next = ensureArray(prev).filter((item) => item.id !== criacao.id);
-              saveLocalCriacoes(next);
-              return next;
-            });
-          } else {
-            throw error;
-          }
+        throw new Error('Tabela laboratorio_criacoes não encontrada. Aplique as migrations do Supabase.');
+      }
+
+      const { error } = await supabase.from('laboratorio_criacoes').delete().eq('id', criacao.id);
+      if (error) {
+        if (isMissingTableError(error)) {
+          setLabCriacoesMissingTable(true);
+          throw new Error('Tabela laboratorio_criacoes não encontrada. Aplique as migrations do Supabase.');
         }
+        throw error;
       }
 
       toast({ title: 'Criação removida.' });
-      if (!labCriacoesMissingTable) await fetchData();
+      await fetchData();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro ao apagar', description: error?.message || 'Não foi possível apagar.' });
     } finally {
@@ -1609,6 +1597,10 @@ export default function PainelAluno() {
     if (activeSection === 'atividades') return 'Atividades';
     return 'Meu Perfil';
   }, [activeSection]);
+  const criacoesLaboratorioFiltradas = useMemo(() => {
+    if (filtroCriacoesLaboratorio === 'todas') return criacoesLaboratorio;
+    return criacoesLaboratorio.filter((criacao) => String(criacao?.tipo || '') === filtroCriacoesLaboratorio);
+  }, [criacoesLaboratorio, filtroCriacoesLaboratorio]);
 
   const gerarResumo = async () => {
     if (!alunoId || !escolaId) {
@@ -1637,7 +1629,7 @@ export default function PainelAluno() {
         'Não foi possível gerar resumo com IA no momento.',
       );
 
-      const texto = String(data?.data?.texto || data?.text || '').trim();
+      const texto = extractResumoTextoFromIAResponse(data);
       if (!texto) throw new Error('A IA respondeu sem texto.');
       setResumoTexto(texto);
       toast({ title: 'Resumo gerado com IA!' });
@@ -2328,12 +2320,47 @@ export default function PainelAluno() {
               <CardHeader>
                 <CardTitle className="text-base">Criações salvas no laboratório</CardTitle>
               </CardHeader>
-              <CardContent>
-                {criacoesLaboratorio.length === 0 ? (
+              <CardContent className="space-y-3">
+                <div className="flex flex-wrap gap-2 rounded-lg border p-1 bg-muted/20">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={filtroCriacoesLaboratorio === 'todas' ? 'default' : 'ghost'}
+                    onClick={() => setFiltroCriacoesLaboratorio('todas')}
+                  >
+                    Todas
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={filtroCriacoesLaboratorio === 'imagem' ? 'default' : 'ghost'}
+                    onClick={() => setFiltroCriacoesLaboratorio('imagem')}
+                  >
+                    Imagens
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={filtroCriacoesLaboratorio === 'resumo' ? 'default' : 'ghost'}
+                    onClick={() => setFiltroCriacoesLaboratorio('resumo')}
+                  >
+                    Resumos
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={filtroCriacoesLaboratorio === 'quiz' ? 'default' : 'ghost'}
+                    onClick={() => setFiltroCriacoesLaboratorio('quiz')}
+                  >
+                    Quiz
+                  </Button>
+                </div>
+
+                {criacoesLaboratorioFiltradas.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Nenhuma criação salva ainda.</p>
                 ) : (
                   <div className="space-y-3">
-                    {criacoesLaboratorio.slice(0, 20).map((criacao) => (
+                    {criacoesLaboratorioFiltradas.slice(0, 20).map((criacao) => (
                       <div key={criacao.id} className="rounded-md border p-3 space-y-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div>

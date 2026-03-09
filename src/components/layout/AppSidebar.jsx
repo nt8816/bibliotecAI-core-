@@ -39,7 +39,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useSystemNotifications } from '@/hooks/useSystemNotifications';
 
 export function AppSidebar() {
-  const { state } = useSidebar();
+  const { state, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === 'collapsed';
   const navigate = useNavigate();
   const { signOut, user, userRole, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
@@ -54,6 +54,9 @@ export function AppSidebar() {
 
   const handleSignOut = async () => {
     await signOut();
+  };
+  const handleMenuItemClick = () => {
+    if (isMobile) setOpenMobile(false);
   };
 
   const getMenuItems = () => {
@@ -141,7 +144,7 @@ export function AppSidebar() {
     <Sidebar className="border-r-0" collapsible="icon">
       <SidebarHeader className={`${collapsed ? 'p-2' : 'p-4'} border-b border-sidebar-border`}>
         <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
-          <div className={`${collapsed ? 'w-8 h-8' : 'w-10 h-10'} rounded-lg bg-sidebar-accent flex items-center justify-center overflow-hidden`}>
+          <div className={`${collapsed ? 'w-8 h-8' : 'w-10 h-10'} rounded-xl bg-sidebar-accent/80 ring-1 ring-sidebar-border flex items-center justify-center overflow-hidden`}>
             <img src="/bibliotecai-symbol.svg" alt="BibliotecAI" className={`${collapsed ? 'w-6 h-6' : 'w-7 h-7'}`} />
           </div>
           {!collapsed && (
@@ -163,13 +166,16 @@ export function AppSidebar() {
                     <NavLink
                       to={item.url}
                       end
-                      className={`flex min-w-0 items-center ${collapsed ? 'mx-auto size-8 justify-center rounded-md' : 'w-full gap-3'}`}
+                      onClick={handleMenuItemClick}
+                      className={`flex min-w-0 items-center ${collapsed ? 'mx-auto size-8 justify-center rounded-lg' : 'h-10 w-full gap-3 rounded-lg px-2.5'}`}
                       activeClassName="rounded-md bg-sidebar-accent text-sidebar-accent-foreground"
                     >
-                      <item.icon className="w-4 h-4 sm:w-5 sm:h-5" />
+                      <span className={`${collapsed ? '' : 'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-sidebar-accent/60 ring-1 ring-sidebar-border'}`}>
+                        <item.icon className="w-4 h-4" />
+                      </span>
                       {!collapsed && (
                         <div className="flex w-full items-center justify-between gap-2">
-                          <span className="font-medium">{item.title}</span>
+                          <span className="font-medium text-[15px] leading-none">{item.title}</span>
                           {item.url === '/emprestimos' && canViewNotifications && (counts.atrasados > 0 || counts.solicitacoesPendentes > 0) && (
                             <Badge className="h-5 min-w-5 px-1.5 text-[10px] leading-none">
                               {counts.atrasados + counts.solicitacoesPendentes}
@@ -196,11 +202,14 @@ export function AppSidebar() {
                       <NavLink
                         to={item.url}
                         end
-                        className={`flex min-w-0 items-center ${collapsed ? 'mx-auto size-8 justify-center rounded-md' : 'w-full gap-3'}`}
+                        onClick={handleMenuItemClick}
+                        className={`flex min-w-0 items-center ${collapsed ? 'mx-auto size-8 justify-center rounded-lg' : 'h-10 w-full gap-3 rounded-lg px-2.5'}`}
                         activeClassName="rounded-md bg-sidebar-accent text-sidebar-accent-foreground"
                       >
-                        <item.icon className="w-4 h-4 sm:w-5 sm:h-5" />
-                        {!collapsed && <span className="font-medium">{item.title}</span>}
+                        <span className={`${collapsed ? '' : 'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-sidebar-accent/60 ring-1 ring-sidebar-border'}`}>
+                          <item.icon className="w-4 h-4" />
+                        </span>
+                        {!collapsed && <span className="font-medium text-[15px] leading-none">{item.title}</span>}
                       </NavLink>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -219,7 +228,7 @@ export function AppSidebar() {
           </div>
         )}
 
-        <div className={collapsed ? 'space-y-2' : 'grid grid-cols-2 gap-2'}>
+        <div className={collapsed ? 'space-y-2' : 'space-y-2'}>
           {canViewNotifications && (
             <Popover>
               <PopoverTrigger asChild>
@@ -229,7 +238,7 @@ export function AppSidebar() {
                   size={collapsed ? 'icon' : 'sm'}
                   className={collapsed
                     ? 'relative mx-auto text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                    : 'relative w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
+                    : 'relative h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
                   aria-label="Abrir notificações"
                 >
                   <Bell className="size-4 sm:size-5" />
@@ -295,7 +304,7 @@ export function AppSidebar() {
             size={collapsed ? 'icon' : 'sm'}
             className={collapsed
               ? 'mx-auto text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-              : 'w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
+              : 'h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
             onClick={() => navigate(settingsPath)}
             aria-label="Abrir configurações"
           >
@@ -309,7 +318,7 @@ export function AppSidebar() {
           size={collapsed ? 'icon' : 'default'}
           className={collapsed
             ? 'mx-auto mt-2 justify-center text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-            : 'mt-2 w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
+            : 'mt-2 h-10 w-full justify-start gap-3 rounded-lg px-2.5 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
           onClick={handleSignOut}
         >
           <LogOut className="size-4 sm:size-5" />

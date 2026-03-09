@@ -135,6 +135,28 @@ function parseEntregaPayload(rawText) {
   };
 }
 
+function normalizeFormularioPerguntas(perguntasRaw) {
+  return ensureArray(perguntasRaw)
+    .map((item, idx) => {
+      const pergunta = String(item?.pergunta || item?.enunciado || item?.question || '').trim();
+      const tipoRaw = String(item?.tipo || '').trim().toLowerCase();
+      const opcoesRaw = ensureArray(item?.opcoes?.length ? item.opcoes : item?.alternativas?.length ? item.alternativas : item?.options);
+      const opcoes = opcoesRaw.map((op) => String(op || '').trim()).filter(Boolean).slice(0, 6);
+      const tipo = tipoRaw === 'multipla_escolha' || tipoRaw === 'multipla' || opcoes.length > 0
+        ? 'multipla_escolha'
+        : 'texto';
+
+      return {
+        id: String(item?.id || `q_${idx + 1}`),
+        pergunta,
+        tipo,
+        opcoes: tipo === 'multipla_escolha' ? opcoes : [],
+      };
+    })
+    .filter((item) => item.pergunta)
+    .slice(0, 8);
+}
+
 export default function PainelProfessor() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -158,6 +180,8 @@ export default function PainelProfessor() {
 
   const [editingAtividade, setEditingAtividade] = useState(null);
   const [atividadeForm, setAtividadeForm] = useState(emptyAtividade);
+  const [atividadeAlunoBusca, setAtividadeAlunoBusca] = useState('');
+  const [atividadeLivroBusca, setAtividadeLivroBusca] = useState('');
   const [atividadeFormularioPerguntas, setAtividadeFormularioPerguntas] = useState([]);
   const [atividadeFormularioPrompt, setAtividadeFormularioPrompt] = useState('');
   const [gerandoFormularioIA, setGerandoFormularioIA] = useState(false);
@@ -334,6 +358,8 @@ export default function PainelProfessor() {
       setAtividadeForm(emptyAtividade);
       setAtividadeFormularioPerguntas([]);
     }
+    setAtividadeAlunoBusca('');
+    setAtividadeLivroBusca('');
     setAtividadeFormularioPrompt('');
 
     setIsAtividadeDialogOpen(true);
@@ -377,15 +403,7 @@ export default function PainelProfessor() {
       });
 
       const perguntasRaw = ensureArray(ia?.data?.perguntas);
-      const perguntas = perguntasRaw
-        .map((item, idx) => ({
-          id: String(item?.id || `q_${idx + 1}`),
-          pergunta: String(item?.pergunta || '').trim(),
-          tipo: String(item?.tipo || 'texto') === 'multipla_escolha' ? 'multipla_escolha' : 'texto',
-          opcoes: ensureArray(item?.opcoes).map((op) => String(op || '').trim()).filter(Boolean).slice(0, 6),
-        }))
-        .filter((item) => item.pergunta)
-        .slice(0, 8);
+      const perguntas = normalizeFormularioPerguntas(perguntasRaw);
 
       if (perguntas.length === 0) {
         throw new Error('A IA não retornou perguntas válidas.');
@@ -419,6 +437,19 @@ export default function PainelProfessor() {
       return;
     }
 
+    const perguntasNormalizadas = normalizeFormularioPerguntas(atividadeFormularioPerguntas);
+    const perguntasInvalidas = perguntasNormalizadas.some(
+      (item) => item.tipo === 'multipla_escolha' && ensureArray(item.opcoes).length < 2,
+    );
+    if (perguntasInvalidas) {
+      toast({
+        variant: 'destructive',
+        title: 'Perguntas incompletas',
+        description: 'Cada pergunta de múltipla escolha precisa ter pelo menos 2 opções.',
+      });
+      return;
+    }
+
     const professorId = await getProfessorId();
     if (!professorId) return;
 
@@ -427,7 +458,7 @@ export default function PainelProfessor() {
       const payload = {
         titulo: atividadeForm.titulo.trim(),
         descricao:
-          buildDescricaoWithForm(atividadeForm.descricao || null, { perguntas: atividadeFormularioPerguntas }) || null,
+          buildDescricaoWithForm(atividadeForm.descricao || null, { perguntas: perguntasNormalizadas }) || null,
         pontos_extras: Number(atividadeForm.pontos_extras || 0),
         data_entrega: atividadeForm.data_entrega ? new Date(atividadeForm.data_entrega).toISOString() : null,
         livro_id: atividadeForm.livro_id,
@@ -508,6 +539,16 @@ export default function PainelProfessor() {
     () => entregas.filter((e) => e.status === 'aprovada').reduce((acc, e) => acc + Number(e.pontos_ganhos || 0), 0),
     [entregas],
   );
+  const alunosFiltradosAtividade = useMemo(() => {
+    const termo = String(atividadeAlunoBusca || '').trim().toLowerCase();
+    if (!termo) return usuarios;
+    return usuarios.filter((u) => String(u?.nome || '').toLowerCase().includes(termo));
+  }, [atividadeAlunoBusca, usuarios]);
+  const livrosFiltradosAtividade = useMemo(() => {
+    const termo = String(atividadeLivroBusca || '').trim().toLowerCase();
+    if (!termo) return livros;
+    return livros.filter((l) => String(l?.titulo || '').toLowerCase().includes(termo));
+  }, [atividadeLivroBusca, livros]);
 
   return (
     <MainLayout title="Painel do Professor">
@@ -688,27 +729,67 @@ export default function PainelProfessor() {
                                     <option value="multipla_escolha">Múltipla escolha</option>
                                   </select>
                                   {String(pergunta.tipo) === 'multipla_escolha' && (
-                                    <Textarea
-                                      rows={2}
-                                      placeholder="Uma opção por linha"
-                                      value={ensureArray(pergunta.opcoes).join('\n')}
-                                      onChange={(e) =>
-                                        setAtividadeFormularioPerguntas((prev) =>
-                                          prev.map((item, i) =>
-                                            i === idx
-                                              ? {
-                                                  ...item,
-                                                  opcoes: e.target.value
-                                                    .split('\n')
-                                                    .map((opt) => opt.trim())
-                                                    .filter(Boolean)
-                                                    .slice(0, 6),
-                                                }
-                                              : item,
-                                          ),
-                                        )
-                                      }
-                                    />
+                                    <div className="space-y-2">
+                                      {ensureArray(pergunta.opcoes).map((opcao, optionIdx) => (
+                                        <div key={`${pergunta.id || idx}-${optionIdx}`} className="flex items-center gap-2">
+                                          <Input
+                                            placeholder={`Opção ${optionIdx + 1}`}
+                                            value={String(opcao || '')}
+                                            onChange={(e) =>
+                                              setAtividadeFormularioPerguntas((prev) =>
+                                                prev.map((item, i) => {
+                                                  if (i !== idx) return item;
+                                                  const nextOpcoes = ensureArray(item.opcoes).map((opt, oi) =>
+                                                    oi === optionIdx ? e.target.value : opt,
+                                                  );
+                                                  return { ...item, opcoes: nextOpcoes };
+                                                }),
+                                              )
+                                            }
+                                          />
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={() =>
+                                              setAtividadeFormularioPerguntas((prev) =>
+                                                prev.map((item, i) =>
+                                                  i === idx
+                                                    ? {
+                                                        ...item,
+                                                        opcoes: ensureArray(item.opcoes).filter((_, oi) => oi !== optionIdx),
+                                                      }
+                                                    : item,
+                                                ),
+                                              )
+                                            }
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                                          </Button>
+                                        </div>
+                                      ))}
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() =>
+                                          setAtividadeFormularioPerguntas((prev) =>
+                                            prev.map((item, i) =>
+                                              i === idx
+                                                ? { ...item, opcoes: [...ensureArray(item.opcoes), ''].slice(0, 6) }
+                                                : item,
+                                            ),
+                                          )
+                                        }
+                                        disabled={ensureArray(pergunta.opcoes).length >= 6}
+                                      >
+                                        <Plus className="w-3.5 h-3.5 mr-1" /> Adicionar opção
+                                      </Button>
+                                      <p className="text-[11px] text-muted-foreground">
+                                        Adicione de 2 a 6 opções para cada pergunta.
+                                      </p>
+                                    </div>
                                   )}
                                 </div>
                               ))}
@@ -719,6 +800,11 @@ export default function PainelProfessor() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <Label>Aluno *</Label>
+                            <Input
+                              placeholder="Buscar aluno por nome"
+                              value={atividadeAlunoBusca}
+                              onChange={(e) => setAtividadeAlunoBusca(e.target.value)}
+                            />
                             <select
                               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                               value={atividadeForm.aluno_id || 'none'}
@@ -730,16 +816,24 @@ export default function PainelProfessor() {
                               }
                             >
                               <option value="none">Selecione</option>
-                              {usuarios.map((u) => (
+                              {alunosFiltradosAtividade.map((u) => (
                                 <option key={u.id} value={u.id}>
                                   {u.nome} {u.turma ? `(${u.turma})` : ''}
                                 </option>
                               ))}
                             </select>
+                            {atividadeAlunoBusca && alunosFiltradosAtividade.length === 0 ? (
+                              <p className="text-xs text-muted-foreground">Nenhum aluno encontrado para essa busca.</p>
+                            ) : null}
                           </div>
 
                           <div className="space-y-2">
                             <Label>Livro *</Label>
+                            <Input
+                              placeholder="Buscar livro por título"
+                              value={atividadeLivroBusca}
+                              onChange={(e) => setAtividadeLivroBusca(e.target.value)}
+                            />
                             <select
                               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                               value={atividadeForm.livro_id || 'none'}
@@ -751,12 +845,15 @@ export default function PainelProfessor() {
                               }
                             >
                               <option value="none">Selecione</option>
-                              {livros.map((l) => (
+                              {livrosFiltradosAtividade.map((l) => (
                                 <option key={l.id} value={l.id}>
                                   {l.titulo}
                                 </option>
                               ))}
                             </select>
+                            {atividadeLivroBusca && livrosFiltradosAtividade.length === 0 ? (
+                              <p className="text-xs text-muted-foreground">Nenhum livro encontrado para essa busca.</p>
+                            ) : null}
                           </div>
                         </div>
 
