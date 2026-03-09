@@ -1,23 +1,48 @@
-BibliotecAI Core – Proprietary License
+BibliotecAI Core - Licenca Proprietaria
 
-Copyright (c) 2026 Nt8816
-All rights reserved.
+Copyright (c) 2026 Nt8816.
+Todos os direitos reservados.
 
-This software and its source code ("Software") are the exclusive property of
-the author identified above.
+SPDX-License-Identifier: LicenseRef-BibliotecAI-Proprietary
 
-No permission is granted to use, copy, modify, merge, publish, distribute,
-sublicense, sell, or create derivative works from this Software, in whole or
-in part, without explicit prior written permission from the copyright holder.
+1. Titularidade
+Este software, incluindo codigo-fonte, binarios, ativos, documentacao e
+quaisquer materiais derivados (coletivamente, o "Software"), e proprietario e
+de titularidade exclusiva do detentor dos direitos autorais.
 
-Any unauthorized use, reproduction, modification, distribution, or commercial
-exploitation of this Software is strictly prohibited and may result in civil
-and criminal liability under applicable laws.
+2. Ausencia de Concessao de Licenca
+Nenhum direito e concedido para usar, copiar, modificar, mesclar, publicar,
+distribuir, sublicenciar, vender, alugar, disponibilizar como servico, fazer
+engenharia reversa ou criar obras derivadas do Software, no todo ou em parte,
+sem autorizacao previa e por escrito do detentor dos direitos autorais.
 
-The Software is provided "AS IS", without warranty of any kind, express or
-implied, including but not limited to the warranties of merchantability,
-fitness for a particular purpose, and noninfringement. In no event shall the
-author be liable for any claim, damages, or other liability arising from the
-use of the Software.
+3. Escopo Permitido (quando expressamente autorizado)
+Qualquer uso expressamente autorizado fica limitado ao escopo exato descrito na
+autorizacao escrita. Qualquer uso fora desse escopo e proibido.
 
-For licensing inquiries, contact the copyright holder.
+4. Restricoes
+Voce nao pode:
+- remover ou alterar avisos de direitos autorais, marcas ou avisos de
+  propriedade;
+- usar o Software para exploracao comercial sem autorizacao escrita;
+- disponibilizar publicamente o Software em repositorios, registries,
+  canais de distribuicao ou servicos hospedados sem autorizacao escrita.
+
+5. Excecoes Legais
+Nada nesta licenca limita direitos que nao podem ser renunciados pela lei
+aplicavel (por exemplo, excecoes legais obrigatorias).
+
+6. Isencao de Garantias
+O SOFTWARE E FORNECIDO "NO ESTADO EM QUE SE ENCONTRA", SEM GARANTIAS DE
+QUALQUER TIPO, EXPRESSAS OU IMPLICITAS, INCLUINDO, SEM LIMITACAO, GARANTIAS DE
+COMERCIALIZACAO, ADEQUACAO A FINALIDADE ESPECIFICA E NAO VIOLACAO.
+
+7. Limitacao de Responsabilidade
+NA MAXIMA EXTENSAO PERMITIDA PELA LEI, O DETENTOR DOS DIREITOS AUTORAIS NAO
+SERA RESPONSAVEL POR QUAISQUER REIVINDICACOES, DANOS OU OUTRAS
+RESPONSABILIDADES, SEJAM CONTRATUAIS, EXTRACONTRATUAIS OU DE QUALQUER OUTRA
+NATUREZA, DECORRENTES DO SOFTWARE OU DE SEU USO.
+
+8. Contato
+Para licenciamento, parcerias ou autorizacao de uso, contate o detentor dos
+direitos autorais.
