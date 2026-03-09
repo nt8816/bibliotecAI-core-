@@ -144,6 +144,17 @@ const extractJsonFromText = (text) => {
     }
   }
 
+  const firstBracket = source.indexOf('[');
+  const lastBracket = source.lastIndexOf(']');
+  if (firstBracket >= 0 && lastBracket > firstBracket) {
+    const candidate = source.slice(firstBracket, lastBracket + 1);
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // ignore
+    }
+  }
+
   return null;
 };
 

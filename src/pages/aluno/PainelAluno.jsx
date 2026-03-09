@@ -257,6 +257,129 @@ function extractResumoTextoFromIAResponse(data) {
     .trim();
 }
 
+function extractJsonFromIAPlainText(rawValue) {
+  const raw = String(rawValue || '').trim();
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // ignore
+  }
+
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced?.[1]) {
+    try {
+      return JSON.parse(fenced[1]);
+    } catch {
+      // ignore
+    }
+  }
+
+  const firstBrace = raw.indexOf('{');
+  const lastBrace = raw.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    try {
+      return JSON.parse(raw.slice(firstBrace, lastBrace + 1));
+    } catch {
+      // ignore
+    }
+  }
+
+  const firstBracket = raw.indexOf('[');
+  const lastBracket = raw.lastIndexOf(']');
+  if (firstBracket >= 0 && lastBracket > firstBracket) {
+    try {
+      return JSON.parse(raw.slice(firstBracket, lastBracket + 1));
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
+}
+
+function normalizeQuizOptionText(value) {
+  return String(value || '')
+    .replace(/^[A-Da-d][\)\].:\-\s]+/, '')
+    .trim();
+}
+
+function normalizeQuizOptions(rawOptions) {
+  const objectLike = rawOptions && typeof rawOptions === 'object' && !Array.isArray(rawOptions);
+  const asArray = Array.isArray(rawOptions)
+    ? rawOptions
+    : objectLike
+      ? Object.entries(rawOptions)
+          .sort(([a], [b]) => String(a).localeCompare(String(b), 'pt-BR'))
+          .map(([, value]) => value)
+      : [];
+
+  return ensureArray(asArray)
+    .map((item) => {
+      if (typeof item === 'string') return normalizeQuizOptionText(item);
+      if (item && typeof item === 'object') {
+        return normalizeQuizOptionText(item.texto || item.text || item.opcao || item.alternativa || item.label);
+      }
+      return '';
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+function normalizeQuizCorrectIndex(rawCorrect, options) {
+  if (Number.isInteger(rawCorrect)) {
+    if (rawCorrect >= 0 && rawCorrect <= 3) return rawCorrect;
+    if (rawCorrect >= 1 && rawCorrect <= 4) return rawCorrect - 1;
+  }
+
+  const text = String(rawCorrect || '').trim();
+  if (!text) return -1;
+
+  const asNumber = Number(text);
+  if (Number.isInteger(asNumber)) {
+    if (asNumber >= 0 && asNumber <= 3) return asNumber;
+    if (asNumber >= 1 && asNumber <= 4) return asNumber - 1;
+  }
+
+  const letterMatch = text.match(/\b([A-D])\b/i);
+  if (letterMatch?.[1]) return letterMatch[1].toUpperCase().charCodeAt(0) - 65;
+
+  const cleaned = normalizeQuizOptionText(text).toLowerCase();
+  if (!cleaned) return -1;
+  const optionIndex = options.findIndex((option) => normalizeQuizOptionText(option).toLowerCase() === cleaned);
+  return optionIndex;
+}
+
+function extractQuizPerguntasFromIAResponse(response) {
+  const data = response?.data && typeof response.data === 'object' ? response.data : {};
+  const textJson = extractJsonFromIAPlainText(response?.text);
+
+  const rawPerguntas = [
+    data?.perguntas,
+    data?.questoes,
+    data?.questions,
+    textJson?.perguntas,
+    textJson?.questoes,
+    textJson?.questions,
+    Array.isArray(textJson) ? textJson : null,
+  ].find((item) => Array.isArray(item));
+
+  return ensureArray(rawPerguntas)
+    .map((item) => {
+      const enunciado = String(item?.enunciado || item?.pergunta || item?.question || '').trim();
+      const opcoes = normalizeQuizOptions(item?.opcoes || item?.alternativas || item?.options || item?.respostas);
+      const correta = normalizeQuizCorrectIndex(
+        item?.correta ?? item?.resposta_correta ?? item?.correct_answer ?? item?.answer ?? item?.indice_correto,
+        opcoes,
+      );
+
+      return { enunciado, opcoes, correta };
+    })
+    .filter((item) => item.enunciado && item.opcoes.length === 4 && Number.isInteger(item.correta) && item.correta >= 0 && item.correta <= 3)
+    .slice(0, 5);
+}
+
 export default function PainelAluno() {
 
   const { user } = useAuth();
@@ -1446,15 +1569,7 @@ export default function PainelAluno() {
         'Não foi possível gerar quiz com IA no momento.',
       );
 
-      const perguntasRaw = ensureArray(data?.data?.perguntas);
-      const perguntas = perguntasRaw
-        .map((item) => ({
-          enunciado: String(item?.enunciado || '').trim(),
-          opcoes: ensureArray(item?.opcoes).map((opcao) => String(opcao || '').trim()).filter(Boolean).slice(0, 4),
-          correta: Number(item?.correta),
-        }))
-        .filter((item) => item.enunciado && item.opcoes.length === 4 && Number.isInteger(item.correta) && item.correta >= 0 && item.correta <= 3)
-        .slice(0, 5);
+      const perguntas = extractQuizPerguntasFromIAResponse(data);
 
       if (perguntas.length === 0) throw new Error('A IA respondeu sem perguntas válidas.');
 

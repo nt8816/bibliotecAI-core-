@@ -157,6 +157,38 @@ function normalizeFormularioPerguntas(perguntasRaw) {
     .slice(0, 8);
 }
 
+function extractJsonFromIAPlainText(rawValue) {
+  const raw = String(rawValue || '').trim();
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // ignore
+  }
+
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced?.[1]) {
+    try {
+      return JSON.parse(fenced[1]);
+    } catch {
+      // ignore
+    }
+  }
+
+  const firstBrace = raw.indexOf('{');
+  const lastBrace = raw.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    try {
+      return JSON.parse(raw.slice(firstBrace, lastBrace + 1));
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
+}
+
 export default function PainelProfessor() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -452,7 +484,8 @@ export default function PainelProfessor() {
         fallbackErrorMessage: 'Não foi possível gerar formulário com IA.',
       });
 
-      const perguntasRaw = ensureArray(ia?.data?.perguntas);
+      const parsedFromText = extractJsonFromIAPlainText(ia?.text);
+      const perguntasRaw = ensureArray(ia?.data?.perguntas?.length ? ia.data.perguntas : parsedFromText?.perguntas);
       const perguntas = normalizeFormularioPerguntas(perguntasRaw);
 
       if (perguntas.length === 0) {
