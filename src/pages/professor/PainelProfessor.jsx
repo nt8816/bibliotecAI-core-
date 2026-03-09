@@ -167,6 +167,7 @@ export default function PainelProfessor() {
   const [sugestoes, setSugestoes] = useState([]);
   const [atividades, setAtividades] = useState([]);
   const [entregas, setEntregas] = useState([]);
+  const [professorTurmasPermitidas, setProfessorTurmasPermitidas] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -191,12 +192,51 @@ export default function PainelProfessor() {
   const warnedMissingFeaturesRef = useRef(false);
 
   const fetchData = useCallback(async () => {
+    if (!user?.id) return;
     setLoading(true);
 
     try {
+      const { data: professorData, error: professorError } = await supabase
+        .from('usuarios_biblioteca')
+        .select('id')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (professorError || !professorData) throw professorError || new Error('Perfil de professor não encontrado.');
+
+      const { data: turmasData, error: turmasError } = await supabase
+        .from('professor_turmas')
+        .select('turma')
+        .eq('professor_id', professorData.id);
+      if (turmasError) {
+        if (isMissingTableError(turmasError)) {
+          throw new Error('Tabela professor_turmas não encontrada. Aplique as migrations do Supabase.');
+        }
+        throw turmasError;
+      }
+
+      const turmasPermitidas = [...new Set(ensureArray(turmasData).map((item) => String(item?.turma || '').trim()).filter(Boolean))];
+      setProfessorTurmasPermitidas(turmasPermitidas);
+
+      if (turmasPermitidas.length === 0) {
+        setUsuarios([]);
+        setSugestoes([]);
+        setAtividades([]);
+        setEntregas([]);
+        setAvaliacaoForm({});
+        return;
+      }
+
       const [livrosRes, usuariosRes, sugestoesRes, atividadesRes] = await Promise.all([
         supabase.from('livros').select('id, titulo, autor, area').order('titulo'),
-        supabase.from('usuarios_biblioteca').select('id, nome, turma').eq('tipo', 'aluno').order('nome'),
+        supabase
+          .from('usuarios_biblioteca')
+          .select('id, nome, turma')
+          .eq('tipo', 'aluno')
+          .in('turma', turmasPermitidas)
+          .order('nome'),
         supabase
           .from('sugestoes_livros')
           .select('*, livros(titulo, autor), usuarios_biblioteca!sugestoes_livros_aluno_id_fkey(nome, turma)')
@@ -226,13 +266,22 @@ export default function PainelProfessor() {
         setSubmissionFeaturesEnabled(false);
       }
 
-      const entregasRes = entregasData || [];
+      const turmaSet = new Set(turmasPermitidas);
+      const entregasRes = (entregasData || []).filter((item) =>
+        turmaSet.has(String(item?.usuarios_biblioteca?.turma || '').trim()),
+      );
+      const sugestoesFiltradas = (sugestoesRes.data || []).filter((item) =>
+        turmaSet.has(String(item?.usuarios_biblioteca?.turma || '').trim()),
+      );
+      const atividadesFiltradas = (atividadesRes.data || []).filter((item) =>
+        turmaSet.has(String(item?.usuarios_biblioteca?.turma || '').trim()),
+      );
 
       setLivros(livrosRes.data || []);
       setUsuarios(usuariosRes.data || []);
-      setSugestoes(sugestoesRes.data || []);
+      setSugestoes(sugestoesFiltradas);
       setAtividades(
-        (atividadesRes.data || []).map((atividade) => {
+        atividadesFiltradas.map((atividade) => {
           const meta = parseAtividadeMeta(atividade?.descricao);
           return {
             ...atividade,
@@ -263,7 +312,7 @@ export default function PainelProfessor() {
     } finally {
       setLoading(false);
     }
-  }, [submissionFeaturesEnabled, toast]);
+  }, [submissionFeaturesEnabled, toast, user?.id]);
 
   useEffect(() => {
     fetchData();
@@ -276,6 +325,7 @@ export default function PainelProfessor() {
   useRealtimeSubscription({ table: 'sugestoes_livros', onChange: onRealtimeChange });
   useRealtimeSubscription({ table: 'atividades_leitura', onChange: onRealtimeChange });
   useRealtimeSubscription({ table: submissionFeaturesEnabled ? 'atividades_entregas' : null, onChange: onRealtimeChange });
+  useRealtimeSubscription({ table: 'professor_turmas', onChange: onRealtimeChange });
 
   const getProfessorId = async () => {
     const { data, error } = await supabase
@@ -553,6 +603,14 @@ export default function PainelProfessor() {
   return (
     <MainLayout title="Painel do Professor">
       <div className="space-y-4 sm:space-y-6">
+        {professorTurmasPermitidas.length === 0 && (
+          <div className="rounded-md border border-warning/30 bg-warning/5 p-3">
+            <p className="text-sm text-warning">
+              Você ainda não possui turmas vinculadas. Peça ao gestor para liberar suas turmas.
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 sm:gap-4">
           <Card>
             <CardContent className="p-4 sm:p-6">

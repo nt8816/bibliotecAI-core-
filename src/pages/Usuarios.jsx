@@ -64,6 +64,15 @@ const normalizeHeader = (value) =>
 const isValidMatricula = (value) => MATRICULA_REGEX.test(normalizeMatricula(value));
 const isTempLoginEmail = (value) => /@temp\.bibliotecai\.com$/i.test(String(value || '').trim());
 const getVisibleEmail = (nome, email) => (isTempLoginEmail(email) ? nome : (email || '-'));
+const isMissingTableError = (error) => {
+  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  return (
+    error?.code === '42P01'
+    || error?.code === 'PGRST205'
+    || message.includes('could not find the table')
+    || message.includes('does not exist')
+  );
+};
 
 const loadXlsx = async () => import('xlsx');
 const loadPdf = async () => {
@@ -101,6 +110,8 @@ export default function Usuarios() {
   const [importing, setImporting] = useState(false);
   const [tipoUsuarioImport, setTipoUsuarioImport] = useState('aluno');
   const [turmasDisponiveis, setTurmasDisponiveis] = useState([]);
+  const [professorTurmasMap, setProfessorTurmasMap] = useState({});
+  const [professorTurmasSelecionadas, setProfessorTurmasSelecionadas] = useState([]);
   const [currentEscolaId, setCurrentEscolaId] = useState(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState('xlsx');
@@ -174,11 +185,40 @@ export default function Usuarios() {
     }
   }, []);
 
+  const fetchProfessorTurmas = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('professor_turmas')
+        .select('professor_id, turma')
+        .order('turma');
+      if (error) {
+        if (isMissingTableError(error)) {
+          setProfessorTurmasMap({});
+          return;
+        }
+        throw error;
+      }
+
+      const nextMap = {};
+      (data || []).forEach((item) => {
+        const professorId = String(item?.professor_id || '');
+        const turma = String(item?.turma || '').trim();
+        if (!professorId || !turma) return;
+        if (!nextMap[professorId]) nextMap[professorId] = [];
+        if (!nextMap[professorId].includes(turma)) nextMap[professorId].push(turma);
+      });
+      setProfessorTurmasMap(nextMap);
+    } catch (error) {
+      console.error('Error fetching professor_turmas:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchUsuarios();
     fetchTurmas();
+    fetchProfessorTurmas();
     fetchCurrentEscola();
-  }, [fetchCurrentEscola, fetchUsuarios, fetchTurmas]);
+  }, [fetchCurrentEscola, fetchProfessorTurmas, fetchUsuarios, fetchTurmas]);
 
   const handleRealtimeChange = useCallback(() => {
     fetchUsuarios();
@@ -186,6 +226,41 @@ export default function Usuarios() {
 
   useRealtimeSubscription({ table: 'usuarios_biblioteca', onChange: handleRealtimeChange });
   useRealtimeSubscription({ table: 'salas_cursos', onChange: fetchTurmas });
+  useRealtimeSubscription({ table: 'professor_turmas', onChange: fetchProfessorTurmas });
+
+  const handleToggleProfessorTurma = (turma, checked) => {
+    if (!turma) return;
+    setProfessorTurmasSelecionadas((prev) => {
+      if (checked) return [...new Set([...prev, turma])];
+      return prev.filter((item) => item !== turma);
+    });
+  };
+
+  const salvarTurmasProfessor = async (professorId, turmas) => {
+    if (!isGestor || !professorId || !currentEscolaId) return;
+
+    const turmasNormalizadas = [...new Set(
+      (turmas || [])
+        .map((turma) => String(turma || '').trim())
+        .filter(Boolean),
+    )];
+
+    const { error: deleteError } = await supabase
+      .from('professor_turmas')
+      .delete()
+      .eq('professor_id', professorId);
+    if (deleteError) throw deleteError;
+
+    if (turmasNormalizadas.length === 0) return;
+
+    const payload = turmasNormalizadas.map((turma) => ({
+      professor_id: professorId,
+      escola_id: currentEscolaId,
+      turma,
+    }));
+    const { error: insertError } = await supabase.from('professor_turmas').insert(payload);
+    if (insertError) throw insertError;
+  };
 
   const handleOpenDialog = (usuario) => {
     if (usuario && isBibliotecaria && !isGestor && usuario.tipo === 'gestor') {
@@ -208,9 +283,15 @@ export default function Usuarios() {
         telefone: usuario.telefone || '',
         email: usuario.email,
       });
+      setProfessorTurmasSelecionadas(
+        usuario.tipo === 'professor'
+          ? (professorTurmasMap[usuario.id] || [])
+          : [],
+      );
     } else {
       setEditingUsuario(null);
       setFormData(emptyUsuario);
+      setProfessorTurmasSelecionadas([]);
     }
 
     setIsDialogOpen(true);
@@ -279,6 +360,13 @@ export default function Usuarios() {
       if (editingUsuario) {
         const { error } = await supabase.from('usuarios_biblioteca').update(formData).eq('id', editingUsuario.id);
         if (error) throw error;
+
+        if (isGestor && formData.tipo === 'professor') {
+          await salvarTurmasProfessor(editingUsuario.id, professorTurmasSelecionadas);
+        } else if (isGestor && editingUsuario.tipo === 'professor' && formData.tipo !== 'professor') {
+          await salvarTurmasProfessor(editingUsuario.id, []);
+        }
+
         toast({ title: 'Sucesso', description: 'Usuário atualizado com sucesso.' });
         trackEvent('usuario_atualizado', { id: editingUsuario.id });
       } else {
@@ -299,8 +387,17 @@ export default function Usuarios() {
             ...formData,
             escola_id: currentEscolaId,
           };
-          const { error } = await supabase.from('usuarios_biblioteca').insert(payload);
+          const { data, error } = await supabase
+            .from('usuarios_biblioteca')
+            .insert(payload)
+            .select('id')
+            .single();
           if (error) throw error;
+
+          if (isGestor && formData.tipo === 'professor' && data?.id) {
+            await salvarTurmasProfessor(data.id, professorTurmasSelecionadas);
+          }
+
           toast({ title: 'Sucesso', description: 'Usuário cadastrado com sucesso.' });
         }
         trackEvent('usuario_cadastrado', { tipo: formData.tipo });
@@ -309,7 +406,10 @@ export default function Usuarios() {
       setIsDialogOpen(false);
       fetchUsuarios();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error.message || 'Não foi possível salvar o usuário.' });
+      const tableMessage = isMissingTableError(error)
+        ? 'Tabela professor_turmas não encontrada. Aplique as migrations do Supabase.'
+        : null;
+      toast({ variant: 'destructive', title: 'Erro', description: tableMessage || error.message || 'Não foi possível salvar o usuário.' });
     } finally {
       setSaving(false);
     }
@@ -943,7 +1043,11 @@ export default function Usuarios() {
                           <select
                             id="tipo"
                             value={formData.tipo}
-                            onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
+                            onChange={(e) => {
+                              const nextTipo = e.target.value;
+                              setFormData({ ...formData, tipo: nextTipo });
+                              if (nextTipo !== 'professor') setProfessorTurmasSelecionadas([]);
+                            }}
                             className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                           >
                             {userTypeOptions.map((option) => (
@@ -984,6 +1088,35 @@ export default function Usuarios() {
                           <Label htmlFor="telefone">Telefone</Label>
                           <Input id="telefone" value={formData.telefone} onChange={(e) => setFormData({ ...formData, telefone: e.target.value })} />
                         </div>
+
+                        {isGestor && formData.tipo === 'professor' && (
+                          <div className="space-y-2 md:col-span-2">
+                            <Label>Turmas liberadas para o professor</Label>
+                            {turmasDisponiveis.length === 0 ? (
+                              <p className="text-sm text-muted-foreground">
+                                Nenhuma turma cadastrada. Cadastre turmas em Configuração da Escola.
+                              </p>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border p-3">
+                                {turmasDisponiveis.map((turma) => {
+                                  const checked = professorTurmasSelecionadas.includes(turma);
+                                  return (
+                                    <label key={turma} className="flex items-center gap-2 text-sm">
+                                      <Checkbox
+                                        checked={checked}
+                                        onCheckedChange={(value) => handleToggleProfessorTurma(turma, Boolean(value))}
+                                      />
+                                      <span>{turma}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                              O professor verá apenas alunos e atividades das turmas selecionadas.
+                            </p>
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
