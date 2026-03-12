@@ -80,6 +80,33 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function upsertById(list, item, idKey = 'id') {
+  const entries = ensureArray(list);
+  const id = item?.[idKey];
+  if (!id) return entries;
+  const index = entries.findIndex((entry) => entry?.[idKey] === id);
+  if (index >= 0) {
+    const next = [...entries];
+    next[index] = { ...entries[index], ...item };
+    return next;
+  }
+  return [item, ...entries];
+}
+
+function removeById(list, id, idKey = 'id') {
+  return ensureArray(list).filter((entry) => entry?.[idKey] !== id);
+}
+
+function sortByDateDesc(list, field = 'created_at') {
+  return [...ensureArray(list)].sort(
+    (a, b) => new Date(b?.[field] || 0).getTime() - new Date(a?.[field] || 0).getTime(),
+  );
+}
+
+function sortByTitulo(list) {
+  return [...ensureArray(list)].sort((a, b) => String(a?.titulo || '').localeCompare(String(b?.titulo || ''), 'pt-BR'));
+}
+
 function isMissingTableError(error) {
   const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
   return (
@@ -409,6 +436,7 @@ export default function PainelAluno() {
   const [meusAudiobooks, setMeusAudiobooks] = useState([]);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [livrosLimit, setLivrosLimit] = useState(40);
   const [bibliotecaView, setBibliotecaView] = useState('meus_livros');
   const [solicitacoesView, setSolicitacoesView] = useState('em_andamento');
   const [speaking, setSpeaking] = useState(false);
@@ -465,7 +493,6 @@ export default function PainelAluno() {
   const [gerandoDesafioIA, setGerandoDesafioIA] = useState(false);
   const warnedMissingFeaturesRef = useRef(false);
   const fetchInFlightRef = useRef(null);
-  const realtimeDebounceRef = useRef(null);
   const audioPlayerRef = useRef(null);
 
   const fetchData = useCallback(async () => {
@@ -691,29 +718,259 @@ export default function PainelAluno() {
     return () => clearInterval(timer);
   }, [studioSlides]);
 
-  const onRealtimeChange = useCallback(() => {
-    if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
-    realtimeDebounceRef.current = setTimeout(() => {
-      fetchData();
-    }, 400);
-  }, [fetchData]);
-
   useEffect(() => {
-    return () => {
-      if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
-    };
+    if (bibliotecaView === 'biblioteca') {
+      setLivrosLimit(40);
+    }
+  }, [bibliotecaView, searchTerm]);
+
+  const fetchRowById = useCallback(async (table, id, select) => {
+    if (!id) return null;
+    try {
+      const { data, error } = await supabase.from(table).select(select).eq('id', id).maybeSingle();
+      if (error) {
+        if (isMissingTableError(error)) return null;
+        throw error;
+      }
+      return data || null;
+    } catch {
+      return null;
+    }
   }, []);
 
-  useRealtimeSubscription({ table: 'emprestimos', onChange: onRealtimeChange });
-  useRealtimeSubscription({ table: 'avaliacoes_livros', onChange: onRealtimeChange });
-  useRealtimeSubscription({ table: 'lista_desejos', onChange: onRealtimeChange });
-  useRealtimeSubscription({ table: 'sugestoes_livros', onChange: onRealtimeChange });
-  useRealtimeSubscription({ table: 'solicitacoes_emprestimo', onChange: onRealtimeChange });
-  useRealtimeSubscription({ table: 'atividades_leitura', onChange: onRealtimeChange });
-  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'atividades_entregas' : null, onChange: onRealtimeChange });
-  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'audiobooks_biblioteca' : null, onChange: onRealtimeChange });
-  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'aluno_audiobooks' : null, onChange: onRealtimeChange });
-  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'laboratorio_criacoes' : null, onChange: onRealtimeChange });
+  const updateEntregaState = useCallback((entrega) => {
+    if (!entrega?.atividade_id) return;
+    const payload = parseEntregaPayload(entrega.texto_entrega);
+    setAtividadeTexto((prev) => ({ ...prev, [entrega.atividade_id]: payload.texto }));
+    setAtividadeImagens((prev) => ({ ...prev, [entrega.atividade_id]: payload.imagens }));
+    setAtividadeRespostas((prev) => ({ ...prev, [entrega.atividade_id]: payload.respostas }));
+  }, []);
+
+  const handleEmprestimoUpsert = useCallback(
+    async (payload) => {
+      const row = payload?.new;
+      const data = await fetchRowById('emprestimos', row?.id, '*, livros(titulo, autor)');
+      if (!data || data.usuario_id !== alunoId) return;
+      setEmprestimos((prev) => sortByDateDesc(upsertById(prev, data), 'data_emprestimo'));
+    },
+    [alunoId, fetchRowById],
+  );
+
+  const handleEmprestimoDelete = useCallback(
+    (payload) => {
+      const row = payload?.old;
+      if (!row?.id || row?.usuario_id !== alunoId) return;
+      setEmprestimos((prev) => removeById(prev, row.id));
+    },
+    [alunoId],
+  );
+
+  const handleAvaliacaoUpsert = useCallback(
+    async (payload) => {
+      const row = payload?.new;
+      const data = await fetchRowById('avaliacoes_livros', row?.id, '*, livros(titulo, autor)');
+      if (!data || data.usuario_id !== alunoId) return;
+      setAvaliacoes((prev) => sortByDateDesc(upsertById(prev, data)));
+    },
+    [alunoId, fetchRowById],
+  );
+
+  const handleAvaliacaoDelete = useCallback(
+    (payload) => {
+      const row = payload?.old;
+      if (!row?.id || row?.usuario_id !== alunoId) return;
+      setAvaliacoes((prev) => removeById(prev, row.id));
+    },
+    [alunoId],
+  );
+
+  const handleWishlistInsert = useCallback(
+    (payload) => {
+      const row = payload?.new;
+      if (!row?.livro_id || row?.usuario_id !== alunoId) return;
+      setWishlist((prev) => Array.from(new Set([...ensureArray(prev), row.livro_id])));
+    },
+    [alunoId],
+  );
+
+  const handleWishlistDelete = useCallback(
+    (payload) => {
+      const row = payload?.old;
+      if (!row?.livro_id || row?.usuario_id !== alunoId) return;
+      setWishlist((prev) => ensureArray(prev).filter((id) => id !== row.livro_id));
+    },
+    [alunoId],
+  );
+
+  const handleSugestaoUpsert = useCallback(
+    async (payload) => {
+      const row = payload?.new;
+      const data = await fetchRowById('sugestoes_livros', row?.id, '*, livros(titulo, autor)');
+      if (!data || data.aluno_id !== alunoId) return;
+      setSugestoes((prev) => sortByDateDesc(upsertById(prev, data)));
+    },
+    [alunoId, fetchRowById],
+  );
+
+  const handleSugestaoDelete = useCallback(
+    (payload) => {
+      const row = payload?.old;
+      if (!row?.id || row?.aluno_id !== alunoId) return;
+      setSugestoes((prev) => removeById(prev, row.id));
+    },
+    [alunoId],
+  );
+
+  const handleSolicitacaoUpsert = useCallback(
+    async (payload) => {
+      const row = payload?.new;
+      const data = await fetchRowById('solicitacoes_emprestimo', row?.id, '*, livros(titulo, autor)');
+      if (!data || data.usuario_id !== alunoId) return;
+      setSolicitacoes((prev) => sortByDateDesc(upsertById(prev, data)));
+    },
+    [alunoId, fetchRowById],
+  );
+
+  const handleSolicitacaoDelete = useCallback(
+    (payload) => {
+      const row = payload?.old;
+      if (!row?.id || row?.usuario_id !== alunoId) return;
+      setSolicitacoes((prev) => removeById(prev, row.id));
+    },
+    [alunoId],
+  );
+
+  const handleAtividadeUpsert = useCallback(
+    async (payload) => {
+      const row = payload?.new;
+      const data = await fetchRowById('atividades_leitura', row?.id, '*, livros(titulo, autor)');
+      if (!data || data.aluno_id !== alunoId) return;
+      setAtividades((prev) => sortByDateDesc(upsertById(prev, data)));
+    },
+    [alunoId, fetchRowById],
+  );
+
+  const handleAtividadeDelete = useCallback(
+    (payload) => {
+      const row = payload?.old;
+      if (!row?.id || row?.aluno_id !== alunoId) return;
+      setAtividades((prev) => removeById(prev, row.id));
+    },
+    [alunoId],
+  );
+
+  const handleEntregaUpsert = useCallback(
+    async (payload) => {
+      const row = payload?.new;
+      const data = await fetchRowById('atividades_entregas', row?.id, '*');
+      if (!data || data.aluno_id !== alunoId) return;
+      setEntregas((prev) => sortByDateDesc(upsertById(prev, data), 'updated_at'));
+      updateEntregaState(data);
+    },
+    [alunoId, fetchRowById, updateEntregaState],
+  );
+
+  const handleEntregaDelete = useCallback(
+    (payload) => {
+      const row = payload?.old;
+      if (!row?.id || row?.aluno_id !== alunoId) return;
+      setEntregas((prev) => removeById(prev, row.id));
+      setAtividadeTexto((prev) => {
+        const next = { ...prev };
+        delete next[row.atividade_id];
+        return next;
+      });
+      setAtividadeImagens((prev) => {
+        const next = { ...prev };
+        delete next[row.atividade_id];
+        return next;
+      });
+      setAtividadeRespostas((prev) => {
+        const next = { ...prev };
+        delete next[row.atividade_id];
+        return next;
+      });
+    },
+    [alunoId],
+  );
+
+  const handleAudiobookUpsert = useCallback(
+    async (payload) => {
+      const row = payload?.new;
+      const data = await fetchRowById('audiobooks_biblioteca', row?.id, '*, livros(titulo, autor)');
+      if (!data) return;
+      setAudiobookCatalogo((prev) => sortByDateDesc(upsertById(prev, data)));
+    },
+    [fetchRowById],
+  );
+
+  const handleAudiobookDelete = useCallback((payload) => {
+    const row = payload?.old;
+    if (!row?.id) return;
+    setAudiobookCatalogo((prev) => removeById(prev, row.id));
+  }, []);
+
+  const handleAlunoAudiobookUpsert = useCallback(
+    async (payload) => {
+      const row = payload?.new;
+      const data = await fetchRowById('aluno_audiobooks', row?.id, '*, audiobooks_biblioteca(*, livros(titulo, autor))');
+      if (!data || data.aluno_id !== alunoId) return;
+      setMeusAudiobooks((prev) => sortByDateDesc(upsertById(prev, data)));
+    },
+    [alunoId, fetchRowById],
+  );
+
+  const handleAlunoAudiobookDelete = useCallback(
+    (payload) => {
+      const row = payload?.old;
+      if (!row?.id || row?.aluno_id !== alunoId) return;
+      setMeusAudiobooks((prev) => removeById(prev, row.id));
+    },
+    [alunoId],
+  );
+
+  const handleLabCriacaoUpsert = useCallback(
+    async (payload) => {
+      const row = payload?.new;
+      const data = await fetchRowById('laboratorio_criacoes', row?.id, '*');
+      if (!data || data.aluno_id !== alunoId) return;
+      setCriacoesLaboratorio((prev) => sortByDateDesc(upsertById(prev, data)));
+    },
+    [alunoId, fetchRowById],
+  );
+
+  const handleLabCriacaoDelete = useCallback(
+    (payload) => {
+      const row = payload?.old;
+      if (!row?.id || row?.aluno_id !== alunoId) return;
+      setCriacoesLaboratorio((prev) => removeById(prev, row.id));
+    },
+    [alunoId],
+  );
+
+  const handleLivroUpsert = useCallback((payload) => {
+    const row = payload?.new;
+    if (!row?.id) return;
+    setLivros((prev) => sortByTitulo(upsertById(prev, row)));
+  }, []);
+
+  const handleLivroDelete = useCallback((payload) => {
+    const row = payload?.old;
+    if (!row?.id) return;
+    setLivros((prev) => removeById(prev, row.id));
+  }, []);
+
+  useRealtimeSubscription({ table: 'emprestimos', onInsert: handleEmprestimoUpsert, onUpdate: handleEmprestimoUpsert, onDelete: handleEmprestimoDelete });
+  useRealtimeSubscription({ table: 'avaliacoes_livros', onInsert: handleAvaliacaoUpsert, onUpdate: handleAvaliacaoUpsert, onDelete: handleAvaliacaoDelete });
+  useRealtimeSubscription({ table: 'lista_desejos', onInsert: handleWishlistInsert, onDelete: handleWishlistDelete });
+  useRealtimeSubscription({ table: 'sugestoes_livros', onInsert: handleSugestaoUpsert, onUpdate: handleSugestaoUpsert, onDelete: handleSugestaoDelete });
+  useRealtimeSubscription({ table: 'solicitacoes_emprestimo', onInsert: handleSolicitacaoUpsert, onUpdate: handleSolicitacaoUpsert, onDelete: handleSolicitacaoDelete });
+  useRealtimeSubscription({ table: 'atividades_leitura', onInsert: handleAtividadeUpsert, onUpdate: handleAtividadeUpsert, onDelete: handleAtividadeDelete });
+  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'atividades_entregas' : null, onInsert: handleEntregaUpsert, onUpdate: handleEntregaUpsert, onDelete: handleEntregaDelete });
+  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'audiobooks_biblioteca' : null, onInsert: handleAudiobookUpsert, onUpdate: handleAudiobookUpsert, onDelete: handleAudiobookDelete });
+  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'aluno_audiobooks' : null, onInsert: handleAlunoAudiobookUpsert, onUpdate: handleAlunoAudiobookUpsert, onDelete: handleAlunoAudiobookDelete });
+  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'laboratorio_criacoes' : null, onInsert: handleLabCriacaoUpsert, onUpdate: handleLabCriacaoUpsert, onDelete: handleLabCriacaoDelete });
+  useRealtimeSubscription({ table: 'livros', onInsert: handleLivroUpsert, onUpdate: handleLivroUpsert, onDelete: handleLivroDelete });
 
   const atividadesComEntrega = useMemo(() => {
     const entregaByAtividade = new Map(entregas.map((e) => [e.atividade_id, e]));
@@ -758,6 +1015,7 @@ export default function PainelAluno() {
 
   const notificacoes = useMemo(() => {
     const itens = [];
+    const solicitacoesPendentes = solicitacoes.filter((s) => classifySolicitacao(s) === 'em_andamento').length;
 
     atrasos.forEach((emp) => {
       itens.push({
@@ -790,8 +1048,17 @@ export default function PainelAluno() {
       });
     });
 
+    if (solicitacoesPendentes > 0) {
+      itens.push({
+        id: 'solicitacoes-pendentes',
+        tipo: 'solicitacao',
+        titulo: 'Solicitações pendentes',
+        descricao: `${solicitacoesPendentes} solicitação(ões) aguardando aprovação.`,
+      });
+    }
+
     return itens.slice(0, 8);
-  }, [atrasos, atividadesComEntrega, novidades]);
+  }, [atrasos, atividadesComEntrega, novidades, solicitacoes, classifySolicitacao]);
 
   const leiturasRecentes = useMemo(() => {
     const seteDiasAtras = new Date();
@@ -875,6 +1142,8 @@ export default function PainelAluno() {
     [livros, searchTerm],
   );
 
+  const livrosExibidos = useMemo(() => filteredLivros.slice(0, livrosLimit), [filteredLivros, livrosLimit]);
+
   const meusLivros = useMemo(() => emprestimos.filter((e) => e.status === 'ativo'), [emprestimos]);
 
   const filteredMeusLivros = useMemo(
@@ -944,6 +1213,17 @@ export default function PainelAluno() {
   const solicitacoesExibidas = useMemo(
     () => solicitacoesGroups[solicitacoesView] || [],
     [solicitacoesGroups, solicitacoesView],
+  );
+
+  const hasSolicitacaoEmAndamento = useCallback(
+    (livroId) =>
+      solicitacoes.some((item) => item?.livro_id === livroId && classifySolicitacao(item) === 'em_andamento'),
+    [classifySolicitacao, solicitacoes],
+  );
+
+  const hasEmprestimoAtivo = useCallback(
+    (livroId) => emprestimos.some((item) => item?.livro_id === livroId && item?.status === 'ativo'),
+    [emprestimos],
   );
 
   const speakText = async (text) => {
@@ -1136,7 +1416,6 @@ export default function PainelAluno() {
       setReviewLivro(null);
       setReviewTexto('');
       setShareReviewToCommunity(false);
-      await fetchData();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível salvar.' });
     } finally {
@@ -1146,6 +1425,23 @@ export default function PainelAluno() {
 
   const handleRequestLoan = async () => {
     if (!alunoId || !requestLivro) return;
+
+    if (hasSolicitacaoEmAndamento(requestLivro.id)) {
+      toast({
+        variant: 'destructive',
+        title: 'Solicitação já enviada',
+        description: 'Aguarde a aprovação da bibliotecária antes de solicitar novamente este livro.',
+      });
+      return;
+    }
+    if (hasEmprestimoAtivo(requestLivro.id)) {
+      toast({
+        variant: 'destructive',
+        title: 'Livro já emprestado',
+        description: 'Este livro já está emprestado para você. Confira em “Meus livros”.',
+      });
+      return;
+    }
 
     setSaving(true);
     try {
@@ -1160,7 +1456,6 @@ export default function PainelAluno() {
       setRequestDialog(false);
       setRequestLivro(null);
       setRequestMsg('');
-      await fetchData();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Falha ao solicitar empréstimo.' });
     } finally {
@@ -1218,7 +1513,6 @@ export default function PainelAluno() {
       if (error) throw error;
 
       toast({ title: 'Entrega enviada', description: 'Seu professor já pode avaliar e liberar pontos.' });
-      await fetchData();
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -1293,7 +1587,6 @@ export default function PainelAluno() {
       setAudiobookForm({ livro_id: '', titulo: '', autor: '', duracao_minutos: '' });
       setAudiobookFileDataUrl('');
       setAudiobookFileNome('');
-      await fetchData();
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -1330,7 +1623,6 @@ export default function PainelAluno() {
           .insert({ aluno_id: alunoId, audiobook_id: audiobookId, progresso_segundos: 0 });
         if (error) throw error;
       }
-      await fetchData();
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -1497,7 +1789,6 @@ export default function PainelAluno() {
       setStudioSlides([]);
       setStudioAudioFundoUrl('');
       setSelectedStudioImageUrl('');
-      await fetchData();
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -1545,7 +1836,6 @@ export default function PainelAluno() {
       });
 
       toast({ title: 'Projeto salvo no laboratório!' });
-      await fetchData();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível salvar o projeto.' });
     } finally {
@@ -1668,7 +1958,6 @@ export default function PainelAluno() {
       });
 
       toast({ title: publicarNaComunidade ? 'Quiz salvo e compartilhado!' : 'Quiz salvo no laboratório!' });
-      await fetchData();
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -1704,7 +1993,6 @@ export default function PainelAluno() {
       }
 
       toast({ title: 'Criação removida.' });
-      await fetchData();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro ao apagar', description: error?.message || 'Não foi possível apagar.' });
     } finally {
@@ -1838,7 +2126,6 @@ export default function PainelAluno() {
       ]);
       toast({ title: 'Resumo salvo no laboratório' });
       setResumoTexto('');
-      await fetchData();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível salvar o resumo.' });
     }
@@ -2033,21 +2320,57 @@ export default function PainelAluno() {
                   <p className="text-sm text-muted-foreground">Sem alertas no momento.</p>
                 ) : (
                   <div className="space-y-2">
-                    {notificacoes.map((n) => (
-                      <div key={n.id} className="p-3 border rounded-lg flex items-start gap-3">
-                        {n.tipo === 'atraso' ? (
-                          <AlertTriangle className="w-4 h-4 text-destructive mt-0.5" />
-                        ) : n.tipo === 'atividade' ? (
-                          <Clock className="w-4 h-4 text-warning mt-0.5" />
-                        ) : (
-                          <Sparkles className="w-4 h-4 text-primary mt-0.5" />
-                        )}
-                        <div>
-                          <p className="text-sm font-medium">{n.titulo}</p>
-                          <p className="text-xs text-muted-foreground">{n.descricao}</p>
-                        </div>
-                      </div>
-                    ))}
+                    {notificacoes.map((n) => {
+                      const content = (
+                        <>
+                          {n.tipo === 'atraso' ? (
+                            <AlertTriangle className="w-4 h-4 text-destructive mt-0.5" />
+                          ) : n.tipo === 'atividade' ? (
+                            <Clock className="w-4 h-4 text-warning mt-0.5" />
+                          ) : n.tipo === 'solicitacao' ? (
+                            <BellRing className="w-4 h-4 text-info mt-0.5" />
+                          ) : (
+                            <Sparkles className="w-4 h-4 text-primary mt-0.5" />
+                          )}
+                          <div>
+                            <p className="text-sm font-medium">{n.titulo}</p>
+                            <p className="text-xs text-muted-foreground">{n.descricao}</p>
+                          </div>
+                        </>
+                      );
+                      const handleClick = () => {
+                        if (n.tipo === 'solicitacao') {
+                          navigate('/aluno/biblioteca');
+                          setBibliotecaView('minhas_solicitacoes');
+                          setSolicitacoesView('em_andamento');
+                          return;
+                        }
+                        if (n.tipo === 'atividade') {
+                          navigate('/aluno/atividades');
+                          return;
+                        }
+                        if (n.tipo === 'atraso') {
+                          navigate('/aluno/biblioteca');
+                          setBibliotecaView('meus_livros');
+                          return;
+                        }
+                        if (n.tipo === 'novidade') {
+                          navigate('/aluno/biblioteca');
+                          setBibliotecaView('biblioteca');
+                        }
+                      };
+
+                      return (
+                        <button
+                          key={n.id}
+                          type="button"
+                          className="w-full p-3 border rounded-lg flex items-start gap-3 text-left hover:border-info/60 hover:bg-info/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/50"
+                          onClick={handleClick}
+                        >
+                          {content}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
@@ -2592,7 +2915,7 @@ export default function PainelAluno() {
                   <div className="space-y-3">
                     <p className="text-sm font-semibold">Biblioteca</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                      {filteredLivros.slice(0, 80).map((livro) => (
+                      {livrosExibidos.map((livro) => (
                         <div key={livro.id} className="rounded-xl border overflow-hidden bg-card">
                           <div className="h-24 bg-gradient-to-br from-secondary/30 via-secondary/10 to-transparent p-3 flex items-start justify-between gap-2">
                             <Badge variant="outline" className="text-xs">{livro.area || 'Geral'}</Badge>
@@ -2623,12 +2946,25 @@ export default function PainelAluno() {
                                   size="sm"
                                   variant="outline"
                                   className="text-xs h-7"
+                                  disabled={hasSolicitacaoEmAndamento(livro.id) || hasEmprestimoAtivo(livro.id)}
+                                  title={
+                                    hasEmprestimoAtivo(livro.id)
+                                      ? 'Livro já emprestado'
+                                      : hasSolicitacaoEmAndamento(livro.id)
+                                        ? 'Solicitação já enviada'
+                                        : 'Solicitar empréstimo'
+                                  }
                                   onClick={() => {
                                     setRequestLivro(livro);
                                     setRequestDialog(true);
                                   }}
                                 >
-                                  <Send className="w-3 h-3 mr-1" /> Solicitar
+                                  <Send className="w-3 h-3 mr-1" />
+                                  {hasEmprestimoAtivo(livro.id)
+                                    ? 'Emprestado'
+                                    : hasSolicitacaoEmAndamento(livro.id)
+                                      ? 'Já solicitado'
+                                      : 'Solicitar'}
                                 </Button>
                               )}
                               <Button
@@ -2650,6 +2986,13 @@ export default function PainelAluno() {
                         </div>
                       ))}
                     </div>
+                    {filteredLivros.length > livrosExibidos.length && (
+                      <div className="flex justify-center pt-4">
+                        <Button type="button" variant="outline" onClick={() => setLivrosLimit((prev) => prev + 40)}>
+                          Carregar mais
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2888,6 +3231,16 @@ export default function PainelAluno() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            {requestLivro && hasSolicitacaoEmAndamento(requestLivro.id) && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                Você já solicitou este livro. Aguarde a aprovação da bibliotecária para solicitar novamente.
+              </div>
+            )}
+            {requestLivro && hasEmprestimoAtivo(requestLivro.id) && (
+              <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
+                Este livro já está emprestado para você. Acompanhe em “Meus livros”.
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Mensagem (opcional)</Label>
               <Textarea
@@ -2903,7 +3256,13 @@ export default function PainelAluno() {
             <Button variant="outline" onClick={() => setRequestDialog(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleRequestLoan} disabled={saving}>
+            <Button
+              onClick={handleRequestLoan}
+              disabled={
+                saving
+                || (requestLivro && (hasSolicitacaoEmAndamento(requestLivro.id) || hasEmprestimoAtivo(requestLivro.id)))
+              }
+            >
               {saving ? 'Enviando...' : 'Enviar solicitação'}
             </Button>
           </div>

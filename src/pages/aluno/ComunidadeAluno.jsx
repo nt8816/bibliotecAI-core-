@@ -177,10 +177,59 @@ export default function ComunidadeAluno() {
   const [sharing, setSharing] = useState(false);
   const [quizRespostasPorPost, setQuizRespostasPorPost] = useState({});
   const [quizResultadoPorPost, setQuizResultadoPorPost] = useState({});
+  const [quizRankingByPost, setQuizRankingByPost] = useState({});
+  const [quizHistoricoByPost, setQuizHistoricoByPost] = useState({});
+  const [postsLimit, setPostsLimit] = useState(20);
   const [postEmEdicao, setPostEmEdicao] = useState(null);
   const [editTitulo, setEditTitulo] = useState('');
   const [editConteudo, setEditConteudo] = useState('');
   const [likingPostIds, setLikingPostIds] = useState(new Set());
+
+  const loadQuizRankingForPosts = useCallback(
+    async (postIds) => {
+      const ids = ensureArray(postIds).filter(Boolean);
+      if (ids.length === 0) return;
+      try {
+        const { data, error } = await supabase
+          .from('comunidade_quiz_tentativas')
+          .select('id, post_id, aluno_id, acertos, total, created_at, usuarios_biblioteca(nome)')
+          .in('post_id', ids)
+          .order('acertos', { ascending: false })
+          .order('created_at', { ascending: true });
+
+        if (error) {
+          if (isMissingTableError(error)) return;
+          throw error;
+        }
+
+        const rankingMap = {};
+        const historicoMap = {};
+
+        (data || []).forEach((tentativa) => {
+          if (!tentativa?.post_id) return;
+          const list = rankingMap[tentativa.post_id] || [];
+          if (list.length < 5) {
+            list.push(tentativa);
+            rankingMap[tentativa.post_id] = list;
+          }
+          if (alunoId && tentativa.aluno_id === alunoId) {
+            const prev = historicoMap[tentativa.post_id];
+            if (!prev || tentativa.acertos > prev.acertos) {
+              historicoMap[tentativa.post_id] = tentativa;
+            }
+          }
+        });
+
+        setQuizRankingByPost((prev) => ({ ...prev, ...rankingMap }));
+        setQuizHistoricoByPost((prev) => ({ ...prev, ...historicoMap }));
+      } catch (error) {
+        if (error && !isMissingTableError(error)) {
+          console.warn('Falha ao carregar ranking do quiz.', error);
+        }
+      }
+    },
+    [alunoId],
+  );
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -237,9 +286,15 @@ export default function ComunidadeAluno() {
       if (maybeError) throw maybeError;
       if (audioRes.error && !isMissingTableError(audioRes.error)) throw audioRes.error;
 
-      setPosts(postsRes.data || []);
+      const postsData = postsRes.data || [];
+      setPosts(postsData);
       setLikes(likesRes.data || []);
       setAudiobooks(audioRes.error ? [] : audioRes.data || []);
+
+      const quizPostIds = postsData
+        .filter((post) => Boolean(extractQuizFromConteudo(post?.conteudo)))
+        .map((post) => post.id);
+      await loadQuizRankingForPosts(quizPostIds);
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -249,11 +304,15 @@ export default function ComunidadeAluno() {
     } finally {
       setLoading(false);
     }
-  }, [enabled, toast, user]);
+  }, [enabled, loadQuizRankingForPosts, toast, user]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    setPostsLimit(20);
+  }, [filtroTipo]);
 
   const onPostInsert = useCallback((payload) => {
     const nextPost = payload?.new;
@@ -307,6 +366,15 @@ export default function ComunidadeAluno() {
     );
   }, []);
 
+  const onQuizTentativaChange = useCallback(
+    (payload) => {
+      const postId = payload?.new?.post_id || payload?.old?.post_id;
+      if (!postId) return;
+      loadQuizRankingForPosts([postId]);
+    },
+    [loadQuizRankingForPosts],
+  );
+
   useRealtimeSubscription({
     table: enabled ? 'comunidade_posts' : null,
     onInsert: onPostInsert,
@@ -317,6 +385,12 @@ export default function ComunidadeAluno() {
     table: enabled ? 'comunidade_curtidas' : null,
     onInsert: onLikeInsert,
     onDelete: onLikeDelete,
+  });
+  useRealtimeSubscription({
+    table: enabled ? 'comunidade_quiz_tentativas' : null,
+    onInsert: onQuizTentativaChange,
+    onUpdate: onQuizTentativaChange,
+    onDelete: onQuizTentativaChange,
   });
 
   const likedPostIds = useMemo(() => {
@@ -340,6 +414,8 @@ export default function ComunidadeAluno() {
       return ensureArray(posts).filter((post) => Boolean(extractQuizFromConteudo(post?.conteudo)));
     return ensureArray(posts).filter((post) => post?.tipo === filtroTipo);
   }, [filtroTipo, posts]);
+
+  const postsExibidos = useMemo(() => postsFiltrados.slice(0, postsLimit), [postsFiltrados, postsLimit]);
 
   const handleSelectImages = async (files) => {
     const selected = Array.from(files || []).slice(0, 4);
@@ -484,7 +560,7 @@ export default function ComunidadeAluno() {
     }));
   };
 
-  const corrigirQuizPost = (postId, quizData) => {
+  const corrigirQuizPost = async (postId, quizData) => {
     if (!quizData) return;
     const respostas = quizRespostasPorPost[postId] || {};
     const acertos = quizData.perguntas.reduce(
@@ -495,6 +571,35 @@ export default function ComunidadeAluno() {
       ...prev,
       [postId]: { acertos, total: quizData.perguntas.length },
     }));
+
+    if (!alunoId || !escolaId) return;
+    try {
+      const { error } = await supabase.from('comunidade_quiz_tentativas').insert({
+        post_id: postId,
+        aluno_id: alunoId,
+        escola_id: escolaId,
+        acertos,
+        total: quizData.perguntas.length,
+      });
+      if (error) {
+        if (isMissingTableError(error)) return;
+        throw error;
+      }
+      loadQuizRankingForPosts([postId]);
+      setQuizHistoricoByPost((prev) => {
+        const current = prev[postId];
+        if (!current || acertos > current.acertos) {
+          return { ...prev, [postId]: { acertos, total: quizData.perguntas.length } };
+        }
+        return prev;
+      });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao registrar quiz',
+        description: error?.message || 'Não foi possível registrar sua tentativa.',
+      });
+    }
   };
 
   const resetarQuizPost = (postId) => {
@@ -716,11 +821,13 @@ export default function ComunidadeAluno() {
               <p className="text-center text-muted-foreground py-8">Sem posts para este filtro.</p>
             ) : (
               <div className="space-y-4">
-                {postsFiltrados.map((post) => {
+                {postsExibidos.map((post) => {
                   const quizData = extractQuizFromConteudo(post?.conteudo);
                   const respostasQuiz = quizRespostasPorPost[post.id] || {};
                   const resultadoQuiz = quizResultadoPorPost[post.id];
                   const conteudoVisivel = quizData?.descricao || safeText(post?.conteudo, 'Conteúdo indisponível');
+                  const ranking = ensureArray(quizRankingByPost[post.id]);
+                  const historico = quizHistoricoByPost[post.id];
 
                   return (
                     <div key={post.id} className="p-4 rounded-xl border bg-card shadow-sm space-y-3 overflow-hidden">
@@ -795,6 +902,27 @@ export default function ComunidadeAluno() {
                               </>
                             )}
                           </div>
+                          {(historico || ranking.length > 0) && (
+                            <div className="text-xs text-muted-foreground space-y-1">
+                              {historico && (
+                                <p>
+                                  Seu melhor: {historico.acertos}/{historico.total} acertos
+                                </p>
+                              )}
+                              {ranking.length > 0 && (
+                                <div>
+                                  <p className="font-medium">Ranking</p>
+                                  <div className="space-y-0.5">
+                                    {ranking.map((item, index) => (
+                                      <p key={item.id}>
+                                        {index + 1}. {safeNestedName(item?.usuarios_biblioteca, 'Aluno')} — {item.acertos}/{item.total}
+                                      </p>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -848,6 +976,13 @@ export default function ComunidadeAluno() {
                     </div>
                   );
                 })}
+                {postsFiltrados.length > postsExibidos.length && (
+                  <div className="flex justify-center">
+                    <Button type="button" variant="outline" onClick={() => setPostsLimit((prev) => prev + 20)}>
+                      Carregar mais
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
