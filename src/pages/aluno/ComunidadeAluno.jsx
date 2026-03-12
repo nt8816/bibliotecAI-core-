@@ -18,6 +18,7 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 const POSTS_PAGE_SIZE = 20;
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 function formatDateBR(dateValue) {
   if (!dateValue) return '-';
@@ -38,6 +39,26 @@ function mergeById(list, incoming, idKey = 'id') {
     if (item?.[idKey]) map.set(item[idKey], item);
   });
   return Array.from(map.values());
+}
+
+function readCache(key, ttlMs = CACHE_TTL_MS) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.ts || Date.now() - parsed.ts > ttlMs) return null;
+    return parsed?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(key, data) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
+  } catch {
+    // ignore cache failures
+  }
 }
 
 function safeText(value, fallback = '-') {
@@ -115,7 +136,7 @@ function isMissingColumnError(error, columnName, tableName) {
 
 async function insertCommunityPostCompat(payload) {
   const selectFields =
-    '*, livros(titulo), audiobooks_biblioteca(titulo, autor, audio_url), usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)';
+    '*, livros(titulo, autor), audiobooks_biblioteca(titulo, autor, audio_url), usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)';
 
   const runInsert = async (insertPayload) =>
     supabase.from('comunidade_posts').insert(insertPayload).select(selectFields).single();
@@ -175,6 +196,11 @@ export default function ComunidadeAluno() {
   const [postDialogOpen, setPostDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState('todos');
+  const [postSearchTerm, setPostSearchTerm] = useState('');
+  const [apenasMinhaEscola, setApenasMinhaEscola] = useState(false);
+  const [apenasComImagens, setApenasComImagens] = useState(false);
+  const [postPreviewOpen, setPostPreviewOpen] = useState(false);
+  const [postPreviewItem, setPostPreviewItem] = useState(null);
 
   const [postTipo, setPostTipo] = useState('resenha');
   const [postLivroId, setPostLivroId] = useState('');
@@ -215,14 +241,24 @@ export default function ComunidadeAluno() {
   }, [quizRankingPeriodo]);
 
   const fetchPostsPage = useCallback(
-    async ({ reset = false } = {}) => {
+    async ({ reset = false, useCache = true } = {}) => {
       if (!enabled) return;
       const offset = reset ? 0 : postsOffset;
+      const cacheKey = `aluno:comunidade_posts:page0`;
+      if (reset && useCache) {
+        const cached = readCache(cacheKey);
+        if (Array.isArray(cached)) {
+          setPosts(cached);
+          setPostsOffset(cached.length);
+          setPostsHasMore(cached.length === POSTS_PAGE_SIZE);
+          return cached;
+        }
+      }
       setPostsLoadingMore(true);
       try {
         const { data, error } = await supabase
           .from('comunidade_posts')
-          .select('*, livros(titulo), audiobooks_biblioteca(titulo, autor, audio_url), usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)')
+          .select('*, livros(titulo, autor), audiobooks_biblioteca(titulo, autor, audio_url), usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)')
           .order('created_at', { ascending: false })
           .range(offset, offset + POSTS_PAGE_SIZE - 1);
         if (error) throw error;
@@ -230,6 +266,7 @@ export default function ComunidadeAluno() {
         setPosts((prev) => (reset ? items : mergeById(prev, items)));
         setPostsOffset(offset + items.length);
         setPostsHasMore(items.length === POSTS_PAGE_SIZE);
+        if (reset) writeCache(cacheKey, items);
         return items;
       } finally {
         setPostsLoadingMore(false);
@@ -485,12 +522,35 @@ export default function ComunidadeAluno() {
   }, [likes]);
 
   const postsFiltrados = useMemo(() => {
-    if (filtroTipo === 'todos') return ensureArray(posts);
-    if (filtroTipo === 'ia') return ensureArray(posts).filter((post) => ensureArray(post?.tags).includes('ia'));
-    if (filtroTipo === 'quiz')
-      return ensureArray(posts).filter((post) => Boolean(extractQuizFromConteudo(post?.conteudo)));
-    return ensureArray(posts).filter((post) => post?.tipo === filtroTipo);
-  }, [filtroTipo, posts]);
+    let list = ensureArray(posts);
+    if (apenasMinhaEscola && escolaId) {
+      list = list.filter((post) => post?.escola_id === escolaId);
+    }
+    if (apenasComImagens) {
+      list = list.filter((post) => ensureArray(post?.imagem_urls).length > 0);
+    }
+    if (filtroTipo === 'ia') list = list.filter((post) => ensureArray(post?.tags).includes('ia'));
+    else if (filtroTipo === 'quiz') list = list.filter((post) => Boolean(extractQuizFromConteudo(post?.conteudo)));
+    else if (filtroTipo !== 'todos') list = list.filter((post) => post?.tipo === filtroTipo);
+
+    const term = postSearchTerm.trim().toLowerCase();
+    if (term) {
+      list = list.filter((post) => {
+        const titulo = safeText(post?.titulo, '').toLowerCase();
+        const autorLivro = safeText(post?.livros?.autor, '').toLowerCase();
+        const tituloLivro = safeText(post?.livros?.titulo, '').toLowerCase();
+        const autorPost = safeNestedName(post?.usuarios_biblioteca, '').toLowerCase();
+        return (
+          titulo.includes(term) ||
+          autorLivro.includes(term) ||
+          tituloLivro.includes(term) ||
+          autorPost.includes(term)
+        );
+      });
+    }
+
+    return list;
+  }, [apenasComImagens, apenasMinhaEscola, escolaId, filtroTipo, postSearchTerm, posts]);
 
 
   const handleSelectImages = async (files) => {
@@ -575,6 +635,12 @@ export default function ComunidadeAluno() {
     setShareTitulo(safeText(post?.titulo, 'Post da comunidade'));
     setShareImageDataUrl(ensureArray(post?.imagem_urls)[0] || '');
     setShareDialogOpen(true);
+  };
+
+  const abrirPreviewPost = (post) => {
+    if (!post?.id) return;
+    setPostPreviewItem(post);
+    setPostPreviewOpen(true);
   };
 
   const handleSelectShareImage = async (files) => {
@@ -865,6 +931,47 @@ export default function ComunidadeAluno() {
           </Card>
         )}
 
+        {isGestao && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Painel de moderação</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={apenasMinhaEscola}
+                    onChange={(e) => setApenasMinhaEscola(e.target.checked)}
+                    className="h-4 w-4 rounded border border-input"
+                  />
+                  Somente minha escola
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={apenasComImagens}
+                    onChange={(e) => setApenasComImagens(e.target.checked)}
+                    className="h-4 w-4 rounded border border-input"
+                  />
+                  Somente com imagens
+                </label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Use os filtros e a busca para revisar e moderar publicações.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="relative">
+          <Input
+            placeholder="Buscar por título, autor do livro ou aluno..."
+            value={postSearchTerm}
+            onChange={(e) => setPostSearchTerm(e.target.value)}
+          />
+        </div>
+
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
           <Badge variant="outline" className="gap-1 shrink-0">
             <Filter className="w-3 h-3" /> Filtrar
@@ -905,6 +1012,7 @@ export default function ComunidadeAluno() {
                   const respostasQuiz = quizRespostasPorPost[post.id] || {};
                   const resultadoQuiz = quizResultadoPorPost[post.id];
                   const conteudoVisivel = quizData?.descricao || safeText(post?.conteudo, 'Conteúdo indisponível');
+                  const mostrarPreviewCompleto = conteudoVisivel.length > 200;
                   const ranking = ensureArray(quizRankingByPost[post.id]);
                   const historico = quizHistoricoByPost[post.id];
 
@@ -926,7 +1034,16 @@ export default function ComunidadeAluno() {
                         </Badge>
                       </div>
 
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{conteudoVisivel}</p>
+                      <div className="space-y-1">
+                        <p className={`text-sm text-muted-foreground whitespace-pre-wrap ${mostrarPreviewCompleto ? 'line-clamp-3' : ''}`}>
+                          {conteudoVisivel}
+                        </p>
+                        {mostrarPreviewCompleto && (
+                          <Button type="button" variant="ghost" size="sm" onClick={() => abrirPreviewPost(post)}>
+                            Ver completo
+                          </Button>
+                        )}
+                      </div>
 
                       {quizData && (
                         <div className="space-y-3 rounded-lg border bg-muted/50 p-3">
@@ -1318,6 +1435,26 @@ export default function ComunidadeAluno() {
                 <Send className="w-4 h-4 mr-2" /> {sharing ? 'Compartilhando...' : 'Compartilhar'}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={postPreviewOpen}
+        onOpenChange={(open) => {
+          setPostPreviewOpen(open);
+          if (!open) setPostPreviewItem(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{safeText(postPreviewItem?.titulo, 'Publicação')}</DialogTitle>
+            <DialogDescription>
+              {safeNestedName(postPreviewItem?.usuarios_biblioteca, 'Usuário')} • {formatDateBR(postPreviewItem?.created_at)}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="whitespace-pre-wrap text-sm text-muted-foreground">
+            {safeText(extractQuizFromConteudo(postPreviewItem?.conteudo)?.descricao || postPreviewItem?.conteudo, 'Conteúdo indisponível')}
           </div>
         </DialogContent>
       </Dialog>

@@ -50,6 +50,7 @@ import {
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 const LIVROS_PAGE_SIZE = 40;
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 function formatDateBR(dateValue) {
   if (!dateValue) return '-';
@@ -114,6 +115,26 @@ function mergeById(list, incoming, idKey = 'id') {
     if (item?.[idKey]) map.set(item[idKey], item);
   });
   return Array.from(map.values());
+}
+
+function readCache(key, ttlMs = CACHE_TTL_MS) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.ts || Date.now() - parsed.ts > ttlMs) return null;
+    return parsed?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(key, data) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
+  } catch {
+    // ignore cache failures
+  }
 }
 
 function extractResumoTextoFromCriacao(criacao) {
@@ -523,6 +544,9 @@ export default function PainelAluno() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [catalogoSearchTerm, setCatalogoSearchTerm] = useState('');
+  const [catalogoAreaFilter, setCatalogoAreaFilter] = useState('all');
+  const [catalogoDisponibilidadeFilter, setCatalogoDisponibilidadeFilter] = useState('all');
+  const [catalogoAutorFilter, setCatalogoAutorFilter] = useState('all');
   const [livrosOffset, setLivrosOffset] = useState(0);
   const [livrosHasMore, setLivrosHasMore] = useState(false);
   const [livrosLoadingMore, setLivrosLoadingMore] = useState(false);
@@ -586,9 +610,16 @@ export default function PainelAluno() {
   const [resumoSelecionado, setResumoSelecionado] = useState(null);
   const [sinopseDialogOpen, setSinopseDialogOpen] = useState(false);
   const [sinopseLivroSelecionado, setSinopseLivroSelecionado] = useState(null);
+  const [resumoRapidoOpen, setResumoRapidoOpen] = useState(false);
+  const [resumoRapidoData, setResumoRapidoData] = useState(null);
+  const [resumoRapidoLoadingId, setResumoRapidoLoadingId] = useState('');
+  const [solicitacoesLimit, setSolicitacoesLimit] = useState(10);
+  const [criacoesLimit, setCriacoesLimit] = useState(10);
+  const [resumosLimit, setResumosLimit] = useState(5);
   const warnedMissingFeaturesRef = useRef(false);
   const fetchInFlightRef = useRef(null);
   const audioPlayerRef = useRef(null);
+  const solicitacoesStatusRef = useRef(new Map());
 
   const buildLivrosQuery = useCallback(
     (offset) => {
@@ -608,8 +639,21 @@ export default function PainelAluno() {
   );
 
   const fetchLivrosPage = useCallback(
-    async ({ reset = false } = {}) => {
+    async ({ reset = false, useCache = true } = {}) => {
       const offset = reset ? 0 : livrosOffset;
+      const termKey = catalogoSearchTerm.trim().toLowerCase();
+      const cacheKey = `aluno:livros:${termKey}:page0`;
+
+      if (reset && useCache) {
+        const cached = readCache(cacheKey);
+        if (Array.isArray(cached)) {
+          setLivros(cached);
+          setLivrosOffset(cached.length);
+          setLivrosHasMore(cached.length === LIVROS_PAGE_SIZE);
+          return;
+        }
+      }
+
       setLivrosLoadingMore(true);
       try {
         const { data, error } = await buildLivrosQuery(offset);
@@ -618,11 +662,12 @@ export default function PainelAluno() {
         setLivros((prev) => (reset ? items : mergeById(prev, items)));
         setLivrosOffset(offset + items.length);
         setLivrosHasMore(items.length === LIVROS_PAGE_SIZE);
+        if (reset) writeCache(cacheKey, items);
       } finally {
         setLivrosLoadingMore(false);
       }
     },
-    [buildLivrosQuery, livrosOffset],
+    [buildLivrosQuery, catalogoSearchTerm, livrosOffset],
   );
 
   const fetchData = useCallback(async () => {
@@ -764,7 +809,11 @@ export default function PainelAluno() {
         setAvaliacoes(avaliacoesRes.data || []);
         setWishlist((wishlistRes.data || []).map((item) => item.livro_id));
         setSugestoes(sugestoesRes.data || []);
-        setSolicitacoes(solicitacoesRes.data || []);
+        const solicitacoesData = solicitacoesRes.data || [];
+        setSolicitacoes(solicitacoesData);
+        solicitacoesStatusRef.current = new Map(
+          solicitacoesData.map((item) => [item.id, String(item.status || '').toLowerCase()]),
+        );
         setAtividades(atividadesRes.data || []);
         setEntregas(entregasOpt.data);
         setAudiobookCatalogo(audioCatalogoOpt.data);
@@ -968,9 +1017,18 @@ export default function PainelAluno() {
       const row = payload?.new;
       const data = await fetchRowById('solicitacoes_emprestimo', row?.id, '*, livros(titulo, autor)');
       if (!data || data.usuario_id !== alunoId) return;
+      const prevStatus = solicitacoesStatusRef.current.get(data.id);
+      const nextStatus = String(data.status || '').toLowerCase();
+      if (prevStatus && prevStatus !== nextStatus) {
+        toast({
+          title: 'Status da solicitação atualizado',
+          description: `${data.livros?.titulo || 'Livro'}: ${nextStatus}.`,
+        });
+      }
+      solicitacoesStatusRef.current.set(data.id, nextStatus);
       setSolicitacoes((prev) => sortByDateDesc(upsertById(prev, data)));
     },
-    [alunoId, fetchRowById],
+    [alunoId, fetchRowById, toast],
   );
 
   const handleSolicitacaoDelete = useCallback(
@@ -1260,6 +1318,26 @@ export default function PainelAluno() {
     [livros, searchTerm],
   );
 
+  const catalogoAreas = useMemo(() => {
+    const set = new Set(ensureArray(livros).map((livro) => livro?.area).filter(Boolean));
+    return Array.from(set).sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
+  }, [livros]);
+
+  const catalogoAutores = useMemo(() => {
+    const set = new Set(ensureArray(livros).map((livro) => livro?.autor).filter(Boolean));
+    return Array.from(set).sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
+  }, [livros]);
+
+  const filteredCatalogo = useMemo(() => {
+    return filteredLivros.filter((livro) => {
+      if (catalogoAreaFilter !== 'all' && livro.area !== catalogoAreaFilter) return false;
+      if (catalogoDisponibilidadeFilter === 'disponivel' && !livro.disponivel) return false;
+      if (catalogoDisponibilidadeFilter === 'emprestado' && livro.disponivel) return false;
+      if (catalogoAutorFilter !== 'all' && livro.autor !== catalogoAutorFilter) return false;
+      return true;
+    });
+  }, [catalogoAreaFilter, catalogoAutorFilter, catalogoDisponibilidadeFilter, filteredLivros]);
+
 
   const meusLivros = useMemo(() => emprestimos.filter((e) => e.status === 'ativo'), [emprestimos]);
 
@@ -1332,6 +1410,51 @@ export default function PainelAluno() {
   const solicitacoesExibidas = useMemo(
     () => solicitacoesGroups[solicitacoesView] || [],
     [solicitacoesGroups, solicitacoesView],
+  );
+
+  const getSolicitacaoStatusInfo = useCallback(
+    (solicitacao) => {
+      const emprestimo = latestEmprestimoByLivro.get(solicitacao?.livro_id);
+      if (emprestimo?.status === 'devolvido') {
+        return { label: 'Devolvido', variant: 'secondary', icon: <CheckCircle2 className="w-3 h-3 mr-1" /> };
+      }
+      if (emprestimo?.status === 'ativo') {
+        return { label: 'Aceito', variant: 'default', icon: <CheckCircle2 className="w-3 h-3 mr-1" /> };
+      }
+      const status = String(solicitacao?.status || '').toLowerCase();
+      if (status === 'aprovada' || status === 'aceita') {
+        return { label: 'Aceito', variant: 'default', icon: <CheckCircle2 className="w-3 h-3 mr-1" /> };
+      }
+      if (status === 'recusada' || status === 'negada' || status === 'cancelada') {
+        return { label: 'Recusado', variant: 'destructive', icon: <AlertTriangle className="w-3 h-3 mr-1" /> };
+      }
+      return { label: 'Pendente', variant: 'secondary', icon: <Clock className="w-3 h-3 mr-1" /> };
+    },
+    [latestEmprestimoByLivro],
+  );
+
+  const buildSolicitacaoTimeline = useCallback(
+    (solicitacao) => {
+      const emprestimo = latestEmprestimoByLivro.get(solicitacao?.livro_id);
+      const timeline = [
+        { label: 'Solicitado', date: solicitacao?.created_at },
+      ];
+
+      const status = String(solicitacao?.status || '').toLowerCase();
+      if (status !== 'pendente') {
+        timeline.push({ label: status === 'recusada' || status === 'negada' ? 'Recusado' : 'Respondido', date: solicitacao?.updated_at });
+      }
+
+      if (emprestimo?.status === 'ativo') {
+        timeline.push({ label: 'Emprestado', date: emprestimo?.data_emprestimo || emprestimo?.created_at });
+      }
+      if (emprestimo?.status === 'devolvido') {
+        timeline.push({ label: 'Devolvido', date: emprestimo?.data_devolucao || emprestimo?.updated_at });
+      }
+
+      return timeline.filter((item) => item.date);
+    },
+    [latestEmprestimoByLivro],
   );
 
   const notificacoes = useMemo(() => {
@@ -2093,6 +2216,7 @@ export default function PainelAluno() {
     if (quiz.length === 0) return;
     const acertos = quiz.reduce((acc, pergunta, index) => (Number(quizRespostas[index]) === pergunta.correta ? acc + 1 : acc), 0);
     setQuizResultado({ acertos, total: quiz.length });
+    registrarResultadoQuiz({ acertos, total: quiz.length });
   };
 
   const resetarQuizAtual = () => {
@@ -2100,6 +2224,67 @@ export default function PainelAluno() {
     setQuizResultado(null);
     setAriaLiveMessage('Quiz reiniciado.');
   };
+
+  const quizHistoryKey = useMemo(
+    () => (alunoId ? `aluno:quiz:history:${alunoId}` : 'aluno:quiz:history:anon'),
+    [alunoId],
+  );
+
+  const [quizHistory, setQuizHistory] = useState({});
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(quizHistoryKey);
+      if (!raw) {
+        setQuizHistory({});
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      setQuizHistory(parsed && typeof parsed === 'object' ? parsed : {});
+    } catch {
+      setQuizHistory({});
+    }
+  }, [quizHistoryKey]);
+
+  const registrarResultadoQuiz = useCallback(
+    ({ acertos, total }) => {
+      if (!quizLivroId) return;
+      const tema = (quizTema || 'geral').trim().toLowerCase();
+      const key = `${quizLivroId}::${tema}`;
+      const prev = quizHistory?.[key] || {};
+      const best = !prev?.best || acertos > prev.best.acertos ? { acertos, total } : prev.best;
+      const next = {
+        ...quizHistory,
+        [key]: {
+          livroId: quizLivroId,
+          tema,
+          best,
+          last: { acertos, total },
+          updatedAt: new Date().toISOString(),
+        },
+      };
+      setQuizHistory(next);
+      try {
+        localStorage.setItem(quizHistoryKey, JSON.stringify(next));
+      } catch {
+        // ignore storage errors
+      }
+    },
+    [quizHistory, quizHistoryKey, quizLivroId, quizTema],
+  );
+
+  const quizNivel = useMemo(() => {
+    if (quiz.length <= 3) return 'Básico';
+    if (quiz.length <= 5) return 'Intermediário';
+    return 'Avançado';
+  }, [quiz.length]);
+
+  const quizHistoryKeyAtual = useMemo(() => {
+    if (!quizLivroId) return '';
+    return `${quizLivroId}::${(quizTema || 'geral').trim().toLowerCase()}`;
+  }, [quizLivroId, quizTema]);
+
+  const quizHistoricoAtual = quizHistoryKeyAtual ? quizHistory?.[quizHistoryKeyAtual] : null;
 
   const salvarQuizNoLaboratorio = async (publicarNaComunidade = false) => {
     if (!optionalFeaturesEnabled || !alunoId || !escolaId) {
@@ -2352,6 +2537,34 @@ export default function PainelAluno() {
     if (!livro?.sinopse) return;
     setSinopseLivroSelecionado(livro);
     setSinopseDialogOpen(true);
+  };
+
+  const gerarResumoRapido = async (livro) => {
+    if (!livro) return;
+    setResumoRapidoLoadingId(livro.id);
+    try {
+      const data = await generateTextWithIA(
+        'resumo_estudo',
+        {
+          titulo: livro.titulo,
+          autor: livro.autor,
+          sinopse: livro.sinopse || '',
+        },
+        'Não foi possível gerar o resumo rápido agora.',
+      );
+      const texto = extractResumoTextoFromIAResponse(data);
+      if (!texto) throw new Error('A IA respondeu sem resumo.');
+      setResumoRapidoData({ titulo: livro.titulo, autor: livro.autor, texto });
+      setResumoRapidoOpen(true);
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao gerar resumo',
+        description: error?.message || 'Não foi possível gerar o resumo rápido.',
+      });
+    } finally {
+      setResumoRapidoLoadingId('');
+    }
   };
 
   if (loading) {
@@ -2913,6 +3126,20 @@ export default function PainelAluno() {
 
                 {quiz.length > 0 && (
                   <div className="space-y-3">
+                    <div className="rounded-md border bg-muted/20 p-3 text-sm">
+                      <p className="font-medium">Fonte do quiz</p>
+                      <p className="text-xs text-muted-foreground">
+                        Livro: {livros.find((item) => item.id === quizLivroId)?.titulo || '—'} • Tema: {quizTema.trim() || 'compreensão da leitura'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Questões: {quiz.length} • Nível: {quizNivel}
+                      </p>
+                      {quizHistoricoAtual && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Último: {quizHistoricoAtual.last?.acertos}/{quizHistoricoAtual.last?.total} • Melhor: {quizHistoricoAtual.best?.acertos}/{quizHistoricoAtual.best?.total}
+                        </p>
+                      )}
+                    </div>
                     {quiz.map((pergunta, index) => (
                       <div key={`${pergunta.enunciado}-${index}`} className="rounded-md border p-3 space-y-2">
                         <p className="text-sm font-medium">{index + 1}. {pergunta.enunciado}</p>
@@ -2998,7 +3225,7 @@ export default function PainelAluno() {
                 {resumosCriados.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-sm font-semibold">Resumos salvos</p>
-                    {resumosCriados.slice(0, 5).map((resumo) => (
+                    {resumosCriados.slice(0, resumosLimit).map((resumo) => (
                       <div key={resumo.id} className="rounded-md border p-3">
                         <p className="text-xs text-muted-foreground">{resumo.livroTitulo}</p>
                         <p className="text-sm line-clamp-3">{resumo.texto}</p>
@@ -3020,6 +3247,13 @@ export default function PainelAluno() {
                         </div>
                       </div>
                     ))}
+                    {resumosCriados.length > resumosLimit && (
+                      <div className="flex justify-center">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setResumosLimit((prev) => prev + 5)}>
+                          Carregar mais
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -3069,7 +3303,7 @@ export default function PainelAluno() {
                   <p className="text-sm text-muted-foreground">Nenhuma criação salva ainda.</p>
                 ) : (
                   <div className="space-y-3">
-                    {criacoesLaboratorioFiltradas.slice(0, 20).map((criacao) => {
+                    {criacoesLaboratorioFiltradas.slice(0, criacoesLimit).map((criacao) => {
                       const resumoTextoCompleto = criacao.tipo === 'resumo' ? extractResumoTextoFromCriacao(criacao) : '';
                       return (
                         <div key={criacao.id} className="rounded-md border p-3 space-y-2">
@@ -3116,6 +3350,13 @@ export default function PainelAluno() {
                         </div>
                       );
                     })}
+                    {criacoesLaboratorioFiltradas.length > criacoesLimit && (
+                      <div className="flex justify-center">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setCriacoesLimit((prev) => prev + 10)}>
+                          Carregar mais
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -3204,8 +3445,50 @@ export default function PainelAluno() {
                 {bibliotecaView === 'biblioteca' && (
                   <div className="space-y-3">
                     <p className="text-sm font-semibold">Biblioteca</p>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                      <select
+                        className="h-10 rounded-md border bg-background px-3 text-sm"
+                        value={catalogoAreaFilter}
+                        onChange={(e) => setCatalogoAreaFilter(e.target.value)}
+                      >
+                        <option value="all">Todas as áreas</option>
+                        {catalogoAreas.map((area) => (
+                          <option key={area} value={area}>{area}</option>
+                        ))}
+                      </select>
+                      <select
+                        className="h-10 rounded-md border bg-background px-3 text-sm"
+                        value={catalogoDisponibilidadeFilter}
+                        onChange={(e) => setCatalogoDisponibilidadeFilter(e.target.value)}
+                      >
+                        <option value="all">Disponibilidade</option>
+                        <option value="disponivel">Disponíveis</option>
+                        <option value="emprestado">Emprestados</option>
+                      </select>
+                      <select
+                        className="h-10 rounded-md border bg-background px-3 text-sm"
+                        value={catalogoAutorFilter}
+                        onChange={(e) => setCatalogoAutorFilter(e.target.value)}
+                      >
+                        <option value="all">Todos os autores</option>
+                        {catalogoAutores.map((autor) => (
+                          <option key={autor} value={autor}>{autor}</option>
+                        ))}
+                      </select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setCatalogoAreaFilter('all');
+                          setCatalogoDisponibilidadeFilter('all');
+                          setCatalogoAutorFilter('all');
+                        }}
+                      >
+                        Limpar filtros
+                      </Button>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                      {filteredLivros.map((livro) => (
+                      {filteredCatalogo.map((livro) => (
                         <div key={livro.id} className="rounded-xl border overflow-hidden bg-card">
                           <div className="h-24 bg-gradient-to-br from-secondary/30 via-secondary/10 to-transparent p-3 flex items-start justify-between gap-2">
                             <Badge variant="outline" className="text-xs">{livro.area || 'Geral'}</Badge>
@@ -3264,6 +3547,16 @@ export default function PainelAluno() {
                                       : 'Solicitar'}
                                 </Button>
                               )}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs h-7"
+                                onClick={() => gerarResumoRapido(livro)}
+                                disabled={resumoRapidoLoadingId === livro.id}
+                              >
+                                <Sparkles className="w-3 h-3 mr-1" />
+                                {resumoRapidoLoadingId === livro.id ? 'Gerando...' : 'Resumo rápido'}
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -3334,7 +3627,10 @@ export default function PainelAluno() {
                       <p className="text-center text-muted-foreground py-8">Você ainda não fez solicitações.</p>
                     ) : (
                       <div className="space-y-3">
-                        {solicitacoesExibidas.map((solicitacao) => (
+                        {solicitacoesExibidas.slice(0, solicitacoesLimit).map((solicitacao) => {
+                          const statusInfo = getSolicitacaoStatusInfo(solicitacao);
+                          const timeline = buildSolicitacaoTimeline(solicitacao);
+                          return (
                           <div key={solicitacao.id} className="p-3 border rounded-lg space-y-2">
                             <div className="flex items-center justify-between gap-3">
                               <div>
@@ -3342,19 +3638,27 @@ export default function PainelAluno() {
                                 <p className="text-xs text-muted-foreground">{solicitacao.livros?.autor || '-'}</p>
                               </div>
                               <Badge
-                                variant={
-                                  solicitacao.status === 'aprovada'
-                                    ? 'default'
-                                    : solicitacao.status === 'recusada'
-                                      ? 'destructive'
-                                      : 'secondary'
-                                }
+                                variant={statusInfo.variant}
                               >
-                                {solicitacao.status}
+                                {statusInfo.icon}
+                                {statusInfo.label}
                               </Badge>
                             </div>
 
                             <p className="text-xs text-muted-foreground">Solicitado em: {formatDateBR(solicitacao.created_at)}</p>
+
+                            {timeline.length > 1 && (
+                              <div className="rounded-md border bg-muted/20 p-2">
+                                <p className="text-xs text-muted-foreground">Linha do tempo</p>
+                                <div className="mt-1 space-y-1">
+                                  {timeline.map((item) => (
+                                    <p key={`${solicitacao.id}-${item.label}`} className="text-xs">
+                                      <span className="font-medium">{item.label}:</span> {formatDateBR(item.date)}
+                                    </p>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
 
                             {solicitacao.mensagem && (
                               <div className="rounded-md border bg-muted/30 p-2">
@@ -3370,7 +3674,15 @@ export default function PainelAluno() {
                               </div>
                             )}
                           </div>
-                        ))}
+                        );
+                        })}
+                        {solicitacoesExibidas.length > solicitacoesLimit && (
+                          <div className="flex justify-center">
+                            <Button type="button" variant="outline" size="sm" onClick={() => setSolicitacoesLimit((prev) => prev + 10)}>
+                              Carregar mais
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3610,6 +3922,26 @@ export default function PainelAluno() {
           </DialogHeader>
           <div className="whitespace-pre-wrap text-sm text-muted-foreground">
             {sinopseLivroSelecionado?.sinopse || 'Sinopse indisponível.'}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={resumoRapidoOpen}
+        onOpenChange={(open) => {
+          setResumoRapidoOpen(open);
+          if (!open) setResumoRapidoData(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{resumoRapidoData?.titulo || 'Resumo rápido'}</DialogTitle>
+            {resumoRapidoData?.autor && (
+              <DialogDescription>{resumoRapidoData.autor}</DialogDescription>
+            )}
+          </DialogHeader>
+          <div className="whitespace-pre-wrap text-sm text-muted-foreground">
+            {resumoRapidoData?.texto || 'Resumo indisponível.'}
           </div>
         </DialogContent>
       </Dialog>
