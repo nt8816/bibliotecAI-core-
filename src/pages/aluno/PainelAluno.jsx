@@ -466,7 +466,7 @@ export default function PainelAluno() {
   const [meusAudiobooks, setMeusAudiobooks] = useState([]);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [catalogoSearchTerm, setCatalogoSearchTerm] = useState('');
   const [livrosOffset, setLivrosOffset] = useState(0);
   const [livrosHasMore, setLivrosHasMore] = useState(false);
   const [livrosLoadingMore, setLivrosLoadingMore] = useState(false);
@@ -543,14 +543,14 @@ export default function PainelAluno() {
         .select('id, titulo, autor, area, disponivel, sinopse, created_at')
         .order('titulo')
         .range(offset, offset + LIVROS_PAGE_SIZE - 1);
-      const term = debouncedSearchTerm.trim();
+      const term = catalogoSearchTerm.trim();
       if (term) {
         const escaped = term.replace(/%/g, '\\%').replace(/_/g, '\\_');
         query = query.or(`titulo.ilike.%${escaped}%,autor.ilike.%${escaped}%,area.ilike.%${escaped}%`);
       }
       return query;
     },
-    [debouncedSearchTerm],
+    [catalogoSearchTerm],
   );
 
   const fetchLivrosPage = useCallback(
@@ -757,13 +757,6 @@ export default function PainelAluno() {
   }, [fetchData]);
 
   useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-    }, 350);
-    return () => clearTimeout(handler);
-  }, [searchTerm]);
-
-  useEffect(() => {
     if (!user?.id) return;
 
     const key = `onboarding:aluno:${user.id}`;
@@ -809,7 +802,7 @@ export default function PainelAluno() {
     if (bibliotecaView === 'biblioteca') {
       fetchLivrosPage({ reset: true });
     }
-  }, [bibliotecaView, debouncedSearchTerm, fetchLivrosPage]);
+  }, [bibliotecaView, catalogoSearchTerm, fetchLivrosPage]);
 
   const fetchRowById = useCallback(async (table, id, select) => {
     if (!id) return null;
@@ -3098,10 +3091,21 @@ export default function PainelAluno() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar livros..."
+                placeholder="Buscar livros... (Enter para pesquisar no catálogo)"
                 className="pl-9"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSearchTerm(value);
+                  if (!value.trim()) {
+                    setCatalogoSearchTerm('');
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setCatalogoSearchTerm(searchTerm);
+                  }
+                }}
               />
             </div>
 
