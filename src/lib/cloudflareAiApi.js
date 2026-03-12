@@ -83,8 +83,9 @@ const buildTextPromptFromTask = (task, input) => {
     return [
       'Crie um quiz de leitura em português do Brasil.',
       'Responda SOMENTE com JSON válido no formato:',
-      '{"perguntas":[{"enunciado":"...","opcoes":["A","B","C","D"],"correta":0}]}',
-      'Use indice de resposta correta entre 0 e 3.',
+      '{"livro":"...","quantidade":3,"alternativas":4,"perguntas":[{"enunciado":"...","opcoes":["A","B","C","D"],"correta":0}]}',
+      'Use indice de resposta correta entre 0 e alternativas-1.',
+      'Use o nome do livro fornecido no contexto.',
       `Contexto: ${inputJson}`,
     ].join('\n');
   }

@@ -368,6 +368,29 @@ function normalizeQuizOptionText(value) {
 }
 
 function normalizeQuizOptions(rawOptions) {
+  if (typeof rawOptions === 'string') {
+    const raw = rawOptions.trim();
+    if (!raw) return [];
+
+    const letterSplit = raw
+      .split(/(?:^|\n|\r)\s*[A-D][\)\].:\-]\s*/i)
+      .map((part) => normalizeQuizOptionText(part))
+      .filter(Boolean);
+    if (letterSplit.length >= 2) return letterSplit;
+
+    const lineSplit = raw
+      .split(/\n|\\n|;|\|/g)
+      .map((part) => normalizeQuizOptionText(part))
+      .filter(Boolean);
+    if (lineSplit.length >= 2) return lineSplit;
+
+    const commaSplit = raw
+      .split(/\s*,\s*/)
+      .map((part) => normalizeQuizOptionText(part))
+      .filter(Boolean);
+    if (commaSplit.length >= 2) return commaSplit;
+  }
+
   const objectLike = rawOptions && typeof rawOptions === 'object' && !Array.isArray(rawOptions);
   const asArray = Array.isArray(rawOptions)
     ? rawOptions
@@ -386,13 +409,13 @@ function normalizeQuizOptions(rawOptions) {
       return '';
     })
     .filter(Boolean)
-    .slice(0, 4);
+    .slice(0, 6);
 }
 
 function normalizeQuizCorrectIndex(rawCorrect, options) {
   if (Number.isInteger(rawCorrect)) {
-    if (rawCorrect >= 0 && rawCorrect <= 3) return rawCorrect;
-    if (rawCorrect >= 1 && rawCorrect <= 4) return rawCorrect - 1;
+    if (rawCorrect >= 0 && rawCorrect < options.length) return rawCorrect;
+    if (rawCorrect >= 1 && rawCorrect <= options.length) return rawCorrect - 1;
   }
 
   const text = String(rawCorrect || '').trim();
@@ -400,12 +423,15 @@ function normalizeQuizCorrectIndex(rawCorrect, options) {
 
   const asNumber = Number(text);
   if (Number.isInteger(asNumber)) {
-    if (asNumber >= 0 && asNumber <= 3) return asNumber;
-    if (asNumber >= 1 && asNumber <= 4) return asNumber - 1;
+    if (asNumber >= 0 && asNumber < options.length) return asNumber;
+    if (asNumber >= 1 && asNumber <= options.length) return asNumber - 1;
   }
 
-  const letterMatch = text.match(/\b([A-D])\b/i);
-  if (letterMatch?.[1]) return letterMatch[1].toUpperCase().charCodeAt(0) - 65;
+  const letterMatch = text.match(/\b([A-Z])\b/i);
+  if (letterMatch?.[1]) {
+    const idx = letterMatch[1].toUpperCase().charCodeAt(0) - 65;
+    if (idx >= 0 && idx < options.length) return idx;
+  }
 
   const cleaned = normalizeQuizOptionText(text).toLowerCase();
   if (!cleaned) return -1;
@@ -417,15 +443,25 @@ function extractQuizPerguntasFromIAResponse(response) {
   const data = response?.data && typeof response.data === 'object' ? response.data : {};
   const textJson = extractJsonFromIAPlainText(response?.text);
 
-  const rawPerguntas = [
+  let rawPerguntas = [
     data?.perguntas,
     data?.questoes,
     data?.questions,
+    data?.quiz?.perguntas,
+    data?.quiz?.questoes,
+    data?.quiz?.questions,
     textJson?.perguntas,
     textJson?.questoes,
     textJson?.questions,
+    textJson?.quiz?.perguntas,
+    textJson?.quiz?.questoes,
+    textJson?.quiz?.questions,
     Array.isArray(textJson) ? textJson : null,
   ].find((item) => Array.isArray(item));
+
+  if (!rawPerguntas) {
+    rawPerguntas = extractQuizPerguntasFromPlainText(response?.text);
+  }
 
   return ensureArray(rawPerguntas)
     .map((item) => {
@@ -438,8 +474,29 @@ function extractQuizPerguntasFromIAResponse(response) {
 
       return { enunciado, opcoes, correta };
     })
-    .filter((item) => item.enunciado && item.opcoes.length === 4 && Number.isInteger(item.correta) && item.correta >= 0 && item.correta <= 3)
-    .slice(0, 5);
+    .filter((item) => item.enunciado && item.opcoes.length >= 2 && Number.isInteger(item.correta) && item.correta >= 0 && item.correta < item.opcoes.length)
+    .slice(0, 10);
+}
+
+function extractQuizPerguntasFromPlainText(rawText) {
+  const text = String(rawText || '').trim();
+  if (!text) return [];
+
+  const blocks = [...text.matchAll(/(?:^|\n)\s*\d+\)\s*([\s\S]*?)(?=\n\s*\d+\)|$)/g)]
+    .map((match) => match[1]?.trim())
+    .filter(Boolean);
+
+  return blocks.map((block) => {
+    const optionMatches = [...block.matchAll(/(?:^|\n)\s*([A-Z])[\)\].:\-]\s*(.+)/g)];
+    const firstOptionIndex = optionMatches[0]?.index ?? -1;
+    const enunciado = (firstOptionIndex >= 0 ? block.slice(0, firstOptionIndex) : block).trim();
+    const opcoes = optionMatches.map((match) => normalizeQuizOptionText(match[2]));
+
+    const respostaMatch = block.match(/resposta\s*[:\-]\s*([A-Z0-9])/i);
+    const correta = normalizeQuizCorrectIndex(respostaMatch?.[1], opcoes);
+
+    return { enunciado, opcoes, correta };
+  });
 }
 
 export default function PainelAluno() {
@@ -2021,11 +2078,13 @@ export default function PainelAluno() {
       const data = await generateTextWithIA(
         'quiz_leitura',
         {
+          livro: livro.titulo,
           titulo: livro.titulo,
           autor: livro.autor,
           sinopse: livro.sinopse || '',
           tema,
           quantidade: 3,
+          alternativas: 4,
         },
         'Não foi possível gerar quiz com IA no momento.',
       );
