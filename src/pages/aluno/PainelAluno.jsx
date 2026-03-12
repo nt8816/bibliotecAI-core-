@@ -141,6 +141,12 @@ function decodeJsonBase64(value) {
   }
 }
 
+const QUIZ_MARKER = '[QUIZ_COMUNIDADE_V1]';
+
+function serializeQuizParaComunidade(payload) {
+  return `${QUIZ_MARKER}${encodeJsonBase64(payload)}`;
+}
+
 function extractAtividadeFormConfig(descricao) {
   const source = String(descricao || '');
   const marker = '[FORM_CONFIG_V1]';
@@ -1616,8 +1622,15 @@ export default function PainelAluno() {
     setSaving(true);
     try {
       if (publicarNaComunidade) {
-        const resumoQuestoes = quiz
-          .map((pergunta, index) => `${index + 1}) ${pergunta.enunciado}`)
+        const resumoQuestoes = quiz.map((pergunta, index) => `${index + 1}) ${pergunta.enunciado}`).join('\n');
+        const quizPayload = {
+          perguntas: quiz,
+          tema: descricao,
+          livro_id: livro?.id || null,
+          criado_em: new Date().toISOString(),
+        };
+        const conteudoQuiz = [`Quiz interativo (${descricao})`, resumoQuestoes, serializeQuizParaComunidade(quizPayload)]
+          .filter(Boolean)
           .join('\n');
 
         const { data: postCriado, error: postError } = await insertCommunityPostCompat(
@@ -1625,9 +1638,9 @@ export default function PainelAluno() {
             autor_id: alunoId,
             escola_id: escolaId,
             livro_id: livro?.id || null,
-            tipo: 'dica',
+            tipo: 'quiz',
             titulo,
-            conteudo: `Quiz criado no laboratório (${descricao}).\n${resumoQuestoes}`,
+            conteudo: conteudoQuiz,
             imagem_urls: [],
             tags: ['quiz', 'ia'],
           },

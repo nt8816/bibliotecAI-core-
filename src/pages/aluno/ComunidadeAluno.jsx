@@ -46,6 +46,44 @@ function safeNestedName(value, fallback = 'Usuário') {
   return safeText(value?.nome, fallback);
 }
 
+function decodeJsonBase64(value) {
+  try {
+    const decoded = decodeURIComponent(escape(atob(String(value || ''))));
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
+const QUIZ_MARKER = '[QUIZ_COMUNIDADE_V1]';
+
+function extractQuizFromConteudo(rawConteudo) {
+  const source = String(rawConteudo || '');
+  const markerIndex = source.indexOf(QUIZ_MARKER);
+  if (markerIndex < 0) return null;
+
+  const descricao = source.slice(0, markerIndex).trim();
+  const encoded = source.slice(markerIndex + QUIZ_MARKER.length).trim();
+  const decoded = decodeJsonBase64(encoded);
+  const perguntas = Array.isArray(decoded?.perguntas) ? decoded.perguntas : [];
+
+  const perguntasLimpa = perguntas
+    .map((item) => ({
+      enunciado: safeText(item?.enunciado, '').trim(),
+      opcoes: Array.isArray(item?.opcoes) ? item.opcoes.map((op) => safeText(op, '').trim()).filter(Boolean) : [],
+      correta: Number.isInteger(item?.correta) ? item.correta : null,
+    }))
+    .filter((item) => item.enunciado && item.opcoes.length >= 2 && item.correta !== null && item.correta >= 0);
+
+  if (perguntasLimpa.length === 0) return null;
+
+  return {
+    descricao,
+    tema: safeText(decoded?.tema, ''),
+    perguntas: perguntasLimpa,
+  };
+}
+
 function isMissingTableError(error) {
   const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
   return (
@@ -67,14 +105,20 @@ function isMissingColumnError(error, columnName, tableName) {
 }
 
 async function insertCommunityPostCompat(payload) {
-  const { error } = await supabase.from('comunidade_posts').insert(payload);
+  const selectFields =
+    '*, livros(titulo), audiobooks_biblioteca(titulo, autor, audio_url), usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)';
+
+  const runInsert = async (insertPayload) =>
+    supabase.from('comunidade_posts').insert(insertPayload).select(selectFields).single();
+
+  let { data, error } = await runInsert(payload);
 
   if (error && Object.hasOwn(payload, 'escola_id') && isMissingColumnError(error, 'escola_id', 'comunidade_posts')) {
     const { escola_id: _ignored, ...fallbackPayload } = payload;
-    return await supabase.from('comunidade_posts').insert(fallbackPayload);
+    ({ data, error } = await runInsert(fallbackPayload));
   }
 
-  return { error };
+  return { data, error };
 }
 
 async function fileToDataUrl(file) {
@@ -131,6 +175,8 @@ export default function ComunidadeAluno() {
   const [shareTitulo, setShareTitulo] = useState('');
   const [shareImageDataUrl, setShareImageDataUrl] = useState('');
   const [sharing, setSharing] = useState(false);
+  const [quizRespostasPorPost, setQuizRespostasPorPost] = useState({});
+  const [quizResultadoPorPost, setQuizResultadoPorPost] = useState({});
   const [postEmEdicao, setPostEmEdicao] = useState(null);
   const [editTitulo, setEditTitulo] = useState('');
   const [editConteudo, setEditConteudo] = useState('');
@@ -290,6 +336,8 @@ export default function ComunidadeAluno() {
   const postsFiltrados = useMemo(() => {
     if (filtroTipo === 'todos') return ensureArray(posts);
     if (filtroTipo === 'ia') return ensureArray(posts).filter((post) => ensureArray(post?.tags).includes('ia'));
+    if (filtroTipo === 'quiz')
+      return ensureArray(posts).filter((post) => Boolean(extractQuizFromConteudo(post?.conteudo)));
     return ensureArray(posts).filter((post) => post?.tipo === filtroTipo);
   }, [filtroTipo, posts]);
 
@@ -335,7 +383,7 @@ export default function ComunidadeAluno() {
 
     setSaving(true);
     try {
-      const { error } = await insertCommunityPostCompat({
+      const { data: novoPost, error } = await insertCommunityPostCompat({
         autor_id: alunoId,
         escola_id: escolaId,
         livro_id: postLivroId || null,
@@ -349,10 +397,13 @@ export default function ComunidadeAluno() {
 
       if (error) throw error;
 
+      if (novoPost?.id) {
+        setPosts((prev) => [novoPost, ...ensureArray(prev)].slice(0, 80));
+      }
+
       clearPostForm();
       setPostDialogOpen(false);
       toast({ title: 'Publicação criada!' });
-      await fetchData();
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -421,6 +472,42 @@ export default function ComunidadeAluno() {
     } finally {
       setSharing(false);
     }
+  };
+
+  const responderQuiz = (postId, perguntaIndex, opcaoIndex) => {
+    setQuizRespostasPorPost((prev) => ({
+      ...prev,
+      [postId]: {
+        ...(prev[postId] || {}),
+        [perguntaIndex]: opcaoIndex,
+      },
+    }));
+  };
+
+  const corrigirQuizPost = (postId, quizData) => {
+    if (!quizData) return;
+    const respostas = quizRespostasPorPost[postId] || {};
+    const acertos = quizData.perguntas.reduce(
+      (acc, pergunta, idx) => (Number(respostas[idx]) === Number(pergunta.correta) ? acc + 1 : acc),
+      0,
+    );
+    setQuizResultadoPorPost((prev) => ({
+      ...prev,
+      [postId]: { acertos, total: quizData.perguntas.length },
+    }));
+  };
+
+  const resetarQuizPost = (postId) => {
+    setQuizRespostasPorPost((prev) => {
+      const next = { ...prev };
+      delete next[postId];
+      return next;
+    });
+    setQuizResultadoPorPost((prev) => {
+      const next = { ...prev };
+      delete next[postId];
+      return next;
+    });
   };
 
   const toggleLikePost = async (postId) => {
@@ -519,12 +606,17 @@ export default function ComunidadeAluno() {
 
       if (error) throw error;
 
+      setPosts((prev) =>
+        ensureArray(prev).map((item) =>
+          item.id === postEmEdicao.id ? { ...item, titulo: tituloLimpo || null, conteudo: conteudoLimpo } : item,
+        ),
+      );
+
       setEditDialogOpen(false);
       setPostEmEdicao(null);
       setEditTitulo('');
       setEditConteudo('');
       toast({ title: 'Post atualizado com sucesso.' });
-      await fetchData();
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -547,8 +639,10 @@ export default function ComunidadeAluno() {
       const { error } = await supabase.from('comunidade_posts').delete().eq('id', post.id);
       if (error) throw error;
 
+      setPosts((prev) => ensureArray(prev).filter((item) => item.id !== post.id));
+      setLikes((prev) => ensureArray(prev).filter((item) => item?.post_id !== post.id));
+
       toast({ title: 'Post apagado com sucesso.' });
-      await fetchData();
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -603,6 +697,9 @@ export default function ComunidadeAluno() {
           <Button size="sm" variant={filtroTipo === 'sugestao' ? 'default' : 'outline'} onClick={() => setFiltroTipo('sugestao')}>
             Sugestões
           </Button>
+          <Button size="sm" variant={filtroTipo === 'quiz' ? 'default' : 'outline'} onClick={() => setFiltroTipo('quiz')}>
+            Quizzes
+          </Button>
           <Button size="sm" variant={filtroTipo === 'ia' ? 'default' : 'outline'} onClick={() => setFiltroTipo('ia')}>
             Com IA
           </Button>
@@ -619,74 +716,138 @@ export default function ComunidadeAluno() {
               <p className="text-center text-muted-foreground py-8">Sem posts para este filtro.</p>
             ) : (
               <div className="space-y-4">
-                {postsFiltrados.map((post) => (
-                  <div key={post.id} className="p-4 rounded-xl border bg-card shadow-sm space-y-3 overflow-hidden">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold text-sm sm:text-base break-words">{safeText(post?.titulo, 'Post da comunidade')}</p>
-                          {ensureArray(post?.tags).includes('ia') && <Badge variant="secondary">IA</Badge>}
+                {postsFiltrados.map((post) => {
+                  const quizData = extractQuizFromConteudo(post?.conteudo);
+                  const respostasQuiz = quizRespostasPorPost[post.id] || {};
+                  const resultadoQuiz = quizResultadoPorPost[post.id];
+                  const conteudoVisivel = quizData?.descricao || safeText(post?.conteudo, 'Conteúdo indisponível');
+
+                  return (
+                    <div key={post.id} className="p-4 rounded-xl border bg-card shadow-sm space-y-3 overflow-hidden">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-semibold text-sm sm:text-base break-words">{safeText(post?.titulo, 'Post da comunidade')}</p>
+                            {ensureArray(post?.tags).includes('ia') && <Badge variant="secondary">IA</Badge>}
+                            {quizData && <Badge variant="secondary">Quiz</Badge>}
+                          </div>
+                          <p className="text-xs text-muted-foreground break-words">
+                            {safeNestedName(post?.usuarios_biblioteca, 'Usuário')} • {safeText(post?.tipo, 'resenha')} • {formatDateBR(post?.created_at)}
+                          </p>
                         </div>
-                        <p className="text-xs text-muted-foreground break-words">
-                          {safeNestedName(post?.usuarios_biblioteca, 'Usuário')} • {safeText(post?.tipo, 'resenha')} • {formatDateBR(post?.created_at)}
-                        </p>
+                        <Badge variant="secondary" className="max-w-[38vw] sm:max-w-[220px] truncate shrink-0">
+                          {safeText(post?.livros?.titulo, 'Geral')}
+                        </Badge>
                       </div>
-                      <Badge variant="secondary" className="max-w-[38vw] sm:max-w-[220px] truncate shrink-0">
-                        {safeText(post?.livros?.titulo, 'Geral')}
-                      </Badge>
-                    </div>
 
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{safeText(post?.conteudo, 'Conteúdo indisponível')}</p>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{conteudoVisivel}</p>
 
-                    {ensureArray(post?.imagem_urls).length > 0 && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {ensureArray(post?.imagem_urls).slice(0, 4).map((img, index) => (
-                          <button key={`${post.id}-${index}`} type="button" onClick={() => setSelectedImageUrl(img)} className="text-left">
-                            <img src={img} alt={`Imagem ${index + 1}`} className="w-full h-40 sm:h-52 object-cover rounded-md border" />
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                      {quizData && (
+                        <div className="space-y-3 rounded-lg border bg-muted/50 p-3">
+                          <div className="flex items-center gap-2 text-sm font-semibold">
+                            <Sparkles className="w-4 h-4" /> Quiz da comunidade
+                          </div>
+                          <div className="space-y-3">
+                            {quizData.perguntas.map((pergunta, idx) => (
+                              <div key={idx} className="space-y-2">
+                                <p className="text-sm font-medium">
+                                  {idx + 1}) {pergunta.enunciado}
+                                </p>
+                                <div className="grid sm:grid-cols-2 gap-2">
+                                  {pergunta.opcoes.map((opcao, opIdx) => {
+                                    const selecionada = Number(respostasQuiz[idx]) === opIdx;
+                                    const quizCorrigido = Boolean(resultadoQuiz);
+                                    const isCorreta = Number(pergunta.correta) === opIdx;
+                                    let variant = 'outline';
+                                    if (quizCorrigido && isCorreta) variant = 'secondary';
+                                    else if (quizCorrigido && selecionada && !isCorreta) variant = 'destructive';
+                                    else if (selecionada) variant = 'default';
 
-                    {post?.audiobooks_biblioteca && (
-                      <div className="p-2 rounded-md bg-muted/70 text-xs space-y-2">
-                        <p>
-                          <span className="font-medium">Audiobook indicado:</span> {safeText(post?.audiobooks_biblioteca?.titulo, '-')}
-                        </p>
-                        {post?.audiobooks_biblioteca?.audio_url && (
-                          <audio controls src={post.audiobooks_biblioteca.audio_url} className="w-full h-10" preload="metadata" />
+                                    return (
+                                      <Button
+                                        key={`${post.id}-${idx}-${opIdx}`}
+                                        variant={variant}
+                                        size="sm"
+                                        className="justify-start text-left"
+                                        onClick={() => responderQuiz(post.id, idx, opIdx)}
+                                      >
+                                        {String.fromCharCode(65 + opIdx)}. {opcao}
+                                      </Button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Button size="sm" onClick={() => corrigirQuizPost(post.id, quizData)} disabled={quizData.perguntas.length === 0}>
+                              Conferir
+                            </Button>
+                            {resultadoQuiz && (
+                              <>
+                                <Badge variant="secondary">
+                                  {resultadoQuiz.acertos}/{resultadoQuiz.total} acertos
+                                </Badge>
+                                <Button size="sm" variant="ghost" onClick={() => resetarQuizPost(post.id)}>
+                                  Refazer
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {ensureArray(post?.imagem_urls).length > 0 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {ensureArray(post?.imagem_urls).slice(0, 4).map((img, index) => (
+                            <button key={`${post.id}-${index}`} type="button" onClick={() => setSelectedImageUrl(img)} className="text-left">
+                              <img src={img} alt={`Imagem ${index + 1}`} className="w-full h-40 sm:h-52 object-cover rounded-md border" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {post?.audiobooks_biblioteca && (
+                        <div className="p-2 rounded-md bg-muted/70 text-xs space-y-2">
+                          <p>
+                            <span className="font-medium">Audiobook indicado:</span> {safeText(post?.audiobooks_biblioteca?.titulo, '-')}
+                          </p>
+                          {post?.audiobooks_biblioteca?.audio_url && (
+                            <audio controls src={post.audiobooks_biblioteca.audio_url} className="w-full h-10" preload="metadata" />
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleLikePost(post.id)}
+                          disabled={!enabled || likingPostIds.has(post.id)}
+                        >
+                          <Heart className={`w-4 h-4 mr-1 ${likedPostIds.has(post.id) ? 'fill-destructive text-destructive' : ''}`} />
+                          {likesByPost.get(post.id) || 0}
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => openShareDialog(post)} disabled={!enabled}>
+                          Compartilhar
+                        </Button>
+                        {podeEditarPost(post) && (
+                          <Button variant="ghost" size="sm" onClick={() => abrirEdicao(post)} disabled={!enabled || saving}>
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Editar
+                          </Button>
+                        )}
+                        {podeGerenciarPost(post) && (
+                          <Button variant="ghost" size="sm" onClick={() => apagarPost(post)} disabled={!enabled || saving}>
+                            <Trash2 className="w-4 h-4 mr-1 text-destructive" />
+                            Apagar
+                          </Button>
                         )}
                       </div>
-                    )}
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => toggleLikePost(post.id)}
-                        disabled={!enabled || likingPostIds.has(post.id)}
-                      >
-                        <Heart className={`w-4 h-4 mr-1 ${likedPostIds.has(post.id) ? 'fill-destructive text-destructive' : ''}`} />
-                        {likesByPost.get(post.id) || 0}
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => openShareDialog(post)} disabled={!enabled}>
-                        Compartilhar
-                      </Button>
-                      {podeEditarPost(post) && (
-                        <Button variant="ghost" size="sm" onClick={() => abrirEdicao(post)} disabled={!enabled || saving}>
-                          <Pencil className="w-4 h-4 mr-1" />
-                          Editar
-                        </Button>
-                      )}
-                      {podeGerenciarPost(post) && (
-                        <Button variant="ghost" size="sm" onClick={() => apagarPost(post)} disabled={!enabled || saving}>
-                          <Trash2 className="w-4 h-4 mr-1 text-destructive" />
-                          Apagar
-                        </Button>
-                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>

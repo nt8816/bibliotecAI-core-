@@ -2,9 +2,12 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 
+process.env.BROWSERSLIST_IGNORE_OLD_DATA = process.env.BROWSERSLIST_IGNORE_OLD_DATA || "1";
+
 export default defineConfig(() => ({
   base: "/",
   build: {
+    chunkSizeWarningLimit: 1024,
     rollupOptions: {
       output: {
         manualChunks(id) {
