@@ -1013,53 +1013,6 @@ export default function PainelAluno() {
       .slice(0, 8);
   }, [livros]);
 
-  const notificacoes = useMemo(() => {
-    const itens = [];
-    const solicitacoesPendentes = solicitacoes.filter((s) => classifySolicitacao(s) === 'em_andamento').length;
-
-    atrasos.forEach((emp) => {
-      itens.push({
-        id: `atraso-${emp.id}`,
-        tipo: 'atraso',
-        titulo: 'Livro com devolução em atraso',
-        descricao: `${emp.livros?.titulo || 'Livro'} deveria ter sido devolvido em ${formatDateBR(emp.data_devolucao_prevista)}.`,
-      });
-    });
-
-    atividadesComEntrega
-      .filter((a) => a.data_entrega && (!a.entrega || a.entrega.status !== 'aprovada'))
-      .sort((a, b) => new Date(a.data_entrega).getTime() - new Date(b.data_entrega).getTime())
-      .slice(0, 3)
-      .forEach((a) => {
-        itens.push({
-          id: `atividade-${a.id}`,
-          tipo: 'atividade',
-          titulo: 'Atividade para entregar',
-          descricao: `${a.titulo} - prazo ${formatDateBR(a.data_entrega)}.`,
-        });
-      });
-
-    novidades.slice(0, 3).forEach((livro) => {
-      itens.push({
-        id: `novidade-${livro.id}`,
-        tipo: 'novidade',
-        titulo: 'Novidade no catálogo',
-        descricao: `${livro.titulo} - ${livro.autor}.`,
-      });
-    });
-
-    if (solicitacoesPendentes > 0) {
-      itens.push({
-        id: 'solicitacoes-pendentes',
-        tipo: 'solicitacao',
-        titulo: 'Solicitações pendentes',
-        descricao: `${solicitacoesPendentes} solicitação(ões) aguardando aprovação.`,
-      });
-    }
-
-    return itens.slice(0, 8);
-  }, [atrasos, atividadesComEntrega, novidades, solicitacoes, classifySolicitacao]);
-
   const leiturasRecentes = useMemo(() => {
     const seteDiasAtras = new Date();
     seteDiasAtras.setDate(seteDiasAtras.getDate() - 6);
@@ -1214,6 +1167,53 @@ export default function PainelAluno() {
     () => solicitacoesGroups[solicitacoesView] || [],
     [solicitacoesGroups, solicitacoesView],
   );
+
+  const notificacoes = useMemo(() => {
+    const itens = [];
+    const solicitacoesPendentes = solicitacoes.filter((s) => classifySolicitacao(s) === 'em_andamento').length;
+
+    atrasos.forEach((emp) => {
+      itens.push({
+        id: `atraso-${emp.id}`,
+        tipo: 'atraso',
+        titulo: 'Livro com devolução em atraso',
+        descricao: `${emp.livros?.titulo || 'Livro'} deveria ter sido devolvido em ${formatDateBR(emp.data_devolucao_prevista)}.`,
+      });
+    });
+
+    atividadesComEntrega
+      .filter((a) => a.data_entrega && (!a.entrega || a.entrega.status !== 'aprovada'))
+      .sort((a, b) => new Date(a.data_entrega).getTime() - new Date(b.data_entrega).getTime())
+      .slice(0, 3)
+      .forEach((a) => {
+        itens.push({
+          id: `atividade-${a.id}`,
+          tipo: 'atividade',
+          titulo: 'Atividade para entregar',
+          descricao: `${a.titulo} - prazo ${formatDateBR(a.data_entrega)}.`,
+        });
+      });
+
+    novidades.slice(0, 3).forEach((livro) => {
+      itens.push({
+        id: `novidade-${livro.id}`,
+        tipo: 'novidade',
+        titulo: 'Novidade no catálogo',
+        descricao: `${livro.titulo} - ${livro.autor}.`,
+      });
+    });
+
+    if (solicitacoesPendentes > 0) {
+      itens.push({
+        id: 'solicitacoes-pendentes',
+        tipo: 'solicitacao',
+        titulo: 'Solicitações pendentes',
+        descricao: `${solicitacoesPendentes} solicitação(ões) aguardando aprovação.`,
+      });
+    }
+
+    return itens.slice(0, 8);
+  }, [atrasos, atividadesComEntrega, novidades, solicitacoes, classifySolicitacao]);
 
   const hasSolicitacaoEmAndamento = useCallback(
     (livroId) =>
