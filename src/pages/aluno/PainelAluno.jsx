@@ -117,6 +117,25 @@ function mergeById(list, incoming, idKey = 'id') {
   return Array.from(map.values());
 }
 
+function extractResumoTextoFromCriacao(criacao) {
+  if (!criacao) return '';
+  if (criacao.texto) return String(criacao.texto);
+  const raw = criacao.conteudo_json;
+  if (!raw) return '';
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return String(parsed?.texto || '');
+    } catch {
+      return String(raw);
+    }
+  }
+  if (typeof raw === 'object') {
+    return String(raw?.texto || '');
+  }
+  return '';
+}
+
 function isMissingTableError(error) {
   const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
   return (
@@ -447,11 +466,12 @@ export default function PainelAluno() {
   const [meusAudiobooks, setMeusAudiobooks] = useState([]);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [livrosOffset, setLivrosOffset] = useState(0);
   const [livrosHasMore, setLivrosHasMore] = useState(false);
   const [livrosLoadingMore, setLivrosLoadingMore] = useState(false);
   const [bibliotecaView, setBibliotecaView] = useState('meus_livros');
-  const [solicitacoesView, setSolicitacoesView] = useState('em_andamento');
+  const [solicitacoesView, setSolicitacoesView] = useState('pendentes');
   const [speaking, setSpeaking] = useState(false);
   const [realtimeUnavailable, setRealtimeUnavailable] = useState(false);
   const [realtimeToastShown, setRealtimeToastShown] = useState(false);
@@ -508,6 +528,10 @@ export default function PainelAluno() {
   const [gerandoResumoIA, setGerandoResumoIA] = useState(false);
   const [desafioIA, setDesafioIA] = useState(null);
   const [gerandoDesafioIA, setGerandoDesafioIA] = useState(false);
+  const [resumoDialogOpen, setResumoDialogOpen] = useState(false);
+  const [resumoSelecionado, setResumoSelecionado] = useState(null);
+  const [sinopseDialogOpen, setSinopseDialogOpen] = useState(false);
+  const [sinopseLivroSelecionado, setSinopseLivroSelecionado] = useState(null);
   const warnedMissingFeaturesRef = useRef(false);
   const fetchInFlightRef = useRef(null);
   const audioPlayerRef = useRef(null);
@@ -519,14 +543,14 @@ export default function PainelAluno() {
         .select('id, titulo, autor, area, disponivel, sinopse, created_at')
         .order('titulo')
         .range(offset, offset + LIVROS_PAGE_SIZE - 1);
-      const term = searchTerm.trim();
+      const term = debouncedSearchTerm.trim();
       if (term) {
         const escaped = term.replace(/%/g, '\\%').replace(/_/g, '\\_');
         query = query.or(`titulo.ilike.%${escaped}%,autor.ilike.%${escaped}%,area.ilike.%${escaped}%`);
       }
       return query;
     },
-    [searchTerm],
+    [debouncedSearchTerm],
   );
 
   const fetchLivrosPage = useCallback(
@@ -733,6 +757,13 @@ export default function PainelAluno() {
   }, [fetchData]);
 
   useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  useEffect(() => {
     if (!user?.id) return;
 
     const key = `onboarding:aluno:${user.id}`;
@@ -778,7 +809,7 @@ export default function PainelAluno() {
     if (bibliotecaView === 'biblioteca') {
       fetchLivrosPage({ reset: true });
     }
-  }, [bibliotecaView, fetchLivrosPage, searchTerm]);
+  }, [bibliotecaView, debouncedSearchTerm, fetchLivrosPage]);
 
   const fetchRowById = useCallback(async (table, id, select) => {
     if (!id) return null;
@@ -1243,20 +1274,22 @@ export default function PainelAluno() {
     (solicitacao) => {
       const emprestimo = latestEmprestimoByLivro.get(solicitacao?.livro_id);
       if (emprestimo?.status === 'devolvido') return 'historico';
-      if (emprestimo?.status === 'ativo') return 'em_andamento';
+      if (emprestimo?.status === 'ativo') return 'aceitos';
 
       const status = String(solicitacao?.status || '').toLowerCase();
       if (status === 'aprovada' || status === 'aceita') return 'aceitos';
-      if (status === 'recusada' || status === 'negada' || status === 'cancelada') return 'historico';
-      return 'em_andamento';
+      if (status === 'recusada' || status === 'negada' || status === 'cancelada') return 'recusados';
+      if (status === 'pendente' || status === 'solicitada' || status === 'em_andamento') return 'pendentes';
+      return 'pendentes';
     },
     [latestEmprestimoByLivro],
   );
 
   const solicitacoesGroups = useMemo(() => {
     const grouped = {
-      em_andamento: [],
+      pendentes: [],
       aceitos: [],
+      recusados: [],
       historico: [],
     };
     filteredSolicitacoes.forEach((item) => {
@@ -1272,7 +1305,7 @@ export default function PainelAluno() {
 
   const notificacoes = useMemo(() => {
     const itens = [];
-    const solicitacoesPendentes = solicitacoes.filter((s) => classifySolicitacao(s) === 'em_andamento').length;
+    const solicitacoesPendentes = solicitacoes.filter((s) => classifySolicitacao(s) === 'pendentes').length;
 
     atrasos.forEach((emp) => {
       itens.push({
@@ -1356,7 +1389,7 @@ export default function PainelAluno() {
 
   const hasSolicitacaoEmAndamento = useCallback(
     (livroId) =>
-      solicitacoes.some((item) => item?.livro_id === livroId && classifySolicitacao(item) === 'em_andamento'),
+      solicitacoes.some((item) => item?.livro_id === livroId && classifySolicitacao(item) === 'pendentes'),
     [classifySolicitacao, solicitacoes],
   );
 
@@ -2029,6 +2062,12 @@ export default function PainelAluno() {
     setQuizResultado({ acertos, total: quiz.length });
   };
 
+  const resetarQuizAtual = () => {
+    setQuizRespostas({});
+    setQuizResultado(null);
+    setAriaLiveMessage('Quiz reiniciado.');
+  };
+
   const salvarQuizNoLaboratorio = async (publicarNaComunidade = false) => {
     if (!optionalFeaturesEnabled || !alunoId || !escolaId) {
       toast({
@@ -2270,6 +2309,18 @@ export default function PainelAluno() {
     }
   };
 
+  const abrirResumoCompleto = (resumo) => {
+    if (!resumo) return;
+    setResumoSelecionado(resumo);
+    setResumoDialogOpen(true);
+  };
+
+  const abrirSinopseCompleta = (livro) => {
+    if (!livro?.sinopse) return;
+    setSinopseLivroSelecionado(livro);
+    setSinopseDialogOpen(true);
+  };
+
   if (loading) {
     return (
       <MainLayout title={pageTitle}>
@@ -2493,7 +2544,7 @@ export default function PainelAluno() {
                         if (n.tipo === 'solicitacao') {
                           navigate('/aluno/biblioteca');
                           setBibliotecaView('minhas_solicitacoes');
-                          setSolicitacoesView('em_andamento');
+                          setSolicitacoesView('pendentes');
                           return;
                         }
                         if (n.tipo === 'atividade') {
@@ -2868,6 +2919,9 @@ export default function PainelAluno() {
                       <Button type="button" variant="outline" onClick={() => salvarQuizNoLaboratorio(true)} disabled={saving}>
                         Compartilhar quiz
                       </Button>
+                      <Button type="button" variant="ghost" onClick={resetarQuizAtual}>
+                        Jogar novamente
+                      </Button>
                       {quizResultado && (
                         <Badge variant="outline">
                           Acertos: {quizResultado.acertos}/{quizResultado.total}
@@ -2920,6 +2974,22 @@ export default function PainelAluno() {
                       <div key={resumo.id} className="rounded-md border p-3">
                         <p className="text-xs text-muted-foreground">{resumo.livroTitulo}</p>
                         <p className="text-sm line-clamp-3">{resumo.texto}</p>
+                        <div className="flex justify-end mt-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              abrirResumoCompleto({
+                                titulo: resumo.livroTitulo,
+                                texto: resumo.texto,
+                                criadoEm: resumo.criadoEm,
+                              })
+                            }
+                          >
+                            Ver completo
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -2971,32 +3041,53 @@ export default function PainelAluno() {
                   <p className="text-sm text-muted-foreground">Nenhuma criação salva ainda.</p>
                 ) : (
                   <div className="space-y-3">
-                    {criacoesLaboratorioFiltradas.slice(0, 20).map((criacao) => (
-                      <div key={criacao.id} className="rounded-md border p-3 space-y-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="font-medium">{criacao.titulo || 'Criação sem título'}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {criacao.tipo} • {formatDateBR(criacao.created_at)}
-                            </p>
+                    {criacoesLaboratorioFiltradas.slice(0, 20).map((criacao) => {
+                      const resumoTextoCompleto = criacao.tipo === 'resumo' ? extractResumoTextoFromCriacao(criacao) : '';
+                      return (
+                        <div key={criacao.id} className="rounded-md border p-3 space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="font-medium">{criacao.titulo || 'Criação sem título'}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {criacao.tipo} • {formatDateBR(criacao.created_at)}
+                              </p>
+                            </div>
+                            <Button type="button" size="sm" variant="destructive" onClick={() => apagarCriacaoLaboratorio(criacao)} disabled={saving}>
+                              <Trash2 className="w-3 h-3 mr-1" />
+                              Apagar
+                            </Button>
                           </div>
-                          <Button type="button" size="sm" variant="destructive" onClick={() => apagarCriacaoLaboratorio(criacao)} disabled={saving}>
-                            <Trash2 className="w-3 h-3 mr-1" />
-                            Apagar
-                          </Button>
+                          {ensureArray(criacao.imagem_urls).length > 0 && (
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                              {ensureArray(criacao.imagem_urls).slice(0, 4).map((img, index) => (
+                                <button type="button" key={`${criacao.id}-${index}`} onClick={() => setSelectedStudioImageUrl(img)}>
+                                  <img src={img} alt={`Criação ${index + 1}`} className="h-20 w-full rounded-md border object-cover cursor-zoom-in" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {criacao.descricao && <p className="text-sm text-muted-foreground">{criacao.descricao}</p>}
+                          {criacao.tipo === 'resumo' && resumoTextoCompleto && (
+                            <div className="flex justify-end">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  abrirResumoCompleto({
+                                    titulo: criacao.titulo || 'Resumo salvo',
+                                    texto: resumoTextoCompleto,
+                                    criadoEm: criacao.created_at,
+                                  })
+                                }
+                              >
+                                Ver completo
+                              </Button>
+                            </div>
+                          )}
                         </div>
-                        {ensureArray(criacao.imagem_urls).length > 0 && (
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            {ensureArray(criacao.imagem_urls).slice(0, 4).map((img, index) => (
-                              <button type="button" key={`${criacao.id}-${index}`} onClick={() => setSelectedStudioImageUrl(img)}>
-                                <img src={img} alt={`Criação ${index + 1}`} className="h-20 w-full rounded-md border object-cover cursor-zoom-in" />
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        {criacao.descricao && <p className="text-sm text-muted-foreground">{criacao.descricao}</p>}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
@@ -3092,7 +3183,14 @@ export default function PainelAluno() {
 
                             {livro.sinopse && (
                               <div>
-                                <p className="text-xs text-muted-foreground line-clamp-2" translate="no">{livro.sinopse}</p>
+                                <button
+                                  type="button"
+                                  className="w-full text-left"
+                                  onClick={() => abrirSinopseCompleta(livro)}
+                                >
+                                  <p className="text-xs text-muted-foreground line-clamp-2" translate="no">{livro.sinopse}</p>
+                                  <p className="text-xs text-primary mt-1">Ver sinopse completa</p>
+                                </button>
                                 <Button size="sm" variant="ghost" className="h-6 px-1 text-xs mt-1" onClick={() => speakText(livro.sinopse || '')}>
                                   {speaking ? <VolumeX className="w-3 h-3 mr-1" /> : <Volume2 className="w-3 h-3 mr-1" />}
                                   {speaking ? 'Parar' : 'Ouvir sinopse'}
@@ -3163,10 +3261,10 @@ export default function PainelAluno() {
                       <Button
                         type="button"
                         size="sm"
-                        variant={solicitacoesView === 'em_andamento' ? 'default' : 'ghost'}
-                        onClick={() => setSolicitacoesView('em_andamento')}
+                        variant={solicitacoesView === 'pendentes' ? 'default' : 'ghost'}
+                        onClick={() => setSolicitacoesView('pendentes')}
                       >
-                        Em andamento ({solicitacoesGroups.em_andamento.length})
+                        Aguardando aprovação ({solicitacoesGroups.pendentes.length})
                       </Button>
                       <Button
                         type="button"
@@ -3175,6 +3273,14 @@ export default function PainelAluno() {
                         onClick={() => setSolicitacoesView('aceitos')}
                       >
                         Aceitos ({solicitacoesGroups.aceitos.length})
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={solicitacoesView === 'recusados' ? 'default' : 'ghost'}
+                        onClick={() => setSolicitacoesView('recusados')}
+                      >
+                        Recusados ({solicitacoesGroups.recusados.length})
                       </Button>
                       <Button
                         type="button"
@@ -3425,6 +3531,46 @@ export default function PainelAluno() {
             >
               {saving ? 'Enviando...' : 'Enviar solicitação'}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={resumoDialogOpen}
+        onOpenChange={(open) => {
+          setResumoDialogOpen(open);
+          if (!open) setResumoSelecionado(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{resumoSelecionado?.titulo || 'Resumo completo'}</DialogTitle>
+            {resumoSelecionado?.criadoEm && (
+              <DialogDescription>Salvo em {formatDateBR(resumoSelecionado.criadoEm)}</DialogDescription>
+            )}
+          </DialogHeader>
+          <div className="whitespace-pre-wrap text-sm text-muted-foreground">
+            {resumoSelecionado?.texto || 'Resumo indisponível.'}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={sinopseDialogOpen}
+        onOpenChange={(open) => {
+          setSinopseDialogOpen(open);
+          if (!open) setSinopseLivroSelecionado(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{sinopseLivroSelecionado?.titulo || 'Sinopse completa'}</DialogTitle>
+            {sinopseLivroSelecionado?.autor && (
+              <DialogDescription>{sinopseLivroSelecionado.autor}</DialogDescription>
+            )}
+          </DialogHeader>
+          <div className="whitespace-pre-wrap text-sm text-muted-foreground">
+            {sinopseLivroSelecionado?.sinopse || 'Sinopse indisponível.'}
           </div>
         </DialogContent>
       </Dialog>
