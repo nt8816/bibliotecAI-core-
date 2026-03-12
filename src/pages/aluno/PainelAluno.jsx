@@ -3487,21 +3487,23 @@ export default function PainelAluno() {
                         Limpar filtros
                       </Button>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-stretch">
                       {filteredCatalogo.map((livro) => (
-                        <div key={livro.id} className="rounded-xl border overflow-hidden bg-card">
-                          <div className="h-24 bg-gradient-to-br from-secondary/30 via-secondary/10 to-transparent p-3 flex items-start justify-between gap-2">
-                            <Badge variant="outline" className="text-xs">{livro.area || 'Geral'}</Badge>
+                        <div key={livro.id} className="rounded-2xl border bg-card flex flex-col min-h-[360px] overflow-hidden">
+                          <div className="min-h-[92px] bg-gradient-to-br from-secondary/30 via-secondary/10 to-transparent p-3 flex items-start justify-between gap-2">
+                            <Badge variant="outline" className="text-[11px] px-2 py-0.5">{livro.area || 'Geral'}</Badge>
                             <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => toggleWishlist(livro.id)}>
                               <Heart className={`w-4 h-4 ${wishlist.includes(livro.id) ? 'fill-destructive text-destructive' : ''}`} />
                             </Button>
                           </div>
-                          <div className="p-3 space-y-2">
-                            <p className="font-semibold line-clamp-2">{livro.titulo}</p>
-                            <p className="text-sm text-muted-foreground line-clamp-1">{livro.autor}</p>
-                            <Badge variant={livro.disponivel ? 'default' : 'secondary'} className="text-xs">
-                              {livro.disponivel ? 'Disponível' : 'Emprestado'}
-                            </Badge>
+                          <div className="p-3 flex flex-col gap-2 flex-1">
+                            <div className="space-y-1">
+                              <p className="font-semibold text-sm leading-5 line-clamp-2 min-h-[40px]">{livro.titulo}</p>
+                              <p className="text-xs text-muted-foreground line-clamp-1">{livro.autor}</p>
+                              <Badge variant={livro.disponivel ? 'default' : 'secondary'} className="text-[11px]">
+                                {livro.disponivel ? 'Disponível' : 'Emprestado'}
+                              </Badge>
+                            </div>
 
                             {livro.sinopse && (
                               <div>
@@ -3510,7 +3512,7 @@ export default function PainelAluno() {
                                   className="w-full text-left"
                                   onClick={() => abrirSinopseCompleta(livro)}
                                 >
-                                  <p className="text-xs text-muted-foreground line-clamp-2" translate="no">{livro.sinopse}</p>
+                                  <p className="text-xs text-muted-foreground line-clamp-3 min-h-[48px]" translate="no">{livro.sinopse}</p>
                                   <p className="text-xs text-primary mt-1">Ver sinopse completa</p>
                                 </button>
                                 <Button size="sm" variant="ghost" className="h-6 px-1 text-xs mt-1" onClick={() => speakText(livro.sinopse || '')}>
@@ -3520,47 +3522,21 @@ export default function PainelAluno() {
                               </div>
                             )}
 
-                            <div className="flex gap-1 pt-1">
-                              {livro.disponivel && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="text-xs h-7"
-                                  disabled={hasSolicitacaoEmAndamento(livro.id) || hasEmprestimoAtivo(livro.id)}
-                                  title={
-                                    hasEmprestimoAtivo(livro.id)
-                                      ? 'Livro já emprestado'
-                                      : hasSolicitacaoEmAndamento(livro.id)
-                                        ? 'Solicitação já enviada'
-                                        : 'Solicitar empréstimo'
-                                  }
-                                  onClick={() => {
-                                    setRequestLivro(livro);
-                                    setRequestDialog(true);
-                                  }}
-                                >
-                                  <Send className="w-3 h-3 mr-1" />
-                                  {hasEmprestimoAtivo(livro.id)
-                                    ? 'Emprestado'
-                                    : hasSolicitacaoEmAndamento(livro.id)
-                                      ? 'Já solicitado'
-                                      : 'Solicitar'}
-                                </Button>
-                              )}
+                            <div className="mt-auto grid grid-cols-2 gap-2 pt-2">
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="text-xs h-7"
+                                className="text-xs h-8"
                                 onClick={() => gerarResumoRapido(livro)}
                                 disabled={resumoRapidoLoadingId === livro.id}
                               >
                                 <Sparkles className="w-3 h-3 mr-1" />
-                                {resumoRapidoLoadingId === livro.id ? 'Gerando...' : 'Resumo rápido'}
+                                {resumoRapidoLoadingId === livro.id ? 'Gerando...' : 'Resumo'}
                               </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="text-xs h-7"
+                                className="text-xs h-8"
                                 onClick={() => {
                                   setReviewLivro(livro);
                                   setReviewNota(5);
@@ -3570,6 +3546,34 @@ export default function PainelAluno() {
                                 }}
                               >
                                 <Star className="w-3 h-3 mr-1" /> Avaliar
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs h-8 col-span-2"
+                                disabled={hasSolicitacaoEmAndamento(livro.id) || hasEmprestimoAtivo(livro.id) || !livro.disponivel}
+                                title={
+                                  !livro.disponivel
+                                    ? 'Livro emprestado'
+                                    : hasEmprestimoAtivo(livro.id)
+                                      ? 'Livro já emprestado'
+                                      : hasSolicitacaoEmAndamento(livro.id)
+                                        ? 'Solicitação já enviada'
+                                        : 'Solicitar empréstimo'
+                                }
+                                onClick={() => {
+                                  setRequestLivro(livro);
+                                  setRequestDialog(true);
+                                }}
+                              >
+                                <Send className="w-3 h-3 mr-1" />
+                                {hasEmprestimoAtivo(livro.id)
+                                  ? 'Emprestado'
+                                  : hasSolicitacaoEmAndamento(livro.id)
+                                    ? 'Já solicitado'
+                                    : livro.disponivel
+                                      ? 'Solicitar'
+                                      : 'Indisponível'}
                               </Button>
                             </div>
                           </div>
