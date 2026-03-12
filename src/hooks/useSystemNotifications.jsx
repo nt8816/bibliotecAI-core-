@@ -41,7 +41,7 @@ export function useSystemNotifications() {
           .from('solicitacoes_emprestimo')
           .select('id', { count: 'exact', head: true })
           .eq('usuario_id', perfil.id)
-          .eq('status', 'pendente'),
+          .in('status', ['pendente', 'em_andamento']),
       ]);
 
       setCounts({
@@ -53,7 +53,7 @@ export function useSystemNotifications() {
 
     const [atrasadosRes, solicitacoesRes] = await Promise.all([
       supabase.from('emprestimos').select('id', { count: 'exact', head: true }).eq('status', 'ativo').lt('data_devolucao_prevista', new Date().toISOString()),
-      supabase.from('solicitacoes_emprestimo').select('id', { count: 'exact', head: true }).eq('status', 'pendente'),
+    supabase.from('solicitacoes_emprestimo').select('id', { count: 'exact', head: true }).in('status', ['pendente', 'em_andamento']),
     ]);
 
     setCounts({

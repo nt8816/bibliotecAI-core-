@@ -766,6 +766,35 @@ export type Database = {
           },
         ]
       }
+      notificacoes_lidas: {
+        Row: {
+          created_at: string
+          id: string
+          notification_id: string
+          usuario_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notification_id: string
+          usuario_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notification_id?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notificacoes_lidas_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios_biblioteca"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notificacoes_sistema: {
         Row: {
           conteudo: string
@@ -1314,7 +1343,7 @@ export type Database = {
         Args: {
           _base_domain?: string
           _invite_cpf?: string
-          _invite_expires_hours?: number
+          _invite_expires_hours?: string
           _tenant_id: string
         }
         Returns: Json
@@ -1360,15 +1389,13 @@ export type Database = {
       is_same_user_escola: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
       is_tenant_platform_admin: { Args: never; Returns: boolean }
-      is_tenant_platform_admin_on_tenant: { Args: { _tenant_id: string }; Returns: boolean }
-      is_tenant_platform_admin_user: { Args: { _user_id: string }; Returns: boolean }
       normalize_subdominio: { Args: { _value: string }; Returns: string }
       provision_tenant: {
         Args: {
           _base_domain?: string
           _escola_nome: string
           _invite_cpf?: string
-          _invite_expires_hours?: number
+          _invite_expires_hours?: string
           _plano?: string
           _subdominio: string
         }
@@ -1503,6 +1530,7 @@ export type CompositeTypes<
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : never
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never

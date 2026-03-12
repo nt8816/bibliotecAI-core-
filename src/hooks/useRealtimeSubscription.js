@@ -1,11 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-export function useRealtimeSubscription({ table, onInsert, onUpdate, onDelete, onChange, }) {
+
+export function useRealtimeSubscription({ table, onInsert, onUpdate, onDelete, onChange, onStatus }) {
     const handlersRef = useRef({
         onInsert,
         onUpdate,
         onDelete,
         onChange,
+        onStatus,
     });
     useEffect(() => {
         handlersRef.current = {
@@ -13,8 +15,9 @@ export function useRealtimeSubscription({ table, onInsert, onUpdate, onDelete, o
             onUpdate,
             onDelete,
             onChange,
+            onStatus,
         };
-    }, [onInsert, onUpdate, onDelete, onChange]);
+    }, [onInsert, onUpdate, onDelete, onChange, onStatus]);
     useEffect(() => {
         if (!table)
             return;
@@ -51,6 +54,9 @@ export function useRealtimeSubscription({ table, onInsert, onUpdate, onDelete, o
             }
         })
             .subscribe((status) => {
+            if (handlersRef.current.onStatus) {
+                handlersRef.current.onStatus(status, table);
+            }
             if (status === 'CHANNEL_ERROR') {
                 console.warn(`Realtime indisponivel para tabela ${table}.`);
             }

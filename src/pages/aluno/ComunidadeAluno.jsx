@@ -17,6 +17,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
+const POSTS_PAGE_SIZE = 20;
+const REALTIME_FALLBACK_INTERVAL = 30000;
 
 function formatDateBR(dateValue) {
   if (!dateValue) return '-';
@@ -29,6 +31,14 @@ function formatDateBR(dateValue) {
 
 function ensureArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function mergeById(list, incoming, idKey = 'id') {
+  const map = new Map(ensureArray(list).map((item) => [item?.[idKey], item]));
+  ensureArray(incoming).forEach((item) => {
+    if (item?.[idKey]) map.set(item[idKey], item);
+  });
+  return Array.from(map.values());
 }
 
 function safeText(value, fallback = '-') {
@@ -149,12 +159,19 @@ export default function ComunidadeAluno() {
 
   const [alunoId, setAlunoId] = useState(null);
   const [escolaId, setEscolaId] = useState(null);
+  const [alunoTurma, setAlunoTurma] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [realtimeUnavailable, setRealtimeUnavailable] = useState(false);
+  const [realtimeToastShown, setRealtimeToastShown] = useState(false);
+  const [ariaLiveMessage, setAriaLiveMessage] = useState('');
 
   const [livros, setLivros] = useState([]);
   const [audiobooks, setAudiobooks] = useState([]);
   const [posts, setPosts] = useState([]);
+  const [postsOffset, setPostsOffset] = useState(0);
+  const [postsHasMore, setPostsHasMore] = useState(false);
+  const [postsLoadingMore, setPostsLoadingMore] = useState(false);
   const [likes, setLikes] = useState([]);
   const [enabled, setEnabled] = useState(ENABLE_OPTIONAL_STUDENT_FEATURES);
 
@@ -179,23 +196,75 @@ export default function ComunidadeAluno() {
   const [quizResultadoPorPost, setQuizResultadoPorPost] = useState({});
   const [quizRankingByPost, setQuizRankingByPost] = useState({});
   const [quizHistoricoByPost, setQuizHistoricoByPost] = useState({});
-  const [postsLimit, setPostsLimit] = useState(20);
+  const [quizRankingPeriodo, setQuizRankingPeriodo] = useState('geral');
+  const [quizRankingEscopo, setQuizRankingEscopo] = useState('escola');
   const [postEmEdicao, setPostEmEdicao] = useState(null);
   const [editTitulo, setEditTitulo] = useState('');
   const [editConteudo, setEditConteudo] = useState('');
   const [likingPostIds, setLikingPostIds] = useState(new Set());
+
+  const quizRankingFromDate = useMemo(() => {
+    if (quizRankingPeriodo === 'semana') {
+      const from = new Date();
+      from.setDate(from.getDate() - 7);
+      return from.toISOString();
+    }
+    if (quizRankingPeriodo === 'mes') {
+      const from = new Date();
+      from.setMonth(from.getMonth() - 1);
+      return from.toISOString();
+    }
+    return null;
+  }, [quizRankingPeriodo]);
+
+  const fetchPostsPage = useCallback(
+    async ({ reset = false } = {}) => {
+      if (!enabled) return;
+      const offset = reset ? 0 : postsOffset;
+      setPostsLoadingMore(true);
+      try {
+        const { data, error } = await supabase
+          .from('comunidade_posts')
+          .select('*, livros(titulo), audiobooks_biblioteca(titulo, autor, audio_url), usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)')
+          .order('created_at', { ascending: false })
+          .range(offset, offset + POSTS_PAGE_SIZE - 1);
+        if (error) throw error;
+        const items = data || [];
+        setPosts((prev) => (reset ? items : mergeById(prev, items)));
+        setPostsOffset(offset + items.length);
+        setPostsHasMore(items.length === POSTS_PAGE_SIZE);
+        return items;
+      } finally {
+        setPostsLoadingMore(false);
+      }
+    },
+    [enabled, postsOffset],
+  );
 
   const loadQuizRankingForPosts = useCallback(
     async (postIds) => {
       const ids = ensureArray(postIds).filter(Boolean);
       if (ids.length === 0) return;
       try {
-        const { data, error } = await supabase
+        const selectFields = quizRankingEscopo === 'turma'
+          ? 'id, post_id, aluno_id, acertos, total, created_at, usuarios_biblioteca!inner(nome, turma)'
+          : 'id, post_id, aluno_id, acertos, total, created_at, usuarios_biblioteca(nome, turma)';
+        let query = supabase
           .from('comunidade_quiz_tentativas')
-          .select('id, post_id, aluno_id, acertos, total, created_at, usuarios_biblioteca(nome)')
+          .select(selectFields)
           .in('post_id', ids)
           .order('acertos', { ascending: false })
           .order('created_at', { ascending: true });
+        if (quizRankingFromDate) {
+          query = query.gte('created_at', quizRankingFromDate);
+        }
+        if (quizRankingEscopo === 'escola' && escolaId) {
+          query = query.eq('escola_id', escolaId);
+        }
+        if (quizRankingEscopo === 'turma' && alunoTurma) {
+          query = query.eq('escola_id', escolaId).eq('usuarios_biblioteca.turma', alunoTurma);
+        }
+        const { data, error } = await query;
 
         if (error) {
           if (isMissingTableError(error)) return;
@@ -228,7 +297,7 @@ export default function ComunidadeAluno() {
         }
       }
     },
-    [alunoId],
+    [alunoId, alunoTurma, escolaId, quizRankingEscopo, quizRankingFromDate],
   );
 
   const fetchData = useCallback(async () => {
@@ -238,7 +307,7 @@ export default function ComunidadeAluno() {
     try {
       const { data: perfil, error: perfilError } = await supabase
         .from('usuarios_biblioteca')
-        .select('id, escola_id')
+        .select('id, escola_id, turma')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
@@ -248,6 +317,7 @@ export default function ComunidadeAluno() {
       if (perfilError || !perfil) throw perfilError || new Error('Perfil do aluno não encontrado.');
       setAlunoId(perfil.id);
       setEscolaId(perfil.escola_id || null);
+      setAlunoTurma(perfil.turma || null);
 
       const { data: livrosData, error: livrosError } = await supabase.from('livros').select('id, titulo').order('titulo');
       if (livrosError) throw livrosError;
@@ -272,22 +342,17 @@ export default function ComunidadeAluno() {
         throw probeRes.error;
       }
 
-      const [postsRes, likesRes, audioRes] = await Promise.all([
-        supabase
-          .from('comunidade_posts')
-          .select('*, livros(titulo), audiobooks_biblioteca(titulo, autor, audio_url), usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)')
-          .order('created_at', { ascending: false })
-          .limit(80),
+      const postsPromise = fetchPostsPage({ reset: true });
+      const [likesRes, audioRes] = await Promise.all([
         supabase.from('comunidade_curtidas').select('post_id, usuario_id'),
         supabase.from('audiobooks_biblioteca').select('id, titulo, autor').order('titulo'),
       ]);
 
-      const maybeError = [postsRes.error, likesRes.error].find(Boolean);
+      const maybeError = [likesRes.error].find(Boolean);
       if (maybeError) throw maybeError;
       if (audioRes.error && !isMissingTableError(audioRes.error)) throw audioRes.error;
 
-      const postsData = postsRes.data || [];
-      setPosts(postsData);
+      const postsData = (await postsPromise) || [];
       setLikes(likesRes.data || []);
       setAudiobooks(audioRes.error ? [] : audioRes.data || []);
 
@@ -304,15 +369,42 @@ export default function ComunidadeAluno() {
     } finally {
       setLoading(false);
     }
-  }, [enabled, loadQuizRankingForPosts, toast, user]);
+  }, [enabled, fetchPostsPage, loadQuizRankingForPosts, toast, user]);
+
+  const handleRealtimeStatus = useCallback(
+    (status) => {
+      if (status !== 'CHANNEL_ERROR') return;
+      setRealtimeUnavailable(true);
+      if (!realtimeToastShown) {
+        setRealtimeToastShown(true);
+        toast({
+          variant: 'destructive',
+          title: 'Atualização em tempo real indisponível',
+          description: 'Vamos atualizar periodicamente enquanto o realtime estiver fora.',
+        });
+      }
+    },
+    [realtimeToastShown, toast],
+  );
+
+  useEffect(() => {
+    if (!realtimeUnavailable) return;
+    const interval = setInterval(() => {
+      fetchData();
+    }, REALTIME_FALLBACK_INTERVAL);
+    return () => clearInterval(interval);
+  }, [fetchData, realtimeUnavailable]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
   useEffect(() => {
-    setPostsLimit(20);
-  }, [filtroTipo]);
+    const quizPostIds = posts
+      .filter((post) => Boolean(extractQuizFromConteudo(post?.conteudo)))
+      .map((post) => post.id);
+    loadQuizRankingForPosts(quizPostIds);
+  }, [loadQuizRankingForPosts, posts, quizRankingEscopo, quizRankingPeriodo]);
 
   const onPostInsert = useCallback((payload) => {
     const nextPost = payload?.new;
@@ -322,8 +414,9 @@ export default function ComunidadeAluno() {
       const list = ensureArray(prev);
       const exists = list.some((item) => item.id === nextPost.id);
       if (exists) return list;
-      return [nextPost, ...list].slice(0, 80);
+      return [nextPost, ...list];
     });
+    setAriaLiveMessage('Novo post adicionado na comunidade.');
   }, []);
 
   const onPostUpdate = useCallback((payload) => {
@@ -380,17 +473,20 @@ export default function ComunidadeAluno() {
     onInsert: onPostInsert,
     onUpdate: onPostUpdate,
     onDelete: onPostDelete,
+    onStatus: handleRealtimeStatus,
   });
   useRealtimeSubscription({
     table: enabled ? 'comunidade_curtidas' : null,
     onInsert: onLikeInsert,
     onDelete: onLikeDelete,
+    onStatus: handleRealtimeStatus,
   });
   useRealtimeSubscription({
     table: enabled ? 'comunidade_quiz_tentativas' : null,
     onInsert: onQuizTentativaChange,
     onUpdate: onQuizTentativaChange,
     onDelete: onQuizTentativaChange,
+    onStatus: handleRealtimeStatus,
   });
 
   const likedPostIds = useMemo(() => {
@@ -415,7 +511,6 @@ export default function ComunidadeAluno() {
     return ensureArray(posts).filter((post) => post?.tipo === filtroTipo);
   }, [filtroTipo, posts]);
 
-  const postsExibidos = useMemo(() => postsFiltrados.slice(0, postsLimit), [postsFiltrados, postsLimit]);
 
   const handleSelectImages = async (files) => {
     const selected = Array.from(files || []).slice(0, 4);
@@ -474,7 +569,7 @@ export default function ComunidadeAluno() {
       if (error) throw error;
 
       if (novoPost?.id) {
-        setPosts((prev) => [novoPost, ...ensureArray(prev)].slice(0, 80));
+        setPosts((prev) => [novoPost, ...ensureArray(prev)]);
       }
 
       clearPostForm();
@@ -571,6 +666,7 @@ export default function ComunidadeAluno() {
       ...prev,
       [postId]: { acertos, total: quizData.perguntas.length },
     }));
+    setAriaLiveMessage(`Quiz corrigido: ${acertos} de ${quizData.perguntas.length} acertos.`);
 
     if (!alunoId || !escolaId) return;
     try {
@@ -613,6 +709,7 @@ export default function ComunidadeAluno() {
       delete next[postId];
       return next;
     });
+    setAriaLiveMessage('Quiz reiniciado.');
   };
 
   const toggleLikePost = async (postId) => {
@@ -763,7 +860,13 @@ export default function ComunidadeAluno() {
 
   return (
     <MainLayout title={isGestao ? 'Comunidade Escolar' : 'Comunidade do Aluno'}>
+      <div className="sr-only" aria-live="polite">{ariaLiveMessage}</div>
       <div className="space-y-4 sm:space-y-6 pb-20">
+        {realtimeUnavailable && (
+          <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-2 text-sm text-warning">
+            Atualização em tempo real indisponível. Vamos atualizar periodicamente.
+          </div>
+        )}
         <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/10 via-info/10 to-warning/10 p-4 sm:p-6">
           <div className="absolute right-4 top-4 opacity-30">
             <Sparkles className="w-10 h-10" />
@@ -821,7 +924,7 @@ export default function ComunidadeAluno() {
               <p className="text-center text-muted-foreground py-8">Sem posts para este filtro.</p>
             ) : (
               <div className="space-y-4">
-                {postsExibidos.map((post) => {
+                {postsFiltrados.map((post) => {
                   const quizData = extractQuizFromConteudo(post?.conteudo);
                   const respostasQuiz = quizRespostasPorPost[post.id] || {};
                   const resultadoQuiz = quizResultadoPorPost[post.id];
@@ -853,6 +956,27 @@ export default function ComunidadeAluno() {
                         <div className="space-y-3 rounded-lg border bg-muted/50 p-3">
                           <div className="flex items-center gap-2 text-sm font-semibold">
                             <Sparkles className="w-4 h-4" /> Quiz da comunidade
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                            <span className="font-medium">Ranking:</span>
+                            <select
+                              value={quizRankingPeriodo}
+                              onChange={(e) => setQuizRankingPeriodo(e.target.value)}
+                              className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                            >
+                              <option value="geral">Geral</option>
+                              <option value="semana">Semana</option>
+                              <option value="mes">Mês</option>
+                            </select>
+                            <select
+                              value={quizRankingEscopo}
+                              onChange={(e) => setQuizRankingEscopo(e.target.value)}
+                              className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                            >
+                              {escolaId && <option value="escola">Minha escola</option>}
+                              {alunoTurma && <option value="turma">Minha turma</option>}
+                              <option value="todos">Todas</option>
+                            </select>
                           </div>
                           <div className="space-y-3">
                             {quizData.perguntas.map((pergunta, idx) => (
@@ -976,10 +1100,10 @@ export default function ComunidadeAluno() {
                     </div>
                   );
                 })}
-                {postsFiltrados.length > postsExibidos.length && (
+                {postsHasMore && (
                   <div className="flex justify-center">
-                    <Button type="button" variant="outline" onClick={() => setPostsLimit((prev) => prev + 20)}>
-                      Carregar mais
+                    <Button type="button" variant="outline" onClick={() => fetchPostsPage({ reset: false })} disabled={postsLoadingMore}>
+                      {postsLoadingMore ? 'Carregando...' : 'Carregar mais'}
                     </Button>
                   </div>
                 )}

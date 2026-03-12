@@ -49,6 +49,8 @@ import {
 } from '@/lib/cloudflareAiApi';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
+const LIVROS_PAGE_SIZE = 40;
+const REALTIME_FALLBACK_INTERVAL = 30000;
 
 function formatDateBR(dateValue) {
   if (!dateValue) return '-';
@@ -105,6 +107,14 @@ function sortByDateDesc(list, field = 'created_at') {
 
 function sortByTitulo(list) {
   return [...ensureArray(list)].sort((a, b) => String(a?.titulo || '').localeCompare(String(b?.titulo || ''), 'pt-BR'));
+}
+
+function mergeById(list, incoming, idKey = 'id') {
+  const map = new Map(ensureArray(list).map((item) => [item?.[idKey], item]));
+  ensureArray(incoming).forEach((item) => {
+    if (item?.[idKey]) map.set(item[idKey], item);
+  });
+  return Array.from(map.values());
 }
 
 function isMissingTableError(error) {
@@ -422,6 +432,7 @@ export default function PainelAluno() {
 
   const [alunoId, setAlunoId] = useState(null);
   const [escolaId, setEscolaId] = useState(null);
+  const [alunoTurma, setAlunoTurma] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [livros, setLivros] = useState([]);
@@ -436,10 +447,16 @@ export default function PainelAluno() {
   const [meusAudiobooks, setMeusAudiobooks] = useState([]);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [livrosLimit, setLivrosLimit] = useState(40);
+  const [livrosOffset, setLivrosOffset] = useState(0);
+  const [livrosHasMore, setLivrosHasMore] = useState(false);
+  const [livrosLoadingMore, setLivrosLoadingMore] = useState(false);
   const [bibliotecaView, setBibliotecaView] = useState('meus_livros');
   const [solicitacoesView, setSolicitacoesView] = useState('em_andamento');
   const [speaking, setSpeaking] = useState(false);
+  const [realtimeUnavailable, setRealtimeUnavailable] = useState(false);
+  const [realtimeToastShown, setRealtimeToastShown] = useState(false);
+  const [ariaLiveMessage, setAriaLiveMessage] = useState('');
+  const [notificacoesLidas, setNotificacoesLidas] = useState(new Set());
 
   const [reviewDialog, setReviewDialog] = useState(false);
   const [reviewLivro, setReviewLivro] = useState(null);
@@ -495,6 +512,41 @@ export default function PainelAluno() {
   const fetchInFlightRef = useRef(null);
   const audioPlayerRef = useRef(null);
 
+  const buildLivrosQuery = useCallback(
+    (offset) => {
+      let query = supabase
+        .from('livros')
+        .select('id, titulo, autor, area, disponivel, sinopse, created_at')
+        .order('titulo')
+        .range(offset, offset + LIVROS_PAGE_SIZE - 1);
+      const term = searchTerm.trim();
+      if (term) {
+        const escaped = term.replace(/%/g, '\\%').replace(/_/g, '\\_');
+        query = query.or(`titulo.ilike.%${escaped}%,autor.ilike.%${escaped}%,area.ilike.%${escaped}%`);
+      }
+      return query;
+    },
+    [searchTerm],
+  );
+
+  const fetchLivrosPage = useCallback(
+    async ({ reset = false } = {}) => {
+      const offset = reset ? 0 : livrosOffset;
+      setLivrosLoadingMore(true);
+      try {
+        const { data, error } = await buildLivrosQuery(offset);
+        if (error) throw error;
+        const items = data || [];
+        setLivros((prev) => (reset ? items : mergeById(prev, items)));
+        setLivrosOffset(offset + items.length);
+        setLivrosHasMore(items.length === LIVROS_PAGE_SIZE);
+      } finally {
+        setLivrosLoadingMore(false);
+      }
+    },
+    [buildLivrosQuery, livrosOffset],
+  );
+
   const fetchData = useCallback(async () => {
     if (!user) return;
     if (fetchInFlightRef.current) return fetchInFlightRef.current;
@@ -504,7 +556,7 @@ export default function PainelAluno() {
       try {
         const { data: perfil, error: perfilError } = await supabase
           .from('usuarios_biblioteca')
-          .select('id, escola_id')
+          .select('id, escola_id, turma')
           .eq('user_id', user.id)
           .order('updated_at', { ascending: false, nullsFirst: false })
           .order('created_at', { ascending: false })
@@ -514,9 +566,10 @@ export default function PainelAluno() {
         if (perfilError || !perfil) throw perfilError || new Error('Perfil do aluno não encontrado.');
         setAlunoId(perfil.id);
         setEscolaId(perfil.escola_id || null);
+        setAlunoTurma(perfil.turma || null);
 
+        const livrosPromise = fetchLivrosPage({ reset: true });
         const [
-          livrosRes,
           emprestimosRes,
           avaliacoesRes,
           wishlistRes,
@@ -524,10 +577,6 @@ export default function PainelAluno() {
           solicitacoesRes,
           atividadesRes,
         ] = await Promise.all([
-          supabase
-            .from('livros')
-            .select('id, titulo, autor, area, disponivel, sinopse, created_at')
-            .order('titulo'),
           supabase
             .from('emprestimos')
             .select('*, livros(titulo, autor)')
@@ -568,6 +617,7 @@ export default function PainelAluno() {
         let audioCatalogoOpt = { data: [], missing: false };
         let meusAudiobooksOpt = { data: [], missing: false };
         let criacoesLaboratorioOpt = { data: [], missing: false };
+        let notificacoesLidasOpt = { data: [], missing: false };
 
         if (optionalFeaturesEnabled) {
           // Probe only one new table first to avoid multiple 404 calls when migration is missing.
@@ -601,6 +651,11 @@ export default function PainelAluno() {
           }
         }
 
+        notificacoesLidasOpt = await optionalQuery(
+          supabase.from('notificacoes_lidas').select('notification_id').eq('usuario_id', perfil.id),
+          [],
+        );
+
         const missingAnyNewTable =
           entregasOpt.missing || audioCatalogoOpt.missing || meusAudiobooksOpt.missing || criacoesLaboratorioOpt.missing;
 
@@ -614,8 +669,9 @@ export default function PainelAluno() {
         }
         setLabCriacoesMissingTable(criacoesLaboratorioOpt.missing);
 
+        await livrosPromise;
+
         const maybeError = [
-          livrosRes.error,
           emprestimosRes.error,
           avaliacoesRes.error,
           wishlistRes.error,
@@ -626,7 +682,6 @@ export default function PainelAluno() {
 
         if (maybeError) throw maybeError;
 
-        setLivros(livrosRes.data || []);
         setEmprestimos(emprestimosRes.data || []);
         setAvaliacoes(avaliacoesRes.data || []);
         setWishlist((wishlistRes.data || []).map((item) => item.livro_id));
@@ -637,6 +692,7 @@ export default function PainelAluno() {
         setAudiobookCatalogo(audioCatalogoOpt.data);
         setMeusAudiobooks(meusAudiobooksOpt.data);
         setCriacoesLaboratorio(criacoesLaboratorioOpt.data);
+        setNotificacoesLidas(new Set((notificacoesLidasOpt.data || []).map((item) => item.notification_id)));
 
         const entregaInicial = {};
         const entregaImagensInicial = {};
@@ -670,7 +726,7 @@ export default function PainelAluno() {
       }
     });
     return request;
-  }, [optionalFeaturesEnabled, toast, user]);
+  }, [fetchLivrosPage, optionalFeaturesEnabled, toast, user]);
 
   useEffect(() => {
     fetchData();
@@ -720,9 +776,9 @@ export default function PainelAluno() {
 
   useEffect(() => {
     if (bibliotecaView === 'biblioteca') {
-      setLivrosLimit(40);
+      fetchLivrosPage({ reset: true });
     }
-  }, [bibliotecaView, searchTerm]);
+  }, [bibliotecaView, fetchLivrosPage, searchTerm]);
 
   const fetchRowById = useCallback(async (table, id, select) => {
     if (!id) return null;
@@ -737,6 +793,30 @@ export default function PainelAluno() {
       return null;
     }
   }, []);
+
+  const handleRealtimeStatus = useCallback(
+    (status) => {
+      if (status !== 'CHANNEL_ERROR') return;
+      setRealtimeUnavailable(true);
+      if (!realtimeToastShown) {
+        setRealtimeToastShown(true);
+        toast({
+          variant: 'destructive',
+          title: 'Atualização em tempo real indisponível',
+          description: 'Vamos atualizar periodicamente enquanto o realtime estiver fora.',
+        });
+      }
+    },
+    [realtimeToastShown, toast],
+  );
+
+  useEffect(() => {
+    if (!realtimeUnavailable) return;
+    const interval = setInterval(() => {
+      fetchData();
+    }, REALTIME_FALLBACK_INTERVAL);
+    return () => clearInterval(interval);
+  }, [fetchData, realtimeUnavailable]);
 
   const updateEntregaState = useCallback((entrega) => {
     if (!entrega?.atividade_id) return;
@@ -960,17 +1040,40 @@ export default function PainelAluno() {
     setLivros((prev) => removeById(prev, row.id));
   }, []);
 
-  useRealtimeSubscription({ table: 'emprestimos', onInsert: handleEmprestimoUpsert, onUpdate: handleEmprestimoUpsert, onDelete: handleEmprestimoDelete });
-  useRealtimeSubscription({ table: 'avaliacoes_livros', onInsert: handleAvaliacaoUpsert, onUpdate: handleAvaliacaoUpsert, onDelete: handleAvaliacaoDelete });
-  useRealtimeSubscription({ table: 'lista_desejos', onInsert: handleWishlistInsert, onDelete: handleWishlistDelete });
-  useRealtimeSubscription({ table: 'sugestoes_livros', onInsert: handleSugestaoUpsert, onUpdate: handleSugestaoUpsert, onDelete: handleSugestaoDelete });
-  useRealtimeSubscription({ table: 'solicitacoes_emprestimo', onInsert: handleSolicitacaoUpsert, onUpdate: handleSolicitacaoUpsert, onDelete: handleSolicitacaoDelete });
-  useRealtimeSubscription({ table: 'atividades_leitura', onInsert: handleAtividadeUpsert, onUpdate: handleAtividadeUpsert, onDelete: handleAtividadeDelete });
-  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'atividades_entregas' : null, onInsert: handleEntregaUpsert, onUpdate: handleEntregaUpsert, onDelete: handleEntregaDelete });
-  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'audiobooks_biblioteca' : null, onInsert: handleAudiobookUpsert, onUpdate: handleAudiobookUpsert, onDelete: handleAudiobookDelete });
-  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'aluno_audiobooks' : null, onInsert: handleAlunoAudiobookUpsert, onUpdate: handleAlunoAudiobookUpsert, onDelete: handleAlunoAudiobookDelete });
-  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'laboratorio_criacoes' : null, onInsert: handleLabCriacaoUpsert, onUpdate: handleLabCriacaoUpsert, onDelete: handleLabCriacaoDelete });
-  useRealtimeSubscription({ table: 'livros', onInsert: handleLivroUpsert, onUpdate: handleLivroUpsert, onDelete: handleLivroDelete });
+  const handleNotificacaoLidaInsert = useCallback(
+    (payload) => {
+      const row = payload?.new;
+      if (!row?.notification_id || row?.usuario_id !== alunoId) return;
+      setNotificacoesLidas((prev) => new Set([...prev, row.notification_id]));
+    },
+    [alunoId],
+  );
+
+  const handleNotificacaoLidaDelete = useCallback(
+    (payload) => {
+      const row = payload?.old;
+      if (!row?.notification_id || row?.usuario_id !== alunoId) return;
+      setNotificacoesLidas((prev) => {
+        const next = new Set(prev);
+        next.delete(row.notification_id);
+        return next;
+      });
+    },
+    [alunoId],
+  );
+
+  useRealtimeSubscription({ table: 'emprestimos', onInsert: handleEmprestimoUpsert, onUpdate: handleEmprestimoUpsert, onDelete: handleEmprestimoDelete, onStatus: handleRealtimeStatus });
+  useRealtimeSubscription({ table: 'avaliacoes_livros', onInsert: handleAvaliacaoUpsert, onUpdate: handleAvaliacaoUpsert, onDelete: handleAvaliacaoDelete, onStatus: handleRealtimeStatus });
+  useRealtimeSubscription({ table: 'lista_desejos', onInsert: handleWishlistInsert, onDelete: handleWishlistDelete, onStatus: handleRealtimeStatus });
+  useRealtimeSubscription({ table: 'sugestoes_livros', onInsert: handleSugestaoUpsert, onUpdate: handleSugestaoUpsert, onDelete: handleSugestaoDelete, onStatus: handleRealtimeStatus });
+  useRealtimeSubscription({ table: 'solicitacoes_emprestimo', onInsert: handleSolicitacaoUpsert, onUpdate: handleSolicitacaoUpsert, onDelete: handleSolicitacaoDelete, onStatus: handleRealtimeStatus });
+  useRealtimeSubscription({ table: 'atividades_leitura', onInsert: handleAtividadeUpsert, onUpdate: handleAtividadeUpsert, onDelete: handleAtividadeDelete, onStatus: handleRealtimeStatus });
+  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'atividades_entregas' : null, onInsert: handleEntregaUpsert, onUpdate: handleEntregaUpsert, onDelete: handleEntregaDelete, onStatus: handleRealtimeStatus });
+  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'audiobooks_biblioteca' : null, onInsert: handleAudiobookUpsert, onUpdate: handleAudiobookUpsert, onDelete: handleAudiobookDelete, onStatus: handleRealtimeStatus });
+  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'aluno_audiobooks' : null, onInsert: handleAlunoAudiobookUpsert, onUpdate: handleAlunoAudiobookUpsert, onDelete: handleAlunoAudiobookDelete, onStatus: handleRealtimeStatus });
+  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'laboratorio_criacoes' : null, onInsert: handleLabCriacaoUpsert, onUpdate: handleLabCriacaoUpsert, onDelete: handleLabCriacaoDelete, onStatus: handleRealtimeStatus });
+  useRealtimeSubscription({ table: 'livros', onInsert: handleLivroUpsert, onUpdate: handleLivroUpsert, onDelete: handleLivroDelete, onStatus: handleRealtimeStatus });
+  useRealtimeSubscription({ table: 'notificacoes_lidas', onInsert: handleNotificacaoLidaInsert, onDelete: handleNotificacaoLidaDelete, onStatus: handleRealtimeStatus });
 
   const atividadesComEntrega = useMemo(() => {
     const entregaByAtividade = new Map(entregas.map((e) => [e.atividade_id, e]));
@@ -1095,7 +1198,6 @@ export default function PainelAluno() {
     [livros, searchTerm],
   );
 
-  const livrosExibidos = useMemo(() => filteredLivros.slice(0, livrosLimit), [filteredLivros, livrosLimit]);
 
   const meusLivros = useMemo(() => emprestimos.filter((e) => e.status === 'ativo'), [emprestimos]);
 
@@ -1212,8 +1314,45 @@ export default function PainelAluno() {
       });
     }
 
-    return itens.slice(0, 8);
-  }, [atrasos, atividadesComEntrega, novidades, solicitacoes, classifySolicitacao]);
+    const filtradas = itens.filter((item) => !notificacoesLidas.has(item.id));
+    return filtradas.slice(0, 8);
+  }, [atrasos, atividadesComEntrega, novidades, solicitacoes, classifySolicitacao, notificacoesLidas]);
+
+  const markNotificationRead = useCallback(
+    async (notificationId) => {
+      if (!notificationId || !alunoId) return;
+      setNotificacoesLidas((prev) => new Set([...prev, notificationId]));
+      setAriaLiveMessage('Notificação marcada como lida.');
+      try {
+        const { error } = await supabase
+          .from('notificacoes_lidas')
+          .upsert({ usuario_id: alunoId, notification_id: notificationId }, { onConflict: 'usuario_id,notification_id' });
+        if (error && !isMissingTableError(error)) throw error;
+      } catch {
+        // fallback silencioso: mantém estado local
+      }
+    },
+    [alunoId],
+  );
+
+  const markAllNotificationsRead = useCallback(async () => {
+    if (!alunoId || notificacoes.length === 0) return;
+    const payload = notificacoes.map((item) => ({ usuario_id: alunoId, notification_id: item.id }));
+    setNotificacoesLidas((prev) => {
+      const next = new Set(prev);
+      payload.forEach((item) => next.add(item.notification_id));
+      return next;
+    });
+    setAriaLiveMessage('Todas as notificações foram marcadas como lidas.');
+    try {
+      const { error } = await supabase
+        .from('notificacoes_lidas')
+        .upsert(payload, { onConflict: 'usuario_id,notification_id' });
+      if (error && !isMissingTableError(error)) throw error;
+    } catch {
+      // fallback silencioso
+    }
+  }, [alunoId, notificacoes]);
 
   const hasSolicitacaoEmAndamento = useCallback(
     (livroId) =>
@@ -2134,6 +2273,7 @@ export default function PainelAluno() {
   if (loading) {
     return (
       <MainLayout title={pageTitle}>
+        <div className="sr-only" aria-live="polite">{ariaLiveMessage}</div>
         <p className="text-center text-muted-foreground py-8">Carregando...</p>
       </MainLayout>
     );
@@ -2141,7 +2281,13 @@ export default function PainelAluno() {
 
   return (
     <MainLayout title={pageTitle}>
+      <div className="sr-only" aria-live="polite">{ariaLiveMessage}</div>
       <div className="space-y-4 sm:space-y-6">
+        {realtimeUnavailable && (
+          <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-2 text-sm text-warning">
+            Atualização em tempo real indisponível. Vamos atualizar periodicamente.
+          </div>
+        )}
         {activeSection === 'perfil' && (
           <>
             <Card className="relative overflow-hidden student-gamify-hero border-primary/20">
@@ -2320,6 +2466,11 @@ export default function PainelAluno() {
                   <p className="text-sm text-muted-foreground">Sem alertas no momento.</p>
                 ) : (
                   <div className="space-y-2">
+                    <div className="flex justify-end">
+                      <Button size="sm" variant="ghost" onClick={markAllNotificationsRead}>
+                        Marcar todas como lidas
+                      </Button>
+                    </div>
                     {notificacoes.map((n) => {
                       const content = (
                         <>
@@ -2361,14 +2512,23 @@ export default function PainelAluno() {
                       };
 
                       return (
-                        <button
-                          key={n.id}
-                          type="button"
-                          className="w-full p-3 border rounded-lg flex items-start gap-3 text-left hover:border-info/60 hover:bg-info/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/50"
-                          onClick={handleClick}
-                        >
-                          {content}
-                        </button>
+                        <div key={n.id} className="flex items-start gap-2">
+                          <button
+                            type="button"
+                            className="flex-1 p-3 border rounded-lg flex items-start gap-3 text-left hover:border-info/60 hover:bg-info/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/50"
+                            onClick={handleClick}
+                          >
+                            {content}
+                          </button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => markNotificationRead(n.id)}
+                          >
+                            Lida
+                          </Button>
+                        </div>
                       );
                     })}
                   </div>
@@ -2915,7 +3075,7 @@ export default function PainelAluno() {
                   <div className="space-y-3">
                     <p className="text-sm font-semibold">Biblioteca</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                      {livrosExibidos.map((livro) => (
+                      {filteredLivros.map((livro) => (
                         <div key={livro.id} className="rounded-xl border overflow-hidden bg-card">
                           <div className="h-24 bg-gradient-to-br from-secondary/30 via-secondary/10 to-transparent p-3 flex items-start justify-between gap-2">
                             <Badge variant="outline" className="text-xs">{livro.area || 'Geral'}</Badge>
@@ -2986,10 +3146,10 @@ export default function PainelAluno() {
                         </div>
                       ))}
                     </div>
-                    {filteredLivros.length > livrosExibidos.length && (
+                    {livrosHasMore && (
                       <div className="flex justify-center pt-4">
-                        <Button type="button" variant="outline" onClick={() => setLivrosLimit((prev) => prev + 40)}>
-                          Carregar mais
+                        <Button type="button" variant="outline" onClick={() => fetchLivrosPage({ reset: false })} disabled={livrosLoadingMore}>
+                          {livrosLoadingMore ? 'Carregando...' : 'Carregar mais'}
                         </Button>
                       </div>
                     )}
