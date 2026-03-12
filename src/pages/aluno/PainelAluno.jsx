@@ -50,7 +50,6 @@ import {
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 const LIVROS_PAGE_SIZE = 40;
-const REALTIME_FALLBACK_INTERVAL = 30000;
 
 function formatDateBR(dateValue) {
   if (!dateValue) return '-';
@@ -530,8 +529,6 @@ export default function PainelAluno() {
   const [bibliotecaView, setBibliotecaView] = useState('meus_livros');
   const [solicitacoesView, setSolicitacoesView] = useState('pendentes');
   const [speaking, setSpeaking] = useState(false);
-  const [realtimeUnavailable, setRealtimeUnavailable] = useState(false);
-  const [realtimeToastShown, setRealtimeToastShown] = useState(false);
   const [ariaLiveMessage, setAriaLiveMessage] = useState('');
   const [notificacoesLidas, setNotificacoesLidas] = useState(new Set());
 
@@ -878,26 +875,10 @@ export default function PainelAluno() {
   const handleRealtimeStatus = useCallback(
     (status) => {
       if (status !== 'CHANNEL_ERROR') return;
-      setRealtimeUnavailable(true);
-      if (!realtimeToastShown) {
-        setRealtimeToastShown(true);
-        toast({
-          variant: 'destructive',
-          title: 'Atualização em tempo real indisponível',
-          description: 'Vamos atualizar periodicamente enquanto o realtime estiver fora.',
-        });
-      }
     },
-    [realtimeToastShown, toast],
+    [],
   );
 
-  useEffect(() => {
-    if (!realtimeUnavailable) return;
-    const interval = setInterval(() => {
-      fetchData();
-    }, REALTIME_FALLBACK_INTERVAL);
-    return () => clearInterval(interval);
-  }, [fetchData, realtimeUnavailable]);
 
   const updateEntregaState = useCallback((entrega) => {
     if (!entrega?.atividade_id) return;
@@ -2386,11 +2367,6 @@ export default function PainelAluno() {
     <MainLayout title={pageTitle}>
       <div className="sr-only" aria-live="polite">{ariaLiveMessage}</div>
       <div className="space-y-4 sm:space-y-6">
-        {realtimeUnavailable && (
-          <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-2 text-sm text-warning">
-            Atualização em tempo real indisponível. Vamos atualizar periodicamente.
-          </div>
-        )}
         {activeSection === 'perfil' && (
           <>
             <Card className="relative overflow-hidden student-gamify-hero border-primary/20">

@@ -18,7 +18,6 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 const POSTS_PAGE_SIZE = 20;
-const REALTIME_FALLBACK_INTERVAL = 30000;
 
 function formatDateBR(dateValue) {
   if (!dateValue) return '-';
@@ -162,8 +161,6 @@ export default function ComunidadeAluno() {
   const [alunoTurma, setAlunoTurma] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [realtimeUnavailable, setRealtimeUnavailable] = useState(false);
-  const [realtimeToastShown, setRealtimeToastShown] = useState(false);
   const [ariaLiveMessage, setAriaLiveMessage] = useState('');
 
   const [livros, setLivros] = useState([]);
@@ -374,26 +371,10 @@ export default function ComunidadeAluno() {
   const handleRealtimeStatus = useCallback(
     (status) => {
       if (status !== 'CHANNEL_ERROR') return;
-      setRealtimeUnavailable(true);
-      if (!realtimeToastShown) {
-        setRealtimeToastShown(true);
-        toast({
-          variant: 'destructive',
-          title: 'Atualização em tempo real indisponível',
-          description: 'Vamos atualizar periodicamente enquanto o realtime estiver fora.',
-        });
-      }
     },
-    [realtimeToastShown, toast],
+    [],
   );
 
-  useEffect(() => {
-    if (!realtimeUnavailable) return;
-    const interval = setInterval(() => {
-      fetchData();
-    }, REALTIME_FALLBACK_INTERVAL);
-    return () => clearInterval(interval);
-  }, [fetchData, realtimeUnavailable]);
 
   useEffect(() => {
     fetchData();
@@ -862,11 +843,6 @@ export default function ComunidadeAluno() {
     <MainLayout title={isGestao ? 'Comunidade Escolar' : 'Comunidade do Aluno'}>
       <div className="sr-only" aria-live="polite">{ariaLiveMessage}</div>
       <div className="space-y-4 sm:space-y-6 pb-20">
-        {realtimeUnavailable && (
-          <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-2 text-sm text-warning">
-            Atualização em tempo real indisponível. Vamos atualizar periodicamente.
-          </div>
-        )}
         <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/10 via-info/10 to-warning/10 p-4 sm:p-6">
           <div className="absolute right-4 top-4 opacity-30">
             <Sparkles className="w-10 h-10" />
