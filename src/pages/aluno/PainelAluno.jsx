@@ -656,7 +656,7 @@ export default function PainelAluno() {
     (offset) => {
       let query = supabase
         .from('livros')
-        .select('id, titulo, autor, area, disponivel, sinopse, created_at')
+        .select('id, titulo, autor, area, vol, ano, disponivel, sinopse, created_at')
         .order('titulo')
         .range(offset, offset + LIVROS_PAGE_SIZE - 1);
       const term = catalogoSearchTerm.trim();
@@ -3580,6 +3580,11 @@ export default function PainelAluno() {
                             <div className="space-y-1">
                               <p className="font-semibold text-sm leading-5 line-clamp-2 min-h-[40px]">{livro.titulo}</p>
                               <p className="text-xs text-muted-foreground line-clamp-1">{livro.autor}</p>
+                              {(livro.vol || livro.ano) && (
+                                <p className="text-xs text-muted-foreground line-clamp-1">
+                                  {[livro.vol ? `Vol. ${livro.vol}` : null, livro.ano ? `Ano ${livro.ano}` : null].filter(Boolean).join(' • ')}
+                                </p>
+                              )}
                               <Badge variant={livro.disponivel ? 'default' : 'secondary'} className="text-[11px]">
                                 {livro.disponivel ? 'Disponível' : 'Emprestado'}
                               </Badge>
