@@ -26,6 +26,7 @@ import {
   Trophy,
   Volume2,
   VolumeX,
+  Loader2,
 } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -156,6 +157,21 @@ function extractResumoTextoFromCriacao(criacao) {
   return '';
 }
 
+function extractQuizFromCriacao(criacao) {
+  if (!criacao) return null;
+  const raw = criacao.conteudo_json;
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof raw === 'object') return raw;
+  return null;
+}
+
 function isMissingTableError(error) {
   const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
   return (
@@ -188,12 +204,24 @@ async function insertCommunityPostCompat(payload, options = {}) {
   };
 
   let result = await runInsert(payload);
-  if (
-    result.error
-    && Object.hasOwn(payload, 'escola_id')
-    && isMissingColumnError(result.error, 'escola_id', 'comunidade_posts')
-  ) {
-    const { escola_id: _ignored, ...fallbackPayload } = payload;
+  if (!result.error) return result;
+
+  const missingColumns = ['escola_id', 'imagem_urls', 'audiobook_id'];
+  for (const column of missingColumns) {
+    if (Object.hasOwn(payload, column) && isMissingColumnError(result.error, column, 'comunidade_posts')) {
+      const { [column]: _ignored, ...fallbackPayload } = payload;
+      result = await runInsert(fallbackPayload);
+      if (!result.error) return result;
+    }
+  }
+
+  const message = `${result.error?.message || ''} ${result.error?.details || ''}`.toLowerCase();
+  if (message.includes('comunidade_posts_tipo_check') && payload?.tipo === 'quiz') {
+    const fallbackPayload = {
+      ...payload,
+      tipo: 'dica',
+      tags: Array.from(new Set([...(payload.tags || []), 'quiz'])),
+    };
     result = await runInsert(fallbackPayload);
   }
 
@@ -552,7 +580,8 @@ export default function PainelAluno() {
   const [livrosLoadingMore, setLivrosLoadingMore] = useState(false);
   const [bibliotecaView, setBibliotecaView] = useState('meus_livros');
   const [solicitacoesView, setSolicitacoesView] = useState('pendentes');
-  const [speaking, setSpeaking] = useState(false);
+  const [speakingLivroId, setSpeakingLivroId] = useState(null);
+  const [speakingPhase, setSpeakingPhase] = useState('idle');
   const [ariaLiveMessage, setAriaLiveMessage] = useState('');
   const [notificacoesLidas, setNotificacoesLidas] = useState(new Set());
 
@@ -619,6 +648,8 @@ export default function PainelAluno() {
   const warnedMissingFeaturesRef = useRef(false);
   const fetchInFlightRef = useRef(null);
   const audioPlayerRef = useRef(null);
+  const speechRequestRef = useRef(0);
+  const speakingLivroIdRef = useRef(null);
   const solicitacoesStatusRef = useRef(new Map());
 
   const buildLivrosQuery = useCallback(
@@ -1552,7 +1583,13 @@ export default function PainelAluno() {
     [emprestimos],
   );
 
-  const speakText = async (text) => {
+  const speakText = async (livroId, text) => {
+    const setSpeakingState = (nextId, nextPhase) => {
+      speakingLivroIdRef.current = nextId;
+      setSpeakingLivroId(nextId);
+      setSpeakingPhase(nextPhase);
+    };
+
     const stopPlayback = () => {
       try {
         speechSynthesis.cancel();
@@ -1569,10 +1606,11 @@ export default function PainelAluno() {
         }
         audioPlayerRef.current = null;
       }
-      setSpeaking(false);
+      setSpeakingState(null, 'idle');
+      speechRequestRef.current += 1;
     };
 
-    const playWithBrowserTTS = (value) => {
+    const playWithBrowserTTS = (value, requestId) => {
       try {
         speechSynthesis.cancel();
       } catch {
@@ -1581,41 +1619,56 @@ export default function PainelAluno() {
       const utterance = new SpeechSynthesisUtterance(value || '');
       utterance.lang = 'pt-BR';
       utterance.rate = 0.9;
-      utterance.onend = () => setSpeaking(false);
-      utterance.onerror = () => setSpeaking(false);
+      utterance.onend = () => {
+        if (requestId !== speechRequestRef.current) return;
+        if (speakingLivroIdRef.current === livroId) setSpeakingState(null, 'idle');
+      };
+      utterance.onerror = () => {
+        if (requestId !== speechRequestRef.current) return;
+        if (speakingLivroIdRef.current === livroId) setSpeakingState(null, 'idle');
+      };
       speechSynthesis.speak(utterance);
     };
 
-    if (speaking) {
+    const isSameLivro = speakingLivroIdRef.current && speakingLivroIdRef.current === livroId;
+    if (speakingPhase !== 'idle') {
       stopPlayback();
-      return;
+      if (isSameLivro) return;
     }
 
     const normalizedText = String(text || '').trim();
     if (!normalizedText) return;
 
-    setSpeaking(true);
+    setSpeakingState(livroId, 'loading');
+    const requestId = (speechRequestRef.current += 1);
     try {
       const { audioDataUrl } = await generateAudioWithCloudflare({
         text: normalizedText,
         language: 'pt-BR',
         fallbackErrorMessage: 'Não foi possível gerar áudio da sinopse no momento.',
       });
+      if (requestId !== speechRequestRef.current) return;
 
       const audio = new Audio(audioDataUrl);
       audioPlayerRef.current = audio;
       audio.onended = () => {
+        if (requestId !== speechRequestRef.current) return;
         audioPlayerRef.current = null;
-        setSpeaking(false);
+        if (speakingLivroIdRef.current === livroId) setSpeakingState(null, 'idle');
       };
       audio.onerror = () => {
+        if (requestId !== speechRequestRef.current) return;
         audioPlayerRef.current = null;
-        playWithBrowserTTS(normalizedText);
+        if (speakingLivroIdRef.current === livroId) setSpeakingState(livroId, 'playing');
+        playWithBrowserTTS(normalizedText, requestId);
       };
 
+      setSpeakingState(livroId, 'playing');
       await audio.play();
     } catch {
-      playWithBrowserTTS(normalizedText);
+      if (requestId !== speechRequestRef.current) return;
+      setSpeakingState(livroId, 'playing');
+      playWithBrowserTTS(normalizedText, requestId);
     }
   };
 
@@ -2567,6 +2620,22 @@ export default function PainelAluno() {
     }
   };
 
+  const carregarQuizSalvo = (criacao) => {
+    if (!criacao) return;
+    const payload = extractQuizFromCriacao(criacao);
+    const perguntas = ensureArray(payload?.perguntas);
+    if (perguntas.length === 0) {
+      toast({ variant: 'destructive', title: 'Quiz inválido', description: 'Não foi possível carregar este quiz.' });
+      return;
+    }
+    setQuizLivroId(criacao.livro_id || '');
+    setQuizTema(criacao.descricao || 'compreensão da leitura');
+    setQuiz(perguntas);
+    setQuizRespostas({});
+    setQuizResultado(null);
+    toast({ title: 'Quiz carregado', description: 'Você pode jogar novamente.' });
+  };
+
   if (loading) {
     return (
       <MainLayout title={pageTitle}>
@@ -3329,6 +3398,13 @@ export default function PainelAluno() {
                             </div>
                           )}
                           {criacao.descricao && <p className="text-sm text-muted-foreground">{criacao.descricao}</p>}
+                          {criacao.tipo === 'quiz' && (
+                            <div className="flex justify-end">
+                              <Button type="button" size="sm" variant="outline" onClick={() => carregarQuizSalvo(criacao)}>
+                                Jogar novamente
+                              </Button>
+                            </div>
+                          )}
                           {criacao.tipo === 'resumo' && resumoTextoCompleto && (
                             <div className="flex justify-end">
                               <Button
@@ -3488,7 +3564,11 @@ export default function PainelAluno() {
                       </Button>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-stretch">
-                      {filteredCatalogo.map((livro) => (
+                      {filteredCatalogo.map((livro) => {
+                        const isSpeakingThis = speakingLivroId === livro.id;
+                        const isLoadingThis = isSpeakingThis && speakingPhase === 'loading';
+                        const isPlayingThis = isSpeakingThis && speakingPhase === 'playing';
+                        return (
                         <div key={livro.id} className="rounded-2xl border bg-card flex flex-col min-h-[360px] overflow-hidden">
                           <div className="min-h-[92px] bg-gradient-to-br from-secondary/30 via-secondary/10 to-transparent p-3 flex items-start justify-between gap-2">
                             <Badge variant="outline" className="text-[11px] px-2 py-0.5">{livro.area || 'Geral'}</Badge>
@@ -3515,9 +3595,9 @@ export default function PainelAluno() {
                                   <p className="text-xs text-muted-foreground line-clamp-3 min-h-[48px]" translate="no">{livro.sinopse}</p>
                                   <p className="text-xs text-primary mt-1">Ver sinopse completa</p>
                                 </button>
-                                <Button size="sm" variant="ghost" className="h-6 px-1 text-xs mt-1" onClick={() => speakText(livro.sinopse || '')}>
-                                  {speaking ? <VolumeX className="w-3 h-3 mr-1" /> : <Volume2 className="w-3 h-3 mr-1" />}
-                                  {speaking ? 'Parar' : 'Ouvir sinopse'}
+                                <Button size="sm" variant="ghost" className="h-6 px-1 text-xs mt-1" onClick={() => speakText(livro.id, livro.sinopse || '')}>
+                                  {isLoadingThis ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : isPlayingThis ? <VolumeX className="w-3 h-3 mr-1" /> : <Volume2 className="w-3 h-3 mr-1" />}
+                                  {isLoadingThis ? 'Carregando...' : isPlayingThis ? 'Parar' : 'Ouvir sinopse'}
                                 </Button>
                               </div>
                             )}
@@ -3578,7 +3658,8 @@ export default function PainelAluno() {
                             </div>
                           </div>
                         </div>
-                      ))}
+                      );
+                    })}
                     </div>
                     {livrosHasMore && (
                       <div className="flex justify-center pt-4">

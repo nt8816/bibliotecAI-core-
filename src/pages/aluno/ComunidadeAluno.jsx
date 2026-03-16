@@ -143,9 +143,15 @@ async function insertCommunityPostCompat(payload) {
 
   let { data, error } = await runInsert(payload);
 
-  if (error && Object.hasOwn(payload, 'escola_id') && isMissingColumnError(error, 'escola_id', 'comunidade_posts')) {
-    const { escola_id: _ignored, ...fallbackPayload } = payload;
-    ({ data, error } = await runInsert(fallbackPayload));
+  if (error) {
+    const missingColumns = ['escola_id', 'imagem_urls', 'audiobook_id'];
+    for (const column of missingColumns) {
+      if (Object.hasOwn(payload, column) && isMissingColumnError(error, column, 'comunidade_posts')) {
+        const { [column]: _ignored, ...fallbackPayload } = payload;
+        ({ data, error } = await runInsert(fallbackPayload));
+        if (!error) break;
+      }
+    }
   }
 
   return { data, error };
@@ -1026,7 +1032,7 @@ export default function ComunidadeAluno() {
                             {quizData && <Badge variant="secondary">Quiz</Badge>}
                           </div>
                           <p className="text-xs text-muted-foreground break-words">
-                            {safeNestedName(post?.usuarios_biblioteca, 'Usuário')} • {safeText(post?.tipo, 'resenha')} • {formatDateBR(post?.created_at)}
+                            {safeNestedName(post?.usuarios_biblioteca, 'Usuário')} • {quizData ? 'quiz' : safeText(post?.tipo, 'resenha')} • {formatDateBR(post?.created_at)}
                           </p>
                         </div>
                         <Badge variant="secondary" className="max-w-[38vw] sm:max-w-[220px] truncate shrink-0">

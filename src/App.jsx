@@ -12,6 +12,7 @@ import { SuperAdminRoute } from '@/components/SuperAdminRoute';
 import { ThemeProvider } from '@/components/theme-provider';
 
 import { PrivateTelemetryTracker } from '@/components/PrivateTelemetryTracker';
+import { SystemLogObserver } from '@/components/SystemLogObserver';
 import { AppShellState } from '@/components/AppShellState';
 import { ConnectivityStatus } from '@/components/ConnectivityStatus';
 
@@ -27,6 +28,7 @@ const GerenciarTokens = lazy(() => import('./pages/GerenciarTokens.jsx'));
 const Convite = lazy(() => import('./pages/Convite'));
 const ConfiguracaoEscola = lazy(() => import('./pages/ConfiguracaoEscola'));
 const AdminTenants = lazy(() => import('./pages/AdminTenants'));
+const AdminLogs = lazy(() => import('./pages/AdminLogs'));
 const AdminAcesso = lazy(() => import('./pages/AdminAcesso'));
 const OnboardingGestor = lazy(() => import('./pages/OnboardingGestor'));
 const Configuracoes = lazy(() => import('./pages/Configuracoes'));
@@ -90,6 +92,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <SuperAdminRoute>
               <AdminTenants />
+            </SuperAdminRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/logs"
+        element={
+          <ProtectedRoute>
+            <SuperAdminRoute>
+              <AdminLogs />
             </SuperAdminRoute>
           </ProtectedRoute>
         }
@@ -305,6 +317,7 @@ const App = () => (
               <ConnectivityStatus />
               <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
                 <PrivateTelemetryTracker />
+                <SystemLogObserver />
                 <Suspense
                   fallback={(
                     <AppShellState

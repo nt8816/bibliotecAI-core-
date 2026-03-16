@@ -66,6 +66,7 @@ export function AppSidebar() {
       return [
         ...commonItems,
         { title: 'Tenants', url: '/admin/tenants', icon: Building2 },
+        { title: 'Logs', url: '/admin/logs', icon: ClipboardList },
       ];
     }
 

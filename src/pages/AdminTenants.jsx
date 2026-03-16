@@ -74,6 +74,10 @@ export default function AdminTenants() {
   const [subdominio, setSubdominio] = useState('');
   const [plano, setPlano] = useState('trial');
   const [inviteCpf, setInviteCpf] = useState('');
+  const handleInviteCpfChange = (value) => {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
+    setInviteCpf(digits);
+  };
 
   const baseDomain = useMemo(() => DEFAULT_BASE_DOMAIN.trim(), []);
   const wildcardEnabled = useMemo(() => supportsWildcardSubdomain(baseDomain), [baseDomain]);
@@ -436,7 +440,7 @@ export default function AdminTenants() {
                   id="inviteCpf"
                   inputMode="numeric"
                   value={inviteCpf}
-                  onChange={(e) => setInviteCpf(e.target.value)}
+                  onChange={(e) => handleInviteCpfChange(e.target.value)}
                   placeholder="Somente números"
                 />
               </div>

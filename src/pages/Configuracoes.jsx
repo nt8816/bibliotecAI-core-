@@ -46,6 +46,10 @@ export default function Configuracoes() {
     newPassword: '',
     confirmPassword: '',
   });
+  const handleCpfChange = (value) => {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
+    setProfile((prev) => ({ ...prev, cpf: digits }));
+  };
 
   const roleBadgeLabel = useMemo(() => roleLabel[userRole] || 'sem papel', [userRole]);
   const visibleAccountIdentity = useMemo(
@@ -240,7 +244,7 @@ export default function Configuracoes() {
                     id="cpf"
                     value={profile.cpf}
                     disabled={loadingProfile || savingProfile}
-                    onChange={(e) => setProfile((prev) => ({ ...prev, cpf: e.target.value }))}
+                    onChange={(e) => handleCpfChange(e.target.value)}
                   />
                 </div>
               )}

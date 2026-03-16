@@ -3,8 +3,36 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 const DEFAULT_BASE_URL = 'https://api-bibliotecai.ntn3223.workers.dev';
 const API_BASE_URL = String(import.meta.env.VITE_BIBLIOTECA_AI_API_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
 const USE_PROXY = import.meta.env.VITE_BIBLIOTECA_AI_USE_PROXY === 'true';
+const FORCE_PROXY = true;
 
 const ensureObject = (value) => (value && typeof value === 'object' ? value : {});
+
+const SECRET_PATTERNS = [
+  /api[_-]?key/i,
+  /secret/i,
+  /token/i,
+  /password/i,
+  /senha/i,
+  /supabase/i,
+  /database/i,
+  /connection\\s*string/i,
+  /postgres/i,
+  /private\\s*key/i,
+  /bearer\\s+[a-z0-9\\-_.]+/i,
+  /sk-[a-z0-9]{10,}/i,
+];
+
+const sanitizeText = (value, limit = 4000) => {
+  let text = String(value || '');
+  text = text.replace(/\\u0000/g, '');
+  if (text.length > limit) text = text.slice(0, limit);
+  return text;
+};
+
+const hasSecretLikeContent = (value) => {
+  const text = String(value || '');
+  return SECRET_PATTERNS.some((pattern) => pattern.test(text));
+};
 
 const toDataUrlFromBase64 = (base64, mimeType = 'application/octet-stream') => {
   if (!base64 || typeof base64 !== 'string') return null;
@@ -56,18 +84,14 @@ const extractErrorMessage = (parsed, fallback) => {
   return fallback;
 };
 
-const prettyJson = (value) => {
-  try {
-    return JSON.stringify(value ?? {}, null, 2);
-  } catch {
-    return '{}';
-  }
-};
-
 const buildTextPromptFromTask = (task, input) => {
   const safeTask = String(task || '').trim().toLowerCase();
   const safeInput = ensureObject(input);
-  const inputJson = prettyJson(safeInput);
+  const titulo = sanitizeText(safeInput.titulo, 200);
+  const autor = sanitizeText(safeInput.autor, 200);
+  const area = sanitizeText(safeInput.area, 120);
+  const sinopse = sanitizeText(safeInput.sinopse || safeInput.sinopseBase, 2000);
+  const tema = sanitizeText(safeInput.tema, 200);
 
   if (safeTask === 'sinopse_livro') {
     return [
@@ -75,7 +99,10 @@ const buildTextPromptFromTask = (task, input) => {
       'Se possível, também complete metadados bibliográficos básicos.',
       'Responda SOMENTE com JSON válido no formato: {"sinopse":"...","autor":"...","ano":"...","editora":"..."}',
       'Quando não souber um campo, use string vazia.',
-      `Dados do livro: ${inputJson}`,
+      `Título: ${titulo || 'não informado'}`,
+      `Autor: ${autor || 'não informado'}`,
+      `Área: ${area || 'não informada'}`,
+      `Contexto disponível: ${sinopse || 'sem contexto adicional'}`,
     ].join('\n');
   }
 
@@ -86,7 +113,10 @@ const buildTextPromptFromTask = (task, input) => {
       '{"livro":"...","quantidade":3,"alternativas":4,"perguntas":[{"enunciado":"...","opcoes":["A","B","C","D"],"correta":0}]}',
       'Use indice de resposta correta entre 0 e alternativas-1.',
       'Use o nome do livro fornecido no contexto.',
-      `Contexto: ${inputJson}`,
+      `Livro: ${titulo || 'não informado'}`,
+      `Autor: ${autor || 'não informado'}`,
+      `Tema: ${tema || 'compreensão da leitura'}`,
+      `Sinopse/base: ${sinopse || 'não informada'}`,
     ].join('\n');
   }
 
@@ -94,7 +124,9 @@ const buildTextPromptFromTask = (task, input) => {
     return [
       'Crie um resumo de estudo em português do Brasil para aluno.',
       'Responda SOMENTE com JSON válido no formato: {"texto":"..."}',
-      `Contexto: ${inputJson}`,
+      `Livro: ${titulo || 'não informado'}`,
+      `Autor: ${autor || 'não informado'}`,
+      `Sinopse/base: ${sinopse || 'não informada'}`,
     ].join('\n');
   }
 
@@ -103,7 +135,10 @@ const buildTextPromptFromTask = (task, input) => {
       'Crie um desafio curto de gamificação educacional para aluno.',
       'Responda SOMENTE com JSON válido no formato:',
       '{"titulo":"...","desafio":"...","recompensa":"..."}',
-      `Dados: ${inputJson}`,
+      `Aluno: ${sanitizeText(safeInput.nome || 'Aluno', 80)}`,
+      `Nível atual: ${Number(safeInput.nivel) || 1}`,
+      `XP atual: ${Number(safeInput.xp) || 0}`,
+      `Livros lidos: ${Number(safeInput.livrosLidos) || 0}`,
     ].join('\n');
   }
 
@@ -111,7 +146,7 @@ const buildTextPromptFromTask = (task, input) => {
     'Responda em português do Brasil.',
     'Quando apropriado, responda com JSON válido.',
     `Tarefa: ${safeTask || 'geral'}`,
-    `Entrada: ${inputJson}`,
+    `Entrada: ${sanitizeText(safeInput.prompt || '', 2000)}`,
   ].join('\n');
 };
 
@@ -191,15 +226,8 @@ const callViaProxy = async (path, body, fallbackErrorMessage) => {
 };
 
 const callBibliotecaAi = async (path, body, fallbackErrorMessage) => {
-  if (USE_PROXY) return callViaProxy(path, body, fallbackErrorMessage);
-
-  try {
-    return await callDirect(path, body, fallbackErrorMessage);
-  } catch (error) {
-    const isNetworkError = String(error?.message || '').toLowerCase().includes('failed to fetch');
-    if (!isNetworkError) throw error;
-    return callViaProxy(path, body, fallbackErrorMessage);
-  }
+  if (USE_PROXY || FORCE_PROXY) return callViaProxy(path, body, fallbackErrorMessage);
+  return await callDirect(path, body, fallbackErrorMessage);
 };
 
 export const generateTextWithCloudflare = async ({
@@ -208,7 +236,10 @@ export const generateTextWithCloudflare = async ({
   prompt,
   fallbackErrorMessage = 'Não foi possível gerar texto com IA no momento.',
 } = {}) => {
-  const finalPrompt = String(prompt || '').trim() || buildTextPromptFromTask(task, input);
+  const finalPrompt = sanitizeText(String(prompt || '').trim(), 4000) || buildTextPromptFromTask(task, input);
+  if (hasSecretLikeContent(finalPrompt)) {
+    throw new Error('Conteúdo sensível detectado. Pedido bloqueado.');
+  }
   const parsed = await callBibliotecaAi('/text', { prompt: finalPrompt }, fallbackErrorMessage);
 
   if (parsed.kind === 'text') {
@@ -234,7 +265,11 @@ export const generateImageWithCloudflare = async ({
   parameters,
   fallbackErrorMessage = 'Não foi possível gerar imagem no momento.',
 } = {}) => {
-  const parsed = await callBibliotecaAi('/image', { prompt, model, provider, parameters }, fallbackErrorMessage);
+  const safePrompt = sanitizeText(prompt, 2000);
+  if (hasSecretLikeContent(safePrompt)) {
+    throw new Error('Conteúdo sensível detectado. Pedido bloqueado.');
+  }
+  const parsed = await callBibliotecaAi('/image', { prompt: safePrompt, model, provider, parameters }, fallbackErrorMessage);
 
   if (parsed.kind === 'binary') {
     const imageDataUrl = String(parsed.payload?.dataUrl || '');
@@ -271,7 +306,10 @@ export const generateAudioWithCloudflare = async ({
   prompt,
   fallbackErrorMessage = 'Não foi possível gerar áudio no momento.',
 } = {}) => {
-  const textPrompt = String(prompt || text || '').trim();
+  const textPrompt = sanitizeText(String(prompt || text || '').trim(), 4000);
+  if (hasSecretLikeContent(textPrompt)) {
+    throw new Error('Conteúdo sensível detectado. Pedido bloqueado.');
+  }
   const parsed = await callBibliotecaAi(
     '/audio',
     { prompt: textPrompt, text, voice, language, lang: language, model },

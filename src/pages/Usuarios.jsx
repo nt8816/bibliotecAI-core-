@@ -117,6 +117,10 @@ export default function Usuarios() {
   const [exportFormat, setExportFormat] = useState('xlsx');
   const [exporting, setExporting] = useState(false);
   const fileInputRef = useRef(null);
+  const handleCpfChange = (value) => {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
+    setFormData((prev) => ({ ...prev, cpf: digits }));
+  };
 
   const { isGestor, isBibliotecaria, user } = useAuth();
   const { toast } = useToast();
@@ -1065,7 +1069,7 @@ export default function Usuarios() {
 
                         <div className="space-y-2">
                           <Label htmlFor="cpf">CPF</Label>
-                          <Input id="cpf" value={formData.cpf} onChange={(e) => setFormData({ ...formData, cpf: e.target.value })} />
+                          <Input id="cpf" value={formData.cpf} onChange={(e) => handleCpfChange(e.target.value)} />
                         </div>
 
                         <div className="space-y-2">

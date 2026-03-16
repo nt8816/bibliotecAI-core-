@@ -24,6 +24,10 @@ export default function OnboardingGestor() {
   const [cpf, setCpf] = useState('');
   const [senha, setSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
+  const handleCpfChange = (value) => {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
+    setCpf(digits);
+  };
 
   const validateInvite = useCallback(async () => {
     if (!token) return;
@@ -168,7 +172,7 @@ export default function OnboardingGestor() {
                 id="cpf"
                 inputMode="numeric"
                 value={cpf}
-                onChange={(e) => setCpf(e.target.value)}
+                onChange={(e) => handleCpfChange(e.target.value)}
                 required
                 readOnly={Boolean(invite?.cpf)}
               />

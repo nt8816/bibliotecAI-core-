@@ -18,6 +18,10 @@ export default function AdminAcesso() {
     cpf: '987456321',
     senha: '123456',
   });
+  const handleCpfChange = (value) => {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
+    setFormData((prev) => ({ ...prev, cpf: digits }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -63,7 +67,7 @@ export default function AdminAcesso() {
                 type="text"
                 inputMode="numeric"
                 value={formData.cpf}
-                onChange={(e) => setFormData((prev) => ({ ...prev, cpf: e.target.value }))}
+                onChange={(e) => handleCpfChange(e.target.value)}
                 required
               />
             </div>
