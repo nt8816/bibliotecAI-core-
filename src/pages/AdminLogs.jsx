@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
@@ -60,7 +61,7 @@ export default function AdminLogs() {
       console.error(error);
       toast({
         title: 'Erro',
-        description: 'Nao foi possivel carregar escolas.',
+        description: 'Não foi possível carregar escolas.',
         variant: 'destructive',
       });
     }
@@ -126,56 +127,74 @@ export default function AdminLogs() {
             <CardTitle className="text-base">Filtros</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            <Input
-              placeholder="Buscar por evento, mensagem, path ou IP"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(0);
-              }}
-            />
-            <select
-              className="h-10 rounded-md border bg-background px-3 text-sm"
-              value={escolaFilter}
-              onChange={(e) => {
-                setEscolaFilter(e.target.value);
-                setPage(0);
-              }}
-            >
-              <option value="all">Todas as escolas</option>
-              {escolas.map((escola) => (
-                <option key={escola.id} value={escola.id}>{escola.nome}</option>
-              ))}
-            </select>
-            <select
-              className="h-10 rounded-md border bg-background px-3 text-sm"
-              value={levelFilter}
-              onChange={(e) => {
-                setLevelFilter(e.target.value);
-                setPage(0);
-              }}
-            >
-              <option value="all">Todos os niveis</option>
-              <option value="error">Error</option>
-              <option value="warn">Warn</option>
-              <option value="info">Info</option>
-            </select>
-            <select
-              className="h-10 rounded-md border bg-background px-3 text-sm"
-              value={rangeFilter}
-              onChange={(e) => {
-                setRangeFilter(e.target.value);
-                setPage(0);
-              }}
-            >
-              <option value="1">Ultimas 24h</option>
-              <option value="7">Ultimos 7 dias</option>
-              <option value="30">Ultimos 30 dias</option>
-              <option value="all">Tudo</option>
-            </select>
-            <Button type="button" variant="outline" onClick={fetchLogs} disabled={loading}>
-              Atualizar
-            </Button>
+            <div className="space-y-1">
+              <Label htmlFor="logs-search">Busca</Label>
+              <Input
+                id="logs-search"
+                placeholder="Evento, mensagem, path ou IP"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(0);
+                }}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="logs-escola">Escola</Label>
+              <select
+                id="logs-escola"
+                className="h-10 rounded-md border bg-background px-3 text-sm"
+                value={escolaFilter}
+                onChange={(e) => {
+                  setEscolaFilter(e.target.value);
+                  setPage(0);
+                }}
+              >
+                <option value="all">Todas as escolas</option>
+                {escolas.map((escola) => (
+                  <option key={escola.id} value={escola.id}>{escola.nome}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="logs-nivel">Nível</Label>
+              <select
+                id="logs-nivel"
+                className="h-10 rounded-md border bg-background px-3 text-sm"
+                value={levelFilter}
+                onChange={(e) => {
+                  setLevelFilter(e.target.value);
+                  setPage(0);
+                }}
+              >
+                <option value="all">Todos os níveis</option>
+                <option value="error">Error</option>
+                <option value="warn">Warn</option>
+                <option value="info">Info</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="logs-periodo">Período</Label>
+              <select
+                id="logs-periodo"
+                className="h-10 rounded-md border bg-background px-3 text-sm"
+                value={rangeFilter}
+                onChange={(e) => {
+                  setRangeFilter(e.target.value);
+                  setPage(0);
+                }}
+              >
+                <option value="1">Últimas 24h</option>
+                <option value="7">Últimos 7 dias</option>
+                <option value="30">Últimos 30 dias</option>
+                <option value="all">Tudo</option>
+              </select>
+            </div>
+            <div className="flex items-end">
+              <Button type="button" variant="outline" onClick={fetchLogs} disabled={loading} className="w-full">
+                Atualizar
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -189,45 +208,47 @@ export default function AdminLogs() {
             ) : logs.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhum log encontrado.</p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Escola</TableHead>
-                    <TableHead>Nivel</TableHead>
-                    <TableHead>Evento</TableHead>
-                    <TableHead>Mensagem</TableHead>
-                    <TableHead>IP</TableHead>
-                    <TableHead className="text-right">Detalhes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {logs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell className="whitespace-nowrap">{formatDateBR(log.created_at)}</TableCell>
-                      <TableCell>{escolaById.get(log.escola_id) || log.escola_id || '-'}</TableCell>
-                      <TableCell>
-                        <Badge variant={log.level === 'error' ? 'destructive' : log.level === 'warn' ? 'secondary' : 'outline'}>
-                          {log.level}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-medium">{log.event}</TableCell>
-                      <TableCell className="max-w-[260px] truncate">{log.message || '-'}</TableCell>
-                      <TableCell>{log.ip || '-'}</TableCell>
-                      <TableCell className="text-right">
-                        <Button size="sm" variant="ghost" onClick={() => setSelectedLog(log)}>
-                          <Eye className="w-4 h-4 mr-1" /> Ver
-                        </Button>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Escola</TableHead>
+                      <TableHead>Nível</TableHead>
+                      <TableHead>Evento</TableHead>
+                      <TableHead>Mensagem</TableHead>
+                      <TableHead>IP</TableHead>
+                      <TableHead className="text-right">Detalhes</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {logs.map((log) => (
+                      <TableRow key={log.id}>
+                        <TableCell className="whitespace-nowrap">{formatDateBR(log.created_at)}</TableCell>
+                        <TableCell>{escolaById.get(log.escola_id) || log.escola_id || '-'}</TableCell>
+                        <TableCell>
+                          <Badge variant={log.level === 'error' ? 'destructive' : log.level === 'warn' ? 'secondary' : 'outline'}>
+                            {log.level}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium">{log.event}</TableCell>
+                        <TableCell className="max-w-[260px] truncate">{log.message || '-'}</TableCell>
+                        <TableCell>{log.ip || '-'}</TableCell>
+                        <TableCell className="text-right">
+                          <Button size="sm" variant="ghost" onClick={() => setSelectedLog(log)}>
+                            <Eye className="w-4 h-4 mr-1" /> Ver
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
 
             {totalPages > 1 && (
               <div className="flex items-center justify-between pt-4">
-                <p className="text-xs text-muted-foreground">Pagina {page + 1} de {totalPages}</p>
+                <p className="text-xs text-muted-foreground">Página {page + 1} de {totalPages}</p>
                 <div className="flex gap-2">
                   <Button
                     type="button"
@@ -245,7 +266,7 @@ export default function AdminLogs() {
                     onClick={() => setPage((prev) => Math.min(totalPages - 1, prev + 1))}
                     disabled={page >= totalPages - 1}
                   >
-                    Proxima
+                    Próxima
                   </Button>
                 </div>
               </div>
@@ -263,7 +284,7 @@ export default function AdminLogs() {
             <div className="space-y-3 text-sm">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div><span className="font-medium">Data:</span> {formatDateBR(selectedLog.created_at)}</div>
-                <div><span className="font-medium">Nivel:</span> {selectedLog.level}</div>
+                <div><span className="font-medium">Nível:</span> {selectedLog.level}</div>
                 <div><span className="font-medium">Evento:</span> {selectedLog.event}</div>
                 <div><span className="font-medium">IP:</span> {selectedLog.ip || '-'}</div>
                 <div><span className="font-medium">Path:</span> {selectedLog.path || '-'}</div>

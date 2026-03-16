@@ -1062,6 +1062,8 @@ export default function ComunidadeAluno() {
                               value={quizRankingPeriodo}
                               onChange={(e) => setQuizRankingPeriodo(e.target.value)}
                               className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                              aria-label="Período do ranking"
+                              title="Período do ranking"
                             >
                               <option value="geral">Geral</option>
                               <option value="semana">Semana</option>
@@ -1071,6 +1073,8 @@ export default function ComunidadeAluno() {
                               value={quizRankingEscopo}
                               onChange={(e) => setQuizRankingEscopo(e.target.value)}
                               className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                              aria-label="Escopo do ranking"
+                              title="Escopo do ranking"
                             >
                               {escolaId && <option value="escola">Minha escola</option>}
                               {alunoTurma && <option value="turma">Minha turma</option>}

@@ -535,74 +535,76 @@ export default function AdminTenants() {
             ) : tenants.length === 0 ? (
               <p className="text-muted-foreground">Nenhuma escola provisionada ainda.</p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Escola</TableHead>
-                    <TableHead>Subdomínio</TableHead>
-                    <TableHead>Schema</TableHead>
-                    <TableHead>Plano</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tenants.map((tenant) => (
-                    <TableRow key={tenant.id}>
-                      <TableCell>{tenant.nome}</TableCell>
-                      <TableCell>{tenant.subdominio}</TableCell>
-                      <TableCell>{tenant.schema_name}</TableCell>
-                      <TableCell>{tenant.plano}</TableCell>
-                      <TableCell>
-                        <Badge variant={tenant.ativo ? 'outline' : 'destructive'}>
-                          {tenant.ativo ? 'ativo' : 'inativo'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => window.open(getTenantAccessUrl(tenant), '_blank', 'noopener,noreferrer')}
-                            disabled={!tenant.ativo}
-                          >
-                            <ExternalLink className="w-4 h-4 mr-1" />
-                            Abrir escola
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => resetGestorPassword(tenant)}
-                            disabled={!tenant.ativo || resettingGestorTenantId === tenant.id}
-                          >
-                            <KeyRound className="w-4 h-4 mr-1" />
-                            {resettingGestorTenantId === tenant.id ? 'Gerando senha...' : 'Nova senha gestor'}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => createInviteForTenant(tenant)}
-                            disabled={creatingInviteTenantId === tenant.id || !tenant.ativo}
-                          >
-                            {creatingInviteTenantId === tenant.id ? 'Gerando...' : 'Gerar novo link'}
-                          </Button>
-                          <Button
-                            variant={tenant.ativo ? 'destructive' : 'outline'}
-                            size="sm"
-                            onClick={() => toggleTenantStatus(tenant)}
-                            disabled={togglingTenantId === tenant.id}
-                          >
-                            <Power className="w-4 h-4 mr-1" />
-                            {togglingTenantId === tenant.id
-                              ? 'Salvando...'
-                              : tenant.ativo ? 'Inativar' : 'Ativar'}
-                          </Button>
-                        </div>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Escola</TableHead>
+                      <TableHead>Subdomínio</TableHead>
+                      <TableHead>Schema</TableHead>
+                      <TableHead>Plano</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {tenants.map((tenant) => (
+                      <TableRow key={tenant.id}>
+                        <TableCell>{tenant.nome}</TableCell>
+                        <TableCell>{tenant.subdominio}</TableCell>
+                        <TableCell>{tenant.schema_name}</TableCell>
+                        <TableCell>{tenant.plano}</TableCell>
+                        <TableCell>
+                          <Badge variant={tenant.ativo ? 'outline' : 'destructive'}>
+                            {tenant.ativo ? 'ativo' : 'inativo'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => window.open(getTenantAccessUrl(tenant), '_blank', 'noopener,noreferrer')}
+                              disabled={!tenant.ativo}
+                            >
+                              <ExternalLink className="w-4 h-4 mr-1" />
+                              Abrir escola
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => resetGestorPassword(tenant)}
+                              disabled={!tenant.ativo || resettingGestorTenantId === tenant.id}
+                            >
+                              <KeyRound className="w-4 h-4 mr-1" />
+                              {resettingGestorTenantId === tenant.id ? 'Gerando senha...' : 'Nova senha gestor'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => createInviteForTenant(tenant)}
+                              disabled={creatingInviteTenantId === tenant.id || !tenant.ativo}
+                            >
+                              {creatingInviteTenantId === tenant.id ? 'Gerando...' : 'Gerar novo link'}
+                            </Button>
+                            <Button
+                              variant={tenant.ativo ? 'destructive' : 'outline'}
+                              size="sm"
+                              onClick={() => toggleTenantStatus(tenant)}
+                              disabled={togglingTenantId === tenant.id}
+                            >
+                              <Power className="w-4 h-4 mr-1" />
+                              {togglingTenantId === tenant.id
+                                ? 'Salvando...'
+                                : tenant.ativo ? 'Inativar' : 'Ativar'}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </CardContent>
         </Card>

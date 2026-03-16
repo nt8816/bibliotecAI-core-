@@ -1369,8 +1369,32 @@ export default function PainelAluno() {
     });
   }, [catalogoAreaFilter, catalogoAutorFilter, catalogoDisponibilidadeFilter, filteredLivros]);
 
+  const livrosById = useMemo(() => {
+    const map = new Map();
+    ensureArray(livros).forEach((livro) => {
+      if (livro?.id) map.set(livro.id, livro);
+    });
+    return map;
+  }, [livros]);
 
   const meusLivros = useMemo(() => emprestimos.filter((e) => e.status === 'ativo'), [emprestimos]);
+
+  const meusLivrosOptions = useMemo(() => {
+    const map = new Map();
+    meusLivros.forEach((item) => {
+      if (!item?.livro_id) return;
+      const livro = livrosById.get(item.livro_id) || item.livros;
+      if (!livro?.titulo) return;
+      if (!map.has(item.livro_id)) {
+        map.set(item.livro_id, {
+          id: item.livro_id,
+          titulo: livro.titulo,
+          autor: livro.autor || '',
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [livrosById, meusLivros]);
 
   const filteredMeusLivros = useMemo(
     () =>
@@ -2223,7 +2247,7 @@ export default function PainelAluno() {
   };
 
   const gerarQuizComIA = async () => {
-    const livro = livros.find((item) => item.id === quizLivroId);
+    const livro = livrosById.get(quizLivroId);
     if (!livro) {
       toast({ variant: 'destructive', title: 'Selecione um livro', description: 'Escolha um livro para gerar o quiz.' });
       return;
@@ -2353,7 +2377,7 @@ export default function PainelAluno() {
       return;
     }
 
-    const livro = livros.find((item) => item.id === quizLivroId);
+    const livro = livrosById.get(quizLivroId);
     let postId = null;
     const titulo = livro?.titulo ? `Quiz IA: ${livro.titulo}` : 'Quiz IA do aluno';
     const descricao = quizTema.trim() || 'compreensão da leitura';
@@ -2476,7 +2500,7 @@ export default function PainelAluno() {
       });
       return;
     }
-    const livro = livros.find((item) => item.id === resumoLivroId);
+    const livro = livrosById.get(resumoLivroId);
     if (!livro) {
       toast({ variant: 'destructive', title: 'Selecione um livro', description: 'Escolha um livro para gerar o resumo.' });
       return;
@@ -2538,7 +2562,7 @@ export default function PainelAluno() {
   };
 
   const salvarResumo = async () => {
-    const livro = livros.find((item) => item.id === resumoLivroId);
+    const livro = livrosById.get(resumoLivroId);
     if (!livro || !resumoTexto.trim()) {
       toast({
         variant: 'destructive',
@@ -3170,18 +3194,22 @@ export default function PainelAluno() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                  <select
-                    className="h-10 rounded-md border bg-background px-3 text-sm"
-                    value={quizLivroId}
-                    onChange={(e) => setQuizLivroId(e.target.value)}
-                  >
-                    <option value="">Selecione um livro</option>
-                    {livros.map((livro) => (
-                      <option key={livro.id} value={livro.id}>
-                        {livro.titulo}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="space-y-1">
+                    <Label htmlFor="quiz-livro">Livro</Label>
+                    <select
+                      id="quiz-livro"
+                      className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                      value={quizLivroId}
+                      onChange={(e) => setQuizLivroId(e.target.value)}
+                    >
+                      <option value="">Selecione um livro</option>
+                      {meusLivrosOptions.map((livro) => (
+                        <option key={livro.id} value={livro.id}>
+                          {livro.titulo}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <Input
                     value={quizTema}
                     onChange={(e) => setQuizTema(e.target.value)}
@@ -3198,7 +3226,7 @@ export default function PainelAluno() {
                     <div className="rounded-md border bg-muted/20 p-3 text-sm">
                       <p className="font-medium">Fonte do quiz</p>
                       <p className="text-xs text-muted-foreground">
-                        Livro: {livros.find((item) => item.id === quizLivroId)?.titulo || '—'} • Tema: {quizTema.trim() || 'compreensão da leitura'}
+                        Livro: {livrosById.get(quizLivroId)?.titulo || '—'} • Tema: {quizTema.trim() || 'compreensão da leitura'}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         Questões: {quiz.length} • Nível: {quizNivel}
@@ -3263,18 +3291,22 @@ export default function PainelAluno() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                  <select
-                    className="h-10 rounded-md border bg-background px-3 text-sm"
-                    value={resumoLivroId}
-                    onChange={(e) => setResumoLivroId(e.target.value)}
-                  >
-                    <option value="">Selecione um livro</option>
-                    {livros.map((livro) => (
-                      <option key={livro.id} value={livro.id}>
-                        {livro.titulo}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="space-y-1">
+                    <Label htmlFor="resumo-livro">Livro</Label>
+                    <select
+                      id="resumo-livro"
+                      className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                      value={resumoLivroId}
+                      onChange={(e) => setResumoLivroId(e.target.value)}
+                    >
+                      <option value="">Selecione um livro</option>
+                      {meusLivrosOptions.map((livro) => (
+                        <option key={livro.id} value={livro.id}>
+                          {livro.titulo}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <Button type="button" variant="outline" onClick={gerarResumo} disabled={gerandoResumoIA}>
                     <Sparkles className="w-4 h-4 mr-2" />
                     {gerandoResumoIA ? 'Gerando resumo...' : 'Gerar resumo IA'}
@@ -3522,35 +3554,47 @@ export default function PainelAluno() {
                   <div className="space-y-3">
                     <p className="text-sm font-semibold">Biblioteca</p>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                      <select
-                        className="h-10 rounded-md border bg-background px-3 text-sm"
-                        value={catalogoAreaFilter}
-                        onChange={(e) => setCatalogoAreaFilter(e.target.value)}
-                      >
-                        <option value="all">Todas as áreas</option>
-                        {catalogoAreas.map((area) => (
-                          <option key={area} value={area}>{area}</option>
-                        ))}
-                      </select>
-                      <select
-                        className="h-10 rounded-md border bg-background px-3 text-sm"
-                        value={catalogoDisponibilidadeFilter}
-                        onChange={(e) => setCatalogoDisponibilidadeFilter(e.target.value)}
-                      >
-                        <option value="all">Disponibilidade</option>
-                        <option value="disponivel">Disponíveis</option>
-                        <option value="emprestado">Emprestados</option>
-                      </select>
-                      <select
-                        className="h-10 rounded-md border bg-background px-3 text-sm"
-                        value={catalogoAutorFilter}
-                        onChange={(e) => setCatalogoAutorFilter(e.target.value)}
-                      >
-                        <option value="all">Todos os autores</option>
-                        {catalogoAutores.map((autor) => (
-                          <option key={autor} value={autor}>{autor}</option>
-                        ))}
-                      </select>
+                      <div className="space-y-1">
+                        <Label htmlFor="catalogo-area">Área</Label>
+                        <select
+                          id="catalogo-area"
+                          className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                          value={catalogoAreaFilter}
+                          onChange={(e) => setCatalogoAreaFilter(e.target.value)}
+                        >
+                          <option value="all">Todas as áreas</option>
+                          {catalogoAreas.map((area) => (
+                            <option key={area} value={area}>{area}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="catalogo-disponibilidade">Disponibilidade</Label>
+                        <select
+                          id="catalogo-disponibilidade"
+                          className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                          value={catalogoDisponibilidadeFilter}
+                          onChange={(e) => setCatalogoDisponibilidadeFilter(e.target.value)}
+                        >
+                          <option value="all">Todas</option>
+                          <option value="disponivel">Disponíveis</option>
+                          <option value="emprestado">Emprestados</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="catalogo-autor">Autor</Label>
+                        <select
+                          id="catalogo-autor"
+                          className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                          value={catalogoAutorFilter}
+                          onChange={(e) => setCatalogoAutorFilter(e.target.value)}
+                        >
+                          <option value="all">Todos os autores</option>
+                          {catalogoAutores.map((autor) => (
+                            <option key={autor} value={autor}>{autor}</option>
+                          ))}
+                        </select>
+                      </div>
                       <Button
                         type="button"
                         variant="outline"

@@ -182,12 +182,26 @@ export default function Dashboard() {
     return <Navigate to="/aluno/perfil" replace />;
   }
 
+  const handleStatCardKeyDown = (event, path) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      navigate(path);
+    }
+  };
+
   return (
     <MainLayout title="Dashboard">
       <div className="space-y-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           {statCards.map((card) => (
-            <Card key={card.title} className="stat-card">
+            <Card
+              key={card.title}
+              className="stat-card cursor-pointer transition-shadow hover:shadow-md"
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(card.path)}
+              onKeyDown={(event) => handleStatCardKeyDown(event, card.path)}
+            >
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
