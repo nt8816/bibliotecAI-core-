@@ -83,9 +83,11 @@ Deno.serve(async (req) => {
     }
 
     const authUserIds = Array.isArray(data?.auth_user_ids) ? data.auth_user_ids : [];
+    const currentUserId = String(user.id || '').trim();
+    const authUserIdsToDelete = authUserIds.filter((userId) => String(userId || '').trim() && String(userId || '').trim() !== currentUserId);
     const authDeleteFailures: string[] = [];
 
-    for (const userId of authUserIds) {
+    for (const userId of authUserIdsToDelete) {
       const normalizedUserId = String(userId || '').trim();
       if (!normalizedUserId) continue;
 
@@ -101,7 +103,8 @@ Deno.serve(async (req) => {
       escola_id: data?.escola_id || null,
       escola_nome: data?.escola_nome || null,
       schema_name: data?.schema_name || null,
-      auth_deleted: authUserIds.length - authDeleteFailures.length,
+      auth_deleted: authUserIdsToDelete.length - authDeleteFailures.length,
+      auth_skipped_current_user: authUserIdsToDelete.length !== authUserIds.length,
       auth_delete_failures: authDeleteFailures,
     });
   } catch (error) {
