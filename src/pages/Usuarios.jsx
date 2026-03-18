@@ -87,6 +87,7 @@ export default function Usuarios() {
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [turmaFilter, setTurmaFilter] = useState('all');
   const [sortField, setSortField] = useState('nome');
   const [sortDirection, setSortDirection] = useState('asc');
   const [selectedIds, setSelectedIds] = useState([]);
@@ -785,11 +786,21 @@ export default function Usuarios() {
     return <Badge variant="secondary">Pendente</Badge>;
   };
 
-  const filteredUsuarios = usuarios.filter((usuario) =>
-    usuario.nome.toLowerCase().includes(searchTerm.toLowerCase())
-    || String(usuario.email || '').toLowerCase().includes(searchTerm.toLowerCase())
-    || (usuario.matricula || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const turmaFilterOptions = [...new Set([
+    ...turmasDisponiveis,
+    ...usuarios.map((usuario) => String(usuario?.turma || '').trim()).filter(Boolean),
+  ])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  const filteredUsuarios = usuarios.filter((usuario) => {
+    const matchesSearch =
+      usuario.nome.toLowerCase().includes(searchTerm.toLowerCase())
+      || String(usuario.email || '').toLowerCase().includes(searchTerm.toLowerCase())
+      || (usuario.matricula || '').toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesTurma = turmaFilter === 'all' || String(usuario.turma || '').trim() === turmaFilter;
+
+    return matchesSearch && matchesTurma;
+  });
 
   const sortedUsuarios = [...filteredUsuarios].sort((a, b) => {
     const aValue = String(a?.[sortField] || '').toLowerCase();
@@ -934,6 +945,18 @@ export default function Usuarios() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input placeholder="Buscar usuários..." className="pl-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                 </div>
+
+                <select
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm sm:w-56"
+                  value={turmaFilter}
+                  onChange={(e) => setTurmaFilter(e.target.value)}
+                  aria-label="Filtrar por sala"
+                >
+                  <option value="all">Todas as salas</option>
+                  {turmaFilterOptions.map((turma) => (
+                    <option key={turma} value={turma}>{turma}</option>
+                  ))}
+                </select>
 
                 <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => handleToggleSort('nome')}>
                   <ArrowUpDown className="w-4 h-4 mr-2" />
@@ -1270,7 +1293,7 @@ export default function Usuarios() {
               <p className="text-center text-muted-foreground py-8">Carregando...</p>
             ) : sortedUsuarios.length === 0 ? (
               <div className="py-10 text-center space-y-3">
-                <p className="text-muted-foreground">{searchTerm ? 'Nenhum usuário encontrado' : 'Nenhum usuário cadastrado'}</p>
+                <p className="text-muted-foreground">{searchTerm || turmaFilter !== 'all' ? 'Nenhum usuário encontrado' : 'Nenhum usuário cadastrado'}</p>
                 {canManageUsers && (
                   <Button onClick={() => handleOpenDialog()}>
                     <Plus className="w-4 h-4 mr-2" />
