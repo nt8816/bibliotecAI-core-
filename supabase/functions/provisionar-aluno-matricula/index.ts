@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-user-access-token',
 };
 
 const jsonResponse = (body, status = 200) =>
@@ -44,14 +44,17 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Configuração do servidor incompleta' }, 500);
     }
 
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
+    const userAccessToken = req.headers.get('x-user-access-token') || req.headers.get('Authorization');
+    const normalizedAuthHeader = userAccessToken?.toLowerCase().startsWith('bearer ')
+      ? userAccessToken
+      : `Bearer ${userAccessToken || ''}`;
+    if (!userAccessToken) {
       return jsonResponse({ success: false, error: 'Não autenticado' }, 401);
     }
 
     const callerClient = createClient(supabaseUrl, anonKey, {
       auth: { autoRefreshToken: false, persistSession: false },
-      global: { headers: { Authorization: authHeader } },
+      global: { headers: { Authorization: normalizedAuthHeader } },
     });
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {

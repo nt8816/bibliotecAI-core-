@@ -302,9 +302,20 @@ export default function Usuarios() {
   };
 
   const provisionarAlunoComMatricula = async (payload) => {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+
+    const accessToken = sessionData?.session?.access_token;
+    if (!accessToken) {
+      throw new Error('Sessão inválida. Faça login novamente.');
+    }
+
     const data = await invokeEdgeFunction('provisionar-aluno-matricula', {
       body: payload,
-      requireAuth: true,
+      headers: {
+        'x-user-access-token': accessToken,
+      },
+      requireAuth: false,
       signOutOnAuthFailure: false,
       fallbackErrorMessage: 'Não foi possível provisionar login por matrícula.',
     });
