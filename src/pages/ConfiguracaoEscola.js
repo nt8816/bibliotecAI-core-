@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { useTenant } from '@/hooks/useTenant';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { School, Plus, Trash2, GraduationCap, BookOpen, Loader2, Pencil } from 'lucide-react';
@@ -25,6 +27,7 @@ export default function ConfiguracaoEscola() {
 
   const { toast } = useToast();
   const { user } = useAuth();
+  const { tenant } = useTenant();
 
   const fetchEscola = useCallback(async () => {
     if (!user?.id) return;
@@ -42,17 +45,27 @@ export default function ConfiguracaoEscola() {
 
       if (perfilError) throw perfilError;
 
+      const { data: rpcEscolaId } = await supabase.rpc('get_user_escola_id', { _user_id: user.id });
+      const candidateEscolaIds = [...new Set([
+        perfil?.escola_id || null,
+        tenant?.escola_id || null,
+        rpcEscolaId || null,
+      ].filter(Boolean))];
+
       let escolaData = null;
 
-      if (perfil?.escola_id) {
+      for (const escolaId of candidateEscolaIds) {
         const { data, error } = await supabase
           .from('escolas')
           .select('*')
-          .eq('id', perfil.escola_id)
+          .eq('id', escolaId)
           .maybeSingle();
 
         if (error) throw error;
-        escolaData = data || null;
+        if (data) {
+          escolaData = data;
+          break;
+        }
       }
 
       if (!escolaData) {
@@ -94,11 +107,14 @@ export default function ConfiguracaoEscola() {
     } finally {
       setLoading(false);
     }
-  }, [toast, user?.id]);
+  }, [tenant?.escola_id, toast, user?.id]);
 
   useEffect(() => {
     fetchEscola();
   }, [fetchEscola]);
+
+  useRealtimeSubscription({ table: 'escolas', onChange: fetchEscola });
+  useRealtimeSubscription({ table: 'salas_cursos', onChange: fetchEscola });
 
   const salvarEscola = async () => {
     if (!user?.id || !nomeEscola.trim()) return;
