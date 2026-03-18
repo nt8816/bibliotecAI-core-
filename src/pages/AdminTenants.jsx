@@ -290,11 +290,20 @@ export default function AdminTenants() {
 
     setDeletingTenantId(tenant.id);
     try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        throw new Error('Sessão inválida. Faça login novamente.');
+      }
+
       const data = await invokeEdgeFunction('excluir-escola-tenant', {
         body: { tenant_id: tenant.id },
-        requireAuth: true,
-        retryOnUnauthorized: false,
-        signOutOnAuthFailure: false,
+        requireAuth: false,
+        headers: {
+          'x-user-access-token': accessToken,
+        },
         fallbackErrorMessage: 'Não foi possível excluir a escola.',
       });
 

@@ -22,8 +22,9 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const manualUserToken = req.headers.get('x-user-access-token') || '';
     const authHeader = req.headers.get('authorization') || '';
-    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const token = String(manualUserToken || authHeader.replace(/^Bearer\s+/i, '')).trim();
 
     if (!supabaseUrl || !serviceRoleKey) {
       return jsonResponse({ error: 'Configuração do servidor incompleta.' }, 500);
