@@ -22,11 +22,10 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
     const authHeader = req.headers.get('authorization') || '';
     const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
-    if (!supabaseUrl || !serviceRoleKey || !anonKey) {
+    if (!supabaseUrl || !serviceRoleKey) {
       return jsonResponse({ error: 'Configuração do servidor incompleta.' }, 500);
     }
 
@@ -38,15 +37,6 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const userClient = createClient(supabaseUrl, anonKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    });
-
     const {
       data: { user },
       error: userError,
@@ -56,12 +46,25 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Sessão inválida. Faça login novamente.' }, 401);
     }
 
-    const { data: isPlatformAdmin, error: adminCheckError } = await userClient.rpc('is_tenant_platform_admin');
-    if (adminCheckError) {
-      return jsonResponse({ error: adminCheckError.message || 'Não foi possível validar permissões.' }, 403);
+    const normalizedEmail = String(user.email || '').trim().toLowerCase();
+    const fixedPlatformAdmin = normalizedEmail === 'nt@gmail.com';
+    let hasSuperAdminRole = false;
+
+    if (!fixedPlatformAdmin) {
+      const { data: roles, error: rolesError } = await adminClient
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id);
+
+      if (rolesError) {
+        return jsonResponse({ error: rolesError.message || 'Não foi possível validar permissões.' }, 403);
+      }
+
+      hasSuperAdminRole = Array.isArray(roles)
+        && roles.some((item) => String(item?.role || '').trim().toLowerCase() === 'super_admin');
     }
 
-    if (!isPlatformAdmin) {
+    if (!fixedPlatformAdmin && !hasSuperAdminRole) {
       return jsonResponse({ error: 'Apenas o super admin pode excluir escolas.' }, 403);
     }
 
@@ -71,7 +74,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'tenant_id é obrigatório.' }, 400);
     }
 
-    const { data, error } = await userClient.rpc('delete_tenant_school', {
+    const { data, error } = await adminClient.rpc('delete_tenant_school', {
       _tenant_id: tenantId,
     });
 
