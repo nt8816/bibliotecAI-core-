@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Copy, Building2, Link as LinkIcon, Power, KeyRound, ExternalLink, Sparkles, Volume2 } from 'lucide-react';
+import { Plus, Copy, Building2, Link as LinkIcon, Power, KeyRound, ExternalLink, Sparkles, Volume2, Trash2 } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
@@ -62,6 +63,8 @@ export default function AdminTenants() {
   const [creatingInviteTenantId, setCreatingInviteTenantId] = useState(null);
   const [togglingTenantId, setTogglingTenantId] = useState(null);
   const [resettingGestorTenantId, setResettingGestorTenantId] = useState(null);
+  const [deletingTenantId, setDeletingTenantId] = useState(null);
+  const [tenantPendingDelete, setTenantPendingDelete] = useState(null);
   const [lastResetPassword, setLastResetPassword] = useState(null);
   const [latestInvite, setLatestInvite] = useState(null);
   const [massTenantId, setMassTenantId] = useState('');
@@ -278,6 +281,43 @@ export default function AdminTenants() {
       });
     } finally {
       setTogglingTenantId(null);
+    }
+  };
+
+  const deleteTenantSchool = async () => {
+    const tenant = tenantPendingDelete;
+    if (!tenant?.id) return;
+
+    setDeletingTenantId(tenant.id);
+    try {
+      const data = await invokeEdgeFunction('excluir-escola-tenant', {
+        body: { tenant_id: tenant.id },
+        requireAuth: true,
+        signOutOnAuthFailure: true,
+        fallbackErrorMessage: 'Não foi possível excluir a escola.',
+      });
+
+      setTenants((prev) => prev.filter((item) => item.id !== tenant.id));
+      setTenantPendingDelete(null);
+      if (massTenantId === tenant.id) setMassTenantId('');
+      if (lastResetPassword?.tenantNome === tenant.nome) setLastResetPassword(null);
+
+      const authFailures = Array.isArray(data?.auth_delete_failures) ? data.auth_delete_failures : [];
+      toast({
+        title: authFailures.length === 0 ? 'Escola excluída' : 'Escola excluída com alertas',
+        description: authFailures.length === 0
+          ? `Todos os dados da escola ${tenant.nome} foram removidos.`
+          : `A escola foi removida, mas ${authFailures.length} usuário(s) de autenticação exigem revisão manual.`,
+        variant: authFailures.length === 0 ? 'default' : 'destructive',
+      });
+    } catch (error) {
+      toast({
+        title: 'Falha ao excluir escola',
+        description: error?.message || 'Erro inesperado',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingTenantId(null);
     }
   };
 
@@ -598,6 +638,15 @@ export default function AdminTenants() {
                                 ? 'Salvando...'
                                 : tenant.ativo ? 'Inativar' : 'Ativar'}
                             </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => setTenantPendingDelete(tenant)}
+                              disabled={deletingTenantId === tenant.id}
+                            >
+                              <Trash2 className="w-4 h-4 mr-1" />
+                              {deletingTenantId === tenant.id ? 'Excluindo...' : 'Apagar escola'}
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -674,6 +723,32 @@ export default function AdminTenants() {
             )}
           </CardContent>
         </Card>
+
+        <AlertDialog
+          open={Boolean(tenantPendingDelete)}
+          onOpenChange={(open) => {
+            if (!open && !deletingTenantId) setTenantPendingDelete(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Apagar escola permanentemente?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta ação remove a escola <strong>{tenantPendingDelete?.nome || '-'}</strong>, o tenant, os dados relacionados no banco e o schema dedicado. Os usuários vinculados também serão removidos da autenticação.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={Boolean(deletingTenantId)}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={deleteTenantSchool}
+                disabled={Boolean(deletingTenantId)}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deletingTenantId ? 'Excluindo...' : 'Apagar definitivamente'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </MainLayout>
   );
