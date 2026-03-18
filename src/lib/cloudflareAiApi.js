@@ -241,7 +241,7 @@ const callBibliotecaAi = async (path, body, fallbackErrorMessage) => {
         { label: 'proxy', fn: () => callViaProxy(path, body, fallbackErrorMessage) },v
       ];
 
-  const errors = [];
+  const errors = []; 
   for (const attempt of attempts) {
     try {
       return await attempt.fn();
