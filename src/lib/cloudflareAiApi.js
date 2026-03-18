@@ -238,7 +238,7 @@ const callBibliotecaAi = async (path, body, fallbackErrorMessage) => {
       ]
     : [
         { label: 'direta', fn: () => callDirect(path, body, fallbackErrorMessage) },
-        { label: 'proxy', fn: () => callViaProxy(path, body, fallbackErrorMessage) },
+        { label: 'proxy', fn: () => callViaProxy(path, body, fallbackErrorMessage) },v
       ];
 
   const errors = [];
