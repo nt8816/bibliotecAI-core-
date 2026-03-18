@@ -147,6 +147,31 @@ function removeCache(key) {
   }
 }
 
+function extractXpFromRewardText(value) {
+  const match = String(value || '').match(/(\d+)\s*xp/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function normalizeDesafioIA(rawValue) {
+  const raw = rawValue && typeof rawValue === 'object' ? rawValue : null;
+  if (!raw?.titulo || !raw?.desafio) return null;
+
+  const geradoEm = raw.gerado_em || raw.geradoEm || new Date().toISOString();
+  const expiraEm = raw.expira_em || raw.expiraEm || new Date(new Date(geradoEm).getTime() + DESAFIO_IA_TTL_MS).toISOString();
+
+  if (Number.isNaN(new Date(expiraEm).getTime()) || new Date(expiraEm).getTime() <= Date.now()) {
+    return null;
+  }
+
+  return {
+    ...raw,
+    gerado_em: geradoEm,
+    expira_em: expiraEm,
+    concluido_em: raw.concluido_em || raw.concluidoEm || null,
+    xp_recompensa: Math.max(0, Number(raw.xp_recompensa ?? extractXpFromRewardText(raw.recompensa))),
+  };
+}
+
 function extractResumoTextoFromCriacao(criacao) {
   if (!criacao) return '';
   if (criacao.texto) return String(criacao.texto);
@@ -644,6 +669,8 @@ export default function PainelAluno() {
   const [gerandoResumoIA, setGerandoResumoIA] = useState(false);
   const [desafioIA, setDesafioIA] = useState(null);
   const [gerandoDesafioIA, setGerandoDesafioIA] = useState(false);
+  const [desafioXpBonus, setDesafioXpBonus] = useState(0);
+  const [salvandoDesafioIA, setSalvandoDesafioIA] = useState(false);
   const [resumoDialogOpen, setResumoDialogOpen] = useState(false);
   const [resumoSelecionado, setResumoSelecionado] = useState(null);
   const [sinopseDialogOpen, setSinopseDialogOpen] = useState(false);
@@ -671,8 +698,8 @@ export default function PainelAluno() {
       return;
     }
 
-    const cachedDesafio = readCache(desafioCacheKey, DESAFIO_IA_TTL_MS);
-    if (cachedDesafio?.titulo && cachedDesafio?.desafio) {
+    const cachedDesafio = normalizeDesafioIA(readCache(desafioCacheKey, DESAFIO_IA_TTL_MS));
+    if (cachedDesafio) {
       setDesafioIA(cachedDesafio);
       return;
     }
@@ -728,6 +755,28 @@ export default function PainelAluno() {
       }
     },
     [buildLivrosQuery, catalogoSearchTerm, livrosOffset],
+  );
+
+  const persistirDesafioIA = useCallback(
+    async ({ desafio, xpBonus }) => {
+      if (!alunoId) {
+        throw new Error('Aluno não identificado para salvar o desafio.');
+      }
+
+      const { error } = await supabase.from('preferencias_aluno').upsert(
+        {
+          usuario_id: alunoId,
+          desafio_ia_ativo: desafio,
+          desafio_ia_gerado_em: desafio?.gerado_em || null,
+          desafio_ia_concluido_em: desafio?.concluido_em || null,
+          desafio_ia_xp_bonus: Math.max(0, Number(xpBonus || 0)),
+        },
+        { onConflict: 'usuario_id' },
+      );
+
+      if (error) throw error;
+    },
+    [alunoId],
   );
 
   const fetchData = useCallback(async () => {
@@ -801,6 +850,7 @@ export default function PainelAluno() {
         let meusAudiobooksOpt = { data: [], missing: false };
         let criacoesLaboratorioOpt = { data: [], missing: false };
         let notificacoesLidasOpt = { data: [], missing: false };
+        let preferenciasAlunoOpt = { data: null, missing: false };
 
         if (optionalFeaturesEnabled) {
           // Probe only one new table first to avoid multiple 404 calls when migration is missing.
@@ -837,6 +887,14 @@ export default function PainelAluno() {
         notificacoesLidasOpt = await optionalQuery(
           supabase.from('notificacoes_lidas').select('notification_id').eq('usuario_id', perfil.id),
           [],
+        );
+        preferenciasAlunoOpt = await optionalQuery(
+          supabase
+            .from('preferencias_aluno')
+            .select('desafio_ia_ativo, desafio_ia_concluido_em, desafio_ia_gerado_em, desafio_ia_xp_bonus')
+            .eq('usuario_id', perfil.id)
+            .maybeSingle(),
+          null,
         );
 
         const missingAnyNewTable =
@@ -880,6 +938,20 @@ export default function PainelAluno() {
         setMeusAudiobooks(meusAudiobooksOpt.data);
         setCriacoesLaboratorio(criacoesLaboratorioOpt.data);
         setNotificacoesLidas(new Set((notificacoesLidasOpt.data || []).map((item) => item.notification_id)));
+        setDesafioXpBonus(Math.max(0, Number(preferenciasAlunoOpt.data?.desafio_ia_xp_bonus || 0)));
+
+        const desafioPersistido = normalizeDesafioIA({
+          ...(preferenciasAlunoOpt.data?.desafio_ia_ativo || {}),
+          gerado_em: preferenciasAlunoOpt.data?.desafio_ia_gerado_em || preferenciasAlunoOpt.data?.desafio_ia_ativo?.gerado_em,
+          concluido_em: preferenciasAlunoOpt.data?.desafio_ia_concluido_em || preferenciasAlunoOpt.data?.desafio_ia_ativo?.concluido_em,
+        });
+        if (desafioPersistido) {
+          setDesafioIA(desafioPersistido);
+          if (desafioCacheKey) writeCache(desafioCacheKey, desafioPersistido);
+        } else {
+          setDesafioIA(null);
+          if (desafioCacheKey) removeCache(desafioCacheKey);
+        }
 
         const entregaInicial = {};
         const entregaImagensInicial = {};
@@ -913,7 +985,7 @@ export default function PainelAluno() {
       }
     });
     return request;
-  }, [fetchLivrosPage, optionalFeaturesEnabled, toast, user]);
+  }, [desafioCacheKey, fetchLivrosPage, optionalFeaturesEnabled, toast, user]);
 
   useEffect(() => {
     fetchData();
@@ -1310,8 +1382,8 @@ export default function PainelAluno() {
     const baseLeituras = livrosLidos * 35;
     const baseAvaliacoes = avaliacoes.length * 15;
     const baseAtividades = entregas.filter((e) => e.status === 'aprovada').length * 25;
-    return baseLeituras + baseAvaliacoes + baseAtividades + Number(pontosGanhos || 0);
-  }, [avaliacoes.length, entregas, livrosLidos, pontosGanhos]);
+    return baseLeituras + baseAvaliacoes + baseAtividades + Number(pontosGanhos || 0) + Number(desafioXpBonus || 0);
+  }, [avaliacoes.length, desafioXpBonus, entregas, livrosLidos, pontosGanhos]);
 
   const nivelAtual = useMemo(() => Math.max(1, Math.floor(pontosExperiencia / 150) + 1), [pontosExperiencia]);
 
@@ -2553,6 +2625,15 @@ export default function PainelAluno() {
   };
 
   const gerarDesafioGamificacao = async () => {
+    if (!alunoId) {
+      toast({
+        variant: 'destructive',
+        title: 'Perfil incompleto',
+        description: 'Não foi possível identificar seu perfil para salvar o desafio.',
+      });
+      return;
+    }
+
     setGerandoDesafioIA(true);
     try {
       const data = await generateTextWithIA(
@@ -2565,8 +2646,12 @@ export default function PainelAluno() {
         },
         'Não foi possível gerar desafio de gamificação no momento.',
       );
-      const desafio = data?.data;
+      const desafio = normalizeDesafioIA({
+        ...(data?.data || {}),
+        gerado_em: new Date().toISOString(),
+      });
       if (!desafio?.titulo || !desafio?.desafio) throw new Error('A IA respondeu sem desafio válido.');
+      await persistirDesafioIA({ desafio, xpBonus: desafioXpBonus });
       setDesafioIA(desafio);
       if (desafioCacheKey) writeCache(desafioCacheKey, desafio);
       toast({ title: 'Desafio de gamificação gerado!' });
@@ -2578,6 +2663,44 @@ export default function PainelAluno() {
       });
     } finally {
       setGerandoDesafioIA(false);
+    }
+  };
+
+  const concluirDesafioGamificacao = async () => {
+    if (!desafioIA) return;
+    if (desafioIA.concluido_em) {
+      toast({ title: 'Desafio já concluído', description: 'A recompensa deste desafio já foi adicionada ao seu perfil.' });
+      return;
+    }
+
+    setSalvandoDesafioIA(true);
+    try {
+      const xpRecompensa = Math.max(0, Number(desafioIA.xp_recompensa || extractXpFromRewardText(desafioIA.recompensa)));
+      const desafioConcluido = {
+        ...desafioIA,
+        xp_recompensa: xpRecompensa,
+        concluido_em: new Date().toISOString(),
+      };
+      const proximoXpBonus = desafioXpBonus + xpRecompensa;
+
+      await persistirDesafioIA({ desafio: desafioConcluido, xpBonus: proximoXpBonus });
+      setDesafioIA(desafioConcluido);
+      setDesafioXpBonus(proximoXpBonus);
+      if (desafioCacheKey) writeCache(desafioCacheKey, desafioConcluido);
+
+      toast({
+        title: 'Desafio concluído',
+        description: xpRecompensa > 0 ? `Você recebeu ${xpRecompensa} XP pelo desafio do dia.` : 'Sua conclusão foi registrada.',
+      });
+      navigate('/aluno');
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao concluir desafio',
+        description: error?.message || 'Não foi possível registrar a conclusão do desafio.',
+      });
+    } finally {
+      setSalvandoDesafioIA(false);
     }
   };
 
@@ -2729,7 +2852,7 @@ export default function PainelAluno() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Button type="button" variant="outline" onClick={gerarDesafioGamificacao} disabled={gerandoDesafioIA}>
+                <Button type="button" variant="outline" onClick={gerarDesafioGamificacao} disabled={gerandoDesafioIA || Boolean(desafioIA)}>
                   <Sparkles className="w-4 h-4 mr-2" />
                   {gerandoDesafioIA ? 'Gerando desafio...' : 'Gerar desafio de gamificação'}
                 </Button>
@@ -2742,6 +2865,17 @@ export default function PainelAluno() {
                         Recompensa: {desafioIA.recompensa}
                       </Badge>
                     )}
+                    <div className="flex flex-wrap items-center gap-2 pt-2">
+                      {desafioIA.concluido_em ? (
+                        <Badge className="bg-primary/15 text-primary hover:bg-primary/15">
+                          Concluído em {formatDateBR(desafioIA.concluido_em)}
+                        </Badge>
+                      ) : (
+                        <Button type="button" size="sm" onClick={concluirDesafioGamificacao} disabled={salvandoDesafioIA}>
+                          {salvandoDesafioIA ? 'Registrando...' : `Concluir desafio${desafioIA.xp_recompensa ? ` e receber ${desafioIA.xp_recompensa} XP` : ''}`}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 )}
               </CardContent>

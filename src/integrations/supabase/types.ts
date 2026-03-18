@@ -840,6 +840,10 @@ export type Database = {
         Row: {
           autores_favoritos: string[] | null
           created_at: string
+          desafio_ia_ativo: Json | null
+          desafio_ia_concluido_em: string | null
+          desafio_ia_gerado_em: string | null
+          desafio_ia_xp_bonus: number
           formatos_preferidos: string[] | null
           frequencia_leitura: string | null
           generos_favoritos: string[] | null
@@ -853,6 +857,10 @@ export type Database = {
         Insert: {
           autores_favoritos?: string[] | null
           created_at?: string
+          desafio_ia_ativo?: Json | null
+          desafio_ia_concluido_em?: string | null
+          desafio_ia_gerado_em?: string | null
+          desafio_ia_xp_bonus?: number
           formatos_preferidos?: string[] | null
           frequencia_leitura?: string | null
           generos_favoritos?: string[] | null
@@ -866,6 +874,10 @@ export type Database = {
         Update: {
           autores_favoritos?: string[] | null
           created_at?: string
+          desafio_ia_ativo?: Json | null
+          desafio_ia_concluido_em?: string | null
+          desafio_ia_gerado_em?: string | null
+          desafio_ia_xp_bonus?: number
           formatos_preferidos?: string[] | null
           frequencia_leitura?: string | null
           generos_favoritos?: string[] | null
