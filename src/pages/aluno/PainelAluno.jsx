@@ -783,9 +783,12 @@ export default function PainelAluno() {
     (offset) => {
       let query = supabase
         .from('livros')
-        .select('id, titulo, autor, area, vol, ano, disponivel, sinopse, created_at')
+        .select('id, titulo, autor, area, vol, ano, disponivel, sinopse, created_at, escola_id')
         .order('titulo')
         .range(offset, offset + LIVROS_PAGE_SIZE - 1);
+      if (escolaId) {
+        query = query.eq('escola_id', escolaId);
+      }
       const term = catalogoSearchTerm.trim();
       if (term) {
         const escaped = term.replace(/%/g, '\\%').replace(/_/g, '\\_');
@@ -793,14 +796,15 @@ export default function PainelAluno() {
       }
       return query;
     },
-    [catalogoSearchTerm],
+    [catalogoSearchTerm, escolaId],
   );
 
   const fetchLivrosPage = useCallback(
     async ({ reset = false, useCache = true } = {}) => {
       const offset = reset ? 0 : livrosOffset;
       const termKey = catalogoSearchTerm.trim().toLowerCase();
-      const cacheKey = `aluno:livros:${termKey}:page0`;
+      const escolaCacheKey = escolaId || 'sem-escola';
+      const cacheKey = `aluno:livros:${escolaCacheKey}:${termKey}:page0`;
 
       if (reset && useCache) {
         const cached = readCache(cacheKey);
@@ -825,7 +829,7 @@ export default function PainelAluno() {
         setLivrosLoadingMore(false);
       }
     },
-    [buildLivrosQuery, catalogoSearchTerm, livrosOffset],
+    [buildLivrosQuery, catalogoSearchTerm, escolaId, livrosOffset],
   );
 
   const persistirDesafioIA = useCallback(
