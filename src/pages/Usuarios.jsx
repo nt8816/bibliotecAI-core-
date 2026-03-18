@@ -305,7 +305,7 @@ export default function Usuarios() {
     const data = await invokeEdgeFunction('provisionar-aluno-matricula', {
       body: payload,
       requireAuth: true,
-      signOutOnAuthFailure: true,
+      signOutOnAuthFailure: false,
       fallbackErrorMessage: 'Não foi possível provisionar login por matrícula.',
     });
 
