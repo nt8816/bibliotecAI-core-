@@ -3,7 +3,6 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 const DEFAULT_BASE_URL = 'https://api-bibliotecai.ntn3223.workers.dev';
 const API_BASE_URL = String(import.meta.env.VITE_BIBLIOTECA_AI_API_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
 const USE_PROXY = import.meta.env.VITE_BIBLIOTECA_AI_USE_PROXY === 'true';
-const FORCE_PROXY = true;
 
 const ensureObject = (value) => (value && typeof value === 'object' ? value : {});
 
@@ -194,6 +193,12 @@ const extractJsonFromText = (text) => {
   return null;
 };
 
+const decorateAiError = (error, routeLabel) => {
+  const message = String(error?.message || '').trim();
+  if (!message) return new Error(`Falha na rota ${routeLabel}.`);
+  return new Error(`${message} [rota: ${routeLabel}]`);
+};
+
 const callDirect = async (path, body, fallbackErrorMessage) => {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
@@ -226,8 +231,26 @@ const callViaProxy = async (path, body, fallbackErrorMessage) => {
 };
 
 const callBibliotecaAi = async (path, body, fallbackErrorMessage) => {
-  if (USE_PROXY || FORCE_PROXY) return callViaProxy(path, body, fallbackErrorMessage);
-  return await callDirect(path, body, fallbackErrorMessage);
+  const attempts = USE_PROXY
+    ? [
+        { label: 'proxy', fn: () => callViaProxy(path, body, fallbackErrorMessage) },
+        { label: 'direta', fn: () => callDirect(path, body, fallbackErrorMessage) },
+      ]
+    : [
+        { label: 'direta', fn: () => callDirect(path, body, fallbackErrorMessage) },
+        { label: 'proxy', fn: () => callViaProxy(path, body, fallbackErrorMessage) },
+      ];
+
+  const errors = [];
+  for (const attempt of attempts) {
+    try {
+      return await attempt.fn();
+    } catch (error) {
+      errors.push(decorateAiError(error, attempt.label).message);
+    }
+  }
+
+  throw new Error(errors.join(' | ') || fallbackErrorMessage);
 };
 
 export const generateTextWithCloudflare = async ({
