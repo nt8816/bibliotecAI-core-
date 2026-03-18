@@ -121,16 +121,36 @@ export default function Livros() {
 
   const fetchLivros = useCallback(async () => {
     try {
-      const { data, error } = await supabase.from('livros').select('*').order('titulo');
-      if (error) throw error;
-      setLivros(data || []);
+      let livrosData = [];
+
+      if (escolaId) {
+        const [{ data: escolaLivros, error: escolaError }, { data: legacyLivros, error: legacyError }] = await Promise.all([
+          supabase.from('livros').select('*').eq('escola_id', escolaId).order('titulo'),
+          supabase.from('livros').select('*').is('escola_id', null).order('titulo'),
+        ]);
+
+        if (escolaError) throw escolaError;
+        if (legacyError) throw legacyError;
+
+        const byId = new Map();
+        [...(escolaLivros || []), ...(legacyLivros || [])].forEach((livro) => {
+          if (livro?.id) byId.set(livro.id, livro);
+        });
+        livrosData = Array.from(byId.values()).sort((a, b) => String(a?.titulo || '').localeCompare(String(b?.titulo || ''), 'pt-BR'));
+      } else {
+        const { data, error } = await supabase.from('livros').select('*').order('titulo');
+        if (error) throw error;
+        livrosData = data || [];
+      }
+
+      setLivros(livrosData);
     } catch (error) {
       console.error('Error fetching books:', error);
       toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível carregar os livros.' });
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [escolaId, toast]);
 
   useEffect(() => {
     fetchLivros();

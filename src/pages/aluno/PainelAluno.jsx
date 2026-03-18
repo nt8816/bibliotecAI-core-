@@ -820,10 +820,29 @@ export default function PainelAluno() {
       try {
         const { data, error } = await buildLivrosQuery(offset);
         if (error) throw error;
-        const items = data || [];
+        let items = data || [];
+
+        if (reset && escolaId) {
+          let legacyQuery = supabase
+            .from('livros')
+            .select('id, titulo, autor, area, vol, ano, disponivel, sinopse, created_at, escola_id')
+            .is('escola_id', null)
+            .order('titulo');
+
+          const term = catalogoSearchTerm.trim();
+          if (term) {
+            const escaped = term.replace(/%/g, '\\%').replace(/_/g, '\\_');
+            legacyQuery = legacyQuery.or(`titulo.ilike.%${escaped}%,autor.ilike.%${escaped}%,area.ilike.%${escaped}%`);
+          }
+
+          const { data: legacyData, error: legacyError } = await legacyQuery;
+          if (legacyError) throw legacyError;
+          items = mergeById(items, legacyData || []);
+        }
+
         setLivros((prev) => (reset ? items : mergeById(prev, items)));
         setLivrosOffset(offset + items.length);
-        setLivrosHasMore(items.length === LIVROS_PAGE_SIZE);
+        setLivrosHasMore((data || []).length === LIVROS_PAGE_SIZE);
         if (reset) writeCache(cacheKey, items);
       } finally {
         setLivrosLoadingMore(false);
