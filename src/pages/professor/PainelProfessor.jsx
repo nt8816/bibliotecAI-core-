@@ -200,6 +200,7 @@ export default function PainelProfessor() {
   const [atividades, setAtividades] = useState([]);
   const [entregas, setEntregas] = useState([]);
   const [professorTurmasPermitidas, setProfessorTurmasPermitidas] = useState([]);
+  const [escolaId, setEscolaId] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -230,12 +231,13 @@ export default function PainelProfessor() {
     try {
       const { data: professorData, error: professorError } = await supabase
         .from('usuarios_biblioteca')
-        .select('id')
+        .select('id, escola_id')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+      setEscolaId(professorData?.escola_id || null);
       if (professorError || !professorData) throw professorError || new Error('Perfil de professor não encontrado.');
 
       const { data: turmasData, error: turmasError } = await supabase
@@ -261,8 +263,28 @@ export default function PainelProfessor() {
         return;
       }
 
+      const livrosPromise = professorData?.escola_id
+        ? Promise.all([
+            supabase.from('livros').select('id, titulo, autor, area, escola_id').eq('escola_id', professorData.escola_id).order('titulo'),
+            supabase.from('livros').select('id, titulo, autor, area, escola_id').is('escola_id', null).order('titulo'),
+          ]).then(([escolaRes, legacyRes]) => {
+            if (escolaRes.error) throw escolaRes.error;
+            if (legacyRes.error) throw legacyRes.error;
+
+            const byId = new Map();
+            [...(escolaRes.data || []), ...(legacyRes.data || [])].forEach((livro) => {
+              if (livro?.id) byId.set(livro.id, livro);
+            });
+
+            return {
+              data: Array.from(byId.values()).sort((a, b) => String(a?.titulo || '').localeCompare(String(b?.titulo || ''), 'pt-BR')),
+              error: null,
+            };
+          })
+        : supabase.from('livros').select('id, titulo, autor, area, escola_id').order('titulo');
+
       const [livrosRes, usuariosRes, sugestoesRes, atividadesRes] = await Promise.all([
-        supabase.from('livros').select('id, titulo, autor, area').order('titulo'),
+        livrosPromise,
         supabase
           .from('usuarios_biblioteca')
           .select('id, nome, turma')
@@ -358,6 +380,7 @@ export default function PainelProfessor() {
   useRealtimeSubscription({ table: 'atividades_leitura', onChange: onRealtimeChange });
   useRealtimeSubscription({ table: submissionFeaturesEnabled ? 'atividades_entregas' : null, onChange: onRealtimeChange });
   useRealtimeSubscription({ table: 'professor_turmas', onChange: onRealtimeChange });
+  useRealtimeSubscription({ table: 'livros', onChange: onRealtimeChange });
 
   const getProfessorId = async () => {
     const { data, error } = await supabase

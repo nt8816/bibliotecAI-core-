@@ -761,6 +761,11 @@ export default function PainelAluno() {
     () => (user?.id ? `aluno:desafio-ia:${user.id}` : ''),
     [user?.id],
   );
+  const livrosCacheKey = useMemo(() => {
+    const termKey = catalogoSearchTerm.trim().toLowerCase();
+    const escolaCacheKey = escolaId || 'sem-escola';
+    return `aluno:livros:${escolaCacheKey}:${termKey}:page0`;
+  }, [catalogoSearchTerm, escolaId]);
 
   useEffect(() => {
     if (!desafioCacheKey) {
@@ -796,12 +801,8 @@ export default function PainelAluno() {
 
   const fetchLivrosPage = useCallback(
     async ({ reset = false, useCache = true } = {}) => {
-      const termKey = catalogoSearchTerm.trim().toLowerCase();
-      const escolaCacheKey = escolaId || 'sem-escola';
-      const cacheKey = `aluno:livros:${escolaCacheKey}:${termKey}:page0`;
-
       if (reset && useCache) {
-        const cached = readCache(cacheKey);
+        const cached = readCache(livrosCacheKey);
         if (Array.isArray(cached)) {
           setLivros(cached);
           setLivrosOffset(cached.length);
@@ -837,12 +838,12 @@ export default function PainelAluno() {
         setLivros((prev) => (reset ? sortByTitulo(items) : sortByTitulo(mergeById(prev, items))));
         setLivrosOffset(items.length);
         setLivrosHasMore(false);
-        if (reset) writeCache(cacheKey, items);
+        if (reset) writeCache(livrosCacheKey, items);
       } finally {
         setLivrosLoadingMore(false);
       }
     },
-    [buildLivrosQuery, catalogoSearchTerm, escolaId],
+    [buildLivrosQuery, catalogoSearchTerm, escolaId, livrosCacheKey],
   );
 
   const persistirDesafioIA = useCallback(
@@ -1386,14 +1387,28 @@ export default function PainelAluno() {
   const handleLivroUpsert = useCallback((payload) => {
     const row = payload?.new;
     if (!row?.id) return;
+
+    removeCache(livrosCacheKey);
+
+    const pertenceAoCatalogo =
+      !row.escola_id ||
+      !escolaId ||
+      row.escola_id === escolaId;
+
+    if (!pertenceAoCatalogo) {
+      setLivros((prev) => removeById(prev, row.id));
+      return;
+    }
+
     setLivros((prev) => sortByTitulo(upsertById(prev, row)));
-  }, []);
+  }, [escolaId, livrosCacheKey]);
 
   const handleLivroDelete = useCallback((payload) => {
     const row = payload?.old;
     if (!row?.id) return;
+    removeCache(livrosCacheKey);
     setLivros((prev) => removeById(prev, row.id));
-  }, []);
+  }, [livrosCacheKey]);
 
   const handleNotificacaoLidaInsert = useCallback(
     (payload) => {
