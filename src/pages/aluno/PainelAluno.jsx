@@ -52,6 +52,7 @@ import {
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 const LIVROS_PAGE_SIZE = 40;
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const DESAFIO_IA_TTL_MS = 24 * 60 * 60 * 1000;
 
 function formatDateBR(dateValue) {
   if (!dateValue) return '-';
@@ -133,6 +134,14 @@ function readCache(key, ttlMs = CACHE_TTL_MS) {
 function writeCache(key, data) {
   try {
     localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
+  } catch {
+    // ignore cache failures
+  }
+}
+
+function removeCache(key) {
+  try {
+    localStorage.removeItem(key);
   } catch {
     // ignore cache failures
   }
@@ -651,6 +660,26 @@ export default function PainelAluno() {
   const speechRequestRef = useRef(0);
   const speakingLivroIdRef = useRef(null);
   const solicitacoesStatusRef = useRef(new Map());
+  const desafioCacheKey = useMemo(
+    () => (user?.id ? `aluno:desafio-ia:${user.id}` : ''),
+    [user?.id],
+  );
+
+  useEffect(() => {
+    if (!desafioCacheKey) {
+      setDesafioIA(null);
+      return;
+    }
+
+    const cachedDesafio = readCache(desafioCacheKey, DESAFIO_IA_TTL_MS);
+    if (cachedDesafio?.titulo && cachedDesafio?.desafio) {
+      setDesafioIA(cachedDesafio);
+      return;
+    }
+
+    removeCache(desafioCacheKey);
+    setDesafioIA(null);
+  }, [desafioCacheKey]);
 
   const buildLivrosQuery = useCallback(
     (offset) => {
@@ -2539,6 +2568,7 @@ export default function PainelAluno() {
       const desafio = data?.data;
       if (!desafio?.titulo || !desafio?.desafio) throw new Error('A IA respondeu sem desafio válido.');
       setDesafioIA(desafio);
+      if (desafioCacheKey) writeCache(desafioCacheKey, desafio);
       toast({ title: 'Desafio de gamificação gerado!' });
     } catch (error) {
       toast({
