@@ -133,11 +133,17 @@ const buildTextPromptFromTask = (task, input) => {
     return [
       'Crie um desafio curto de gamificacao educacional para aluno.',
       'Responda SOMENTE com JSON valido no formato:',
-      '{"titulo":"...","desafio":"...","recompensa":"..."}',
+      '{"titulo":"...","desafio":"...","recompensa":"...","xp_recompensa":50,"criterio":{"tipo":"livros_lidos|avaliacoes|atividades_aprovadas","alvo_total":2,"valor_inicial":1,"rotulo":"..."}}',
+      'O criterio precisa ser verificavel automaticamente pela plataforma.',
       `Aluno: ${sanitizeText(safeInput.nome || 'Aluno', 80)}`,
       `Nivel atual: ${Number(safeInput.nivel) || 1}`,
       `XP atual: ${Number(safeInput.xp) || 0}`,
       `Livros lidos: ${Number(safeInput.livrosLidos) || 0}`,
+      `Avaliacoes publicadas: ${Number(safeInput.avaliacoes || 0)}`,
+      `Atividades aprovadas: ${Number(safeInput.atividadesAprovadas || 0)}`,
+      `Criterio sugerido: ${sanitizeText(safeInput.criterio_tipo || '', 80) || 'livros_lidos'}`,
+      `Meta sugerida total: ${Number(safeInput.criterio_alvo_total) || 1}`,
+      `Valor inicial do criterio: ${Number(safeInput.criterio_valor_inicial) || 0}`,
     ].join('\n');
   }
 

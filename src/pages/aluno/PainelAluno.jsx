@@ -172,6 +172,77 @@ function normalizeDesafioIA(rawValue) {
   };
 }
 
+function buildDesafioMetricas({ livrosLidos, avaliacoesCount, atividadesAprovadas }) {
+  return {
+    livros_lidos: Math.max(0, Number(livrosLidos || 0)),
+    avaliacoes: Math.max(0, Number(avaliacoesCount || 0)),
+    atividades_aprovadas: Math.max(0, Number(atividadesAprovadas || 0)),
+  };
+}
+
+function escolherCriterioDesafio(metricas) {
+  const candidatos = [
+    {
+      tipo: 'livros_lidos',
+      incremento: 1,
+      rotulo: 'concluir 1 nova leitura',
+    },
+    {
+      tipo: 'avaliacoes',
+      incremento: 1,
+      rotulo: 'publicar 1 nova avaliação',
+    },
+    {
+      tipo: 'atividades_aprovadas',
+      incremento: 1,
+      rotulo: 'ter 1 atividade aprovada',
+    },
+  ];
+
+  const indice = new Date().getDate() % candidatos.length;
+  const criterioBase = candidatos[indice];
+  const valorAtual = Math.max(0, Number(metricas?.[criterioBase.tipo] || 0));
+
+  return {
+    tipo: criterioBase.tipo,
+    valor_inicial: valorAtual,
+    alvo_total: valorAtual + criterioBase.incremento,
+    incremento: criterioBase.incremento,
+    rotulo: criterioBase.rotulo,
+  };
+}
+
+function normalizarCriterioDesafio(rawCriterio, metricasAtuais) {
+  const fallback = escolherCriterioDesafio(metricasAtuais);
+  const criterio = rawCriterio && typeof rawCriterio === 'object' ? rawCriterio : {};
+  const tipo = ['livros_lidos', 'avaliacoes', 'atividades_aprovadas'].includes(String(criterio.tipo))
+    ? String(criterio.tipo)
+    : fallback.tipo;
+  const valorInicial = Math.max(
+    0,
+    Number(criterio.valor_inicial ?? criterio.valorInicial ?? metricasAtuais?.[tipo] ?? fallback.valor_inicial),
+  );
+  const alvoTotal = Math.max(
+    valorInicial + 1,
+    Number(criterio.alvo_total ?? criterio.alvoTotal ?? valorInicial + Number(criterio.incremento ?? fallback.incremento ?? 1)),
+  );
+
+  return {
+    tipo,
+    valor_inicial: valorInicial,
+    alvo_total: alvoTotal,
+    incremento: Math.max(1, alvoTotal - valorInicial),
+    rotulo: String(criterio.rotulo || fallback.rotulo || '').trim() || fallback.rotulo,
+  };
+}
+
+function desafioFoiConcluidoPelaPlataforma(desafio, metricas) {
+  const criterio = desafio?.criterio;
+  if (!criterio?.tipo) return false;
+  const valorAtual = Math.max(0, Number(metricas?.[criterio.tipo] || 0));
+  return valorAtual >= Math.max(1, Number(criterio.alvo_total || 0));
+}
+
 function extractResumoTextoFromCriacao(criacao) {
   if (!criacao) return '';
   if (criacao.texto) return String(criacao.texto);
@@ -946,8 +1017,12 @@ export default function PainelAluno() {
           concluido_em: preferenciasAlunoOpt.data?.desafio_ia_concluido_em || preferenciasAlunoOpt.data?.desafio_ia_ativo?.concluido_em,
         });
         if (desafioPersistido) {
-          setDesafioIA(desafioPersistido);
-          if (desafioCacheKey) writeCache(desafioCacheKey, desafioPersistido);
+          const desafioNormalizado = {
+            ...desafioPersistido,
+            criterio: normalizarCriterioDesafio(desafioPersistido.criterio, desafioMetricas),
+          };
+          setDesafioIA(desafioNormalizado);
+          if (desafioCacheKey) writeCache(desafioCacheKey, desafioNormalizado);
         } else {
           setDesafioIA(null);
           if (desafioCacheKey) removeCache(desafioCacheKey);
@@ -985,7 +1060,7 @@ export default function PainelAluno() {
       }
     });
     return request;
-  }, [desafioCacheKey, fetchLivrosPage, optionalFeaturesEnabled, toast, user]);
+  }, [desafioCacheKey, desafioMetricas, fetchLivrosPage, optionalFeaturesEnabled, toast, user]);
 
   useEffect(() => {
     fetchData();
@@ -1349,6 +1424,11 @@ export default function PainelAluno() {
     [entregas],
   );
 
+  const atividadesAprovadas = useMemo(
+    () => entregas.filter((e) => e.status === 'aprovada').length,
+    [entregas],
+  );
+
   const atividadesPendentes = useMemo(
     () => atividadesComEntrega.filter((a) => !a.entrega || a.entrega.status !== 'aprovada').length,
     [atividadesComEntrega],
@@ -1381,9 +1461,9 @@ export default function PainelAluno() {
   const pontosExperiencia = useMemo(() => {
     const baseLeituras = livrosLidos * 35;
     const baseAvaliacoes = avaliacoes.length * 15;
-    const baseAtividades = entregas.filter((e) => e.status === 'aprovada').length * 25;
+    const baseAtividades = atividadesAprovadas * 25;
     return baseLeituras + baseAvaliacoes + baseAtividades + Number(pontosGanhos || 0) + Number(desafioXpBonus || 0);
-  }, [avaliacoes.length, desafioXpBonus, entregas, livrosLidos, pontosGanhos]);
+  }, [atividadesAprovadas, avaliacoes.length, desafioXpBonus, livrosLidos, pontosGanhos]);
 
   const nivelAtual = useMemo(() => Math.max(1, Math.floor(pontosExperiencia / 150) + 1), [pontosExperiencia]);
 
@@ -1393,6 +1473,21 @@ export default function PainelAluno() {
     const progresso = ((pontosExperiencia - xpNivelAtual) / (xpProximoNivel - xpNivelAtual)) * 100;
     return Math.max(0, Math.min(100, progresso));
   }, [pontosExperiencia, xpNivelAtual, xpProximoNivel]);
+
+  const desafioMetricas = useMemo(
+    () =>
+      buildDesafioMetricas({
+        livrosLidos,
+        avaliacoesCount: avaliacoes.length,
+        atividadesAprovadas,
+      }),
+    [atividadesAprovadas, avaliacoes.length, livrosLidos],
+  );
+
+  const desafioProgressoAtual = useMemo(() => {
+    if (!desafioIA?.criterio?.tipo) return null;
+    return Math.max(0, Number(desafioMetricas[desafioIA.criterio.tipo] || 0));
+  }, [desafioIA, desafioMetricas]);
 
   const selos = useMemo(
     () => [
@@ -2347,6 +2442,7 @@ export default function PainelAluno() {
 
     setGerandoQuizIA(true);
     try {
+      const criterio = escolherCriterioDesafio(desafioMetricas);
       const data = await generateTextWithIA(
         'quiz_leitura',
         {
@@ -2643,12 +2739,21 @@ export default function PainelAluno() {
           nivel: nivelAtual,
           xp: pontosExperiencia,
           livrosLidos,
+          avaliacoes: avaliacoes.length,
+          atividadesAprovadas,
+          criterio_tipo: criterio.tipo,
+          criterio_alvo_total: criterio.alvo_total,
+          criterio_valor_inicial: criterio.valor_inicial,
         },
         'Não foi possível gerar desafio de gamificação no momento.',
       );
       const desafio = normalizeDesafioIA({
         ...(data?.data || {}),
         gerado_em: new Date().toISOString(),
+        criterio: normalizarCriterioDesafio(data?.data?.criterio, {
+          ...desafioMetricas,
+          [criterio.tipo]: criterio.valor_inicial,
+        }),
       });
       if (!desafio?.titulo || !desafio?.desafio) throw new Error('A IA respondeu sem desafio válido.');
       await persistirDesafioIA({ desafio, xpBonus: desafioXpBonus });
@@ -2666,8 +2771,9 @@ export default function PainelAluno() {
     }
   };
 
-  const concluirDesafioGamificacao = async () => {
+  const concluirDesafioGamificacao = useCallback(async (origem = 'automatica') => {
     if (!desafioIA) return;
+    if (desafioIA.concluido_em && origem === 'silenciosa') return;
     if (desafioIA.concluido_em) {
       toast({ title: 'Desafio já concluído', description: 'A recompensa deste desafio já foi adicionada ao seu perfil.' });
       return;
@@ -2702,7 +2808,13 @@ export default function PainelAluno() {
     } finally {
       setSalvandoDesafioIA(false);
     }
-  };
+  }, [desafioCacheKey, desafioIA, desafioXpBonus, navigate, persistirDesafioIA, toast]);
+
+  useEffect(() => {
+    if (!desafioIA || desafioIA.concluido_em || salvandoDesafioIA) return;
+    if (!desafioFoiConcluidoPelaPlataforma(desafioIA, desafioMetricas)) return;
+    concluirDesafioGamificacao('automatica');
+  }, [concluirDesafioGamificacao, desafioIA, desafioMetricas, salvandoDesafioIA]);
 
   const salvarResumo = async () => {
     const livro = livrosById.get(resumoLivroId);
@@ -2871,11 +2983,16 @@ export default function PainelAluno() {
                           Concluído em {formatDateBR(desafioIA.concluido_em)}
                         </Badge>
                       ) : (
-                        <Button type="button" size="sm" onClick={concluirDesafioGamificacao} disabled={salvandoDesafioIA}>
-                          {salvandoDesafioIA ? 'Registrando...' : `Concluir desafio${desafioIA.xp_recompensa ? ` e receber ${desafioIA.xp_recompensa} XP` : ''}`}
-                        </Button>
+                        <Badge variant="secondary">
+                          ValidaÃ§Ã£o automÃ¡tica pela plataforma
+                        </Badge>
                       )}
                     </div>
+                    {desafioIA.criterio?.tipo && !desafioIA.concluido_em && (
+                      <p className="text-xs text-muted-foreground">
+                        Progresso: {desafioProgressoAtual}/{desafioIA.criterio.alvo_total} {desafioIA.criterio.rotulo}
+                      </p>
+                    )}
                   </div>
                 )}
               </CardContent>
