@@ -293,7 +293,8 @@ export default function AdminTenants() {
       const data = await invokeEdgeFunction('excluir-escola-tenant', {
         body: { tenant_id: tenant.id },
         requireAuth: true,
-        signOutOnAuthFailure: true,
+        retryOnUnauthorized: false,
+        signOutOnAuthFailure: false,
         fallbackErrorMessage: 'Não foi possível excluir a escola.',
       });
 
