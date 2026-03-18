@@ -50,7 +50,6 @@ import {
 } from '@/lib/cloudflareAiApi';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
-const LIVROS_PAGE_SIZE = 40;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const DESAFIO_IA_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -779,13 +778,11 @@ export default function PainelAluno() {
     setDesafioIA(null);
   }, [desafioCacheKey]);
 
-  const buildLivrosQuery = useCallback(
-    (offset) => {
+  const buildLivrosQuery = useCallback(() => {
       let query = supabase
         .from('livros')
         .select('id, titulo, autor, area, vol, ano, disponivel, sinopse, created_at, escola_id')
-        .order('titulo')
-        .range(offset, offset + LIVROS_PAGE_SIZE - 1);
+        .order('titulo');
       if (escolaId) {
         query = query.eq('escola_id', escolaId);
       }
@@ -795,13 +792,10 @@ export default function PainelAluno() {
         query = query.or(`titulo.ilike.%${escaped}%,autor.ilike.%${escaped}%,area.ilike.%${escaped}%`);
       }
       return query;
-    },
-    [catalogoSearchTerm, escolaId],
-  );
+    }, [catalogoSearchTerm, escolaId]);
 
   const fetchLivrosPage = useCallback(
     async ({ reset = false, useCache = true } = {}) => {
-      const offset = reset ? 0 : livrosOffset;
       const termKey = catalogoSearchTerm.trim().toLowerCase();
       const escolaCacheKey = escolaId || 'sem-escola';
       const cacheKey = `aluno:livros:${escolaCacheKey}:${termKey}:page0`;
@@ -811,14 +805,14 @@ export default function PainelAluno() {
         if (Array.isArray(cached)) {
           setLivros(cached);
           setLivrosOffset(cached.length);
-          setLivrosHasMore(cached.length === LIVROS_PAGE_SIZE);
+          setLivrosHasMore(false);
           return;
         }
       }
 
       setLivrosLoadingMore(true);
       try {
-        const { data, error } = await buildLivrosQuery(offset);
+        const { data, error } = await buildLivrosQuery();
         if (error) throw error;
         let items = data || [];
 
@@ -840,15 +834,15 @@ export default function PainelAluno() {
           items = mergeById(items, legacyData || []);
         }
 
-        setLivros((prev) => (reset ? items : mergeById(prev, items)));
-        setLivrosOffset(offset + items.length);
-        setLivrosHasMore((data || []).length === LIVROS_PAGE_SIZE);
+        setLivros((prev) => (reset ? sortByTitulo(items) : sortByTitulo(mergeById(prev, items))));
+        setLivrosOffset(items.length);
+        setLivrosHasMore(false);
         if (reset) writeCache(cacheKey, items);
       } finally {
         setLivrosLoadingMore(false);
       }
     },
-    [buildLivrosQuery, catalogoSearchTerm, escolaId, livrosOffset],
+    [buildLivrosQuery, catalogoSearchTerm, escolaId],
   );
 
   const persistirDesafioIA = useCallback(
