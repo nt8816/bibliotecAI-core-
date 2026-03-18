@@ -327,6 +327,35 @@ export default function Usuarios() {
     return data;
   };
 
+  const excluirUsuariosDoBanco = async (ids) => {
+    const normalizedIds = [...new Set((ids || []).map((item) => String(item || '').trim()).filter(Boolean))];
+    if (normalizedIds.length === 0) return { deleted_count: 0 };
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+
+    const accessToken = sessionData?.session?.access_token;
+    if (!accessToken) {
+      throw new Error('Sessão inválida. Faça login novamente.');
+    }
+
+    const data = await invokeEdgeFunction('excluir-usuarios-biblioteca', {
+      body: { ids: normalizedIds },
+      headers: {
+        'x-user-access-token': accessToken,
+      },
+      requireAuth: false,
+      signOutOnAuthFailure: false,
+      fallbackErrorMessage: 'Não foi possível excluir os usuários.',
+    });
+
+    if (!data?.success) {
+      throw new Error(data?.error || 'Não foi possível excluir os usuários.');
+    }
+
+    return data;
+  };
+
   const handleSave = async () => {
     if (!formData.nome.trim()) {
       toast({ variant: 'destructive', title: 'Erro', description: 'Nome é obrigatório.' });
@@ -435,8 +464,7 @@ export default function Usuarios() {
 
     setDeletingId(id);
     try {
-      const { error } = await supabase.from('usuarios_biblioteca').delete().eq('id', id);
-      if (error) throw error;
+      await excluirUsuariosDoBanco([id]);
       toast({ title: 'Sucesso', description: 'Usuário excluído com sucesso.' });
       trackEvent('usuario_excluido', { id });
       setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
@@ -454,8 +482,7 @@ export default function Usuarios() {
 
     setBatchDeleting(true);
     try {
-      const { error } = await supabase.from('usuarios_biblioteca').delete().in('id', selectedIds);
-      if (error) throw error;
+      await excluirUsuariosDoBanco(selectedIds);
       toast({ title: 'Sucesso', description: `${selectedIds.length} usuário(s) excluído(s).` });
       trackEvent('usuarios_exclusao_lote', { total: selectedIds.length });
       setSelectedIds([]);
