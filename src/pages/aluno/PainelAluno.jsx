@@ -1011,6 +1011,17 @@ export default function PainelAluno() {
         setNotificacoesLidas(new Set((notificacoesLidasOpt.data || []).map((item) => item.notification_id)));
         setDesafioXpBonus(Math.max(0, Number(preferenciasAlunoOpt.data?.desafio_ia_xp_bonus || 0)));
 
+        const metricasCarregadas = buildDesafioMetricas({
+          livrosLidos: new Set(
+            (emprestimosRes.data || [])
+              .filter((item) => item.status === 'devolvido')
+              .map((item) => item.livro_id)
+              .filter(Boolean),
+          ).size,
+          avaliacoesCount: (avaliacoesRes.data || []).length,
+          atividadesAprovadas: (entregasOpt.data || []).filter((item) => item.status === 'aprovada').length,
+        });
+
         const desafioPersistido = normalizeDesafioIA({
           ...(preferenciasAlunoOpt.data?.desafio_ia_ativo || {}),
           gerado_em: preferenciasAlunoOpt.data?.desafio_ia_gerado_em || preferenciasAlunoOpt.data?.desafio_ia_ativo?.gerado_em,
@@ -1019,7 +1030,7 @@ export default function PainelAluno() {
         if (desafioPersistido) {
           const desafioNormalizado = {
             ...desafioPersistido,
-            criterio: normalizarCriterioDesafio(desafioPersistido.criterio, desafioMetricas),
+            criterio: normalizarCriterioDesafio(desafioPersistido.criterio, metricasCarregadas),
           };
           setDesafioIA(desafioNormalizado);
           if (desafioCacheKey) writeCache(desafioCacheKey, desafioNormalizado);
@@ -1060,7 +1071,7 @@ export default function PainelAluno() {
       }
     });
     return request;
-  }, [desafioCacheKey, desafioMetricas, fetchLivrosPage, optionalFeaturesEnabled, toast, user]);
+  }, [desafioCacheKey, fetchLivrosPage, optionalFeaturesEnabled, toast, user]);
 
   useEffect(() => {
     fetchData();
