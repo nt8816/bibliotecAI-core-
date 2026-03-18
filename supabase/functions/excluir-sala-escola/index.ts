@@ -136,9 +136,11 @@ Deno.serve(async (req) => {
     }
 
     const salaKey = normalizeText(sala.nome);
-    const targetProfiles = (profiles || []).filter((profile) =>
-      profile.sala_curso_id === sala.id || normalizeText(profile.turma) === salaKey,
-    );
+    const targetProfiles = (profiles || []).filter((profile) => {
+      const sameSalaId = Boolean(sala.id) && profile.sala_curso_id === sala.id;
+      const sameTurmaName = normalizeText(profile.turma) === salaKey;
+      return sameSalaId || sameTurmaName;
+    });
 
     const selfProfile = targetProfiles.find((profile) => profile.user_id === caller.id);
     if (selfProfile) {
