@@ -14,16 +14,16 @@ const SECRET_PATTERNS = [
   /senha/i,
   /supabase/i,
   /database/i,
-  /connection\\s*string/i,
+  /connection\s*string/i,
   /postgres/i,
-  /private\\s*key/i,
-  /bearer\\s+[a-z0-9\\-_.]+/i,
+  /private\s*key/i,
+  /bearer\s+[a-z0-9\-_.]+/i,
   /sk-[a-z0-9]{10,}/i,
 ];
 
 const sanitizeText = (value, limit = 4000) => {
   let text = String(value || '');
-  text = text.replace(/\\u0000/g, '');
+  text = text.replace(/\u0000/g, '');
   if (text.length > limit) text = text.slice(0, limit);
   return text;
 };
@@ -68,7 +68,7 @@ const extractErrorMessage = (parsed, fallback) => {
     const message = String(value || '').trim();
     if (!message) return fallback;
     if (message.includes("Cannot read properties of undefined (reading 'run')")) {
-      return 'Worker Cloudflare sem binding/configuração de modelo para /image. Revise wrangler.toml e o handler do endpoint.';
+      return 'Worker Cloudflare sem binding/configuracao de modelo para /image. Revise wrangler.toml e o handler do endpoint.';
     }
     return message;
   };
@@ -94,56 +94,56 @@ const buildTextPromptFromTask = (task, input) => {
 
   if (safeTask === 'sinopse_livro') {
     return [
-      'Gere uma sinopse curta e clara em português do Brasil para uso escolar.',
-      'Se possível, também complete metadados bibliográficos básicos.',
-      'Responda SOMENTE com JSON válido no formato: {"sinopse":"...","autor":"...","ano":"...","editora":"..."}',
-      'Quando não souber um campo, use string vazia.',
-      `Título: ${titulo || 'não informado'}`,
-      `Autor: ${autor || 'não informado'}`,
-      `Área: ${area || 'não informada'}`,
-      `Contexto disponível: ${sinopse || 'sem contexto adicional'}`,
+      'Gere uma sinopse curta e clara em portugues do Brasil para uso escolar.',
+      'Se possivel, tambem complete metadados bibliograficos basicos.',
+      'Responda SOMENTE com JSON valido no formato: {"sinopse":"...","autor":"...","ano":"...","editora":"..."}',
+      'Quando nao souber um campo, use string vazia.',
+      `Titulo: ${titulo || 'nao informado'}`,
+      `Autor: ${autor || 'nao informado'}`,
+      `Area: ${area || 'nao informada'}`,
+      `Contexto disponivel: ${sinopse || 'sem contexto adicional'}`,
     ].join('\n');
   }
 
   if (safeTask === 'quiz_leitura') {
     return [
-      'Crie um quiz de leitura em português do Brasil.',
-      'Responda SOMENTE com JSON válido no formato:',
+      'Crie um quiz de leitura em portugues do Brasil.',
+      'Responda SOMENTE com JSON valido no formato:',
       '{"livro":"...","quantidade":3,"alternativas":4,"perguntas":[{"enunciado":"...","opcoes":["A","B","C","D"],"correta":0}]}',
       'Use indice de resposta correta entre 0 e alternativas-1.',
       'Use o nome do livro fornecido no contexto.',
-      `Livro: ${titulo || 'não informado'}`,
-      `Autor: ${autor || 'não informado'}`,
-      `Tema: ${tema || 'compreensão da leitura'}`,
-      `Sinopse/base: ${sinopse || 'não informada'}`,
+      `Livro: ${titulo || 'nao informado'}`,
+      `Autor: ${autor || 'nao informado'}`,
+      `Tema: ${tema || 'compreensao da leitura'}`,
+      `Sinopse/base: ${sinopse || 'nao informada'}`,
     ].join('\n');
   }
 
   if (safeTask === 'resumo_estudo') {
     return [
-      'Crie um resumo de estudo em português do Brasil para aluno.',
-      'Responda SOMENTE com JSON válido no formato: {"texto":"..."}',
-      `Livro: ${titulo || 'não informado'}`,
-      `Autor: ${autor || 'não informado'}`,
-      `Sinopse/base: ${sinopse || 'não informada'}`,
+      'Crie um resumo de estudo em portugues do Brasil para aluno.',
+      'Responda SOMENTE com JSON valido no formato: {"texto":"..."}',
+      `Livro: ${titulo || 'nao informado'}`,
+      `Autor: ${autor || 'nao informado'}`,
+      `Sinopse/base: ${sinopse || 'nao informada'}`,
     ].join('\n');
   }
 
   if (safeTask === 'gamificacao_desafio') {
     return [
-      'Crie um desafio curto de gamificação educacional para aluno.',
-      'Responda SOMENTE com JSON válido no formato:',
+      'Crie um desafio curto de gamificacao educacional para aluno.',
+      'Responda SOMENTE com JSON valido no formato:',
       '{"titulo":"...","desafio":"...","recompensa":"..."}',
       `Aluno: ${sanitizeText(safeInput.nome || 'Aluno', 80)}`,
-      `Nível atual: ${Number(safeInput.nivel) || 1}`,
+      `Nivel atual: ${Number(safeInput.nivel) || 1}`,
       `XP atual: ${Number(safeInput.xp) || 0}`,
       `Livros lidos: ${Number(safeInput.livrosLidos) || 0}`,
     ].join('\n');
   }
 
   return [
-    'Responda em português do Brasil.',
-    'Quando apropriado, responda com JSON válido.',
+    'Responda em portugues do Brasil.',
+    'Quando apropriado, responda com JSON valido.',
     `Tarefa: ${safeTask || 'geral'}`,
     `Entrada: ${sanitizeText(safeInput.prompt || '', 2000)}`,
   ].join('\n');
@@ -171,9 +171,8 @@ const extractJsonFromText = (text) => {
   const firstBrace = source.indexOf('{');
   const lastBrace = source.lastIndexOf('}');
   if (firstBrace >= 0 && lastBrace > firstBrace) {
-    const candidate = source.slice(firstBrace, lastBrace + 1);
     try {
-      return JSON.parse(candidate);
+      return JSON.parse(source.slice(firstBrace, lastBrace + 1));
     } catch {
       // ignore
     }
@@ -182,9 +181,8 @@ const extractJsonFromText = (text) => {
   const firstBracket = source.indexOf('[');
   const lastBracket = source.lastIndexOf(']');
   if (firstBracket >= 0 && lastBracket > firstBracket) {
-    const candidate = source.slice(firstBracket, lastBracket + 1);
     try {
-      return JSON.parse(candidate);
+      return JSON.parse(source.slice(firstBracket, lastBracket + 1));
     } catch {
       // ignore
     }
@@ -198,6 +196,26 @@ const decorateAiError = (error, routeLabel) => {
   if (!message) return new Error(`Falha na rota ${routeLabel}.`);
   return new Error(`${message} [rota: ${routeLabel}]`);
 };
+
+const callTextEdgeFunction = async ({ task, input, prompt, fallbackErrorMessage }) =>
+  await invokeEdgeFunction('gerar-texto-ia', {
+    body: {
+      task,
+      input: {
+        ...ensureObject(input),
+        ...(prompt ? { prompt } : {}),
+      },
+    },
+    requireAuth: false,
+    fallbackErrorMessage,
+  });
+
+const callImageEdgeFunction = async ({ prompt, model, provider, parameters, fallbackErrorMessage }) =>
+  await invokeEdgeFunction('gerar-imagem-ia', {
+    body: { prompt, model, provider, parameters },
+    requireAuth: false,
+    fallbackErrorMessage,
+  });
 
 const callDirect = async (path, body, fallbackErrorMessage) => {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -220,7 +238,6 @@ const callViaProxy = async (path, body, fallbackErrorMessage) => {
 
   if (typeof response === 'string') return { kind: 'text', payload: response };
 
-  // Binary payloads are returned by invokeEdgeFunction as Blob in browsers.
   if (response instanceof Blob) {
     const dataUrl = await blobToDataUrl(response);
     const contentType = String(response.type || '').toLowerCase();
@@ -238,10 +255,10 @@ const callBibliotecaAi = async (path, body, fallbackErrorMessage) => {
       ]
     : [
         { label: 'direta', fn: () => callDirect(path, body, fallbackErrorMessage) },
-        { label: 'proxy', fn: () => callViaProxy(path, body, fallbackErrorMessage) },v
+        { label: 'proxy', fn: () => callViaProxy(path, body, fallbackErrorMessage) },
       ];
 
-  const errors = []; 
+  const errors = [];
   for (const attempt of attempts) {
     try {
       return await attempt.fn();
@@ -257,13 +274,25 @@ export const generateTextWithCloudflare = async ({
   task,
   input,
   prompt,
-  fallbackErrorMessage = 'Não foi possível gerar texto com IA no momento.',
+  fallbackErrorMessage = 'Nao foi possivel gerar texto com IA no momento.',
 } = {}) => {
   const finalPrompt = sanitizeText(String(prompt || '').trim(), 4000) || buildTextPromptFromTask(task, input);
   if (hasSecretLikeContent(finalPrompt)) {
-    throw new Error('Conteúdo sensível detectado. Pedido bloqueado.');
+    throw new Error('Conteudo sensivel detectado. Pedido bloqueado.');
   }
-  const parsed = await callBibliotecaAi('/text', { prompt: finalPrompt }, fallbackErrorMessage);
+
+  let parsed;
+  try {
+    const edgePayload = await callTextEdgeFunction({
+      task,
+      input,
+      prompt: finalPrompt,
+      fallbackErrorMessage,
+    });
+    parsed = { kind: 'json', payload: edgePayload || {} };
+  } catch {
+    parsed = await callBibliotecaAi('/text', { prompt: finalPrompt }, fallbackErrorMessage);
+  }
 
   if (parsed.kind === 'text') {
     const text = String(parsed.payload || '').trim();
@@ -286,13 +315,26 @@ export const generateImageWithCloudflare = async ({
   model,
   provider,
   parameters,
-  fallbackErrorMessage = 'Não foi possível gerar imagem no momento.',
+  fallbackErrorMessage = 'Nao foi possivel gerar imagem no momento.',
 } = {}) => {
   const safePrompt = sanitizeText(prompt, 2000);
   if (hasSecretLikeContent(safePrompt)) {
-    throw new Error('Conteúdo sensível detectado. Pedido bloqueado.');
+    throw new Error('Conteudo sensivel detectado. Pedido bloqueado.');
   }
-  const parsed = await callBibliotecaAi('/image', { prompt: safePrompt, model, provider, parameters }, fallbackErrorMessage);
+
+  let parsed;
+  try {
+    const edgePayload = await callImageEdgeFunction({
+      prompt: safePrompt,
+      model,
+      provider,
+      parameters,
+      fallbackErrorMessage,
+    });
+    parsed = { kind: 'json', payload: edgePayload || {} };
+  } catch {
+    parsed = await callBibliotecaAi('/image', { prompt: safePrompt, model, provider, parameters }, fallbackErrorMessage);
+  }
 
   if (parsed.kind === 'binary') {
     const imageDataUrl = String(parsed.payload?.dataUrl || '');
@@ -301,21 +343,20 @@ export const generateImageWithCloudflare = async ({
   }
 
   if (parsed.kind === 'text') {
-    throw new Error('A API respondeu em formato inválido para imagem.');
+    throw new Error('A API respondeu em formato invalido para imagem.');
   }
 
   const payload = ensureObject(parsed.payload);
   const data = ensureObject(payload.data);
-  const imageDataUrl =
-    String(
-      payload.imageDataUrl ||
-        payload.image ||
-        payload.url ||
-        data.imageDataUrl ||
-        data.image ||
-        data.url ||
-        '',
-    ).trim();
+  const imageDataUrl = String(
+    payload.imageDataUrl ||
+      payload.image ||
+      payload.url ||
+      data.imageDataUrl ||
+      data.image ||
+      data.url ||
+      '',
+  ).trim();
 
   if (!imageDataUrl) throw new Error('A API respondeu sem imagem.');
   return { imageDataUrl };
@@ -327,12 +368,13 @@ export const generateAudioWithCloudflare = async ({
   language = 'pt-BR',
   model,
   prompt,
-  fallbackErrorMessage = 'Não foi possível gerar áudio no momento.',
+  fallbackErrorMessage = 'Nao foi possivel gerar audio no momento.',
 } = {}) => {
   const textPrompt = sanitizeText(String(prompt || text || '').trim(), 4000);
   if (hasSecretLikeContent(textPrompt)) {
-    throw new Error('Conteúdo sensível detectado. Pedido bloqueado.');
+    throw new Error('Conteudo sensivel detectado. Pedido bloqueado.');
   }
+
   const parsed = await callBibliotecaAi(
     '/audio',
     { prompt: textPrompt, text, voice, language, lang: language, model },
@@ -341,38 +383,38 @@ export const generateAudioWithCloudflare = async ({
 
   if (parsed.kind === 'binary') {
     const audioDataUrl = String(parsed.payload?.dataUrl || '');
-    if (!audioDataUrl) throw new Error('A API respondeu sem áudio.');
+    if (!audioDataUrl) throw new Error('A API respondeu sem audio.');
     return { audioDataUrl };
   }
 
   if (parsed.kind === 'text') {
-    throw new Error('A API respondeu em formato inválido para áudio.');
+    throw new Error('A API respondeu em formato invalido para audio.');
   }
 
   const payload = ensureObject(parsed.payload);
   const data = ensureObject(payload.data);
   const mimeType = String(payload.mimeType || data.mimeType || 'audio/mpeg');
 
-  const directAudio =
-    String(
-      payload.audioDataUrl ||
-        payload.audio_url ||
-        payload.audioUrl ||
-        payload.url ||
-        data.audioDataUrl ||
-        data.audio_url ||
-        data.audioUrl ||
-        data.url ||
-        '',
-    ).trim();
+  const directAudio = String(
+    payload.audioDataUrl ||
+      payload.audio_url ||
+      payload.audioUrl ||
+      payload.url ||
+      data.audioDataUrl ||
+      data.audio_url ||
+      data.audioUrl ||
+      data.url ||
+      '',
+  ).trim();
 
   if (directAudio) return { audioDataUrl: directAudio };
 
-  const audioBase64 =
-    String(payload.audio_base64 || payload.audioBase64 || data.audio_base64 || data.audioBase64 || '').trim();
+  const audioBase64 = String(
+    payload.audio_base64 || payload.audioBase64 || data.audio_base64 || data.audioBase64 || '',
+  ).trim();
 
   const audioDataUrl = toDataUrlFromBase64(audioBase64, mimeType);
-  if (!audioDataUrl) throw new Error('A API respondeu sem áudio.');
+  if (!audioDataUrl) throw new Error('A API respondeu sem audio.');
 
   return { audioDataUrl };
 };
