@@ -12,6 +12,7 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useTenant } from '@/hooks/useTenant';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { School, Plus, Trash2, GraduationCap, BookOpen, Loader2, Pencil } from 'lucide-react';
 
 export default function ConfiguracaoEscola() {
@@ -198,17 +199,30 @@ export default function ConfiguracaoEscola() {
 
   const removerSala = async (id) => {
     try {
-      const { error } = await supabase
-        .from('salas_cursos')
-        .delete()
-        .eq('id', id);
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
 
-      if (error) throw error;
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        throw new Error('Sessao invalida. Faca login novamente.');
+      }
+
+      const data = await invokeEdgeFunction('excluir-sala-escola', {
+        body: { sala_id: id },
+        headers: { 'x-user-access-token': accessToken },
+        requireAuth: false,
+        signOutOnAuthFailure: false,
+        fallbackErrorMessage: 'Nao foi possivel excluir a sala.',
+      });
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Nao foi possivel excluir a sala.');
+      }
 
       setSalas((prev) => prev.filter((item) => item.id !== id));
       toast({
         title: 'Removido',
-        description: 'Item removido com sucesso.',
+        description: 'Sala removida com os usuarios e vinculos associados.',
       });
     } catch (error) {
       console.error('Error removing sala:', error);
