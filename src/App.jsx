@@ -26,7 +26,7 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 const TenantNotFound = lazy(() => import('./pages/TenantNotFound'));
 const GerenciarTokens = lazy(() => import('./pages/GerenciarTokens.jsx'));
 const Convite = lazy(() => import('./pages/Convite'));
-const ConfiguracaoEscola = lazy(() => import('./pages/ConfiguracaoEscola'));
+const ConfiguracaoEscola = lazy(() => import('./pages/ConfiguracaoEscola.jsx'));
 const AdminTenants = lazy(() => import('./pages/AdminTenants'));
 const AdminLogs = lazy(() => import('./pages/AdminLogs'));
 const AdminAcesso = lazy(() => import('./pages/AdminAcesso'));
