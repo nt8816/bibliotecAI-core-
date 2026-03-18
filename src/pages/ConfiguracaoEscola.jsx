@@ -15,6 +15,14 @@ import { useAuth } from '@/hooks/useAuth';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { School, Plus, Trash2, GraduationCap, BookOpen, Loader2, Pencil } from 'lucide-react';
 
+const normalizeTurmaKey = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
 export default function ConfiguracaoEscola() {
   const [escola, setEscola] = useState(null);
   const [salas, setSalas] = useState([]);
@@ -97,7 +105,44 @@ export default function ConfiguracaoEscola() {
         .order('nome');
 
       if (salasError) throw salasError;
-      setSalas(salasData || []);
+
+      const [{ data: usuariosSalaData, error: usuariosSalaError }, { data: professorTurmasData, error: professorTurmasError }] = await Promise.all([
+        supabase
+          .from('usuarios_biblioteca')
+          .select('turma, sala_curso_id')
+          .eq('escola_id', escolaData.id),
+        supabase
+          .from('professor_turmas')
+          .select('turma')
+          .eq('escola_id', escolaData.id),
+      ]);
+
+      if (usuariosSalaError) throw usuariosSalaError;
+      if (professorTurmasError) throw professorTurmasError;
+
+      const oficiais = salasData || [];
+      const oficiaisMap = new Map(
+        oficiais
+          .map((item) => [normalizeTurmaKey(item?.nome), item])
+          .filter(([key]) => key),
+      );
+
+      const orphanNames = new Map();
+      [...(usuariosSalaData || []), ...(professorTurmasData || [])].forEach((item) => {
+        const nome = String(item?.turma || '').trim();
+        const key = normalizeTurmaKey(nome);
+        if (!key || oficiaisMap.has(key)) return;
+        if (!orphanNames.has(key)) {
+          orphanNames.set(key, {
+            id: `orphan:${key}`,
+            nome,
+            tipo: 'sala',
+            orphan: true,
+          });
+        }
+      });
+
+      setSalas([...oficiais, ...Array.from(orphanNames.values())]);
     } catch (error) {
       console.error('Error fetching escola:', error);
       toast({
@@ -197,7 +242,7 @@ export default function ConfiguracaoEscola() {
     }
   };
 
-  const removerSala = async (id) => {
+  const removerSala = async (sala) => {
     try {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
@@ -208,7 +253,7 @@ export default function ConfiguracaoEscola() {
       }
 
       const data = await invokeEdgeFunction('excluir-sala-escola', {
-        body: { sala_id: id },
+        body: sala?.orphan ? { sala_nome: sala.nome } : { sala_id: sala.id },
         headers: { 'x-user-access-token': accessToken },
         requireAuth: false,
         signOutOnAuthFailure: false,
@@ -219,10 +264,12 @@ export default function ConfiguracaoEscola() {
         throw new Error(data?.error || 'Nao foi possivel excluir a sala.');
       }
 
-      setSalas((prev) => prev.filter((item) => item.id !== id));
+      setSalas((prev) => prev.filter((item) => item.id !== sala.id));
       toast({
         title: 'Removido',
-        description: 'Sala removida com os usuarios e vinculos associados.',
+        description: sala?.orphan
+          ? 'Sala orfa removida com os usuarios e vinculos associados.'
+          : 'Sala removida com os usuarios e vinculos associados.',
       });
     } catch (error) {
       console.error('Error removing sala:', error);
@@ -382,11 +429,11 @@ export default function ConfiguracaoEscola() {
                       )}
                       <span className="font-medium">{sala.nome}</span>
                       <Badge variant="outline" className="text-xs">
-                        {sala.tipo === 'sala' ? 'Sala' : 'Curso Tecnico'}
+                        {sala.orphan ? 'Sala orfa' : sala.tipo === 'sala' ? 'Sala' : 'Curso Tecnico'}
                       </Badge>
                     </div>
 
-                    <Button variant="ghost" size="sm" onClick={() => removerSala(sala.id)}>
+                    <Button variant="ghost" size="sm" onClick={() => removerSala(sala)}>
                       <Trash2 className="w-4 h-4 text-destructive" />
                     </Button>
                   </div>

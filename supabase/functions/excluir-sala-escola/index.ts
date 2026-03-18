@@ -94,18 +94,32 @@ Deno.serve(async (req) => {
     }
 
     const salaId = String(payload?.sala_id || payload?.id || '').trim();
-    if (!salaId) {
+    const salaNomeFallback = String(payload?.sala_nome || payload?.nome || '').trim();
+    if (!salaId && !salaNomeFallback) {
       return jsonResponse({ success: false, error: 'Sala nao informada para exclusao' }, 400);
     }
 
-    const { data: sala, error: salaError } = await adminClient
-      .from('salas_cursos')
-      .select('id, escola_id, nome, tipo')
-      .eq('id', salaId)
-      .maybeSingle();
+    let sala = null;
 
-    if (salaError || !sala) {
-      return jsonResponse({ success: false, error: 'Sala nao encontrada' }, 404);
+    if (salaId) {
+      const { data: salaData, error: salaError } = await adminClient
+        .from('salas_cursos')
+        .select('id, escola_id, nome, tipo')
+        .eq('id', salaId)
+        .maybeSingle();
+
+      if (salaError || !salaData) {
+        return jsonResponse({ success: false, error: 'Sala nao encontrada' }, 404);
+      }
+
+      sala = salaData;
+    } else {
+      sala = {
+        id: null,
+        escola_id: callerProfile?.escola_id || null,
+        nome: salaNomeFallback,
+        tipo: 'sala',
+      };
     }
 
     if (!isSuperAdmin && sala.escola_id !== callerProfile?.escola_id) {
@@ -168,13 +182,15 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Nao foi possivel excluir os vinculos de professores da sala' }, 500);
     }
 
-    const { error: deleteSalaError } = await adminClient
-      .from('salas_cursos')
-      .delete()
-      .eq('id', sala.id);
+    if (sala.id) {
+      const { error: deleteSalaError } = await adminClient
+        .from('salas_cursos')
+        .delete()
+        .eq('id', sala.id);
 
-    if (deleteSalaError) {
-      return jsonResponse({ success: false, error: 'Nao foi possivel excluir a sala' }, 500);
+      if (deleteSalaError) {
+        return jsonResponse({ success: false, error: 'Nao foi possivel excluir a sala' }, 500);
+      }
     }
 
     return jsonResponse({
