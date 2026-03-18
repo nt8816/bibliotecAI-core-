@@ -12,6 +12,23 @@ const jsonResponse = (body: Record<string, unknown>, status = 200) =>
   });
 
 const MATRICULA_REGEX = /^[A-Za-z0-9._-]{6,32}$/;
+const DUPLICATE_EMAIL_MARKERS = ['already been registered', 'already exists', 'already registered'];
+
+async function findAuthUserByEmail(adminClient: ReturnType<typeof createClient>, email: string) {
+  let page = 1;
+  const perPage = 1000;
+
+  while (true) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+
+    const users = data?.users || [];
+    const found = users.find((item) => String(item.email || '').toLowerCase() === String(email || '').toLowerCase());
+    if (found) return found;
+    if (users.length < perPage) return null;
+    page += 1;
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -53,9 +70,7 @@ Deno.serve(async (req) => {
     const { data: aluno, error: alunoError } = await adminClient
       .from('usuarios_biblioteca')
       .select('id, nome, matricula, email, user_id, tipo, escola_id')
-      .or(
-        `matricula.eq.${matriculaCompacta},matricula.eq.${matriculaNormalizada}`,
-      )
+      .or(`matricula.eq.${matriculaCompacta},matricula.eq.${matriculaNormalizada}`)
       .eq('tipo', 'aluno')
       .order('updated_at', { ascending: false })
       .limit(1)
@@ -88,6 +103,9 @@ Deno.serve(async (req) => {
 
     const authEmail = `${matriculaCompacta.toLowerCase()}@temp.bibliotecai.com`;
 
+    let userId = '';
+    let createdNewUser = false;
+
     const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
       email: authEmail,
       password: senhaInput,
@@ -95,21 +113,48 @@ Deno.serve(async (req) => {
       user_metadata: { nome: aluno.nome || 'Aluno' },
     });
 
-    if (authError || !authData?.user?.id) {
-      return jsonResponse({
-        success: false,
-        error: authError?.message || 'Não foi possível ativar a conta',
-      }, 400);
+    if (authError) {
+      const authErrorMessage = String(authError.message || '').toLowerCase();
+      if (!DUPLICATE_EMAIL_MARKERS.some((marker) => authErrorMessage.includes(marker))) {
+        return jsonResponse({
+          success: false,
+          error: authError.message || 'Não foi possível ativar a conta',
+        }, 400);
+      }
+
+      const existingAuthUser = await findAuthUserByEmail(adminClient, authEmail);
+      if (!existingAuthUser?.id) {
+        return jsonResponse({ success: false, error: 'A conta de autenticação já existe, mas não foi possível reutilizá-la.' }, 409);
+      }
+
+      const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(existingAuthUser.id, {
+        password: senhaInput,
+        email_confirm: true,
+        user_metadata: { ...(existingAuthUser.user_metadata || {}), nome: aluno.nome || 'Aluno' },
+      });
+
+      if (updateAuthError) {
+        return jsonResponse({ success: false, error: updateAuthError.message || 'Não foi possível atualizar a conta existente' }, 400);
+      }
+
+      userId = existingAuthUser.id;
+    } else if (authData?.user?.id) {
+      userId = authData.user.id;
+      createdNewUser = true;
     }
 
-    const userId = authData.user.id;
+    if (!userId) {
+      return jsonResponse({ success: false, error: 'Não foi possível preparar a conta do aluno' }, 400);
+    }
 
     const { error: roleError } = await adminClient
       .from('user_roles')
       .upsert({ user_id: userId, role: 'aluno' }, { onConflict: 'user_id,role' });
 
     if (roleError) {
-      await adminClient.auth.admin.deleteUser(userId).catch(() => {});
+      if (createdNewUser) {
+        await adminClient.auth.admin.deleteUser(userId).catch(() => {});
+      }
       return jsonResponse({ success: false, error: 'Não foi possível definir permissão do aluno' }, 500);
     }
 
@@ -122,7 +167,9 @@ Deno.serve(async (req) => {
       .eq('id', aluno.id);
 
     if (profileError) {
-      await adminClient.auth.admin.deleteUser(userId).catch(() => {});
+      if (createdNewUser) {
+        await adminClient.auth.admin.deleteUser(userId).catch(() => {});
+      }
       return jsonResponse({ success: false, error: 'Não foi possível vincular o perfil do aluno' }, 500);
     }
 

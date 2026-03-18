@@ -12,6 +12,23 @@ const jsonResponse = (body, status = 200) =>
   });
 
 const MATRICULA_REGEX = /^[A-Za-z0-9._-]{6,32}$/;
+const DUPLICATE_EMAIL_MARKERS = ['already been registered', 'already exists', 'already registered'];
+
+async function findAuthUserByEmail(adminClient, email) {
+  let page = 1;
+  const perPage = 1000;
+
+  while (true) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+
+    const users = data?.users || [];
+    const found = users.find((item) => String(item.email || '').toLowerCase() === String(email || '').toLowerCase());
+    if (found) return found;
+    if (users.length < perPage) return null;
+    page += 1;
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -106,6 +123,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Esta matrícula já está vinculada a uma conta ativa' }, 409);
     }
 
+    let userId = '';
+    let createdNewUser = false;
+
     const { data: authData, error: createAuthError } = await adminClient.auth.admin.createUser({
       email: authEmail,
       password: authPassword,
@@ -113,18 +133,45 @@ Deno.serve(async (req) => {
       user_metadata: { nome },
     });
 
-    if (createAuthError || !authData?.user?.id) {
-      return jsonResponse({ success: false, error: createAuthError?.message || 'Não foi possível criar credenciais do aluno' }, 400);
+    if (createAuthError) {
+      const createAuthMessage = String(createAuthError.message || '').toLowerCase();
+      if (!DUPLICATE_EMAIL_MARKERS.some((marker) => createAuthMessage.includes(marker))) {
+        return jsonResponse({ success: false, error: createAuthError.message || 'Não foi possível criar credenciais do aluno' }, 400);
+      }
+
+      const existingAuthUser = await findAuthUserByEmail(adminClient, authEmail);
+      if (!existingAuthUser?.id) {
+        return jsonResponse({ success: false, error: 'A conta de autenticação já existe, mas não foi possível reutilizá-la.' }, 409);
+      }
+
+      const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(existingAuthUser.id, {
+        password: authPassword,
+        email_confirm: true,
+        user_metadata: { ...(existingAuthUser.user_metadata || {}), nome },
+      });
+
+      if (updateAuthError) {
+        return jsonResponse({ success: false, error: updateAuthError.message || 'Não foi possível atualizar a conta existente do aluno' }, 400);
+      }
+
+      userId = existingAuthUser.id;
+    } else if (authData?.user?.id) {
+      userId = authData.user.id;
+      createdNewUser = true;
     }
 
-    const userId = authData.user.id;
+    if (!userId) {
+      return jsonResponse({ success: false, error: 'Não foi possível preparar a conta do aluno' }, 400);
+    }
 
     const { error: roleError } = await adminClient
       .from('user_roles')
       .upsert({ user_id: userId, role: 'aluno' }, { onConflict: 'user_id,role' });
 
     if (roleError) {
-      await adminClient.auth.admin.deleteUser(userId).catch(() => {});
+      if (createdNewUser) {
+        await adminClient.auth.admin.deleteUser(userId).catch(() => {});
+      }
       return jsonResponse({ success: false, error: 'Não foi possível definir o papel do aluno' }, 500);
     }
 
@@ -172,7 +219,9 @@ Deno.serve(async (req) => {
     }
 
     if (profileError) {
-      await adminClient.auth.admin.deleteUser(userId).catch(() => {});
+      if (createdNewUser) {
+        await adminClient.auth.admin.deleteUser(userId).catch(() => {});
+      }
       return jsonResponse({ success: false, error: 'Não foi possível salvar o perfil do aluno' }, 500);
     }
 
