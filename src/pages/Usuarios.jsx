@@ -177,7 +177,20 @@ export default function Usuarios() {
       if (error) throw error;
 
       const { data: rpcEscolaId } = await supabase.rpc('get_user_escola_id', { _user_id: user.id });
-      setCurrentEscolaId(data?.escola_id || tenant?.escola_id || rpcEscolaId || null);
+      let resolvedEscolaId = data?.escola_id || tenant?.escola_id || rpcEscolaId || null;
+
+      if (!resolvedEscolaId) {
+        const { data: escolaByGestor, error: escolaByGestorError } = await supabase
+          .from('escolas')
+          .select('id')
+          .eq('gestor_id', user.id)
+          .maybeSingle();
+
+        if (escolaByGestorError) throw escolaByGestorError;
+        resolvedEscolaId = escolaByGestor?.id || null;
+      }
+
+      setCurrentEscolaId(resolvedEscolaId);
     } catch (error) {
       console.error('Error fetching current escola:', error);
     }
