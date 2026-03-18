@@ -61,6 +61,13 @@ const normalizeHeader = (value) =>
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9/]+/g, '');
+const normalizeTurmaKey = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
 
 const isValidMatricula = (value) => MATRICULA_REGEX.test(normalizeMatricula(value));
 const isTempLoginEmail = (value) => /@temp\.bibliotecai\.com$/i.test(String(value || '').trim());
@@ -821,10 +828,27 @@ export default function Usuarios() {
     return <Badge variant="secondary">Pendente</Badge>;
   };
 
-  const turmaFilterOptions = [...new Set([
-    ...turmasDisponiveis,
-    ...usuarios.map((usuario) => String(usuario?.turma || '').trim()).filter(Boolean),
-  ])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const turmaFilterOptions = (() => {
+    const oficiais = turmasDisponiveis
+      .map((turma) => String(turma || '').trim())
+      .filter(Boolean);
+    const fallbackUsuarios = usuarios
+      .map((usuario) => String(usuario?.turma || '').trim())
+      .filter(Boolean);
+
+    const canonicalMap = new Map();
+
+    oficiais.forEach((turma) => {
+      canonicalMap.set(normalizeTurmaKey(turma), turma);
+    });
+
+    fallbackUsuarios.forEach((turma) => {
+      const key = normalizeTurmaKey(turma);
+      if (!canonicalMap.has(key)) canonicalMap.set(key, turma);
+    });
+
+    return Array.from(canonicalMap.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  })();
 
   const filteredUsuarios = usuarios.filter((usuario) => {
     const matchesSearch =
