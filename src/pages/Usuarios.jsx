@@ -32,6 +32,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Checkbox } from '@/components/ui/checkbox';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/hooks/useAuth';
+import { useTenant } from '@/hooks/useTenant';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { usePrivateTelemetry } from '@/hooks/usePrivateTelemetry';
@@ -124,6 +125,7 @@ export default function Usuarios() {
   };
 
   const { isGestor, isBibliotecaria, user } = useAuth();
+  const { tenant } = useTenant();
   const { toast } = useToast();
   const { trackEvent } = usePrivateTelemetry();
 
@@ -145,7 +147,12 @@ export default function Usuarios() {
 
   const fetchUsuarios = useCallback(async () => {
     try {
-      const { data, error } = await supabase.from('usuarios_biblioteca').select('*').order('nome');
+      let query = supabase.from('usuarios_biblioteca').select('*').order('nome');
+      if (currentEscolaId) {
+        query = query.eq('escola_id', currentEscolaId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       setUsuarios(data || []);
     } catch (error) {
@@ -154,7 +161,7 @@ export default function Usuarios() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [currentEscolaId, toast]);
 
   const fetchCurrentEscola = useCallback(async () => {
     if (!user?.id) return;
@@ -168,11 +175,13 @@ export default function Usuarios() {
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      setCurrentEscolaId(data?.escola_id || null);
+
+      const { data: rpcEscolaId } = await supabase.rpc('get_user_escola_id', { _user_id: user.id });
+      setCurrentEscolaId(data?.escola_id || tenant?.escola_id || rpcEscolaId || null);
     } catch (error) {
       console.error('Error fetching current escola:', error);
     }
-  }, [user?.id]);
+  }, [tenant?.escola_id, user?.id]);
 
   const fetchTurmas = useCallback(async () => {
     try {
@@ -196,10 +205,16 @@ export default function Usuarios() {
 
   const fetchProfessorTurmas = useCallback(async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('professor_turmas')
         .select('professor_id, turma')
         .order('turma');
+
+      if (currentEscolaId) {
+        query = query.eq('escola_id', currentEscolaId);
+      }
+
+      const { data, error } = await query;
       if (error) {
         if (isMissingTableError(error)) {
           setProfessorTurmasMap({});
@@ -220,7 +235,7 @@ export default function Usuarios() {
     } catch (error) {
       console.error('Error fetching professor_turmas:', error);
     }
-  }, []);
+  }, [currentEscolaId]);
 
   useEffect(() => {
     fetchUsuarios();
