@@ -176,19 +176,23 @@ export default function Usuarios() {
 
   const fetchTurmas = useCallback(async () => {
     try {
-      const { data, error } = await supabase.from('salas_cursos').select('nome, tipo').order('nome');
+      let query = supabase.from('salas_cursos').select('nome, tipo, escola_id').order('nome');
+      if (currentEscolaId) {
+        query = query.eq('escola_id', currentEscolaId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
 
       const turmas = [...new Set((data || [])
-        .filter((item) => item?.nome && item?.tipo === 'sala')
-        .map((item) => item.nome.trim())
+        .map((item) => String(item?.nome || '').trim())
         .filter(Boolean))];
 
       setTurmasDisponiveis(turmas);
     } catch (error) {
       console.error('Error fetching turmas:', error);
     }
-  }, []);
+  }, [currentEscolaId]);
 
   const fetchProfessorTurmas = useCallback(async () => {
     try {
@@ -220,10 +224,13 @@ export default function Usuarios() {
 
   useEffect(() => {
     fetchUsuarios();
-    fetchTurmas();
     fetchProfessorTurmas();
     fetchCurrentEscola();
-  }, [fetchCurrentEscola, fetchProfessorTurmas, fetchUsuarios, fetchTurmas]);
+  }, [fetchCurrentEscola, fetchProfessorTurmas, fetchUsuarios]);
+
+  useEffect(() => {
+    fetchTurmas();
+  }, [fetchTurmas]);
 
   const handleRealtimeChange = useCallback(() => {
     fetchUsuarios();
