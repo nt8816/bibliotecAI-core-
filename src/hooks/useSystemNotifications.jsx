@@ -10,26 +10,26 @@ export function useSystemNotifications() {
   const canView = isGestor || isBibliotecaria || isAluno;
 
   const fetchCounts = useCallback(async () => {
-    if (!canView) {
+    if (!canView || !user?.id) {
       setCounts({ atrasados: 0, solicitacoesPendentes: 0 });
       return;
     }
 
-    if (isAluno && user?.id) {
-      const { data: perfil } = await supabase
-        .from('usuarios_biblioteca')
-        .select('id')
-        .eq('user_id', user.id)
-        .order('updated_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    const { data: perfil, error: perfilError } = await supabase
+      .from('usuarios_biblioteca')
+      .select('id, escola_id')
+      .eq('user_id', user.id)
+      .order('updated_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-      if (!perfil?.id) {
-        setCounts({ atrasados: 0, solicitacoesPendentes: 0 });
-        return;
-      }
+    if (perfilError || !perfil?.id) {
+      setCounts({ atrasados: 0, solicitacoesPendentes: 0 });
+      return;
+    }
 
+    if (isAluno) {
       const [atrasadosRes, solicitacoesRes] = await Promise.all([
         supabase
           .from('emprestimos')
@@ -51,9 +51,23 @@ export function useSystemNotifications() {
       return;
     }
 
+    if (!perfil.escola_id) {
+      setCounts({ atrasados: 0, solicitacoesPendentes: 0 });
+      return;
+    }
+
     const [atrasadosRes, solicitacoesRes] = await Promise.all([
-      supabase.from('emprestimos').select('id', { count: 'exact', head: true }).eq('status', 'ativo').lt('data_devolucao_prevista', new Date().toISOString()),
-    supabase.from('solicitacoes_emprestimo').select('id', { count: 'exact', head: true }).in('status', ['pendente', 'em_andamento']),
+      supabase
+        .from('emprestimos')
+        .select('id, usuarios_biblioteca!inner(escola_id)', { count: 'exact', head: true })
+        .eq('status', 'ativo')
+        .lt('data_devolucao_prevista', new Date().toISOString())
+        .eq('usuarios_biblioteca.escola_id', perfil.escola_id),
+      supabase
+        .from('solicitacoes_emprestimo')
+        .select('id, usuarios_biblioteca!inner(escola_id)', { count: 'exact', head: true })
+        .in('status', ['pendente', 'em_andamento'])
+        .eq('usuarios_biblioteca.escola_id', perfil.escola_id),
     ]);
 
     setCounts({

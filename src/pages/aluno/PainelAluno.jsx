@@ -1538,15 +1538,6 @@ export default function PainelAluno() {
         });
       });
 
-    novidades.slice(0, 3).forEach((livro) => {
-      itens.push({
-        id: `novidade-${livro.id}`,
-        tipo: 'novidade',
-        titulo: 'Novidade no catálogo',
-        descricao: `${livro.titulo} - ${livro.autor}.`,
-      });
-    });
-
     if (solicitacoesPendentes > 0) {
       itens.push({
         id: 'solicitacoes-pendentes',
@@ -1555,10 +1546,9 @@ export default function PainelAluno() {
         descricao: `${solicitacoesPendentes} solicitação(ões) aguardando aprovação.`,
       });
     }
-
     const filtradas = itens.filter((item) => !notificacoesLidas.has(item.id));
     return filtradas.slice(0, 8);
-  }, [atrasos, atividadesComEntrega, novidades, solicitacoes, classifySolicitacao, notificacoesLidas]);
+  }, [atrasos, atividadesComEntrega, solicitacoes, classifySolicitacao, notificacoesLidas]);
 
   const markNotificationRead = useCallback(
     async (notificationId) => {
