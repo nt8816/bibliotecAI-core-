@@ -56,6 +56,8 @@ export default function Configuracoes() {
     () => (isTempLoginEmail(user?.email) ? (profile.nome || user?.user_metadata?.nome || 'Usuário') : (user?.email || '-')),
     [profile.nome, user?.email, user?.user_metadata?.nome],
   );
+  const alunoOnboardingKey = useMemo(() => (user?.id ? `onboarding:aluno:${user.id}` : ''), [user?.id]);
+  const alunoSenhaDefinidaKey = useMemo(() => (user?.id ? `aluno:senha-definida:${user.id}` : ''), [user?.id]);
   const canEditTurma = userRole === 'aluno' || userRole === 'professor';
   const showMatricula = userRole === 'aluno';
   const isAluno = userRole === 'aluno';
@@ -177,9 +179,22 @@ export default function Configuracoes() {
 
     setUpdatingPassword(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password: passwordForm.newPassword });
+      const { error } = await supabase.auth.updateUser({
+        password: passwordForm.newPassword,
+        data: {
+          ...(user?.user_metadata || {}),
+          senha_definida: true,
+          senha_alterada_em: new Date().toISOString(),
+        },
+      });
       if (error) throw error;
 
+      if (alunoOnboardingKey) {
+        localStorage.setItem(alunoOnboardingKey, 'done');
+      }
+      if (alunoSenhaDefinidaKey) {
+        localStorage.setItem(alunoSenhaDefinidaKey, 'true');
+      }
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
       toast({
         title: 'Senha atualizada',

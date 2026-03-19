@@ -870,6 +870,8 @@ export default function PainelAluno() {
     () => (user?.id ? `aluno:desafio-ia:${user.id}` : ''),
     [user?.id],
   );
+  const alunoOnboardingKey = useMemo(() => (user?.id ? `onboarding:aluno:${user.id}` : ''), [user?.id]);
+  const alunoSenhaDefinidaKey = useMemo(() => (user?.id ? `aluno:senha-definida:${user.id}` : ''), [user?.id]);
   const livrosCacheKey = useMemo(() => {
     const termKey = catalogoSearchTerm.trim().toLowerCase();
     const escolaCacheKey = escolaId || 'sem-escola';
@@ -1218,8 +1220,19 @@ export default function PainelAluno() {
   useEffect(() => {
     if (!user?.id) return;
 
-    const key = `onboarding:aluno:${user.id}`;
-    if (localStorage.getItem(key) === 'done') return;
+    const senhaDefinida =
+      user?.user_metadata?.senha_definida === true ||
+      localStorage.getItem(alunoSenhaDefinidaKey) === 'true';
+
+    if (senhaDefinida) {
+      if (alunoOnboardingKey) {
+        localStorage.setItem(alunoOnboardingKey, 'done');
+      }
+      setShowAccessChoice(false);
+      return;
+    }
+
+    if (localStorage.getItem(alunoOnboardingKey) === 'done') return;
 
     setShowAccessChoice(true);
     setTimeout(() => {
@@ -1240,11 +1253,11 @@ export default function PainelAluno() {
         description: 'No painel você acompanha sugestões, atividades e solicitações.',
       });
     }, 4200);
-  }, [toast, user?.id]);
+  }, [alunoOnboardingKey, alunoSenhaDefinidaKey, toast, user?.id, user?.user_metadata?.senha_definida]);
 
   const finalizeAlunoOnboarding = () => {
-    if (user?.id) {
-      localStorage.setItem(`onboarding:aluno:${user.id}`, 'done');
+    if (alunoOnboardingKey) {
+      localStorage.setItem(alunoOnboardingKey, 'done');
     }
     setShowAccessChoice(false);
   };
