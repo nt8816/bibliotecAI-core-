@@ -968,6 +968,11 @@ export default function Usuarios() {
 
     setResettingPassword(true);
     try {
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        throw new Error(refreshError.message || 'Nao foi possivel renovar a sessao.');
+      }
+
       const data = await invokeEdgeFunction('redefinir-senha-aluno', {
         body: {
           aluno_id: selectedAlunoForPassword.id,
@@ -1011,20 +1016,20 @@ export default function Usuarios() {
   };
 
   return (
-    <MainLayout title="UsuÃ¡rios">
+    <MainLayout title="Usuarios">
       <div className="space-y-4 sm:space-y-6">
         <Card>
           <CardHeader className="p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <Users className="w-5 h-5" />
-                Gerenciamento de UsuÃ¡rios
+                Gerenciamento de Usuarios
               </CardTitle>
 
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
                 <div className="relative w-full sm:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input placeholder="Buscar usuÃ¡rios..." className="pl-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                  <Input placeholder="Buscar usuarios..." className="pl-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                 </div>
 
                 <select
@@ -1290,7 +1295,7 @@ export default function Usuarios() {
                       <DialogHeader>
                         <DialogTitle>Redefinir senha do aluno</DialogTitle>
                         <DialogDescription>
-                          Defina uma nova senha para o aluno selecionado. A senha atual nÃ£o pode ser visualizada.
+                          Defina uma nova senha para o aluno selecionado. A senha atual nao pode ser visualizada.
                         </DialogDescription>
                       </DialogHeader>
 
@@ -1312,7 +1317,7 @@ export default function Usuarios() {
                               type={senhaVisivel ? 'text' : 'password'}
                               value={novaSenhaAluno}
                               onChange={(e) => setNovaSenhaAluno(e.target.value)}
-                              placeholder="MÃ­nimo 6 caracteres"
+                              placeholder="Minimo 6 caracteres"
                             />
                             <Button
                               type="button"
@@ -1336,7 +1341,7 @@ export default function Usuarios() {
                           }}
                         >
                           <RefreshCw className="w-4 h-4 mr-2" />
-                          Gerar senha automÃ¡tica
+                          Gerar senha automatica
                         </Button>
 
                         {senhaTemporariaGerada && (
@@ -1374,11 +1379,11 @@ export default function Usuarios() {
               <p className="text-center text-muted-foreground py-8">Carregando...</p>
             ) : sortedUsuarios.length === 0 ? (
               <div className="py-10 text-center space-y-3">
-                <p className="text-muted-foreground">{searchTerm || turmaFilter !== 'all' ? 'Nenhum usuÃ¡rio encontrado' : 'Nenhum usuÃ¡rio cadastrado'}</p>
+                <p className="text-muted-foreground">{searchTerm || turmaFilter !== 'all' ? 'Nenhum usuario encontrado' : 'Nenhum usuario cadastrado'}</p>
                 {canManageUsers && (
                   <Button onClick={() => handleOpenDialog()}>
                     <Plus className="w-4 h-4 mr-2" />
-                    Cadastrar primeiro usuÃ¡rio
+                    Cadastrar primeiro usuario
                   </Button>
                 )}
               </div>
@@ -1386,9 +1391,9 @@ export default function Usuarios() {
               <>
                 {isGestor && selectedIds.length > 0 && (
                   <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border bg-muted/40 p-3">
-                    <p className="text-sm font-medium">{selectedIds.length} usuÃ¡rio(s) selecionado(s)</p>
+                    <p className="text-sm font-medium">{selectedIds.length} usuario(s) selecionado(s)</p>
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setSelectedIds([])}>Limpar seleÃ§Ã£o</Button>
+                      <Button variant="outline" size="sm" onClick={() => setSelectedIds([])}>Limpar selecao</Button>
                       <Button variant="destructive" size="sm" disabled={batchDeleting} onClick={handleDeleteSelected}>
                         {batchDeleting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Excluindo...</> : <>Excluir selecionados</>}
                       </Button>
@@ -1418,7 +1423,7 @@ export default function Usuarios() {
                       </div>
 
                       <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                        <p className="text-muted-foreground">MatrÃ­cula</p>
+                        <p className="text-muted-foreground">Matricula</p>
                         <p className="text-right truncate">{usuario.matricula || '-'}</p>
                         <p className="text-muted-foreground">Turma</p>
                         <p className="text-right truncate">{usuario.turma || '-'}</p>
@@ -1467,7 +1472,7 @@ export default function Usuarios() {
                           <Checkbox
                             checked={allVisibleSelected}
                             onCheckedChange={(checked) => handleToggleSelectAll(Boolean(checked))}
-                            aria-label="Selecionar todos os usuÃ¡rios visÃ­veis"
+                            aria-label="Selecionar todos os usuarios visiveis"
                           />
                         </TableHead>
                       )}
@@ -1479,10 +1484,10 @@ export default function Usuarios() {
                       </TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Tipo</TableHead>
-                      <TableHead>MatrÃ­cula</TableHead>
+                      <TableHead>Matricula</TableHead>
                       <TableHead>Turma</TableHead>
                       <TableHead>Telefone</TableHead>
-                      {canManageUsers && <TableHead className="text-right">AÃ§Ãµes</TableHead>}
+                      {canManageUsers && <TableHead className="text-right">Acoes</TableHead>}
                     </TableRow>
                   </TableHeader>
 
