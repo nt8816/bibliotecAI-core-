@@ -19,6 +19,7 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 const POSTS_PAGE_SIZE = 20;
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const ALL_TURMAS_OPTION = '__all_turmas__';
 
 function formatDateBR(dateValue) {
   if (!dateValue) return '-';
@@ -648,10 +649,13 @@ export default function ComunidadeAluno() {
 
     setSaving(true);
     try {
+      const turmaPublico = isProfessor
+        ? (postTurmaPublico === ALL_TURMAS_OPTION ? null : postTurmaPublico.trim())
+        : null;
       const { data: novoPost, error } = await insertCommunityPostCompat({
         autor_id: alunoId,
         escola_id: escolaId,
-        turma_publico: isProfessor ? postTurmaPublico.trim() : null,
+        turma_publico: turmaPublico,
         livro_id: postLivroId || null,
         audiobook_id: postAudiobookId || null,
         tipo: postTipo,
@@ -1328,6 +1332,7 @@ export default function ComunidadeAluno() {
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   >
                     <option value="none">Selecione a turma</option>
+                    <option value={ALL_TURMAS_OPTION}>Todas as turmas</option>
                     {professorTurmas.map((turma) => (
                       <option key={turma} value={turma}>
                         {turma}
@@ -1556,5 +1561,7 @@ export default function ComunidadeAluno() {
     </MainLayout>
   );
 }
+
+
 
 
