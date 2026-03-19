@@ -12,6 +12,7 @@ import {
   GraduationCap,
   Lightbulb,
   MessageSquare,
+  FileStack,
   Building2,
   Bell,
   Settings,
@@ -98,6 +99,7 @@ export function AppSidebar() {
         { title: 'Sugestões e Atividades', url: '/professor/painel', icon: Lightbulb },
         { title: 'Relatórios de Leitura', url: '/professor/relatorios', icon: BarChart3 },
         { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
+        { title: 'Arquivos de Aula', url: '/arquivos-de-aula', icon: FileStack },
       ];
     }
 
@@ -107,6 +109,7 @@ export function AppSidebar() {
       { title: 'Laboratório', url: '/aluno/laboratorio', icon: FlaskConical },
       { title: 'Atividades', url: '/aluno/atividades', icon: ClipboardList },
       { title: 'Comunidade', url: '/aluno/comunidade', icon: MessageSquare },
+      { title: 'Arquivos de Aula', url: '/aluno/arquivos-de-aula', icon: FileStack },
     ];
   };
 
