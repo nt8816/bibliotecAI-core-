@@ -51,6 +51,7 @@ export const invokeEdgeFunction = async (
     retryOnUnauthorized = true,
     fallbackErrorMessage = DEFAULT_ERROR_MESSAGE,
     signOutOnAuthFailure = false,
+    transport = 'sdk',
   } = {},
 ) => {
   const getAccessToken = async ({ forceRefresh = false } = {}) => {
@@ -71,11 +72,55 @@ export const invokeEdgeFunction = async (
 
   const invokeOnce = async ({ forceRefresh = false } = {}) => {
     const finalHeaders = { ...(headers || {}) };
+    const shouldUseHttpTransport = transport === 'http';
 
     if (requireAuth) {
       const accessToken = await getAccessToken({ forceRefresh });
       finalHeaders.Authorization = `Bearer ${accessToken}`;
-      return supabase.functions.invoke(functionName, { body, headers: finalHeaders });
+
+      if (!shouldUseHttpTransport) {
+        return supabase.functions.invoke(functionName, { body, headers: finalHeaders });
+      }
+
+      if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+        return {
+          data: null,
+          error: new Error('Supabase env ausente. Configure VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY.'),
+        };
+      }
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/${functionName}`, {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          ...finalHeaders,
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        let message = fallbackErrorMessage;
+        try {
+          const payload = await parseResponsePayload(response.clone());
+          message =
+            (typeof payload === 'string' && payload.trim()) ||
+            payload?.error ||
+            payload?.message ||
+            `${fallbackErrorMessage} (HTTP ${response.status})`;
+        } catch {
+          message = `${fallbackErrorMessage} (HTTP ${response.status})`;
+        }
+
+        return {
+          data: null,
+          error: { message, context: response },
+        };
+      }
+
+      const payload = await parseResponsePayload(response);
+      return { data: payload, error: null };
     } else {
       delete finalHeaders.Authorization;
       delete finalHeaders.authorization;
