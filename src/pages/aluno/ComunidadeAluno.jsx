@@ -256,6 +256,63 @@ export default function ComunidadeAluno() {
   const [editConteudo, setEditConteudo] = useState('');
   const [likingPostIds, setLikingPostIds] = useState(new Set());
 
+  const loadTurmasPublicacao = useCallback(
+    async ({ perfilId, escolaIdAtual } = {}) => {
+      if (!canPublicarComunicado || !escolaIdAtual) {
+        setProfessorTurmas([]);
+        setTurmasPublicacao([]);
+        return;
+      }
+
+      if (isProfessor) {
+        const { data: turmasData, error: turmasError } = await supabase
+          .from('professor_turmas')
+          .select('turma')
+          .eq('professor_id', perfilId || alunoId);
+
+        if (turmasError && !isMissingTableError(turmasError)) throw turmasError;
+
+        const turmasProfessor = [
+          ...new Set(ensureArray(turmasData).map((item) => safeText(item?.turma, '').trim()).filter(Boolean)),
+        ].sort();
+
+        setProfessorTurmas(turmasProfessor);
+        setTurmasPublicacao(turmasProfessor);
+        return;
+      }
+
+      const [
+        { data: salasData, error: salasError },
+        { data: usuariosSalaData, error: usuariosSalaError },
+        { data: professorTurmasData, error: professorTurmasError },
+      ] = await Promise.all([
+        supabase.from('salas_cursos').select('nome').eq('escola_id', escolaIdAtual).order('nome'),
+        supabase.from('usuarios_biblioteca').select('turma').eq('escola_id', escolaIdAtual),
+        supabase.from('professor_turmas').select('turma').eq('escola_id', escolaIdAtual),
+      ]);
+
+      if (salasError && !isMissingTableError(salasError)) throw salasError;
+      if (usuariosSalaError && !isMissingTableError(usuariosSalaError)) throw usuariosSalaError;
+      if (professorTurmasError && !isMissingTableError(professorTurmasError)) throw professorTurmasError;
+
+      const oficiais = ensureArray(salasData).map((item) => safeText(item?.nome, '').trim()).filter(Boolean);
+      const oficiaisMap = new Map(oficiais.map((nome) => [normalizeTurmaKey(nome), nome]));
+      const extras = new Map();
+
+      [...ensureArray(usuariosSalaData), ...ensureArray(professorTurmasData)].forEach((item) => {
+        const nome = safeText(item?.turma, '').trim();
+        const key = normalizeTurmaKey(nome);
+        if (!key || oficiaisMap.has(key) || extras.has(key)) return;
+        extras.set(key, nome);
+      });
+
+      const turmas = [...oficiais, ...Array.from(extras.values())].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      setProfessorTurmas([]);
+      setTurmasPublicacao(turmas);
+    },
+    [alunoId, canPublicarComunicado, isProfessor],
+  );
+
   const quizRankingFromDate = useMemo(() => {
     if (quizRankingPeriodo === 'semana') {
       const from = new Date();
@@ -382,32 +439,7 @@ export default function ComunidadeAluno() {
       setAlunoId(perfil.id);
       setEscolaId(perfil.escola_id || null);
       setAlunoTurma(perfil.turma || null);
-      if (String(perfil.tipo || '') === 'professor') {
-        const { data: turmasData, error: turmasError } = await supabase
-          .from('professor_turmas')
-          .select('turma')
-          .eq('professor_id', perfil.id);
-        if (turmasError && !isMissingTableError(turmasError)) throw turmasError;
-        const turmasProfessor = [
-          ...new Set(ensureArray(turmasData).map((item) => safeText(item?.turma, '').trim()).filter(Boolean)),
-        ].sort();
-        setProfessorTurmas(turmasProfessor);
-        setTurmasPublicacao(turmasProfessor);
-      } else if (isGestor || isBibliotecaria || isSuperAdmin) {
-        setProfessorTurmas([]);
-        const { data: salasData, error: salasError } = await supabase
-          .from('salas_cursos')
-          .select('nome')
-          .eq('escola_id', perfil.escola_id)
-          .order('nome');
-        if (salasError && !isMissingTableError(salasError)) throw salasError;
-        setTurmasPublicacao([
-          ...new Set(ensureArray(salasData).map((item) => safeText(item?.nome, '').trim()).filter(Boolean)),
-        ].sort());
-      } else {
-        setProfessorTurmas([]);
-        setTurmasPublicacao([]);
-      }
+      await loadTurmasPublicacao({ perfilId: perfil.id, escolaIdAtual: perfil.escola_id || null });
 
       const { data: livrosData, error: livrosError } = await supabase.from('livros').select('id, titulo').order('titulo');
       if (livrosError) throw livrosError;
@@ -459,7 +491,7 @@ export default function ComunidadeAluno() {
     } finally {
       setLoading(false);
     }
-  }, [enabled, fetchPostsPage, isBibliotecaria, isGestor, isSuperAdmin, loadQuizRankingForPosts, toast, user]);
+  }, [enabled, fetchPostsPage, loadQuizRankingForPosts, loadTurmasPublicacao, toast, user]);
 
   const handleRealtimeStatus = useCallback(
     (status) => {
@@ -472,6 +504,11 @@ export default function ComunidadeAluno() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!canPublicarComunicado || !alunoId || !escolaId) return;
+    loadTurmasPublicacao({ perfilId: alunoId, escolaIdAtual: escolaId });
+  }, [alunoId, canPublicarComunicado, escolaId, loadTurmasPublicacao]);
 
   useEffect(() => {
     const quizPostIds = posts
@@ -560,6 +597,21 @@ export default function ComunidadeAluno() {
     onInsert: onQuizTentativaChange,
     onUpdate: onQuizTentativaChange,
     onDelete: onQuizTentativaChange,
+    onStatus: handleRealtimeStatus,
+  });
+  useRealtimeSubscription({
+    table: canPublicarComunicado ? 'salas_cursos' : null,
+    onChange: () => loadTurmasPublicacao({ perfilId: alunoId, escolaIdAtual: escolaId }),
+    onStatus: handleRealtimeStatus,
+  });
+  useRealtimeSubscription({
+    table: canPublicarComunicado ? 'professor_turmas' : null,
+    onChange: () => loadTurmasPublicacao({ perfilId: alunoId, escolaIdAtual: escolaId }),
+    onStatus: handleRealtimeStatus,
+  });
+  useRealtimeSubscription({
+    table: canPublicarComunicado ? 'usuarios_biblioteca' : null,
+    onChange: () => loadTurmasPublicacao({ perfilId: alunoId, escolaIdAtual: escolaId }),
     onStatus: handleRealtimeStatus,
   });
 
