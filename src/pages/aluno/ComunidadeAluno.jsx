@@ -19,6 +19,7 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 const POSTS_PAGE_SIZE = 20;
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const POSTS_CACHE_KEY = 'aluno:comunidade_posts:page0';
 const ALL_TURMAS_OPTION = '__all_turmas__';
 const COMUNICADO_AUTO_TAG = 'comunicado';
 
@@ -70,6 +71,10 @@ function writeCache(key, data) {
   } catch {
     // ignore cache failures
   }
+}
+
+function syncPostsCache(nextPosts) {
+  writeCache(POSTS_CACHE_KEY, ensureArray(nextPosts).slice(0, POSTS_PAGE_SIZE));
 }
 
 function safeText(value, fallback = '-') {
@@ -158,7 +163,16 @@ async function insertCommunityPostCompat(payload) {
     const insertResult = await supabase.from('comunidade_posts').insert(insertPayload).select('id').single();
     if (insertResult.error) return insertResult;
     const fetched = await fetchInsertedPost(insertResult.data?.id);
-    return fetched.error ? { data: insertResult.data, error: null } : fetched;
+    return fetched.error
+      ? {
+          data: {
+            ...insertPayload,
+            ...insertResult.data,
+            usuarios_biblioteca: { nome: user?.email || 'Usuario' },
+          },
+          error: null,
+        }
+      : fetched;
   };
 
   let { data, error } = await runInsert(payload);
@@ -331,9 +345,8 @@ export default function ComunidadeAluno() {
     async ({ reset = false, useCache = true } = {}) => {
       if (!enabled) return;
       const offset = reset ? 0 : postsOffset;
-      const cacheKey = `aluno:comunidade_posts:page0`;
       if (reset && useCache) {
-        const cached = readCache(cacheKey);
+        const cached = readCache(POSTS_CACHE_KEY);
         if (Array.isArray(cached)) {
           setPosts(cached);
           setPostsOffset(cached.length);
@@ -353,7 +366,7 @@ export default function ComunidadeAluno() {
         setPosts((prev) => (reset ? items : mergeById(prev, items)));
         setPostsOffset(offset + items.length);
         setPostsHasMore(items.length === POSTS_PAGE_SIZE);
-        if (reset) writeCache(cacheKey, items);
+        if (reset) syncPostsCache(items);
         return items;
       } finally {
         setPostsLoadingMore(false);
@@ -525,7 +538,9 @@ export default function ComunidadeAluno() {
       const list = ensureArray(prev);
       const exists = list.some((item) => item.id === nextPost.id);
       if (exists) return list;
-      return [nextPost, ...list];
+      const nextList = [nextPost, ...list];
+      syncPostsCache(nextList);
+      return nextList;
     });
     setAriaLiveMessage('Novo post adicionado na comunidade.');
   }, []);
@@ -534,16 +549,22 @@ export default function ComunidadeAluno() {
     const nextPost = payload?.new;
     if (!nextPost?.id) return;
 
-    setPosts((prev) =>
-      ensureArray(prev).map((item) => (item.id === nextPost.id ? { ...item, ...nextPost } : item)),
-    );
+    setPosts((prev) => {
+      const nextList = ensureArray(prev).map((item) => (item.id === nextPost.id ? { ...item, ...nextPost } : item));
+      syncPostsCache(nextList);
+      return nextList;
+    });
   }, []);
 
   const onPostDelete = useCallback((payload) => {
     const removedPost = payload?.old;
     if (!removedPost?.id) return;
 
-    setPosts((prev) => ensureArray(prev).filter((item) => item.id !== removedPost.id));
+    setPosts((prev) => {
+      const nextList = ensureArray(prev).filter((item) => item.id !== removedPost.id);
+      syncPostsCache(nextList);
+      return nextList;
+    });
     setLikes((prev) => ensureArray(prev).filter((item) => item.post_id !== removedPost.id));
   }, []);
 
@@ -749,7 +770,11 @@ export default function ComunidadeAluno() {
       if (error) throw error;
 
       if (novoPost?.id) {
-        setPosts((prev) => [novoPost, ...ensureArray(prev)]);
+        setPosts((prev) => {
+          const nextList = [novoPost, ...ensureArray(prev)];
+          syncPostsCache(nextList);
+          return nextList;
+        });
       }
 
       clearPostForm();
@@ -991,11 +1016,13 @@ export default function ComunidadeAluno() {
 
       if (error) throw error;
 
-      setPosts((prev) =>
-        ensureArray(prev).map((item) =>
+      setPosts((prev) => {
+        const nextList = ensureArray(prev).map((item) =>
           item.id === postEmEdicao.id ? { ...item, titulo: tituloLimpo || null, conteudo: conteudoLimpo } : item,
-        ),
-      );
+        );
+        syncPostsCache(nextList);
+        return nextList;
+      });
 
       setEditDialogOpen(false);
       setPostEmEdicao(null);
@@ -1034,7 +1061,11 @@ export default function ComunidadeAluno() {
         throw new Error('Voce so pode apagar publicacoes feitas por voce.');
       }
 
-      setPosts((prev) => ensureArray(prev).filter((item) => item.id !== post.id));
+      setPosts((prev) => {
+        const nextList = ensureArray(prev).filter((item) => item.id !== post.id);
+        syncPostsCache(nextList);
+        return nextList;
+      });
       setLikes((prev) => ensureArray(prev).filter((item) => item?.post_id !== post.id));
 
       toast({ title: 'Post apagado com sucesso.' });
