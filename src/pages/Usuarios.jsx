@@ -982,7 +982,7 @@ export default function Usuarios() {
           aluno_id: selectedAlunoForPassword.id,
           nova_senha: senha,
         },
-        requireAuth: true,
+        requireAuth: false,
         signOutOnAuthFailure: false,
         transport: 'http',
         headers: {
