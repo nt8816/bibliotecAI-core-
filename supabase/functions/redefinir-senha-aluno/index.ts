@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-auth',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Max-Age': '86400',
 };
@@ -29,13 +29,18 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Configuracao incompleta no servidor' }, 500);
     }
 
-    const authHeader = req.headers.get('Authorization') || '';
-    if (!authHeader.startsWith('Bearer ')) {
+    const authHeader =
+      req.headers.get('x-supabase-auth')
+      || req.headers.get('X-Supabase-Auth')
+      || req.headers.get('Authorization')
+      || '';
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader : `Bearer ${authHeader}`;
+    if (!bearerToken.startsWith('Bearer ') || !bearerToken.replace(/^Bearer\s+/i, '').trim()) {
       return jsonResponse({ success: false, error: 'Nao autenticado' }, 401);
     }
 
     const callerClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
+      global: { headers: { Authorization: bearerToken } },
       auth: { autoRefreshToken: false, persistSession: false },
     });
 

@@ -968,9 +968,13 @@ export default function Usuarios() {
 
     setResettingPassword(true);
     try {
-      const { error: refreshError } = await supabase.auth.refreshSession();
+      const { data: sessionData, error: refreshError } = await supabase.auth.refreshSession();
       if (refreshError) {
         throw new Error(refreshError.message || 'Nao foi possivel renovar a sessao.');
+      }
+      const accessToken = sessionData?.session?.access_token || '';
+      if (!accessToken) {
+        throw new Error('Sessao invalida. Faca login novamente.');
       }
 
       const data = await invokeEdgeFunction('redefinir-senha-aluno', {
@@ -981,6 +985,9 @@ export default function Usuarios() {
         requireAuth: true,
         signOutOnAuthFailure: false,
         transport: 'http',
+        headers: {
+          'x-supabase-auth': accessToken,
+        },
         fallbackErrorMessage: 'NÃ£o foi possÃ­vel redefinir a senha.',
       });
 
