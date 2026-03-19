@@ -97,6 +97,7 @@ export function AppSidebar() {
         { title: 'Meus Alunos', url: '/professor/alunos', icon: GraduationCap },
         { title: 'Sugestões e Atividades', url: '/professor/painel', icon: Lightbulb },
         { title: 'Relatórios de Leitura', url: '/professor/relatorios', icon: BarChart3 },
+        { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
       ];
     }
 
