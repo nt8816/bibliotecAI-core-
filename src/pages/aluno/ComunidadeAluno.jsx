@@ -148,8 +148,17 @@ async function insertCommunityPostCompat(payload) {
   const selectFields =
     '*, livros(titulo, autor), audiobooks_biblioteca(titulo, autor, audio_url), usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)';
 
-  const runInsert = async (insertPayload) =>
-    supabase.from('comunidade_posts').insert(insertPayload).select(selectFields).single();
+  const fetchInsertedPost = async (postId) => {
+    if (!postId) return { data: null, error: null };
+    return await supabase.from('comunidade_posts').select(selectFields).eq('id', postId).single();
+  };
+
+  const runInsert = async (insertPayload) => {
+    const insertResult = await supabase.from('comunidade_posts').insert(insertPayload).select('id').single();
+    if (insertResult.error) return insertResult;
+    const fetched = await fetchInsertedPost(insertResult.data?.id);
+    return fetched.error ? { data: insertResult.data, error: null } : fetched;
+  };
 
   let { data, error } = await runInsert(payload);
 
@@ -166,7 +175,6 @@ async function insertCommunityPostCompat(payload) {
 
   return { data, error };
 }
-
 async function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1578,6 +1586,7 @@ export default function ComunidadeAluno() {
     </MainLayout>
   );
 }
+
 
 
 
