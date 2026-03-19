@@ -30,6 +30,9 @@ export default function ConfiguracaoEscola() {
   const [saving, setSaving] = useState(false);
   const [nomeEscola, setNomeEscola] = useState('');
   const [editingNome, setEditingNome] = useState(false);
+  const [editingSala, setEditingSala] = useState(null);
+  const [novoNomeSala, setNovoNomeSala] = useState('');
+  const [savingSala, setSavingSala] = useState(false);
   const [novaSala, setNovaSala] = useState('');
   const [tipoNovaSala, setTipoNovaSala] = useState('sala');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -281,6 +284,79 @@ export default function ConfiguracaoEscola() {
     }
   };
 
+  const abrirEditarSala = (sala) => {
+    setEditingSala(sala);
+    setNovoNomeSala(String(sala?.nome || ''));
+  };
+
+  const salvarEdicaoSala = async () => {
+    const sala = editingSala;
+    const nomeAnterior = String(sala?.nome || '').trim();
+    const nomeNovo = String(novoNomeSala || '').trim();
+
+    if (!escola?.id || !nomeAnterior || !nomeNovo) return;
+    if (normalizeTurmaKey(nomeAnterior) === normalizeTurmaKey(nomeNovo)) {
+      setEditingSala(null);
+      setNovoNomeSala('');
+      return;
+    }
+
+    setSavingSala(true);
+    try {
+      if (!sala?.orphan && sala?.id) {
+        const { error: updateSalaError } = await supabase
+          .from('salas_cursos')
+          .update({ nome: nomeNovo })
+          .eq('id', sala.id);
+
+        if (updateSalaError) throw updateSalaError;
+      }
+
+      const { error: updateUsuariosBySalaError } = await supabase
+        .from('usuarios_biblioteca')
+        .update({ turma: nomeNovo })
+        .eq('escola_id', escola.id)
+        .eq('turma', nomeAnterior);
+
+      if (updateUsuariosBySalaError) throw updateUsuariosBySalaError;
+
+      if (sala?.id && !sala?.orphan) {
+        const { error: updateUsuariosBySalaIdError } = await supabase
+          .from('usuarios_biblioteca')
+          .update({ turma: nomeNovo })
+          .eq('escola_id', escola.id)
+          .eq('sala_curso_id', sala.id);
+
+        if (updateUsuariosBySalaIdError) throw updateUsuariosBySalaIdError;
+      }
+
+      const { error: updateProfessorTurmasError } = await supabase
+        .from('professor_turmas')
+        .update({ turma: nomeNovo })
+        .eq('escola_id', escola.id)
+        .eq('turma', nomeAnterior);
+
+      if (updateProfessorTurmasError) throw updateProfessorTurmasError;
+
+      setEditingSala(null);
+      setNovoNomeSala('');
+      await fetchEscola();
+      toast({
+        title: 'Turma atualizada',
+        description: 'O novo nome foi aplicado na sala e nos usuarios vinculados.',
+      });
+    } catch (error) {
+      console.error('Error renaming sala:', error);
+      toast({
+        title: 'Erro',
+        description: 'Nao foi possivel editar a turma.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingSala(false);
+    }
+  };
+
   if (loading) {
     return (
       <MainLayout title="Configuracao da Escola">
@@ -404,6 +480,60 @@ export default function ConfiguracaoEscola() {
                 </div>
               </DialogContent>
             </Dialog>
+
+            <Dialog
+              open={Boolean(editingSala)}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setEditingSala(null);
+                  setNovoNomeSala('');
+                }
+              }}
+            >
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Editar turma</DialogTitle>
+                </DialogHeader>
+
+                <div className="space-y-4 pt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="editar-sala-nome">Nome da turma</Label>
+                    <Input
+                      id="editar-sala-nome"
+                      value={novoNomeSala}
+                      onChange={(e) => setNovoNomeSala(e.target.value)}
+                      placeholder="Ex: 3 Ano A"
+                    />
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">
+                    A alteracao atualiza a turma na lista e no cadastro dos usuarios vinculados.
+                  </p>
+
+                  <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setEditingSala(null);
+                        setNovoNomeSala('');
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button onClick={salvarEdicaoSala} disabled={savingSala || !novoNomeSala.trim()}>
+                      {savingSala ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Salvando...
+                        </>
+                      ) : (
+                        'Salvar nome'
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </CardHeader>
 
           <CardContent>
@@ -433,9 +563,14 @@ export default function ConfiguracaoEscola() {
                       </Badge>
                     </div>
 
-                    <Button variant="ghost" size="sm" onClick={() => removerSala(sala)}>
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => abrirEditarSala(sala)}>
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => removerSala(sala)}>
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
