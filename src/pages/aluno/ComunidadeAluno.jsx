@@ -33,6 +33,15 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function normalizeTurmaKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function mergeById(list, incoming, idKey = 'id') {
   const map = new Map(ensureArray(list).map((item) => [item?.[idKey], item]));
   ensureArray(incoming).forEach((item) => {
@@ -144,7 +153,7 @@ async function insertCommunityPostCompat(payload) {
   let { data, error } = await runInsert(payload);
 
   if (error) {
-    const missingColumns = ['escola_id', 'imagem_urls', 'audiobook_id'];
+    const missingColumns = ['escola_id', 'imagem_urls', 'audiobook_id', 'turma_publico'];
     for (const column of missingColumns) {
       if (Object.hasOwn(payload, column) && isMissingColumnError(error, column, 'comunidade_posts')) {
         const { [column]: _ignored, ...fallbackPayload } = payload;
@@ -180,12 +189,13 @@ function dataUrlToFile(dataUrl, filename = 'compartilhamento.jpg') {
 }
 
 export default function ComunidadeAluno() {
-  const { user, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
+  const { user, isProfessor, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
   const { toast } = useToast();
 
   const [alunoId, setAlunoId] = useState(null);
   const [escolaId, setEscolaId] = useState(null);
   const [alunoTurma, setAlunoTurma] = useState(null);
+  const [professorTurmas, setProfessorTurmas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [ariaLiveMessage, setAriaLiveMessage] = useState('');
@@ -214,6 +224,7 @@ export default function ComunidadeAluno() {
   const [postTitulo, setPostTitulo] = useState('');
   const [postConteudo, setPostConteudo] = useState('');
   const [postComIA, setPostComIA] = useState(false);
+  const [postTurmaPublico, setPostTurmaPublico] = useState('');
   const [imageDataUrls, setImageDataUrls] = useState([]);
   const [selectedImageUrl, setSelectedImageUrl] = useState('');
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
@@ -347,7 +358,7 @@ export default function ComunidadeAluno() {
     try {
       const { data: perfil, error: perfilError } = await supabase
         .from('usuarios_biblioteca')
-        .select('id, escola_id, turma')
+        .select('id, escola_id, turma, tipo')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
@@ -358,6 +369,18 @@ export default function ComunidadeAluno() {
       setAlunoId(perfil.id);
       setEscolaId(perfil.escola_id || null);
       setAlunoTurma(perfil.turma || null);
+      if (String(perfil.tipo || '') === 'professor') {
+        const { data: turmasData, error: turmasError } = await supabase
+          .from('professor_turmas')
+          .select('turma')
+          .eq('professor_id', perfil.id);
+        if (turmasError && !isMissingTableError(turmasError)) throw turmasError;
+        setProfessorTurmas(
+          [...new Set(ensureArray(turmasData).map((item) => safeText(item?.turma, '').trim()).filter(Boolean))].sort(),
+        );
+      } else {
+        setProfessorTurmas([]);
+      }
 
       const { data: livrosData, error: livrosError } = await supabase.from('livros').select('id, titulo').order('titulo');
       if (livrosError) throw livrosError;
@@ -529,6 +552,21 @@ export default function ComunidadeAluno() {
 
   const postsFiltrados = useMemo(() => {
     let list = ensureArray(posts);
+    if (!isGestor && !isBibliotecaria && !isSuperAdmin) {
+      if (isProfessor) {
+        const turmaSet = new Set(ensureArray(professorTurmas).map(normalizeTurmaKey).filter(Boolean));
+        list = list.filter((post) => {
+          const turmaPost = normalizeTurmaKey(post?.turma_publico);
+          return !turmaPost || turmaSet.size === 0 || turmaSet.has(turmaPost);
+        });
+      } else {
+        const turmaAluno = normalizeTurmaKey(alunoTurma);
+        list = list.filter((post) => {
+          const turmaPost = normalizeTurmaKey(post?.turma_publico);
+          return !turmaPost || turmaPost === turmaAluno;
+        });
+      }
+    }
     if (apenasMinhaEscola && escolaId) {
       list = list.filter((post) => post?.escola_id === escolaId);
     }
@@ -556,7 +594,7 @@ export default function ComunidadeAluno() {
     }
 
     return list;
-  }, [apenasComImagens, apenasMinhaEscola, escolaId, filtroTipo, postSearchTerm, posts]);
+  }, [alunoTurma, apenasComImagens, apenasMinhaEscola, escolaId, filtroTipo, isBibliotecaria, isGestor, isProfessor, isSuperAdmin, postSearchTerm, posts, professorTurmas]);
 
 
   const handleSelectImages = async (files) => {
@@ -578,6 +616,7 @@ export default function ComunidadeAluno() {
     setPostTitulo('');
     setPostConteudo('');
     setPostComIA(false);
+    setPostTurmaPublico('');
     setImageDataUrls([]);
   };
 
@@ -598,12 +637,21 @@ export default function ComunidadeAluno() {
       });
       return;
     }
+    if (isProfessor && !postTurmaPublico.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Selecione a turma',
+        description: 'Escolha para qual turma essa publicacao sera exibida.',
+      });
+      return;
+    }
 
     setSaving(true);
     try {
       const { data: novoPost, error } = await insertCommunityPostCompat({
         autor_id: alunoId,
         escola_id: escolaId,
+        turma_publico: isProfessor ? postTurmaPublico.trim() : null,
         livro_id: postLivroId || null,
         audiobook_id: postAudiobookId || null,
         tipo: postTipo,
@@ -1037,6 +1085,7 @@ export default function ComunidadeAluno() {
                             <p className="font-semibold text-sm sm:text-base break-words">{safeText(post?.titulo, 'Post da comunidade')}</p>
                             {ensureArray(post?.tags).includes('ia') && <Badge variant="secondary">IA</Badge>}
                             {quizData && <Badge variant="secondary">Quiz</Badge>}
+                            {post?.turma_publico && <Badge variant="outline">Turma {post.turma_publico}</Badge>}
                           </div>
                           <p className="text-xs text-muted-foreground break-words">
                             {safeNestedName(post?.usuarios_biblioteca, 'Usuário')} • {quizData ? 'quiz' : safeText(post?.tipo, 'resenha')} • {formatDateBR(post?.created_at)}
@@ -1270,6 +1319,23 @@ export default function ComunidadeAluno() {
                   ))}
                 </select>
               </div>
+              {isProfessor && (
+                <div className="space-y-2 sm:col-span-3">
+                  <Label>Turma da publicaÃ§Ã£o</Label>
+                  <select
+                    value={postTurmaPublico || 'none'}
+                    onChange={(e) => setPostTurmaPublico(e.target.value === 'none' ? '' : e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="none">Selecione a turma</option>
+                    {professorTurmas.map((turma) => (
+                      <option key={turma} value={turma}>
+                        {turma}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
