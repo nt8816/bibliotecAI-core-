@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, FileStack, ImagePlus, Send, X } from 'lucide-react';
+import { Download, FileStack, ImagePlus, Send, Trash2, X } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -298,6 +298,42 @@ export default function ArquivosAula() {
     }
   };
 
+  const handleDeletePost = async (post) => {
+    if (!isProfessor || !perfilId || !post?.id || post?.autor_id !== perfilId) return;
+    const confirmed = window.confirm('Deseja excluir esta publicacao e seus arquivos?');
+    if (!confirmed) return;
+
+    setSaving(true);
+    try {
+      const filePaths = ensureArray(post?.arquivos).map((item) => safeText(item?.path, '')).filter(Boolean);
+      if (filePaths.length > 0) {
+        const { error: storageError } = await supabase.storage.from(STORAGE_BUCKET).remove(filePaths);
+        if (storageError) {
+          console.warn('Falha ao remover arquivos do storage.', storageError);
+        }
+      }
+
+      const { error } = await supabase
+        .from('arquivos_aula_posts')
+        .delete()
+        .eq('id', post.id)
+        .eq('autor_id', perfilId);
+
+      if (error) throw error;
+
+      setPosts((prev) => ensureArray(prev).filter((item) => item.id !== post.id));
+      toast({ title: 'Publicacao excluida!' });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao excluir',
+        description: error?.message || 'Nao foi possivel excluir a publicacao.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <MainLayout title="Arquivos de Aula">
       <div className="space-y-4 sm:space-y-6">
@@ -414,10 +450,18 @@ export default function ArquivosAula() {
               <div className="space-y-4">
                 {visiblePosts.map((post) => (
                   <div key={post.id} className="rounded-xl border p-4 space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline">{post?.turma_publico ? `Turma ${post.turma_publico}` : 'Todas as turmas'}</Badge>
-                      <Badge variant="secondary">{safeText(post?.usuarios_biblioteca?.nome, 'Professor')}</Badge>
-                      <span className="text-xs text-muted-foreground">{formatDateBR(post?.created_at)}</span>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">{post?.turma_publico ? `Turma ${post.turma_publico}` : 'Todas as turmas'}</Badge>
+                        <Badge variant="secondary">{safeText(post?.usuarios_biblioteca?.nome, 'Professor')}</Badge>
+                        <span className="text-xs text-muted-foreground">{formatDateBR(post?.created_at)}</span>
+                      </div>
+                      {isProfessor && post?.autor_id === perfilId && (
+                        <Button type="button" size="sm" variant="ghost" onClick={() => handleDeletePost(post)} disabled={saving}>
+                          <Trash2 className="w-4 h-4 mr-2 text-destructive" />
+                          Excluir
+                        </Button>
+                      )}
                     </div>
                     <p className="text-sm whitespace-pre-wrap">{safeText(post?.mensagem, '')}</p>
                     <div className="space-y-2">
