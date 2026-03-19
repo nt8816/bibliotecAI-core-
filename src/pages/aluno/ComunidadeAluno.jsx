@@ -76,7 +76,7 @@ function safeText(value, fallback = '-') {
   return fallback;
 }
 
-function safeNestedName(value, fallback = 'Usuário') {
+function safeNestedName(value, fallback = 'Usuario') {
   if (!value) return fallback;
   if (Array.isArray(value)) {
     const first = value[0];
@@ -177,7 +177,7 @@ async function fileToDataUrl(file) {
 
 function dataUrlToFile(dataUrl, filename = 'compartilhamento.jpg') {
   const parts = String(dataUrl || '').split(',');
-  if (parts.length < 2) throw new Error('Imagem inválida.');
+  if (parts.length < 2) throw new Error('Imagem invalida.');
   const mimeMatch = parts[0].match(/:(.*?);/);
   const mime = mimeMatch?.[1] || 'image/jpeg';
   const binary = atob(parts[1]);
@@ -365,7 +365,7 @@ export default function ComunidadeAluno() {
         .limit(1)
         .maybeSingle();
 
-      if (perfilError || !perfil) throw perfilError || new Error('Perfil do aluno não encontrado.');
+      if (perfilError || !perfil) throw perfilError || new Error('Perfil do aluno nao encontrado.');
       setAlunoId(perfil.id);
       setEscolaId(perfil.escola_id || null);
       setAlunoTurma(perfil.turma || null);
@@ -427,7 +427,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro na comunidade',
-        description: error?.message || 'Não foi possível carregar a comunidade.',
+        description: error?.message || 'Nao foi possivel carregar a comunidade.',
       });
     } finally {
       setLoading(false);
@@ -605,7 +605,7 @@ export default function ComunidadeAluno() {
       const converted = await Promise.all(selected.map(fileToDataUrl));
       setImageDataUrls((prev) => [...prev, ...converted].slice(0, 4));
     } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível processar as imagens.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel processar as imagens.' });
     }
   };
 
@@ -624,15 +624,15 @@ export default function ComunidadeAluno() {
     if (!enabled || !alunoId || !escolaId) {
       toast({
         variant: 'destructive',
-        title: 'Comunidade indisponível',
-        description: 'Não foi possível publicar agora. Verifique se as tabelas/migrations estão atualizadas.',
+        title: 'Comunidade indisponivel',
+        description: 'Nao foi possivel publicar agora. Verifique se as tabelas/migrations estao atualizadas.',
       });
       return;
     }
     if (!postConteudo.trim() && imageDataUrls.length === 0 && !postAudiobookId) {
       toast({
         variant: 'destructive',
-        title: 'Preencha o conteúdo',
+        title: 'Preencha o conteudo',
         description: 'Adicione texto, imagem ou audiobook para publicar.',
       });
       return;
@@ -656,7 +656,7 @@ export default function ComunidadeAluno() {
         audiobook_id: postAudiobookId || null,
         tipo: postTipo,
         titulo: postTitulo.trim() || null,
-        conteudo: postConteudo.trim() || 'Compartilhamento de mídia criado na comunidade.',
+        conteudo: postConteudo.trim() || 'Compartilhamento de midia criado na comunidade.',
         imagem_urls: imageDataUrls,
         tags: postComIA ? ['ia'] : [],
       });
@@ -669,13 +669,13 @@ export default function ComunidadeAluno() {
 
       clearPostForm();
       setPostDialogOpen(false);
-      toast({ title: 'Publicação criada!' });
+      toast({ title: 'Publicacao criada!' });
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Erro',
         description: isMissingTableError(error)
-          ? 'Comunidade indisponível: aplique a migration do banco.'
+          ? 'Comunidade indisponivel: aplique a migration do banco.'
           : error?.message || 'Falha ao publicar.',
       });
     } finally {
@@ -704,7 +704,7 @@ export default function ComunidadeAluno() {
       const dataUrl = await fileToDataUrl(file);
       setShareImageDataUrl(dataUrl);
     } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível processar a imagem.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel processar a imagem.' });
     }
   };
 
@@ -732,14 +732,14 @@ export default function ComunidadeAluno() {
         await navigator.share(payload);
       } else if (navigator.clipboard) {
         await navigator.clipboard.writeText(textoCompartilhamento);
-        toast({ title: 'Conteúdo copiado', description: 'Texto copiado para compartilhar.' });
+        toast({ title: 'Conteudo copiado', description: 'Texto copiado para compartilhar.' });
       } else {
-        throw new Error('Compartilhamento indisponível neste dispositivo.');
+        throw new Error('Compartilhamento indisponivel neste dispositivo.');
       }
       setShareDialogOpen(false);
     } catch (error) {
       if (error?.name !== 'AbortError') {
-        toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível compartilhar este conteúdo.' });
+        toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel compartilhar este conteudo.' });
       }
     } finally {
       setSharing(false);
@@ -794,7 +794,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro ao registrar quiz',
-        description: error?.message || 'Não foi possível registrar sua tentativa.',
+        description: error?.message || 'Nao foi possivel registrar sua tentativa.',
       });
     }
   };
@@ -817,8 +817,8 @@ export default function ComunidadeAluno() {
     if (!enabled || !alunoId) {
       toast({
         variant: 'destructive',
-        title: 'Comunidade indisponível',
-        description: 'Não foi possível curtir agora.',
+        title: 'Comunidade indisponivel',
+        description: 'Nao foi possivel curtir agora.',
       });
       return;
     }
@@ -855,7 +855,7 @@ export default function ComunidadeAluno() {
         variant: 'destructive',
         title: 'Erro',
         description: isMissingTableError(error)
-          ? 'Comunidade indisponível: aplique a migration do banco.'
+          ? 'Comunidade indisponivel: aplique a migration do banco.'
           : error?.message || 'Falha ao curtir/descurtir.',
       });
     } finally {
@@ -888,7 +888,7 @@ export default function ComunidadeAluno() {
     if (!conteudoLimpo) {
       toast({
         variant: 'destructive',
-        title: 'Conteúdo obrigatório',
+        title: 'Conteudo obrigatorio',
         description: 'Escreva algo antes de salvar.',
       });
       return;
@@ -921,7 +921,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro ao editar',
-        description: error?.message || 'Não foi possível editar o post.',
+        description: error?.message || 'Nao foi possivel editar o post.',
       });
     } finally {
       setSaving(false);
@@ -957,7 +957,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro ao apagar',
-        description: error?.message || 'Não foi possível apagar o post.',
+        description: error?.message || 'Nao foi possivel apagar o post.',
       });
     } finally {
       setSaving(false);
@@ -976,8 +976,8 @@ export default function ComunidadeAluno() {
           </div>
           <h2 className="text-xl sm:text-2xl font-bold">Comunidade de Leitura</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Compartilhe resenhas, dicas, sugestões e recomendações de audiobooks.
-            {isGestao ? ' Você também pode moderar publicações da comunidade.' : ''}
+            Compartilhe resenhas, dicas, sugestoes e recomendacoes de audiobooks.
+            {isGestao ? ' Voce tambem pode moderar publicacoes da comunidade.' : ''}
           </p>
         </div>
 
@@ -985,7 +985,7 @@ export default function ComunidadeAluno() {
           <Card>
             <CardContent className="p-4">
               <p className="text-sm text-muted-foreground">
-                Comunidade indisponível neste ambiente. Para habilitar, ative `VITE_ENABLE_OPTIONAL_STUDENT_FEATURES=true`,
+                Comunidade indisponivel neste ambiente. Para habilitar, ative `VITE_ENABLE_OPTIONAL_STUDENT_FEATURES=true`,
                 aplique a migration e recarregue.
               </p>
             </CardContent>
@@ -995,7 +995,7 @@ export default function ComunidadeAluno() {
         {isGestao && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Painel de moderação</CardTitle>
+              <CardTitle className="text-base">Painel de moderacao</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1019,7 +1019,7 @@ export default function ComunidadeAluno() {
                 </label>
               </div>
               <p className="text-xs text-muted-foreground">
-                Use os filtros e a busca para revisar e moderar publicações.
+                Use os filtros e a busca para revisar e moderar publicacoes.
               </p>
             </CardContent>
           </Card>
@@ -1027,7 +1027,7 @@ export default function ComunidadeAluno() {
 
         <div className="relative">
           <Input
-            placeholder="Buscar por título, autor do livro ou aluno..."
+            placeholder="Buscar por titulo, autor do livro ou aluno..."
             value={postSearchTerm}
             onChange={(e) => setPostSearchTerm(e.target.value)}
           />
@@ -1047,7 +1047,7 @@ export default function ComunidadeAluno() {
             Dicas
           </Button>
           <Button size="sm" variant={filtroTipo === 'sugestao' ? 'default' : 'outline'} onClick={() => setFiltroTipo('sugestao')}>
-            Sugestões
+            Sugestoes
           </Button>
           <Button size="sm" variant={filtroTipo === 'quiz' ? 'default' : 'outline'} onClick={() => setFiltroTipo('quiz')}>
             Quizzes
@@ -1072,7 +1072,7 @@ export default function ComunidadeAluno() {
                   const quizData = extractQuizFromConteudo(post?.conteudo);
                   const respostasQuiz = quizRespostasPorPost[post.id] || {};
                   const resultadoQuiz = quizResultadoPorPost[post.id];
-                  const conteudoVisivel = quizData?.descricao || safeText(post?.conteudo, 'Conteúdo indisponível');
+                  const conteudoVisivel = quizData?.descricao || safeText(post?.conteudo, 'Conteudo indisponivel');
                   const mostrarPreviewCompleto = conteudoVisivel.length > 200;
                   const ranking = ensureArray(quizRankingByPost[post.id]);
                   const historico = quizHistoricoByPost[post.id];
@@ -1088,7 +1088,7 @@ export default function ComunidadeAluno() {
                             {post?.turma_publico && <Badge variant="outline">Turma {post.turma_publico}</Badge>}
                           </div>
                           <p className="text-xs text-muted-foreground break-words">
-                            {safeNestedName(post?.usuarios_biblioteca, 'Usuário')} • {quizData ? 'quiz' : safeText(post?.tipo, 'resenha')} • {formatDateBR(post?.created_at)}
+                            {safeNestedName(post?.usuarios_biblioteca, 'Usuario')} � {quizData ? 'quiz' : safeText(post?.tipo, 'resenha')} � {formatDateBR(post?.created_at)}
                           </p>
                         </div>
                         <Badge variant="secondary" className="max-w-[38vw] sm:max-w-[220px] truncate shrink-0">
@@ -1118,12 +1118,12 @@ export default function ComunidadeAluno() {
                               value={quizRankingPeriodo}
                               onChange={(e) => setQuizRankingPeriodo(e.target.value)}
                               className="h-8 rounded-md border border-input bg-background px-2 text-xs"
-                              aria-label="Período do ranking"
-                              title="Período do ranking"
+                              aria-label="Periodo do ranking"
+                              title="Periodo do ranking"
                             >
                               <option value="geral">Geral</option>
                               <option value="semana">Semana</option>
-                              <option value="mes">Mês</option>
+                              <option value="mes">Mes</option>
                             </select>
                             <select
                               value={quizRankingEscopo}
@@ -1198,7 +1198,7 @@ export default function ComunidadeAluno() {
                                   <div className="space-y-0.5">
                                     {ranking.map((item, index) => (
                                       <p key={item.id}>
-                                        {index + 1}. {safeNestedName(item?.usuarios_biblioteca, 'Aluno')} — {item.acertos}/{item.total}
+                                        {index + 1}. {safeNestedName(item?.usuarios_biblioteca, 'Aluno')} - {item.acertos}/{item.total}
                                       </p>
                                     ))}
                                   </div>
@@ -1285,9 +1285,9 @@ export default function ComunidadeAluno() {
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4" /> Nova publicação
+              <MessageSquare className="w-4 h-4" /> Nova publicacao
             </DialogTitle>
-            <DialogDescription>Compartilhe uma resenha, dica ou sugestão com a comunidade.</DialogDescription>
+            <DialogDescription>Compartilhe uma resenha, dica ou sugestao com a comunidade.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -1301,7 +1301,7 @@ export default function ComunidadeAluno() {
                 >
                   <option value="resenha">Resenha</option>
                   <option value="dica">Dica</option>
-                  <option value="sugestao">Sugestão</option>
+                  <option value="sugestao">Sugestao</option>
                 </select>
               </div>
               <div className="space-y-2 sm:col-span-2">
@@ -1311,7 +1311,7 @@ export default function ComunidadeAluno() {
                   onChange={(e) => setPostLivroId(e.target.value === 'none' ? '' : e.target.value)}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
-                  <option value="none">Sem livro específico</option>
+                  <option value="none">Sem livro especifico</option>
                   {livros.map((livro) => (
                     <option key={livro.id} value={livro.id}>
                       {livro.titulo}
@@ -1321,7 +1321,7 @@ export default function ComunidadeAluno() {
               </div>
               {isProfessor && (
                 <div className="space-y-2 sm:col-span-3">
-                  <Label>Turma da publicaÃ§Ã£o</Label>
+                  <Label>Turma da publicacao</Label>
                   <select
                     value={postTurmaPublico || 'none'}
                     onChange={(e) => setPostTurmaPublico(e.target.value === 'none' ? '' : e.target.value)}
@@ -1345,7 +1345,7 @@ export default function ComunidadeAluno() {
                 onChange={(e) => setPostAudiobookId(e.target.value === 'none' ? '' : e.target.value)}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               >
-                <option value="none">Não indicar audiobook</option>
+                <option value="none">Nao indicar audiobook</option>
                 {audiobooks.map((audio) => (
                   <option key={audio.id} value={audio.id}>
                     {audio.titulo} {audio.autor ? `- ${audio.autor}` : ''}
@@ -1355,17 +1355,17 @@ export default function ComunidadeAluno() {
             </div>
 
             <div className="space-y-2">
-              <Label>Título</Label>
-              <Input value={postTitulo} onChange={(e) => setPostTitulo(e.target.value)} placeholder="Título da publicação" />
+              <Label>Titulo</Label>
+              <Input value={postTitulo} onChange={(e) => setPostTitulo(e.target.value)} placeholder="Titulo da publicacao" />
             </div>
 
             <div className="space-y-2">
-              <Label>Conteúdo</Label>
+              <Label>Conteudo</Label>
               <Textarea
                 rows={4}
                 value={postConteudo}
                 onChange={(e) => setPostConteudo(e.target.value)}
-                placeholder="Escreva sua experiência de leitura..."
+                placeholder="Escreva sua experiencia de leitura..."
               />
             </div>
 
@@ -1376,12 +1376,12 @@ export default function ComunidadeAluno() {
                 onChange={(e) => setPostComIA(e.target.checked)}
                 className="h-4 w-4 rounded border border-input"
               />
-              Conteúdo criado com IA
+              Conteudo criado com IA
             </label>
 
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
-                <ImagePlus className="w-4 h-4" /> Imagens (até 4)
+                <ImagePlus className="w-4 h-4" /> Imagens (ate 4)
               </Label>
               <Input type="file" accept="image/*" multiple onChange={(e) => handleSelectImages(e.target.files)} />
               {imageDataUrls.length > 0 && (
@@ -1428,23 +1428,23 @@ export default function ComunidadeAluno() {
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Pencil className="w-4 h-4" /> Editar publicação
+              <Pencil className="w-4 h-4" /> Editar publicacao
             </DialogTitle>
-            <DialogDescription>Atualize o conteúdo do seu post.</DialogDescription>
+            <DialogDescription>Atualize o conteudo do seu post.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Título</Label>
-              <Input value={editTitulo} onChange={(e) => setEditTitulo(e.target.value)} placeholder="Título (opcional)" />
+              <Label>Titulo</Label>
+              <Input value={editTitulo} onChange={(e) => setEditTitulo(e.target.value)} placeholder="Titulo (opcional)" />
             </div>
             <div className="space-y-2">
-              <Label>Conteúdo</Label>
+              <Label>Conteudo</Label>
               <Textarea
                 rows={5}
                 value={editConteudo}
                 onChange={(e) => setEditConteudo(e.target.value)}
-                placeholder="Atualize sua publicação..."
+                placeholder="Atualize sua publicacao..."
               />
             </div>
             <div className="flex justify-end gap-2">
@@ -1453,7 +1453,7 @@ export default function ComunidadeAluno() {
               </Button>
               <Button onClick={salvarEdicaoPost} disabled={saving}>
                 <Send className="w-4 h-4 mr-2" />
-                {saving ? 'Salvando...' : 'Salvar alterações'}
+                {saving ? 'Salvando...' : 'Salvar alteracoes'}
               </Button>
             </div>
           </div>
@@ -1476,16 +1476,16 @@ export default function ComunidadeAluno() {
             <DialogTitle className="flex items-center gap-2">
               <Send className="w-4 h-4" /> Compartilhar post
             </DialogTitle>
-            <DialogDescription>Adicione um título e uma foto antes de compartilhar.</DialogDescription>
+            <DialogDescription>Adicione um titulo e uma foto antes de compartilhar.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Título</Label>
+              <Label>Titulo</Label>
               <Input
                 value={shareTitulo}
                 onChange={(e) => setShareTitulo(e.target.value)}
-                placeholder="Digite o título do compartilhamento"
+                placeholder="Digite o titulo do compartilhamento"
               />
             </div>
 
@@ -1496,7 +1496,7 @@ export default function ComunidadeAluno() {
                 <div className="relative w-fit">
                   <img
                     src={shareImageDataUrl}
-                    alt="Prévia da foto do compartilhamento"
+                    alt="Previa da foto do compartilhamento"
                     className="w-40 h-28 object-cover rounded-md border"
                   />
                   <button
@@ -1531,13 +1531,13 @@ export default function ComunidadeAluno() {
       >
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{safeText(postPreviewItem?.titulo, 'Publicação')}</DialogTitle>
+            <DialogTitle>{safeText(postPreviewItem?.titulo, 'Publicacao')}</DialogTitle>
             <DialogDescription>
-              {safeNestedName(postPreviewItem?.usuarios_biblioteca, 'Usuário')} • {formatDateBR(postPreviewItem?.created_at)}
+              {safeNestedName(postPreviewItem?.usuarios_biblioteca, 'Usuario')} � {formatDateBR(postPreviewItem?.created_at)}
             </DialogDescription>
           </DialogHeader>
           <div className="whitespace-pre-wrap text-sm text-muted-foreground">
-            {safeText(extractQuizFromConteudo(postPreviewItem?.conteudo)?.descricao || postPreviewItem?.conteudo, 'Conteúdo indisponível')}
+            {safeText(extractQuizFromConteudo(postPreviewItem?.conteudo)?.descricao || postPreviewItem?.conteudo, 'Conteudo indisponivel')}
           </div>
         </DialogContent>
       </Dialog>
@@ -1545,7 +1545,7 @@ export default function ComunidadeAluno() {
       <Dialog open={Boolean(selectedImageUrl)} onOpenChange={(open) => !open && setSelectedImageUrl('')}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Visualização da imagem</DialogTitle>
+            <DialogTitle>Visualizacao da imagem</DialogTitle>
             <DialogDescription>Imagem ampliada do post selecionado.</DialogDescription>
           </DialogHeader>
           {selectedImageUrl && (
@@ -1556,3 +1556,5 @@ export default function ComunidadeAluno() {
     </MainLayout>
   );
 }
+
+
