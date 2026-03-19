@@ -1684,14 +1684,14 @@ export default function PainelAluno() {
       {
         id: 'maratona',
         nome: 'Maratona da Semana',
-        descricao: 'Leu 3+ livros nos Ãºltimos 7 dias.',
+        descricao: 'Leu 3+ livros nos ultimos 7 dias.',
         desbloqueado: leiturasRecentes >= 3,
         icon: Flame,
       },
       {
         id: 'autor-da-comunidade',
         nome: 'Autor da Comunidade',
-        descricao: 'Publicou sua primeira avaliaÃ§Ã£o.',
+        descricao: 'Publicou sua primeira avaliacao.',
         desbloqueado: avaliacoes.length >= 1,
         icon: Sparkles,
       },
@@ -3222,7 +3222,7 @@ export default function PainelAluno() {
                       <BookOpen className="w-5 h-5 text-primary" />
                     </button>
                     <div>
-                      <p className="text-xs text-muted-foreground">Livros jÃ¡ lidos</p>
+                      <p className="text-xs text-muted-foreground">Livros ja lidos</p>
                       <p className="text-xl font-bold">{livrosLidos}</p>
                     </div>
                   </div>
@@ -3279,7 +3279,7 @@ export default function PainelAluno() {
                       <BellRing className="w-5 h-5 text-destructive" />
                     </button>
                     <div>
-                      <p className="text-xs text-muted-foreground">NotificaÃ§Ãµes</p>
+                      <p className="text-xs text-muted-foreground">Notificacoes</p>
                       <p className="text-xl font-bold">{notificacoes.length}</p>
                     </div>
                   </div>
