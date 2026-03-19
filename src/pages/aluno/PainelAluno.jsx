@@ -3422,11 +3422,11 @@ export default function PainelAluno() {
                           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                             <div>
                               <p className="font-semibold">{atividade.titulo}</p>
-                              <p className="text-xs text-muted-foreground">{atividade.livros?.titulo || 'Livro nÃ£o informado'}</p>
+                              <p className="text-xs text-muted-foreground">{atividade.livros?.titulo || 'Livro nao informado'}</p>
                               {atividade.atividadeMeta?.descricaoLimpa && <p className="text-sm mt-1">{atividade.atividadeMeta.descricaoLimpa}</p>}
                             </div>
                             <div className="text-right">
-                              <Badge variant="outline">Pontos possÃ­veis: {Number(atividade.pontos_extras || 0)}</Badge>
+                              <Badge variant="outline">Pontos possiveis: {Number(atividade.pontos_extras || 0)}</Badge>
                               <p className="text-xs text-muted-foreground mt-1">
                                 Entrega: {formatDateBR(atividade.data_entrega)}
                               </p>
@@ -3437,7 +3437,7 @@ export default function PainelAluno() {
                             <Label>Minha entrega</Label>
                             <Textarea
                               rows={3}
-                              placeholder="Escreva sua resposta, resumo ou reflexÃ£o..."
+                              placeholder="Escreva sua resposta, resumo ou reflexao..."
                               value={atividadeTexto[atividade.id] ?? parseEntregaPayload(atividade.entrega?.texto_entrega).texto ?? ''}
                               onChange={(e) =>
                                 setAtividadeTexto((prev) => ({
@@ -3451,7 +3451,7 @@ export default function PainelAluno() {
                           {Array.isArray(atividade.atividadeMeta?.formulario?.perguntas)
                             && atividade.atividadeMeta.formulario.perguntas.length > 0 && (
                             <div className="space-y-3 rounded-md border p-3">
-                              <p className="text-sm font-medium">FormulÃ¡rio da atividade</p>
+                              <p className="text-sm font-medium">Formulario da atividade</p>
                               {atividade.atividadeMeta.formulario.perguntas.map((pergunta, idx) => {
                                 const perguntaId = String(pergunta?.id || `q_${idx + 1}`);
                                 const respostaAtual = String(atividadeRespostas[atividade.id]?.[perguntaId] || '');
@@ -3581,11 +3581,11 @@ export default function PainelAluno() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">SugestÃµes dos professores</CardTitle>
+                  <CardTitle className="text-base">Sugestoes dos professores</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {sugestoes.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8">Nenhuma sugestÃ£o recebida.</p>
+                    <p className="text-center text-muted-foreground py-8">Nenhuma sugestao recebida.</p>
                   ) : (
                     <div className="space-y-3">
                       {sugestoes.map((s) => (
@@ -4388,11 +4388,11 @@ export default function PainelAluno() {
           <TabsContent value="sugestoes">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">SugestÃµes dos professores</CardTitle>
+                <CardTitle className="text-base">Sugestoes dos professores</CardTitle>
               </CardHeader>
               <CardContent>
                 {sugestoes.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">Nenhuma sugestÃ£o recebida.</p>
+                  <p className="text-center text-muted-foreground py-8">Nenhuma sugestao recebida.</p>
                 ) : (
                   <div className="space-y-3">
                     {sugestoes.map((s) => (
