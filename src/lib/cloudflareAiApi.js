@@ -133,10 +133,14 @@ const buildTextPromptFromTask = (task, input) => {
     return [
       'Crie um desafio curto de gamificacao educacional para aluno.',
       'Responda SOMENTE com JSON valido no formato:',
-      '{"titulo":"...","desafio":"...","recompensa":"...","xp_recompensa":50,"criterio":{"tipo":"livros_lidos|avaliacoes|atividades_aprovadas","alvo_total":2,"valor_inicial":1,"rotulo":"..."}}',
+      '{"titulo":"...","desafio":"...","recompensa":"...","xp_recompensa":50,"criterio":{"tipo":"livros_lidos|avaliacoes|atividades_aprovadas","alvo_total":2,"valor_inicial":1,"rotulo":"..."},"livro_diferenciado":{"titulo":"...","autor":"...","motivo":"..."}}',
       'O criterio precisa ser verificavel automaticamente pela plataforma.',
+      'Use o nivel do aluno para definir o desafio.',
+      'Se o aluno for iniciante, priorize leitura de 1 livro diferenciado escolhido pela IA.',
+      'Quando houver lista em livros_sugeridos, prefira escolher um livro dessa lista.',
       `Aluno: ${sanitizeText(safeInput.nome || 'Aluno', 80)}`,
       `Nivel atual: ${Number(safeInput.nivel) || 1}`,
+      `Perfil de nivel: ${sanitizeText(safeInput.perfil_descricao || safeInput.perfil_nivel || '', 80) || 'iniciante'}`,
       `XP atual: ${Number(safeInput.xp) || 0}`,
       `Livros lidos: ${Number(safeInput.livrosLidos) || 0}`,
       `Avaliacoes publicadas: ${Number(safeInput.avaliacoes || 0)}`,
@@ -144,6 +148,8 @@ const buildTextPromptFromTask = (task, input) => {
       `Criterio sugerido: ${sanitizeText(safeInput.criterio_tipo || '', 80) || 'livros_lidos'}`,
       `Meta sugerida total: ${Number(safeInput.criterio_alvo_total) || 1}`,
       `Valor inicial do criterio: ${Number(safeInput.criterio_valor_inicial) || 0}`,
+      `Rotulo sugerido: ${sanitizeText(safeInput.criterio_rotulo || '', 120) || 'concluir 1 nova leitura'}`,
+      `Livros sugeridos do catalogo: ${sanitizeText(JSON.stringify(safeInput.livros_sugeridos || []), 2000) || '[]'}`,
     ].join('\n');
   }
 

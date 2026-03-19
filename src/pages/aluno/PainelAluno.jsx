@@ -179,7 +179,66 @@ function buildDesafioMetricas({ livrosLidos, avaliacoesCount, atividadesAprovada
   };
 }
 
-function escolherCriterioDesafio(metricas) {
+function getDesafioPerfilPorNivel(nivel) {
+  const safeNivel = Math.max(1, Number(nivel) || 1);
+
+  if (safeNivel <= 2) {
+    return {
+      chave: 'iniciante',
+      descricao: 'iniciante',
+      candidatos: [
+        {
+          tipo: 'livros_lidos',
+          incremento: 1,
+          rotulo: 'ler 1 livro diferenciado indicado pela IA',
+        },
+      ],
+    };
+  }
+
+  if (safeNivel <= 4) {
+    return {
+      chave: 'intermediario',
+      descricao: 'intermediario',
+      candidatos: [
+        {
+          tipo: 'livros_lidos',
+          incremento: 1,
+          rotulo: 'concluir 1 nova leitura',
+        },
+        {
+          tipo: 'avaliacoes',
+          incremento: 1,
+          rotulo: 'publicar 1 nova avaliacao',
+        },
+      ],
+    };
+  }
+
+  return {
+    chave: 'avancado',
+    descricao: 'avancado',
+    candidatos: [
+      {
+        tipo: 'avaliacoes',
+        incremento: 1,
+        rotulo: 'publicar 1 nova avaliacao',
+      },
+      {
+        tipo: 'atividades_aprovadas',
+        incremento: 1,
+        rotulo: 'ter 1 atividade aprovada',
+      },
+      {
+        tipo: 'livros_lidos',
+        incremento: 1,
+        rotulo: 'concluir 1 nova leitura mais desafiadora',
+      },
+    ],
+  };
+}
+
+function escolherCriterioDesafioLegacy(metricas) {
   const candidatos = [
     {
       tipo: 'livros_lidos',
@@ -211,8 +270,58 @@ function escolherCriterioDesafio(metricas) {
   };
 }
 
-function normalizarCriterioDesafio(rawCriterio, metricasAtuais) {
-  const fallback = escolherCriterioDesafio(metricasAtuais);
+function normalizarCriterioDesafioLegacy(rawCriterio, metricasAtuais) {
+  const fallback = escolherCriterioDesafioLegacy(metricasAtuais);
+  const criterio = rawCriterio && typeof rawCriterio === 'object' ? rawCriterio : {};
+  const tipo = ['livros_lidos', 'avaliacoes', 'atividades_aprovadas'].includes(String(criterio.tipo))
+    ? String(criterio.tipo)
+    : fallback.tipo;
+  const valorInicial = Math.max(
+    0,
+    Number(criterio.valor_inicial ?? criterio.valorInicial ?? metricasAtuais?.[tipo] ?? fallback.valor_inicial),
+  );
+  const alvoTotal = Math.max(
+    valorInicial + 1,
+    Number(criterio.alvo_total ?? criterio.alvoTotal ?? valorInicial + Number(criterio.incremento ?? fallback.incremento ?? 1)),
+  );
+
+  return {
+    tipo,
+    valor_inicial: valorInicial,
+    alvo_total: alvoTotal,
+    incremento: Math.max(1, alvoTotal - valorInicial),
+    rotulo: String(criterio.rotulo || fallback.rotulo || '').trim() || fallback.rotulo,
+  };
+}
+
+function escolherCriterioDesafio(metricas, nivel = 1) {
+  const perfil = getDesafioPerfilPorNivel(nivel);
+  const candidatos = Array.isArray(perfil?.candidatos) && perfil.candidatos.length > 0
+    ? perfil.candidatos
+    : [
+        {
+          tipo: 'livros_lidos',
+          incremento: 1,
+          rotulo: 'concluir 1 nova leitura',
+        },
+      ];
+
+  const indice = new Date().getDate() % candidatos.length;
+  const criterioBase = candidatos[indice];
+  const valorAtual = Math.max(0, Number(metricas?.[criterioBase.tipo] || 0));
+
+  return {
+    perfil_nivel: perfil?.chave || 'iniciante',
+    tipo: criterioBase.tipo,
+    valor_inicial: valorAtual,
+    alvo_total: valorAtual + criterioBase.incremento,
+    incremento: criterioBase.incremento,
+    rotulo: criterioBase.rotulo,
+  };
+}
+
+function normalizarCriterioDesafioPorNivel(rawCriterio, metricasAtuais, nivel = 1) {
+  const fallback = escolherCriterioDesafio(metricasAtuais, nivel);
   const criterio = rawCriterio && typeof rawCriterio === 'object' ? rawCriterio : {};
   const tipo = ['livros_lidos', 'avaliacoes', 'atividades_aprovadas'].includes(String(criterio.tipo))
     ? String(criterio.tipo)
@@ -1048,7 +1157,7 @@ export default function PainelAluno() {
         if (desafioPersistido) {
           const desafioNormalizado = {
             ...desafioPersistido,
-            criterio: normalizarCriterioDesafio(desafioPersistido.criterio, metricasCarregadas),
+            criterio: normalizarCriterioDesafioPorNivel(desafioPersistido.criterio, metricasCarregadas, nivelAtual),
           };
           setDesafioIA(desafioNormalizado);
           if (desafioCacheKey) writeCache(desafioCacheKey, desafioNormalizado);
@@ -1089,7 +1198,7 @@ export default function PainelAluno() {
       }
     });
     return request;
-  }, [desafioCacheKey, fetchLivrosPage, optionalFeaturesEnabled, toast, user]);
+  }, [desafioCacheKey, fetchLivrosPage, nivelAtual, optionalFeaturesEnabled, toast, user]);
 
   useEffect(() => {
     fetchData();
@@ -1615,6 +1724,20 @@ export default function PainelAluno() {
     });
     return map;
   }, [livros]);
+
+  const livrosSugeriveisDesafio = useMemo(
+    () =>
+      ensureArray(livros)
+        .filter((livro) => livro?.titulo)
+        .slice(0, 12)
+        .map((livro) => ({
+          titulo: livro.titulo,
+          autor: livro.autor || '',
+          area: livro.area || '',
+          sinopse: livro.sinopse || '',
+        })),
+    [livros],
+  );
 
   const meusLivros = useMemo(() => emprestimos.filter((e) => e.status === 'ativo'), [emprestimos]);
 
@@ -2775,11 +2898,15 @@ export default function PainelAluno() {
 
     setGerandoDesafioIA(true);
     try {
+      const criterio = escolherCriterioDesafio(desafioMetricas, nivelAtual);
+      const perfilDesafio = getDesafioPerfilPorNivel(nivelAtual);
       const data = await generateTextWithIA(
         'gamificacao_desafio',
         {
           nome: user?.user_metadata?.nome || user?.email || 'Aluno',
           nivel: nivelAtual,
+          perfil_nivel: perfilDesafio.chave,
+          perfil_descricao: perfilDesafio.descricao,
           xp: pontosExperiencia,
           livrosLidos,
           avaliacoes: avaliacoes.length,
@@ -2787,16 +2914,18 @@ export default function PainelAluno() {
           criterio_tipo: criterio.tipo,
           criterio_alvo_total: criterio.alvo_total,
           criterio_valor_inicial: criterio.valor_inicial,
+          criterio_rotulo: criterio.rotulo,
+          livros_sugeridos: livrosSugeriveisDesafio,
         },
         'Não foi possível gerar desafio de gamificação no momento.',
       );
       const desafio = normalizeDesafioIA({
         ...(data?.data || {}),
         gerado_em: new Date().toISOString(),
-        criterio: normalizarCriterioDesafio(data?.data?.criterio, {
+        criterio: normalizarCriterioDesafioPorNivel(data?.data?.criterio, {
           ...desafioMetricas,
           [criterio.tipo]: criterio.valor_inicial,
-        }),
+        }, nivelAtual),
       });
       if (!desafio?.titulo || !desafio?.desafio) throw new Error('A IA respondeu sem desafio válido.');
       await persistirDesafioIA({ desafio, xpBonus: desafioXpBonus });
@@ -3015,6 +3144,21 @@ export default function PainelAluno() {
                   <div className="rounded-lg border p-3 space-y-1">
                     <p className="text-sm font-semibold">{desafioIA.titulo}</p>
                     <p className="text-sm text-muted-foreground">{desafioIA.desafio}</p>
+                    {(desafioIA.livro_diferenciado?.titulo || desafioIA.livro_recomendado?.titulo) && (
+                      <p className="text-xs text-muted-foreground">
+                        Livro sugerido pela IA:{' '}
+                        <span className="font-medium text-foreground">
+                          {desafioIA.livro_diferenciado?.titulo || desafioIA.livro_recomendado?.titulo}
+                        </span>
+                        {(desafioIA.livro_diferenciado?.autor || desafioIA.livro_recomendado?.autor) &&
+                          `, por ${desafioIA.livro_diferenciado?.autor || desafioIA.livro_recomendado?.autor}`}
+                      </p>
+                    )}
+                    {(desafioIA.livro_diferenciado?.motivo || desafioIA.livro_recomendado?.motivo) && (
+                      <p className="text-xs text-muted-foreground">
+                        Motivo da escolha: {desafioIA.livro_diferenciado?.motivo || desafioIA.livro_recomendado?.motivo}
+                      </p>
+                    )}
                     {desafioIA.recompensa && (
                       <Badge variant="outline" className="mt-1">
                         Recompensa: {desafioIA.recompensa}
