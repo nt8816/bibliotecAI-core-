@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { AudioLines, Filter, Heart, ImagePlus, MessageSquare, Pencil, Plus, Send, Sparkles, Trash2, X } from 'lucide-react';
@@ -233,6 +233,7 @@ export default function ComunidadeAluno() {
   const [shareTitulo, setShareTitulo] = useState('');
   const [shareImageDataUrl, setShareImageDataUrl] = useState('');
   const [sharing, setSharing] = useState(false);
+  const postImagesInputRef = useRef(null);
   const [quizRespostasPorPost, setQuizRespostasPorPost] = useState({});
   const [quizResultadoPorPost, setQuizResultadoPorPost] = useState({});
   const [quizRankingByPost, setQuizRankingByPost] = useState({});
@@ -1388,7 +1389,23 @@ export default function ComunidadeAluno() {
               <Label className="flex items-center gap-2">
                 <ImagePlus className="w-4 h-4" /> Imagens (ate 4)
               </Label>
-              <Input type="file" accept="image/*" multiple onChange={(e) => handleSelectImages(e.target.files)} />
+              <input
+                ref={postImagesInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => handleSelectImages(e.target.files)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={() => postImagesInputRef.current?.click()}
+              >
+                <ImagePlus className="w-4 h-4 mr-2" />
+                Adicionar imagens
+              </Button>
               {imageDataUrls.length > 0 && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {imageDataUrls.map((img, index) => (
@@ -1561,6 +1578,7 @@ export default function ComunidadeAluno() {
     </MainLayout>
   );
 }
+
 
 
 
