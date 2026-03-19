@@ -1199,10 +1199,10 @@ export default function Usuarios() {
                             list="turmas-disponiveis"
                             value={formData.turma}
                             onChange={(e) => setFormData({ ...formData, turma: e.target.value })}
-                            placeholder={turmasDisponiveis.length > 0 ? 'Selecione ou digite a turma' : 'Digite a turma'}
+                            placeholder={turmaFilterOptions.length > 0 ? 'Selecione ou digite a turma' : 'Digite a turma'}
                           />
                           <datalist id="turmas-disponiveis">
-                            {turmasDisponiveis.map((turma) => (
+                            {turmaFilterOptions.map((turma) => (
                               <option key={turma} value={turma} />
                             ))}
                           </datalist>
@@ -1216,13 +1216,13 @@ export default function Usuarios() {
                         {isGestor && formData.tipo === 'professor' && (
                           <div className="space-y-2 md:col-span-2">
                             <Label>Turmas liberadas para o professor</Label>
-                            {turmasDisponiveis.length === 0 ? (
+                            {turmaFilterOptions.length === 0 ? (
                               <p className="text-sm text-muted-foreground">
                                 Nenhuma turma cadastrada. Cadastre turmas em Configuração da Escola.
                               </p>
                             ) : (
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border p-3">
-                                {turmasDisponiveis.map((turma) => {
+                                {turmaFilterOptions.map((turma) => {
                                   const checked = professorTurmasSelecionadas.includes(turma);
                                   return (
                                     <label key={turma} className="flex items-center gap-2 text-sm">
