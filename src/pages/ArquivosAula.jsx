@@ -298,36 +298,42 @@ export default function ArquivosAula() {
     }
   };
 
-  const handleDeletePost = async (post) => {
+  const handleDeleteFile = async (post, arquivoIndex) => {
     if (!isProfessor || !perfilId || !post?.id || post?.autor_id !== perfilId) return;
-    const confirmed = window.confirm('Deseja excluir esta publicacao e seus arquivos?');
+    const arquivosAtuais = ensureArray(post?.arquivos);
+    const arquivo = arquivosAtuais[arquivoIndex];
+    if (!arquivo) return;
+    const confirmed = window.confirm(`Deseja excluir o arquivo "${safeText(arquivo?.nome, 'arquivo')}"?`);
     if (!confirmed) return;
 
     setSaving(true);
     try {
-      const filePaths = ensureArray(post?.arquivos).map((item) => safeText(item?.path, '')).filter(Boolean);
-      if (filePaths.length > 0) {
-        const { error: storageError } = await supabase.storage.from(STORAGE_BUCKET).remove(filePaths);
+      const filePath = safeText(arquivo?.path, '');
+      if (filePath) {
+        const { error: storageError } = await supabase.storage.from(STORAGE_BUCKET).remove([filePath]);
         if (storageError) {
-          console.warn('Falha ao remover arquivos do storage.', storageError);
+          console.warn('Falha ao remover arquivo do storage.', storageError);
         }
       }
 
+      const proximosArquivos = arquivosAtuais.filter((_, index) => index !== arquivoIndex);
       const { error } = await supabase
         .from('arquivos_aula_posts')
-        .delete()
+        .update({ arquivos: proximosArquivos })
         .eq('id', post.id)
         .eq('autor_id', perfilId);
 
       if (error) throw error;
 
-      setPosts((prev) => ensureArray(prev).filter((item) => item.id !== post.id));
-      toast({ title: 'Publicacao excluida!' });
+      setPosts((prev) =>
+        ensureArray(prev).map((item) => (item.id === post.id ? { ...item, arquivos: proximosArquivos } : item)),
+      );
+      toast({ title: 'Arquivo excluido!' });
     } catch (error) {
       toast({
         variant: 'destructive',
-        title: 'Erro ao excluir',
-        description: error?.message || 'Nao foi possivel excluir a publicacao.',
+        title: 'Erro ao excluir arquivo',
+        description: error?.message || 'Nao foi possivel excluir o arquivo.',
       });
     } finally {
       setSaving(false);
@@ -450,18 +456,10 @@ export default function ArquivosAula() {
               <div className="space-y-4">
                 {visiblePosts.map((post) => (
                   <div key={post.id} className="rounded-xl border p-4 space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">{post?.turma_publico ? `Turma ${post.turma_publico}` : 'Todas as turmas'}</Badge>
-                        <Badge variant="secondary">{safeText(post?.usuarios_biblioteca?.nome, 'Professor')}</Badge>
-                        <span className="text-xs text-muted-foreground">{formatDateBR(post?.created_at)}</span>
-                      </div>
-                      {isProfessor && post?.autor_id === perfilId && (
-                        <Button type="button" size="sm" variant="ghost" onClick={() => handleDeletePost(post)} disabled={saving}>
-                          <Trash2 className="w-4 h-4 mr-2 text-destructive" />
-                          Excluir
-                        </Button>
-                      )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">{post?.turma_publico ? `Turma ${post.turma_publico}` : 'Todas as turmas'}</Badge>
+                      <Badge variant="secondary">{safeText(post?.usuarios_biblioteca?.nome, 'Professor')}</Badge>
+                      <span className="text-xs text-muted-foreground">{formatDateBR(post?.created_at)}</span>
                     </div>
                     <p className="text-sm whitespace-pre-wrap">{safeText(post?.mensagem, '')}</p>
                     <div className="space-y-2">
@@ -473,10 +471,24 @@ export default function ArquivosAula() {
                               {safeText(arquivo?.extensao, '').toUpperCase() || 'ARQ'} • {formatBytes(arquivo?.tamanho)}
                             </p>
                           </div>
-                          <Button type="button" size="sm" variant="outline" onClick={() => handleDownload(arquivo)}>
-                            <Download className="w-4 h-4 mr-2" />
-                            Baixar
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button type="button" size="sm" variant="outline" onClick={() => handleDownload(arquivo)}>
+                              <Download className="w-4 h-4 mr-2" />
+                              Baixar
+                            </Button>
+                            {isProfessor && post?.autor_id === perfilId && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDeleteFile(post, index)}
+                                disabled={saving}
+                              >
+                                <Trash2 className="w-4 h-4 mr-2 text-destructive" />
+                                Excluir
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
