@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+ï»¿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { AudioLines, Filter, Heart, ImagePlus, MessageSquare, Pencil, Plus, Send, Sparkles, Trash2, X } from 'lucide-react';
@@ -20,6 +20,7 @@ const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_ST
 const POSTS_PAGE_SIZE = 20;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const ALL_TURMAS_OPTION = '__all_turmas__';
+const COMUNICADO_AUTO_TAG = 'comunicado';
 
 function formatDateBR(dateValue) {
   if (!dateValue) return '-';
@@ -200,11 +201,13 @@ function dataUrlToFile(dataUrl, filename = 'compartilhamento.jpg') {
 export default function ComunidadeAluno() {
   const { user, isProfessor, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
   const { toast } = useToast();
+  const canPublicarComunicado = isProfessor || isGestor || isBibliotecaria || isSuperAdmin;
 
   const [alunoId, setAlunoId] = useState(null);
   const [escolaId, setEscolaId] = useState(null);
   const [alunoTurma, setAlunoTurma] = useState(null);
   const [professorTurmas, setProfessorTurmas] = useState([]);
+  const [turmasPublicacao, setTurmasPublicacao] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [ariaLiveMessage, setAriaLiveMessage] = useState('');
@@ -385,11 +388,25 @@ export default function ComunidadeAluno() {
           .select('turma')
           .eq('professor_id', perfil.id);
         if (turmasError && !isMissingTableError(turmasError)) throw turmasError;
-        setProfessorTurmas(
-          [...new Set(ensureArray(turmasData).map((item) => safeText(item?.turma, '').trim()).filter(Boolean))].sort(),
-        );
+        const turmasProfessor = [
+          ...new Set(ensureArray(turmasData).map((item) => safeText(item?.turma, '').trim()).filter(Boolean)),
+        ].sort();
+        setProfessorTurmas(turmasProfessor);
+        setTurmasPublicacao(turmasProfessor);
+      } else if (isGestor || isBibliotecaria || isSuperAdmin) {
+        setProfessorTurmas([]);
+        const { data: salasData, error: salasError } = await supabase
+          .from('salas_cursos')
+          .select('nome')
+          .eq('escola_id', perfil.escola_id)
+          .order('nome');
+        if (salasError && !isMissingTableError(salasError)) throw salasError;
+        setTurmasPublicacao([
+          ...new Set(ensureArray(salasData).map((item) => safeText(item?.nome, '').trim()).filter(Boolean)),
+        ].sort());
       } else {
         setProfessorTurmas([]);
+        setTurmasPublicacao([]);
       }
 
       const { data: livrosData, error: livrosError } = await supabase.from('livros').select('id, titulo').order('titulo');
@@ -442,7 +459,7 @@ export default function ComunidadeAluno() {
     } finally {
       setLoading(false);
     }
-  }, [enabled, fetchPostsPage, loadQuizRankingForPosts, toast, user]);
+  }, [enabled, fetchPostsPage, isBibliotecaria, isGestor, isSuperAdmin, loadQuizRankingForPosts, toast, user]);
 
   const handleRealtimeStatus = useCallback(
     (status) => {
@@ -647,18 +664,21 @@ export default function ComunidadeAluno() {
       });
       return;
     }
-    if (isProfessor && !postTurmaPublico.trim()) {
+    const requerTurmaDestino = isProfessor || (canPublicarComunicado && postTipo === 'comunicado');
+    if (requerTurmaDestino && !postTurmaPublico.trim()) {
       toast({
         variant: 'destructive',
         title: 'Selecione a turma',
-        description: 'Escolha para qual turma essa publicacao sera exibida.',
+        description: postTipo === 'comunicado'
+          ? 'Escolha para qual turma o comunicado sera enviado.'
+          : 'Escolha para qual turma essa publicacao sera exibida.',
       });
       return;
     }
 
     setSaving(true);
     try {
-      const turmaPublico = isProfessor
+      const turmaPublico = requerTurmaDestino
         ? (postTurmaPublico === ALL_TURMAS_OPTION ? null : postTurmaPublico.trim())
         : null;
       const { data: novoPost, error } = await insertCommunityPostCompat({
@@ -669,9 +689,9 @@ export default function ComunidadeAluno() {
         audiobook_id: postAudiobookId || null,
         tipo: postTipo,
         titulo: postTitulo.trim() || null,
-        conteudo: postConteudo.trim() || 'Compartilhamento de midia criado na comunidade.',
+        conteudo: postConteudo.trim() || (postTipo === 'comunicado' ? 'Novo comunicado da escola.' : 'Compartilhamento de midia criado na comunidade.'),
         imagem_urls: imageDataUrls,
-        tags: postComIA ? ['ia'] : [],
+        tags: Array.from(new Set([...(postComIA ? ['ia'] : []), ...(postTipo === 'comunicado' ? [COMUNICADO_AUTO_TAG] : [])])),
       });
 
       if (error) throw error;
@@ -682,7 +702,7 @@ export default function ComunidadeAluno() {
 
       clearPostForm();
       setPostDialogOpen(false);
-      toast({ title: 'Publicacao criada!' });
+      toast({ title: postTipo === 'comunicado' ? 'Comunicado publicado!' : 'Publicacao criada!' });
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -1062,6 +1082,9 @@ export default function ComunidadeAluno() {
           <Button size="sm" variant={filtroTipo === 'sugestao' ? 'default' : 'outline'} onClick={() => setFiltroTipo('sugestao')}>
             Sugestoes
           </Button>
+          <Button size="sm" variant={filtroTipo === 'comunicado' ? 'default' : 'outline'} onClick={() => setFiltroTipo('comunicado')}>
+            Comunicados
+          </Button>
           <Button size="sm" variant={filtroTipo === 'quiz' ? 'default' : 'outline'} onClick={() => setFiltroTipo('quiz')}>
             Quizzes
           </Button>
@@ -1098,10 +1121,12 @@ export default function ComunidadeAluno() {
                             <p className="font-semibold text-sm sm:text-base break-words">{safeText(post?.titulo, 'Post da comunidade')}</p>
                             {ensureArray(post?.tags).includes('ia') && <Badge variant="secondary">IA</Badge>}
                             {quizData && <Badge variant="secondary">Quiz</Badge>}
+                            {post?.tipo === 'comunicado' && <Badge variant="destructive">Comunicado</Badge>}
                             {post?.turma_publico && <Badge variant="outline">Turma {post.turma_publico}</Badge>}
+                            {post?.tipo === 'comunicado' && !post?.turma_publico && <Badge variant="outline">Todas as turmas</Badge>}
                           </div>
                           <p className="text-xs text-muted-foreground break-words">
-                            {safeNestedName(post?.usuarios_biblioteca, 'Usuario')} • {quizData ? 'quiz' : safeText(post?.tipo, 'resenha')} • {formatDateBR(post?.created_at)}
+                            {safeNestedName(post?.usuarios_biblioteca, 'Usuario')} â€¢ {quizData ? 'quiz' : safeText(post?.tipo, 'resenha')} â€¢ {formatDateBR(post?.created_at)}
                           </p>
                         </div>
                         <Badge variant="secondary" className="max-w-[38vw] sm:max-w-[220px] truncate shrink-0">
@@ -1300,7 +1325,11 @@ export default function ComunidadeAluno() {
             <DialogTitle className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4" /> Nova publicacao
             </DialogTitle>
-            <DialogDescription>Compartilhe uma resenha, dica ou sugestao com a comunidade.</DialogDescription>
+            <DialogDescription>
+              {canPublicarComunicado
+                ? 'Compartilhe resenhas, dicas, sugestoes ou comunicados com a comunidade.'
+                : 'Compartilhe uma resenha, dica ou sugestao com a comunidade.'}
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -1315,6 +1344,7 @@ export default function ComunidadeAluno() {
                   <option value="resenha">Resenha</option>
                   <option value="dica">Dica</option>
                   <option value="sugestao">Sugestao</option>
+                  {canPublicarComunicado && <option value="comunicado">Comunicado</option>}
                 </select>
               </div>
               <div className="space-y-2 sm:col-span-2">
@@ -1332,17 +1362,17 @@ export default function ComunidadeAluno() {
                   ))}
                 </select>
               </div>
-              {isProfessor && (
+              {(isProfessor || (canPublicarComunicado && postTipo === 'comunicado')) && (
                 <div className="space-y-2 sm:col-span-3">
-                  <Label>Turma da publicacao</Label>
+                  <Label>{postTipo === 'comunicado' ? 'Turma do comunicado' : 'Turma da publicacao'}</Label>
                   <select
                     value={postTurmaPublico || 'none'}
                     onChange={(e) => setPostTurmaPublico(e.target.value === 'none' ? '' : e.target.value)}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   >
-                    <option value="none">Selecione a turma</option>
+                    <option value="none">{postTipo === 'comunicado' ? 'Selecione o destino' : 'Selecione a turma'}</option>
                     <option value={ALL_TURMAS_OPTION}>Todas as turmas</option>
-                    {professorTurmas.map((turma) => (
+                    {turmasPublicacao.map((turma) => (
                       <option key={turma} value={turma}>
                         {turma}
                       </option>
@@ -1563,7 +1593,7 @@ export default function ComunidadeAluno() {
           <DialogHeader>
             <DialogTitle>{safeText(postPreviewItem?.titulo, 'Publicacao')}</DialogTitle>
             <DialogDescription>
-              {safeNestedName(postPreviewItem?.usuarios_biblioteca, 'Usuario')} • {formatDateBR(postPreviewItem?.created_at)}
+              {safeNestedName(postPreviewItem?.usuarios_biblioteca, 'Usuario')} â€¢ {formatDateBR(postPreviewItem?.created_at)}
             </DialogDescription>
           </DialogHeader>
           <div className="whitespace-pre-wrap text-sm text-muted-foreground">
@@ -1586,6 +1616,7 @@ export default function ComunidadeAluno() {
     </MainLayout>
   );
 }
+
 
 
 

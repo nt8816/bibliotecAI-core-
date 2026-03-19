@@ -83,6 +83,15 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function normalizeTurmaKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function upsertById(list, item, idKey = 'id') {
   const entries = ensureArray(list);
   const id = item?.[idKey];
@@ -782,6 +791,7 @@ export default function PainelAluno() {
   const [entregas, setEntregas] = useState([]);
   const [audiobookCatalogo, setAudiobookCatalogo] = useState([]);
   const [meusAudiobooks, setMeusAudiobooks] = useState([]);
+  const [comunicados, setComunicados] = useState([]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [catalogoSearchTerm, setCatalogoSearchTerm] = useState('');
@@ -1001,6 +1011,15 @@ export default function PainelAluno() {
         setAlunoTurma(perfil.turma || null);
 
         const livrosPromise = fetchLivrosPage({ reset: true });
+        const comunicadosPromise = perfil.escola_id
+          ? supabase
+              .from('comunidade_posts')
+              .select('id, titulo, conteudo, turma_publico, created_at, tipo')
+              .eq('escola_id', perfil.escola_id)
+              .eq('tipo', 'comunicado')
+              .order('created_at', { ascending: false })
+              .limit(20)
+          : Promise.resolve({ data: [], error: null });
         const [
           emprestimosRes,
           avaliacoesRes,
@@ -1008,6 +1027,7 @@ export default function PainelAluno() {
           sugestoesRes,
           solicitacoesRes,
           atividadesRes,
+          comunicadosRes,
         ] = await Promise.all([
           supabase
             .from('emprestimos')
@@ -1035,6 +1055,7 @@ export default function PainelAluno() {
             .select('*, livros(titulo, autor)')
             .eq('aluno_id', perfil.id)
             .order('created_at', { ascending: false }),
+          comunicadosPromise,
         ]);
 
         const optionalQuery = async (queryBuilder, fallback = []) => {
@@ -1119,6 +1140,7 @@ export default function PainelAluno() {
           sugestoesRes.error,
           solicitacoesRes.error,
           atividadesRes.error,
+          comunicadosRes.error,
         ].find(Boolean);
 
         if (maybeError) throw maybeError;
@@ -1137,6 +1159,12 @@ export default function PainelAluno() {
         setAudiobookCatalogo(audioCatalogoOpt.data);
         setMeusAudiobooks(meusAudiobooksOpt.data);
         setCriacoesLaboratorio(criacoesLaboratorioOpt.data);
+        setComunicados(
+          ensureArray(comunicadosRes.data).filter((item) => {
+            const turmaDestino = normalizeTurmaKey(item?.turma_publico);
+            return !turmaDestino || turmaDestino === normalizeTurmaKey(perfil.turma);
+          }),
+        );
         setNotificacoesLidas(new Set((notificacoesLidasOpt.data || []).map((item) => item.notification_id)));
         setDesafioXpBonus(Math.max(0, Number(preferenciasAlunoOpt.data?.desafio_ia_xp_bonus || 0)));
 
@@ -1565,11 +1593,36 @@ export default function PainelAluno() {
     [alunoId],
   );
 
+  const handleComunicadoUpsert = useCallback(
+    (payload) => {
+      const row = payload?.new ?? payload;
+      if (!row?.id || row?.tipo !== 'comunicado') return;
+      if (escolaId && row?.escola_id && row.escola_id !== escolaId) return;
+
+      const turmaDestino = normalizeTurmaKey(row?.turma_publico);
+      const turmaAtual = normalizeTurmaKey(alunoTurma);
+      const visivelParaAluno = !turmaDestino || turmaDestino === turmaAtual;
+
+      setComunicados((prev) => {
+        if (!visivelParaAluno) return removeById(prev, row.id);
+        return sortByDateDesc(upsertById(prev, row));
+      });
+    },
+    [alunoTurma, escolaId],
+  );
+
+  const handleComunicadoDelete = useCallback((payload) => {
+    const row = payload?.old ?? payload;
+    if (!row?.id) return;
+    setComunicados((prev) => removeById(prev, row.id));
+  }, []);
+
   useRealtimeSubscription({ table: 'emprestimos', onInsert: handleEmprestimoUpsert, onUpdate: handleEmprestimoUpsert, onDelete: handleEmprestimoDelete, onStatus: handleRealtimeStatus });
   useRealtimeSubscription({ table: 'avaliacoes_livros', onInsert: handleAvaliacaoUpsert, onUpdate: handleAvaliacaoUpsert, onDelete: handleAvaliacaoDelete, onStatus: handleRealtimeStatus });
   useRealtimeSubscription({ table: 'lista_desejos', onInsert: handleWishlistInsert, onDelete: handleWishlistDelete, onStatus: handleRealtimeStatus });
   useRealtimeSubscription({ table: 'sugestoes_livros', onInsert: handleSugestaoUpsert, onUpdate: handleSugestaoUpsert, onDelete: handleSugestaoDelete, onStatus: handleRealtimeStatus });
   useRealtimeSubscription({ table: 'solicitacoes_emprestimo', onInsert: handleSolicitacaoUpsert, onUpdate: handleSolicitacaoUpsert, onDelete: handleSolicitacaoDelete, onStatus: handleRealtimeStatus });
+  useRealtimeSubscription({ table: 'comunidade_posts', onInsert: handleComunicadoUpsert, onUpdate: handleComunicadoUpsert, onDelete: handleComunicadoDelete, onStatus: handleRealtimeStatus });
   useRealtimeSubscription({ table: 'atividades_leitura', onInsert: handleAtividadeUpsert, onUpdate: handleAtividadeUpsert, onDelete: handleAtividadeDelete, onStatus: handleRealtimeStatus });
   useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'atividades_entregas' : null, onInsert: handleEntregaUpsert, onUpdate: handleEntregaUpsert, onDelete: handleEntregaDelete, onStatus: handleRealtimeStatus });
   useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'audiobooks_biblioteca' : null, onInsert: handleAudiobookUpsert, onUpdate: handleAudiobookUpsert, onDelete: handleAudiobookDelete, onStatus: handleRealtimeStatus });
@@ -1902,6 +1955,19 @@ export default function PainelAluno() {
     const itens = [];
     const solicitacoesPendentes = solicitacoes.filter((s) => classifySolicitacao(s) === 'pendentes').length;
 
+    ensureArray(comunicados)
+      .sort((a, b) => new Date(b?.created_at || 0).getTime() - new Date(a?.created_at || 0).getTime())
+      .slice(0, 5)
+      .forEach((item) => {
+        itens.push({
+          id: `comunicado-${item.id}`,
+          tipo: 'comunicado',
+          titulo: item.titulo || 'Novo comunicado',
+          descricao: item.conteudo || 'Confira o comunicado da sua turma na comunidade.',
+          created_at: item.created_at,
+        });
+      });
+
     atrasos.forEach((emp) => {
       itens.push({
         id: `atraso-${emp.id}`,
@@ -1934,7 +2000,7 @@ export default function PainelAluno() {
     }
     const filtradas = itens.filter((item) => !notificacoesLidas.has(item.id));
     return filtradas.slice(0, 8);
-  }, [atrasos, atividadesComEntrega, solicitacoes, classifySolicitacao, notificacoesLidas]);
+  }, [atrasos, atividadesComEntrega, comunicados, solicitacoes, classifySolicitacao, notificacoesLidas]);
 
   const markNotificationRead = useCallback(
     async (notificationId) => {
@@ -3375,6 +3441,10 @@ export default function PainelAluno() {
                         if (n.tipo === 'novidade') {
                           navigate('/aluno/biblioteca');
                           setBibliotecaView('biblioteca');
+                          return;
+                        }
+                        if (n.tipo === 'comunicado') {
+                          navigate('/aluno/comunidade');
                         }
                       };
 
