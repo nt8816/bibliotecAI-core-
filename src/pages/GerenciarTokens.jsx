@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { useTenant } from '@/hooks/useTenant';
 
 const isTempLoginEmail = (value) => /@temp\.bibliotecai\.com$/i.test(String(value || ''));
 
@@ -36,6 +37,41 @@ export default function GerenciarTokens() {
 
   const { toast } = useToast();
   const { user } = useAuth();
+  const { tenant } = useTenant();
+
+  const resolveEscolaId = useCallback(async () => {
+    if (!user?.id) return null;
+
+    const [{ data: perfil, error: perfilError }, { data: rpcEscolaId, error: rpcError }] = await Promise.all([
+      supabase
+        .from('usuarios_biblioteca')
+        .select('escola_id')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase.rpc('get_user_escola_id', { _user_id: user.id }),
+    ]);
+
+    if (perfilError) throw perfilError;
+    if (rpcError) throw rpcError;
+
+    let escolaId = perfil?.escola_id || tenant?.escola_id || rpcEscolaId || null;
+
+    if (!escolaId) {
+      const { data: escolaByGestor, error: escolaByGestorError } = await supabase
+        .from('escolas')
+        .select('id')
+        .eq('gestor_id', user.id)
+        .maybeSingle();
+
+      if (escolaByGestorError) throw escolaByGestorError;
+      escolaId = escolaByGestor?.id || null;
+    }
+
+    return escolaId;
+  }, [tenant?.escola_id, user?.id]);
 
   const fetchTokens = useCallback(async () => {
     try {
@@ -121,21 +157,9 @@ export default function GerenciarTokens() {
     setCreating(true);
 
     try {
-      let { data: escola } = await supabase
-        .from('escolas')
-        .select('id')
-        .eq('gestor_id', user.id)
-        .maybeSingle();
-
-      if (!escola) {
-        const { data: newEscola, error: escolaError } = await supabase
-          .from('escolas')
-          .insert({ nome: 'Minha Escola', gestor_id: user.id })
-          .select('id')
-          .single();
-
-        if (escolaError) throw escolaError;
-        escola = newEscola;
+      const escolaId = await resolveEscolaId();
+      if (!escolaId) {
+        throw new Error('Nenhuma escola vinculada foi encontrada para este gestor.');
       }
 
       const [perfilRes, roleRes] = await Promise.all([
@@ -146,7 +170,7 @@ export default function GerenciarTokens() {
       const { data, error } = await supabase
         .from('tokens_convite')
         .insert({
-          escola_id: escola.id,
+          escola_id: escolaId,
           role_destino: roleDestino,
           criado_por: user.id,
         })
@@ -173,7 +197,7 @@ export default function GerenciarTokens() {
       console.error('Error creating token:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível criar o token.',
+        description: error?.message || 'Não foi possível criar o token.',
         variant: 'destructive',
       });
     } finally {
