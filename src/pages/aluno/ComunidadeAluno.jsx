@@ -819,10 +819,7 @@ export default function ComunidadeAluno() {
     }
   };
 
-  const podeGerenciarPost = useCallback(
-    (post) => isGestor || isBibliotecaria || isSuperAdmin || post?.autor_id === alunoId,
-    [alunoId, isBibliotecaria, isGestor, isSuperAdmin],
-  );
+  const podeGerenciarPost = useCallback((post) => post?.autor_id === alunoId, [alunoId]);
 
   const podeEditarPost = useCallback((post) => post?.autor_id === alunoId, [alunoId]);
 
@@ -891,8 +888,18 @@ export default function ComunidadeAluno() {
 
     setSaving(true);
     try {
-      const { error } = await supabase.from('comunidade_posts').delete().eq('id', post.id);
+      const { data, error } = await supabase
+        .from('comunidade_posts')
+        .delete()
+        .eq('id', post.id)
+        .eq('autor_id', alunoId)
+        .select('id')
+        .maybeSingle();
+
       if (error) throw error;
+      if (!data?.id) {
+        throw new Error('Voce so pode apagar publicacoes feitas por voce.');
+      }
 
       setPosts((prev) => ensureArray(prev).filter((item) => item.id !== post.id));
       setLikes((prev) => ensureArray(prev).filter((item) => item?.post_id !== post.id));
