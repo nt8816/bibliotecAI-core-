@@ -1148,6 +1148,17 @@ export default function PainelAluno() {
           avaliacoesCount: (avaliacoesRes.data || []).length,
           atividadesAprovadas: (entregasOpt.data || []).filter((item) => item.status === 'aprovada').length,
         });
+        const pontosAprovadosCarregados = (entregasOpt.data || [])
+          .filter((item) => item.status === 'aprovada')
+          .reduce((acc, item) => acc + Number(item.pontos_ganhos || 0), 0);
+        const xpBonusCarregado = Math.max(0, Number(preferenciasAlunoOpt.data?.desafio_ia_xp_bonus || 0));
+        const pontosExperienciaCarregados =
+          metricasCarregadas.livros_lidos * 35 +
+          metricasCarregadas.avaliacoes * 15 +
+          metricasCarregadas.atividades_aprovadas * 25 +
+          pontosAprovadosCarregados +
+          xpBonusCarregado;
+        const nivelAtualCarregado = Math.max(1, Math.floor(pontosExperienciaCarregados / 150) + 1);
 
         const desafioPersistido = normalizeDesafioIA({
           ...(preferenciasAlunoOpt.data?.desafio_ia_ativo || {}),
@@ -1157,7 +1168,7 @@ export default function PainelAluno() {
         if (desafioPersistido) {
           const desafioNormalizado = {
             ...desafioPersistido,
-            criterio: normalizarCriterioDesafioPorNivel(desafioPersistido.criterio, metricasCarregadas, nivelAtual),
+            criterio: normalizarCriterioDesafioPorNivel(desafioPersistido.criterio, metricasCarregadas, nivelAtualCarregado),
           };
           setDesafioIA(desafioNormalizado);
           if (desafioCacheKey) writeCache(desafioCacheKey, desafioNormalizado);
@@ -1198,7 +1209,7 @@ export default function PainelAluno() {
       }
     });
     return request;
-  }, [desafioCacheKey, fetchLivrosPage, nivelAtual, optionalFeaturesEnabled, toast, user]);
+  }, [desafioCacheKey, fetchLivrosPage, optionalFeaturesEnabled, toast, user]);
 
   useEffect(() => {
     fetchData();
