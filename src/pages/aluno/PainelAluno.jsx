@@ -2859,7 +2859,7 @@ export default function PainelAluno() {
 
   const pageTitle = useMemo(() => {
     if (activeSection === 'biblioteca') return 'Biblioteca';
-    if (activeSection === 'laboratorio') return 'LaboratÃ³rio';
+    if (activeSection === 'laboratorio') return 'Laboratorio';
     if (activeSection === 'atividades') return 'Atividades';
     return 'Meu Perfil';
   }, [activeSection]);
@@ -3618,7 +3618,7 @@ export default function PainelAluno() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Adicionar imagens do computador (atÃ© 8)</Label>
+                  <Label>Adicionar imagens do computador (ate 8)</Label>
                   <Input type="file" accept="image/*" multiple onChange={(e) => handleAdicionarSlides(e.target.files)} />
                 </div>
                 {studioSlides.length > 0 && (
@@ -3695,7 +3695,7 @@ export default function PainelAluno() {
                   <Input
                     value={quizTema}
                     onChange={(e) => setQuizTema(e.target.value)}
-                    placeholder="Tema do quiz (ex.: interpretaÃ§Ã£o)"
+                    placeholder="Tema do quiz (ex.: interpretacao)"
                   />
                   <Button type="button" variant="outline" onClick={gerarQuizComIA} disabled={gerandoQuizIA}>
                     <Sparkles className="w-4 h-4 mr-2" />
@@ -3708,14 +3708,14 @@ export default function PainelAluno() {
                     <div className="rounded-md border bg-muted/20 p-3 text-sm">
                       <p className="font-medium">Fonte do quiz</p>
                       <p className="text-xs text-muted-foreground">
-                        Livro: {livrosById.get(quizLivroId)?.titulo || 'â€”'} â€¢ Tema: {quizTema.trim() || 'compreensÃ£o da leitura'}
+                        Livro: {livrosById.get(quizLivroId)?.titulo || '-'} - Tema: {quizTema.trim() || 'compreensao da leitura'}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        QuestÃµes: {quiz.length} â€¢ NÃ­vel: {quizNivel}
+                        Questoes: {quiz.length} - Nivel: {quizNivel}
                       </p>
                       {quizHistoricoAtual && (
                         <p className="text-xs text-muted-foreground mt-1">
-                          Ãšltimo: {quizHistoricoAtual.last?.acertos}/{quizHistoricoAtual.last?.total} â€¢ Melhor: {quizHistoricoAtual.best?.acertos}/{quizHistoricoAtual.best?.total}
+                          Ultimo: {quizHistoricoAtual.last?.acertos}/{quizHistoricoAtual.last?.total} - Melhor: {quizHistoricoAtual.best?.acertos}/{quizHistoricoAtual.best?.total}
                         </p>
                       )}
                     </div>
@@ -3802,7 +3802,7 @@ export default function PainelAluno() {
                   rows={8}
                   value={resumoTexto}
                   onChange={(e) => setResumoTexto(e.target.value)}
-                  placeholder="O resumo gerado aparecerÃ¡ aqui..."
+                  placeholder="O resumo gerado aparecera aqui..."
                 />
 
                 {resumosCriados.length > 0 && (
@@ -4517,7 +4517,7 @@ export default function PainelAluno() {
             )}
           </DialogHeader>
           <div className="whitespace-pre-wrap text-sm text-muted-foreground">
-            {resumoSelecionado?.texto || 'Resumo indisponÃ­vel.'}
+            {resumoSelecionado?.texto || 'Resumo indisponivel.'}
           </div>
         </DialogContent>
       </Dialog>
@@ -4537,7 +4537,7 @@ export default function PainelAluno() {
             )}
           </DialogHeader>
           <div className="whitespace-pre-wrap text-sm text-muted-foreground">
-            {sinopseLivroSelecionado?.sinopse || 'Sinopse indisponÃ­vel.'}
+            {sinopseLivroSelecionado?.sinopse || 'Sinopse indisponivel.'}
           </div>
         </DialogContent>
       </Dialog>
@@ -4551,13 +4551,13 @@ export default function PainelAluno() {
       >
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{resumoRapidoData?.titulo || 'Resumo rÃ¡pido'}</DialogTitle>
+            <DialogTitle>{resumoRapidoData?.titulo || 'Resumo rapido'}</DialogTitle>
             {resumoRapidoData?.autor && (
               <DialogDescription>{resumoRapidoData.autor}</DialogDescription>
             )}
           </DialogHeader>
           <div className="whitespace-pre-wrap text-sm text-muted-foreground">
-            {resumoRapidoData?.texto || 'Resumo indisponÃ­vel.'}
+            {resumoRapidoData?.texto || 'Resumo indisponivel.'}
           </div>
         </DialogContent>
       </Dialog>
