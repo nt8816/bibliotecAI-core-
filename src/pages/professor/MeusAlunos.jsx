@@ -17,6 +17,15 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function normalizeTurmaKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function isMissingTableError(error) {
   const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
   return (
@@ -42,28 +51,32 @@ export default function MeusAlunos() {
 
     setLoading(true);
     try {
-      const { data: professorData, error: professorError } = await supabase
+      const { data: professorProfiles, error: professorError } = await supabase
         .from('usuarios_biblioteca')
-        .select('id')
+        .select('id, escola_id')
         .eq('user_id', user.id)
+        .eq('tipo', 'professor')
         .order('updated_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (professorError || !professorData) throw professorError || new Error('Perfil de professor não encontrado.');
+        .limit(10);
+
+      const professorData = ensureArray(professorProfiles)[0] || null;
+      const professorIds = ensureArray(professorProfiles).map((item) => item?.id).filter(Boolean);
+      if (professorError || !professorData) throw professorError || new Error('Perfil de professor nÃ£o encontrado.');
 
       const { data: turmasData, error: turmasError } = await supabase
         .from('professor_turmas')
         .select('turma')
-        .eq('professor_id', professorData.id);
+        .in('professor_id', professorIds);
       if (turmasError) {
         if (isMissingTableError(turmasError)) {
-          throw new Error('Tabela professor_turmas não encontrada. Aplique as migrations do Supabase.');
+          throw new Error('Tabela professor_turmas nÃ£o encontrada. Aplique as migrations do Supabase.');
         }
         throw turmasError;
       }
 
       const turmas = [...new Set(ensureArray(turmasData).map((item) => String(item?.turma || '').trim()).filter(Boolean))].sort();
+      const turmaKeySet = new Set(turmas.map(normalizeTurmaKey).filter(Boolean));
       setTurmasPermitidas(turmas);
 
       if (turmas.length === 0) {
@@ -75,17 +88,17 @@ export default function MeusAlunos() {
         .from('usuarios_biblioteca')
         .select('id, nome, tipo, matricula, turma, email')
         .eq('tipo', 'aluno')
-        .in('turma', turmas)
+        .eq('escola_id', professorData.escola_id)
         .order('nome');
 
       if (error) throw error;
-      setUsuarios(data || []);
+      setUsuarios((data || []).filter((item) => turmaKeySet.has(normalizeTurmaKey(item?.turma))));
     } catch (error) {
       console.error('Error fetching users:', error);
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: error?.message || 'Não foi possível carregar os usuários.',
+        description: error?.message || 'NÃ£o foi possÃ­vel carregar os usuÃ¡rios.',
       });
     } finally {
       setLoading(false);
@@ -121,7 +134,7 @@ export default function MeusAlunos() {
       <div className="space-y-6">
         {turmasPermitidas.length === 0 && (
           <div className="rounded-md border border-warning/30 bg-warning/5 p-3">
-            <p className="text-sm text-warning">Nenhuma turma foi vinculada ao seu perfil. Solicite ao gestor a vinculação.</p>
+            <p className="text-sm text-warning">Nenhuma turma foi vinculada ao seu perfil. Solicite ao gestor a vinculaÃ§Ã£o.</p>
           </div>
         )}
 
@@ -195,7 +208,7 @@ export default function MeusAlunos() {
               <p className="text-center text-muted-foreground py-8">Carregando...</p>
             ) : filteredUsuarios.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">
-                {searchTerm || filterTurma ? 'Nenhum aluno encontrado' : 'Nenhum aluno disponível nas turmas vinculadas'}
+                {searchTerm || filterTurma ? 'Nenhum aluno encontrado' : 'Nenhum aluno disponÃ­vel nas turmas vinculadas'}
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -204,7 +217,7 @@ export default function MeusAlunos() {
                     <TableRow>
                       <TableHead>Nome</TableHead>
                       <TableHead>Email</TableHead>
-                      <TableHead>Matrícula</TableHead>
+                      <TableHead>MatrÃ­cula</TableHead>
                       <TableHead>Turma</TableHead>
                     </TableRow>
                   </TableHeader>

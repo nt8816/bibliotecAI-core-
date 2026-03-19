@@ -283,7 +283,9 @@ export default function Usuarios() {
     });
   };
 
-  const salvarTurmasProfessor = async (professorId, turmas) => {
+  const salvarTurmasProfessor = async (professor, turmas) => {
+    const professorId = typeof professor === 'object' ? professor?.id : professor;
+    const professorUserId = typeof professor === 'object' ? professor?.user_id : null;
     if (!isGestor || !professorId || !currentEscolaId) return;
 
     const turmasNormalizadas = [...new Set(
@@ -292,19 +294,38 @@ export default function Usuarios() {
         .filter(Boolean),
     )];
 
+    let professorIds = [professorId];
+    if (professorUserId) {
+      const { data: siblingProfiles, error: siblingProfilesError } = await supabase
+        .from('usuarios_biblioteca')
+        .select('id')
+        .eq('user_id', professorUserId)
+        .eq('tipo', 'professor')
+        .eq('escola_id', currentEscolaId);
+
+      if (siblingProfilesError) throw siblingProfilesError;
+
+      professorIds = [...new Set(
+        [professorId, ...(siblingProfiles || []).map((item) => item?.id).filter(Boolean)],
+      )];
+    }
+
     const { error: deleteError } = await supabase
       .from('professor_turmas')
       .delete()
-      .eq('professor_id', professorId);
+      .eq('escola_id', currentEscolaId)
+      .in('professor_id', professorIds);
     if (deleteError) throw deleteError;
 
     if (turmasNormalizadas.length === 0) return;
 
-    const payload = turmasNormalizadas.map((turma) => ({
-      professor_id: professorId,
-      escola_id: currentEscolaId,
-      turma,
-    }));
+    const payload = professorIds.flatMap((currentProfessorId) =>
+      turmasNormalizadas.map((turma) => ({
+        professor_id: currentProfessorId,
+        escola_id: currentEscolaId,
+        turma,
+      })),
+    );
     const { error: insertError } = await supabase.from('professor_turmas').insert(payload);
     if (insertError) throw insertError;
   };
@@ -449,9 +470,9 @@ export default function Usuarios() {
         if (error) throw error;
 
         if (isGestor && formData.tipo === 'professor') {
-          await salvarTurmasProfessor(editingUsuario.id, professorTurmasSelecionadas);
+          await salvarTurmasProfessor(editingUsuario, professorTurmasSelecionadas);
         } else if (isGestor && editingUsuario.tipo === 'professor' && formData.tipo !== 'professor') {
-          await salvarTurmasProfessor(editingUsuario.id, []);
+          await salvarTurmasProfessor(editingUsuario, []);
         }
 
         toast({ title: 'Sucesso', description: 'Usuário atualizado com sucesso.' });
@@ -482,7 +503,7 @@ export default function Usuarios() {
           if (error) throw error;
 
           if (isGestor && formData.tipo === 'professor' && data?.id) {
-            await salvarTurmasProfessor(data.id, professorTurmasSelecionadas);
+            await salvarTurmasProfessor(data, professorTurmasSelecionadas);
           }
 
           toast({ title: 'Sucesso', description: 'Usuário cadastrado com sucesso.' });

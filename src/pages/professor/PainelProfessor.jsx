@@ -81,6 +81,15 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function normalizeTurmaKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function encodeJsonBase64(value) {
   try {
     return btoa(unescape(encodeURIComponent(JSON.stringify(value || {}))));
@@ -229,21 +238,24 @@ export default function PainelProfessor() {
     setLoading(true);
 
     try {
-      const { data: professorData, error: professorError } = await supabase
+      const { data: professorProfiles, error: professorError } = await supabase
         .from('usuarios_biblioteca')
         .select('id, escola_id')
         .eq('user_id', user.id)
+        .eq('tipo', 'professor')
         .order('updated_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(10)
+        ;
+      const professorData = ensureArray(professorProfiles)[0] || null;
+      const professorIds = ensureArray(professorProfiles).map((item) => item?.id).filter(Boolean);
       setEscolaId(professorData?.escola_id || null);
       if (professorError || !professorData) throw professorError || new Error('Perfil de professor não encontrado.');
 
       const { data: turmasData, error: turmasError } = await supabase
         .from('professor_turmas')
         .select('turma')
-        .eq('professor_id', professorData.id);
+        .in('professor_id', professorIds);
       if (turmasError) {
         if (isMissingTableError(turmasError)) {
           throw new Error('Tabela professor_turmas não encontrada. Aplique as migrations do Supabase.');
@@ -252,6 +264,7 @@ export default function PainelProfessor() {
       }
 
       const turmasPermitidas = [...new Set(ensureArray(turmasData).map((item) => String(item?.turma || '').trim()).filter(Boolean))];
+      const turmaSet = new Set(turmasPermitidas.map(normalizeTurmaKey).filter(Boolean));
       setProfessorTurmasPermitidas(turmasPermitidas);
 
       if (turmasPermitidas.length === 0) {
@@ -287,9 +300,9 @@ export default function PainelProfessor() {
         livrosPromise,
         supabase
           .from('usuarios_biblioteca')
-          .select('id, nome, turma')
+          .select('id, nome, turma, escola_id')
           .eq('tipo', 'aluno')
-          .in('turma', turmasPermitidas)
+          .eq('escola_id', professorData.escola_id)
           .order('nome'),
         supabase
           .from('sugestoes_livros')
@@ -320,19 +333,18 @@ export default function PainelProfessor() {
         setSubmissionFeaturesEnabled(false);
       }
 
-      const turmaSet = new Set(turmasPermitidas);
       const entregasRes = (entregasData || []).filter((item) =>
-        turmaSet.has(String(item?.usuarios_biblioteca?.turma || '').trim()),
+        turmaSet.has(normalizeTurmaKey(item?.usuarios_biblioteca?.turma)),
       );
       const sugestoesFiltradas = (sugestoesRes.data || []).filter((item) =>
-        turmaSet.has(String(item?.usuarios_biblioteca?.turma || '').trim()),
+        turmaSet.has(normalizeTurmaKey(item?.usuarios_biblioteca?.turma)),
       );
       const atividadesFiltradas = (atividadesRes.data || []).filter((item) =>
-        turmaSet.has(String(item?.usuarios_biblioteca?.turma || '').trim()),
+        turmaSet.has(normalizeTurmaKey(item?.usuarios_biblioteca?.turma)),
       );
 
       setLivros(livrosRes.data || []);
-      setUsuarios(usuariosRes.data || []);
+      setUsuarios((usuariosRes.data || []).filter((item) => turmaSet.has(normalizeTurmaKey(item?.turma))));
       setSugestoes(sugestoesFiltradas);
       setAtividades(
         atividadesFiltradas.map((atividade) => {
