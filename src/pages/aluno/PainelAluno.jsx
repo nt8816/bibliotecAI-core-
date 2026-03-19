@@ -4037,14 +4037,14 @@ export default function PainelAluno() {
                     <p className="text-sm font-semibold">Biblioteca</p>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                       <div className="space-y-1">
-                        <Label htmlFor="catalogo-area">Ãrea</Label>
+                        <Label htmlFor="catalogo-area">Area</Label>
                         <select
                           id="catalogo-area"
                           className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                           value={catalogoAreaFilter}
                           onChange={(e) => setCatalogoAreaFilter(e.target.value)}
                         >
-                          <option value="all">Todas as Ã¡reas</option>
+                          <option value="all">Todas as areas</option>
                           {catalogoAreas.map((area) => (
                             <option key={area} value={area}>{area}</option>
                           ))}
@@ -4059,7 +4059,7 @@ export default function PainelAluno() {
                           onChange={(e) => setCatalogoDisponibilidadeFilter(e.target.value)}
                         >
                           <option value="all">Todas</option>
-                          <option value="disponivel">DisponÃ­veis</option>
+                          <option value="disponivel">Disponiveis</option>
                           <option value="emprestado">Emprestados</option>
                         </select>
                       </div>
@@ -4108,11 +4108,11 @@ export default function PainelAluno() {
                               <p className="text-xs text-muted-foreground line-clamp-1">{livro.autor}</p>
                               {(livro.vol || livro.ano) && (
                                 <p className="text-xs text-muted-foreground line-clamp-1">
-                                  {[livro.vol ? `Vol. ${livro.vol}` : null, livro.ano ? `Ano ${livro.ano}` : null].filter(Boolean).join(' â€¢ ')}
+                                  {[livro.vol ? `Vol. ${livro.vol}` : null, livro.ano ? `Ano ${livro.ano}` : null].filter(Boolean).join(' - ')}
                                 </p>
                               )}
                               <Badge variant={livro.disponivel ? 'default' : 'secondary'} className="text-[11px]">
-                                {livro.disponivel ? 'DisponÃ­vel' : 'Emprestado'}
+                                {livro.disponivel ? 'Disponivel' : 'Emprestado'}
                               </Badge>
                             </div>
 
@@ -4167,10 +4167,10 @@ export default function PainelAluno() {
                                   !livro.disponivel
                                     ? 'Livro emprestado'
                                     : hasEmprestimoAtivo(livro.id)
-                                      ? 'Livro jÃ¡ emprestado'
+                                      ? 'Livro ja emprestado'
                                       : hasSolicitacaoEmAndamento(livro.id)
-                                        ? 'SolicitaÃ§Ã£o jÃ¡ enviada'
-                                        : 'Solicitar emprÃ©stimo'
+                                        ? 'Solicitacao ja enviada'
+                                        : 'Solicitar emprestimo'
                                 }
                                 onClick={() => {
                                   setRequestLivro(livro);
@@ -4181,10 +4181,11 @@ export default function PainelAluno() {
                                 {hasEmprestimoAtivo(livro.id)
                                   ? 'Emprestado'
                                   : hasSolicitacaoEmAndamento(livro.id)
-                                    ? 'JÃ¡ solicitado'
+                                     ? 'Ja solicitado'
                                     : livro.disponivel
                                       ? 'Solicitar'
-                                      : 'IndisponÃ­vel'}
+                                       : 'Indisponivel'
+                                }
                               </Button>
                             </div>
                           </div>
