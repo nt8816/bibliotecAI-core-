@@ -270,9 +270,7 @@ export default function ConfiguracaoEscola() {
       setSalas((prev) => prev.filter((item) => item.id !== sala.id));
       toast({
         title: 'Removido',
-        description: sala?.orphan
-          ? 'Sala orfa removida com os usuarios e vinculos associados.'
-          : 'Sala removida com os usuarios e vinculos associados.',
+        description: 'Sala removida com os usuarios e vinculos associados.',
       });
     } catch (error) {
       console.error('Error removing sala:', error);
@@ -559,7 +557,7 @@ export default function ConfiguracaoEscola() {
                       )}
                       <span className="font-medium">{sala.nome}</span>
                       <Badge variant="outline" className="text-xs">
-                        {sala.orphan ? 'Sala orfa' : sala.tipo === 'sala' ? 'Sala' : 'Curso Tecnico'}
+                        {sala.tipo === 'sala' ? 'Sala' : 'Curso Tecnico'}
                       </Badge>
                     </div>
 
