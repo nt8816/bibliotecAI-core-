@@ -3957,7 +3957,7 @@ export default function PainelAluno() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar livros... (Enter para pesquisar no catÃ¡logo)"
+                placeholder="Buscar livros... (Enter para pesquisar no catalogo)"
                 className="pl-9"
                 value={searchTerm}
                 onChange={(e) => {
@@ -3992,7 +3992,7 @@ export default function PainelAluno() {
                     variant={bibliotecaView === 'minhas_solicitacoes' ? 'default' : 'ghost'}
                     onClick={() => setBibliotecaView('minhas_solicitacoes')}
                   >
-                    Minhas solicitaÃ§Ãµes
+                    Minhas solicitacoes
                   </Button>
                   <Button
                     type="button"
@@ -4008,7 +4008,7 @@ export default function PainelAluno() {
                   <div className="space-y-3">
                     <p className="text-sm font-semibold">Meus livros</p>
                     {filteredMeusLivros.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">VocÃª ainda nÃ£o tem livros aprovados/emprestados.</p>
+                      <p className="text-sm text-muted-foreground">Voce ainda nao tem livros aprovados/emprestados.</p>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                         {filteredMeusLivros.map((item) => (
@@ -4204,7 +4204,7 @@ export default function PainelAluno() {
 
                 {bibliotecaView === 'minhas_solicitacoes' && (
                   <div className="space-y-3">
-                    <p className="text-sm font-semibold">Minhas solicitaÃ§Ãµes de emprÃ©stimo</p>
+                    <p className="text-sm font-semibold">Minhas solicitacoes de emprestimo</p>
                     <div className="flex flex-wrap gap-2 rounded-lg border p-1 bg-muted/20">
                       <Button
                         type="button"
@@ -4212,7 +4212,7 @@ export default function PainelAluno() {
                         variant={solicitacoesView === 'pendentes' ? 'default' : 'ghost'}
                         onClick={() => setSolicitacoesView('pendentes')}
                       >
-                        Aguardando aprovaÃ§Ã£o ({solicitacoesGroups.pendentes.length})
+                        Aguardando aprovacao ({solicitacoesGroups.pendentes.length})
                       </Button>
                       <Button
                         type="button"
@@ -4236,11 +4236,11 @@ export default function PainelAluno() {
                         variant={solicitacoesView === 'historico' ? 'default' : 'ghost'}
                         onClick={() => setSolicitacoesView('historico')}
                       >
-                        HistÃ³rico ({solicitacoesGroups.historico.length})
+                        Historico ({solicitacoesGroups.historico.length})
                       </Button>
                     </div>
                     {solicitacoesExibidas.length === 0 ? (
-                      <p className="text-center text-muted-foreground py-8">VocÃª ainda nÃ£o fez solicitaÃ§Ãµes.</p>
+                      <p className="text-center text-muted-foreground py-8">Voce ainda nao fez solicitacoes.</p>
                     ) : (
                       <div className="space-y-3">
                         {solicitacoesExibidas.slice(0, solicitacoesLimit).map((solicitacao) => {
