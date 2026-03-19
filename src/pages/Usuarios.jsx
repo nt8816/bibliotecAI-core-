@@ -143,13 +143,13 @@ export default function Usuarios() {
     ? [
         { value: 'aluno', label: 'Aluno' },
         { value: 'professor', label: 'Professor' },
-        { value: 'bibliotecaria', label: 'BibliotecÃ¡ria' },
+        { value: 'bibliotecaria', label: 'Bibliotecaria' },
         { value: 'gestor', label: 'Gestor' },
       ]
     : [
         { value: 'aluno', label: 'Aluno' },
         { value: 'professor', label: 'Professor' },
-        { value: 'bibliotecaria', label: 'BibliotecÃ¡ria' },
+        { value: 'bibliotecaria', label: 'Bibliotecaria' },
       ];
 
   const fetchUsuarios = useCallback(async () => {
@@ -164,7 +164,7 @@ export default function Usuarios() {
       setUsuarios(data || []);
     } catch (error) {
       console.error('Error fetching users:', error);
-      toast({ variant: 'destructive', title: 'Erro', description: 'NÃ£o foi possÃ­vel carregar os usuÃ¡rios.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel carregar os usuarios.' });
     } finally {
       setLoading(false);
     }
@@ -334,8 +334,8 @@ export default function Usuarios() {
     if (usuario && isBibliotecaria && !isGestor && usuario.tipo === 'gestor') {
       toast({
         variant: 'destructive',
-        title: 'Sem permissÃ£o',
-        description: 'VocÃª nÃ£o pode editar informaÃ§Ãµes do gestor.',
+        title: 'Sem permissao',
+        description: 'Voce nao pode editar informacoes do gestor.',
       });
       return;
     }
@@ -371,7 +371,7 @@ export default function Usuarios() {
 
     const accessToken = sessionData?.session?.access_token;
     if (!accessToken) {
-      throw new Error('SessÃ£o invÃ¡lida. FaÃ§a login novamente.');
+      throw new Error('Sessao invalida. Faca login novamente.');
     }
 
     const data = await invokeEdgeFunction('provisionar-aluno-matricula', {
@@ -381,11 +381,11 @@ export default function Usuarios() {
       },
       requireAuth: false,
       signOutOnAuthFailure: false,
-      fallbackErrorMessage: 'NÃ£o foi possÃ­vel provisionar login por matrÃ­cula.',
+      fallbackErrorMessage: 'Nao foi possivel provisionar login por matricula.',
     });
 
     if (!data?.success) {
-      throw new Error(data?.error || 'NÃ£o foi possÃ­vel provisionar login por matrÃ­cula.');
+      throw new Error(data?.error || 'Nao foi possivel provisionar login por matricula.');
     }
 
     return data;
@@ -400,7 +400,7 @@ export default function Usuarios() {
 
     const accessToken = sessionData?.session?.access_token;
     if (!accessToken) {
-      throw new Error('SessÃ£o invÃ¡lida. FaÃ§a login novamente.');
+      throw new Error('Sessao invalida. Faca login novamente.');
     }
 
     const data = await invokeEdgeFunction('excluir-usuarios-biblioteca', {
@@ -410,11 +410,11 @@ export default function Usuarios() {
       },
       requireAuth: false,
       signOutOnAuthFailure: false,
-      fallbackErrorMessage: 'NÃ£o foi possÃ­vel excluir os usuÃ¡rios.',
+      fallbackErrorMessage: 'Nao foi possivel excluir os usuarios.',
     });
 
     if (!data?.success) {
-      throw new Error(data?.error || 'NÃ£o foi possÃ­vel excluir os usuÃ¡rios.');
+      throw new Error(data?.error || 'Nao foi possivel excluir os usuarios.');
     }
 
     return data;
@@ -422,34 +422,34 @@ export default function Usuarios() {
 
   const handleSave = async () => {
     if (!formData.nome.trim()) {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Nome Ã© obrigatÃ³rio.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Nome e obrigatorio.' });
       return;
     }
 
     if (formData.tipo === 'aluno' && !formData.matricula.trim()) {
-      toast({ variant: 'destructive', title: 'Erro', description: 'MatrÃ­cula Ã© obrigatÃ³ria para aluno.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Matricula e obrigatoria para aluno.' });
       return;
     }
 
     if (formData.tipo === 'aluno' && !isValidMatricula(formData.matricula)) {
       toast({
         variant: 'destructive',
-        title: 'MatrÃ­cula invÃ¡lida',
-        description: 'Use de 6 a 32 caracteres (letras, nÃºmeros, ponto, _ ou -).',
+        title: 'Matricula invalida',
+        description: 'Use de 6 a 32 caracteres (letras, numeros, ponto, _ ou -).',
       });
       return;
     }
 
     if (formData.tipo !== 'aluno' && !formData.email.trim()) {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Email Ã© obrigatÃ³rio para este tipo de usuÃ¡rio.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Email e obrigatorio para este tipo de usuario.' });
       return;
     }
 
     if (!canCreateGestor && formData.tipo === 'gestor') {
       toast({
         variant: 'destructive',
-        title: 'Sem permissÃ£o',
-        description: 'A bibliotecÃ¡ria nÃ£o pode cadastrar novos gestores.',
+        title: 'Sem permissao',
+        description: 'A bibliotecaria nao pode cadastrar novos gestores.',
       });
       return;
     }
@@ -457,8 +457,8 @@ export default function Usuarios() {
     if (!currentEscolaId) {
       toast({
         variant: 'destructive',
-        title: 'Escola nÃ£o vinculada',
-        description: 'Seu usuÃ¡rio nÃ£o estÃ¡ vinculado a uma escola. NÃ£o Ã© possÃ­vel cadastrar usuÃ¡rios.',
+        title: 'Escola nao vinculada',
+        description: 'Seu usuario nao esta vinculado a uma escola. Nao e possivel cadastrar usuarios.',
       });
       return;
     }
@@ -475,7 +475,7 @@ export default function Usuarios() {
           await salvarTurmasProfessor(editingUsuario, []);
         }
 
-        toast({ title: 'Sucesso', description: 'UsuÃ¡rio atualizado com sucesso.' });
+        toast({ title: 'Sucesso', description: 'Usuario atualizado com sucesso.' });
         trackEvent('usuario_atualizado', { id: editingUsuario.id });
       } else {
         if (formData.tipo === 'aluno') {
@@ -488,7 +488,7 @@ export default function Usuarios() {
           });
           toast({
             title: 'Aluno cadastrado',
-            description: 'Login e senha iniciais do aluno sÃ£o a matrÃ­cula.',
+            description: 'Login e senha iniciais do aluno sao a matricula.',
           });
         } else {
           const payload = {
@@ -506,7 +506,7 @@ export default function Usuarios() {
             await salvarTurmasProfessor(data, professorTurmasSelecionadas);
           }
 
-          toast({ title: 'Sucesso', description: 'UsuÃ¡rio cadastrado com sucesso.' });
+          toast({ title: 'Sucesso', description: 'Usuario cadastrado com sucesso.' });
         }
         trackEvent('usuario_cadastrado', { tipo: formData.tipo });
       }
@@ -515,26 +515,26 @@ export default function Usuarios() {
       fetchUsuarios();
     } catch (error) {
       const tableMessage = isMissingTableError(error)
-        ? 'Tabela professor_turmas nÃ£o encontrada. Aplique as migrations do Supabase.'
+        ? 'Tabela professor_turmas nao encontrada. Aplique as migrations do Supabase.'
         : null;
-      toast({ variant: 'destructive', title: 'Erro', description: tableMessage || error.message || 'NÃ£o foi possÃ­vel salvar o usuÃ¡rio.' });
+      toast({ variant: 'destructive', title: 'Erro', description: tableMessage || error.message || 'Nao foi possivel salvar o usuario.' });
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Tem certeza que deseja excluir este usuÃ¡rio?')) return;
+    if (!confirm('Tem certeza que deseja excluir este usuario?')) return;
 
     setDeletingId(id);
     try {
       await excluirUsuariosDoBanco([id]);
-      toast({ title: 'Sucesso', description: 'UsuÃ¡rio excluÃ­do com sucesso.' });
+      toast({ title: 'Sucesso', description: 'Usuario excluido com sucesso.' });
       trackEvent('usuario_excluido', { id });
       setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
       fetchUsuarios();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error.message || 'NÃ£o foi possÃ­vel excluir o usuÃ¡rio.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error.message || 'Nao foi possivel excluir o usuario.' });
     } finally {
       setDeletingId(null);
     }
@@ -542,17 +542,17 @@ export default function Usuarios() {
 
   const handleDeleteSelected = async () => {
     if (!selectedIds.length || !isGestor) return;
-    if (!confirm(`Tem certeza que deseja excluir ${selectedIds.length} usuÃ¡rio(s)?`)) return;
+    if (!confirm(`Tem certeza que deseja excluir ${selectedIds.length} usuario(s)?`)) return;
 
     setBatchDeleting(true);
     try {
       await excluirUsuariosDoBanco(selectedIds);
-      toast({ title: 'Sucesso', description: `${selectedIds.length} usuÃ¡rio(s) excluÃ­do(s).` });
+      toast({ title: 'Sucesso', description: `${selectedIds.length} usuario(s) excluido(s).` });
       trackEvent('usuarios_exclusao_lote', { total: selectedIds.length });
       setSelectedIds([]);
       fetchUsuarios();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error.message || 'NÃ£o foi possÃ­vel excluir os usuÃ¡rios selecionados.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error.message || 'Nao foi possivel excluir os usuarios selecionados.' });
     } finally {
       setBatchDeleting(false);
     }
@@ -570,13 +570,13 @@ export default function Usuarios() {
   };
 
   const getPeriodLabel = (period) => {
-    if (period.mode === 'total') return 'PerÃ­odo total';
-    return `PerÃ­odo: ${period.startDate} a ${period.endDate}`;
+    if (period.mode === 'total') return 'Periodo total';
+    return `Periodo: ${period.startDate} a ${period.endDate}`;
   };
 
   const handleExportarUsuariosExcel = (usuariosSelecionados, periodLabel) => {
     return loadXlsx().then((XLSX) => {
-    const headers = ['Nome', 'Email', 'Tipo', 'MatrÃ­cula', 'CPF', 'Turma', 'Telefone'];
+    const headers = ['Nome', 'Email', 'Tipo', 'Matricula', 'CPF', 'Turma', 'Telefone'];
     const data = usuariosSelecionados.map((u) => [
       u.nome,
       getVisibleEmail(u.nome, u.email),
@@ -589,12 +589,12 @@ export default function Usuarios() {
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'UsuÃ¡rios');
+    XLSX.utils.book_append_sheet(wb, ws, 'Usuarios');
     XLSX.writeFile(wb, 'usuarios.xlsx');
 
     toast({ title: 'Exportado!', description: `Arquivo usuarios.xlsx baixado. ${periodLabel}` });
     }).catch(() => {
-      toast({ variant: 'destructive', title: 'Erro', description: 'NÃ£o foi possÃ­vel exportar o arquivo Excel.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel exportar o arquivo Excel.' });
     });
   };
 
@@ -602,12 +602,12 @@ export default function Usuarios() {
     return loadPdf().then(({ jsPDF, autoTable }) => {
       const doc = new jsPDF();
       doc.setFontSize(18);
-      doc.text('BibliotecAI - UsuÃ¡rios', 14, 22);
+      doc.text('BibliotecAI - Usuarios', 14, 22);
       doc.setFontSize(11);
       doc.setTextColor(100);
       doc.text(`Total: ${usuariosSelecionados.length} | ${periodLabel} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
 
-      const headers = ['Nome', 'Email', 'Tipo', 'MatrÃ­cula', 'Turma', 'Telefone'];
+      const headers = ['Nome', 'Email', 'Tipo', 'Matricula', 'Turma', 'Telefone'];
       const data = usuariosSelecionados.map((u) => [u.nome, getVisibleEmail(u.nome, u.email), getTipoLabel(u.tipo), u.matricula || '-', u.turma || '-', u.telefone || '-']);
 
       autoTable(doc, { head: [headers], body: data, startY: 40, styles: { fontSize: 8 }, headStyles: { fillColor: [46, 125, 50] } });
@@ -615,7 +615,7 @@ export default function Usuarios() {
 
       toast({ title: 'Exportado!', description: `Arquivo usuarios.pdf baixado. ${periodLabel}` });
     }).catch(() => {
-      toast({ variant: 'destructive', title: 'Erro', description: 'NÃ£o foi possÃ­vel exportar o PDF.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel exportar o PDF.' });
     });
   };
 
@@ -627,7 +627,7 @@ export default function Usuarios() {
   const handleConfirmExport = async (period) => {
     const usuariosSelecionados = filtrarUsuariosPorPeriodo(period);
     if (usuariosSelecionados.length === 0) {
-      toast({ variant: 'destructive', title: 'Sem dados', description: 'NÃ£o hÃ¡ usuÃ¡rios no perÃ­odo selecionado.' });
+      toast({ variant: 'destructive', title: 'Sem dados', description: 'Nao ha usuarios no periodo selecionado.' });
       return;
     }
 
@@ -655,7 +655,7 @@ export default function Usuarios() {
     try {
       const fileType = file.name.split('.').pop()?.toLowerCase();
       if (!['xlsx', 'xls', 'csv'].includes(fileType || '')) {
-        toast({ title: 'Formato nÃ£o suportado', description: 'Use Excel (.xlsx, .xls) ou CSV.', variant: 'destructive' });
+        toast({ title: 'Formato nao suportado', description: 'Use Excel (.xlsx, .xls) ou CSV.', variant: 'destructive' });
         return;
       }
 
@@ -666,7 +666,7 @@ export default function Usuarios() {
       const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
       if (jsonData.length < 2) {
-        toast({ title: 'Arquivo vazio', description: 'O arquivo nÃ£o contÃ©m dados.', variant: 'destructive' });
+        toast({ title: 'Arquivo vazio', description: 'O arquivo nao contem dados.', variant: 'destructive' });
         return;
       }
 
@@ -679,8 +679,8 @@ export default function Usuarios() {
 
       if (tipoUsuarioImport === 'aluno' && (nomeIdx === -1 || matriculaIdx === -1)) {
         toast({
-          title: 'Colunas obrigatÃ³rias nÃ£o encontradas',
-          description: 'Para alunos, a planilha deve conter: "Nome", "MatrÃ­cula/RA" e opcionalmente "Turma".',
+          title: 'Colunas obrigatorias nao encontradas',
+          description: 'Para alunos, a planilha deve conter: "Nome", "Matricula/RA" e opcionalmente "Turma".',
           variant: 'destructive',
         });
         return;
@@ -688,7 +688,7 @@ export default function Usuarios() {
 
       if (tipoUsuarioImport !== 'aluno' && (nomeIdx === -1 || emailIdx === -1)) {
         toast({
-          title: 'Colunas obrigatÃ³rias nÃ£o encontradas',
+          title: 'Colunas obrigatorias nao encontradas',
           description: 'A planilha deve conter "Nome" e "Email".',
           variant: 'destructive',
         });
@@ -710,7 +710,7 @@ export default function Usuarios() {
             matricula,
             turma,
             status: isValidMatricula(matricula) ? 'pendente' : 'erro',
-            mensagem: isValidMatricula(matricula) ? undefined : 'MatrÃ­cula/RA invÃ¡lido (mÃ­nimo 6 caracteres).',
+            mensagem: isValidMatricula(matricula) ? undefined : 'Matricula/RA invalido (minimo 6 caracteres).',
           });
           continue;
         }
@@ -726,7 +726,7 @@ export default function Usuarios() {
       }
 
       setImportUsuarios(imported);
-      toast({ title: 'Arquivo processado', description: `${imported.length} usuÃ¡rios encontrados.` });
+      toast({ title: 'Arquivo processado', description: `${imported.length} usuarios encontrados.` });
     } catch {
       toast({ title: 'Erro ao processar', description: 'Verifique o formato do arquivo.', variant: 'destructive' });
     } finally {
@@ -757,7 +757,7 @@ export default function Usuarios() {
 
           if (tipoUsuarioImport === 'aluno') {
             if (!isValidMatricula(u.matricula)) {
-              updated[i] = { ...u, status: 'erro', mensagem: 'MatrÃ­cula invÃ¡lida (mÃ­nimo 6 caracteres).' };
+              updated[i] = { ...u, status: 'erro', mensagem: 'Matricula invalida (minimo 6 caracteres).' };
               setImportUsuarios([...updated]);
               continue;
             }
@@ -769,7 +769,7 @@ export default function Usuarios() {
             });
 
             if (!result?.success) {
-              error = { message: result?.error || 'NÃ£o foi possÃ­vel provisionar o aluno.' };
+              error = { message: result?.error || 'Nao foi possivel provisionar o aluno.' };
             }
           } else {
             const email = u.email || `${u.matricula}@temp.bibliotecai.com`;
@@ -785,7 +785,7 @@ export default function Usuarios() {
           }
 
           if (error) {
-            updated[i] = { ...u, status: 'erro', mensagem: error.code === '23505' ? 'JÃ¡ existe' : error.message };
+            updated[i] = { ...u, status: 'erro', mensagem: error.code === '23505' ? 'Ja existe' : error.message };
           } else {
             updated[i] = { ...u, status: 'sucesso' };
           }
@@ -797,10 +797,10 @@ export default function Usuarios() {
       }
 
       const successCount = updated.filter((u) => u.status === 'sucesso').length;
-      toast({ title: 'ImportaÃ§Ã£o concluÃ­da', description: `${successCount} de ${updated.length} importados.` });
+      toast({ title: 'Importacao concluida', description: `${successCount} de ${updated.length} importados.` });
       fetchUsuarios();
     } catch {
-      toast({ title: 'Erro na importaÃ§Ã£o', variant: 'destructive' });
+      toast({ title: 'Erro na importacao', variant: 'destructive' });
     } finally {
       setImporting(false);
     }
@@ -811,21 +811,21 @@ export default function Usuarios() {
       const isAlunoImport = tipoUsuarioImport === 'aluno';
       const ws = XLSX.utils.aoa_to_sheet(isAlunoImport
         ? [
-            ['Nome', 'MatrÃ­cula/RA', 'Turma'],
-            ['JoÃ£o Silva', '2024001', '3Âº Ano A'],
+            ['Nome', 'Matricula/RA', 'Turma'],
+            ['Joao Silva', '2024001', '3o Ano A'],
             ['Maria Santos', '2024002', '3Âº Ano B'],
           ]
         : [
-            ['Nome', 'Email', 'MatrÃ­cula', 'Turma'],
+            ['Nome', 'Email', 'Matricula', 'Turma'],
             ['Ana Souza', 'ana@escola.com', 'PROF001', '3Âº Ano A'],
             ['Carlos Lima', 'carlos@escola.com', 'PROF002', '3Âº Ano B'],
           ]);
 
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'UsuÃ¡rios');
+      XLSX.utils.book_append_sheet(wb, ws, 'Usuarios');
       XLSX.writeFile(wb, 'modelo_importacao_usuarios.xlsx');
     }).catch(() => {
-      toast({ variant: 'destructive', title: 'Erro', description: 'NÃ£o foi possÃ­vel baixar o modelo.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel baixar o modelo.' });
     });
   };
 
@@ -839,7 +839,7 @@ export default function Usuarios() {
   const getTipoLabel = (tipo) => {
     if (tipo === 'gestor') return 'Gestor';
     if (tipo === 'professor') return 'Professor';
-    if (tipo === 'bibliotecaria') return 'BibliotecÃ¡ria';
+    if (tipo === 'bibliotecaria') return 'Bibliotecaria';
     return 'Aluno';
   };
 
@@ -931,7 +931,7 @@ export default function Usuarios() {
     if (!isGestor) {
       toast({
         variant: 'destructive',
-        title: 'Sem permissÃ£o',
+        title: 'Sem permissao',
         description: 'Apenas gestores podem redefinir senha de alunos.',
       });
       return;
@@ -940,8 +940,8 @@ export default function Usuarios() {
     if (aluno.tipo !== 'aluno') {
       toast({
         variant: 'destructive',
-        title: 'AÃ§Ã£o invÃ¡lida',
-        description: 'A redefiniÃ§Ã£o estÃ¡ disponÃ­vel apenas para alunos.',
+        title: 'Acao invalida',
+        description: 'A redefinicao esta disponivel apenas para alunos.',
       });
       return;
     }
@@ -960,7 +960,7 @@ export default function Usuarios() {
     if (senha.length < 6) {
       toast({
         variant: 'destructive',
-        title: 'Senha invÃ¡lida',
+        title: 'Senha invalida',
         description: 'A senha deve ter pelo menos 6 caracteres.',
       });
       return;
@@ -988,24 +988,24 @@ export default function Usuarios() {
         headers: {
           'x-supabase-auth': accessToken,
         },
-        fallbackErrorMessage: 'NÃ£o foi possÃ­vel redefinir a senha.',
+        fallbackErrorMessage: 'Nao foi possivel redefinir a senha.',
       });
 
       if (!data?.success) {
-        throw new Error(data?.error || 'NÃ£o foi possÃ­vel redefinir a senha.');
+        throw new Error(data?.error || 'Nao foi possivel redefinir a senha.');
       }
 
       setSenhaTemporariaGerada(data.senha_temporaria || senha);
       toast({
         title: 'Senha redefinida',
-        description: `Senha temporÃ¡ria de ${selectedAlunoForPassword.nome} atualizada com sucesso.`,
+        description: `Senha temporaria de ${selectedAlunoForPassword.nome} atualizada com sucesso.`,
       });
       trackEvent('senha_aluno_redefinida', { usuario_id: selectedAlunoForPassword.id });
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Erro ao redefinir senha',
-        description: error.message || 'NÃ£o foi possÃ­vel redefinir a senha.',
+        description: error.message || 'Nao foi possivel redefinir a senha.',
       });
     } finally {
       setResettingPassword(false);
@@ -1016,9 +1016,9 @@ export default function Usuarios() {
     if (!senhaTemporariaGerada) return;
     try {
       await navigator.clipboard.writeText(senhaTemporariaGerada);
-      toast({ title: 'Senha copiada', description: 'A senha temporÃ¡ria foi copiada para a Ã¡rea de transferÃªncia.' });
+      toast({ title: 'Senha copiada', description: 'A senha temporaria foi copiada para a area de transferencia.' });
     } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'NÃ£o foi possÃ­vel copiar a senha.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel copiar a senha.' });
     }
   };
 
@@ -1079,11 +1079,11 @@ export default function Usuarios() {
                     </DialogTrigger>
                     <DialogContent className="max-w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
                       <DialogHeader>
-                        <DialogTitle>Importar UsuÃ¡rios em Massa</DialogTitle>
+                        <DialogTitle>Importar Usuarios em Massa</DialogTitle>
                         <DialogDescription>
                           {tipoUsuarioImport === 'aluno'
-                            ? 'Para alunos, use as colunas: Nome, MatrÃ­cula/RA e Turma.'
-                            : 'Envie uma planilha para cadastrar vÃ¡rios usuÃ¡rios de uma vez.'}
+                            ? 'Para alunos, use as colunas: Nome, Matricula/RA e Turma.'
+                            : 'Envie uma planilha para cadastrar varios usuarios de uma vez.'}
                         </DialogDescription>
                       </DialogHeader>
 
@@ -1101,7 +1101,7 @@ export default function Usuarios() {
 
                         <div className="flex flex-col sm:flex-row gap-4 items-start">
                           <div className="w-full space-y-2 sm:w-auto">
-                            <Label>Tipo de UsuÃ¡rio</Label>
+                            <Label>Tipo de Usuario</Label>
                             <select
                               value={tipoUsuarioImport}
                               onChange={(e) => setTipoUsuarioImport(e.target.value)}
@@ -1137,7 +1137,7 @@ export default function Usuarios() {
                                 <TableHeader>
                                   <TableRow>
                                     <TableHead>Nome</TableHead>
-                                    <TableHead>MatrÃ­cula</TableHead>
+                                    <TableHead>Matricula</TableHead>
                                     {tipoUsuarioImport !== 'aluno' && <TableHead>Email</TableHead>}
                                     <TableHead>Turma</TableHead>
                                     <TableHead>Status</TableHead>
@@ -1179,9 +1179,9 @@ export default function Usuarios() {
                     </DialogTrigger>
                     <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                       <DialogHeader>
-                        <DialogTitle>{editingUsuario ? 'Editar UsuÃ¡rio' : 'Novo UsuÃ¡rio'}</DialogTitle>
+                        <DialogTitle>{editingUsuario ? 'Editar Usuario' : 'Novo Usuario'}</DialogTitle>
                         <DialogDescription>
-                          Preencha os dados do usuÃ¡rio para cadastrar ou atualizar.
+                          Preencha os dados do usuario para cadastrar ou atualizar.
                         </DialogDescription>
                       </DialogHeader>
 
@@ -1217,7 +1217,7 @@ export default function Usuarios() {
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor="matricula">MatrÃ­cula</Label>
+                          <Label htmlFor="matricula">Matricula</Label>
                           <Input id="matricula" value={formData.matricula} onChange={(e) => setFormData({ ...formData, matricula: e.target.value })} />
                         </div>
 
@@ -1252,7 +1252,7 @@ export default function Usuarios() {
                             <Label>Turmas liberadas para o professor</Label>
                             {turmaFilterOptions.length === 0 ? (
                               <p className="text-sm text-muted-foreground">
-                                Nenhuma turma cadastrada. Cadastre turmas em ConfiguraÃ§Ã£o da Escola.
+                                Nenhuma turma cadastrada. Cadastre turmas em Configuracao da Escola.
                               </p>
                             ) : (
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border p-3">
@@ -1271,7 +1271,7 @@ export default function Usuarios() {
                               </div>
                             )}
                             <p className="text-xs text-muted-foreground">
-                              O professor verÃ¡ apenas alunos e atividades das turmas selecionadas.
+                              O professor vera apenas alunos e atividades das turmas selecionadas.
                             </p>
                           </div>
                         )}
@@ -1309,7 +1309,7 @@ export default function Usuarios() {
                       <div className="space-y-4 py-2">
                         <div className="rounded-md border bg-muted/40 p-3 text-sm">
                           <p>
-                            <strong>Aluno:</strong> {selectedAlunoForPassword?.nome || 'â€”'}
+                            <strong>Aluno:</strong> {selectedAlunoForPassword?.nome || '-'}
                           </p>
                           <p className="text-muted-foreground mt-1 break-all">
                             {getVisibleEmail(selectedAlunoForPassword?.nome || 'Aluno', selectedAlunoForPassword?.email)}
@@ -1355,7 +1355,7 @@ export default function Usuarios() {
                           <Alert>
                             <AlertDescription className="space-y-2">
                               <p className="text-sm font-medium">
-                                Senha temporÃ¡ria definida: <code>{senhaTemporariaGerada}</code>
+                                Senha temporaria definida: <code>{senhaTemporariaGerada}</code>
                               </p>
                               <Button type="button" size="sm" variant="outline" onClick={handleCopyPassword}>
                                 <Copy className="w-4 h-4 mr-2" />
@@ -1562,8 +1562,8 @@ export default function Usuarios() {
       <ExportPeriodDialog
         open={exportDialogOpen}
         onOpenChange={setExportDialogOpen}
-        title="Exportar usuÃ¡rios"
-        description="Escolha o perÃ­odo para exportar os usuÃ¡rios."
+        title="Exportar usuarios"
+        description="Escolha o periodo para exportar os usuarios."
         loading={exporting}
         onConfirm={handleConfirmExport}
       />
