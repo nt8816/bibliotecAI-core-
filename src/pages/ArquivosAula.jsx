@@ -27,6 +27,14 @@ function safeText(value, fallback = '-') {
   return fallback;
 }
 
+function getAuthorName(post) {
+  const nested = post?.usuarios_biblioteca;
+  if (Array.isArray(nested)) {
+    return safeText(nested[0]?.nome, '').trim();
+  }
+  return safeText(nested?.nome, '').trim();
+}
+
 function normalizeTurmaKey(value) {
   return String(value || '')
     .normalize('NFD')
@@ -157,8 +165,35 @@ export default function ArquivosAula() {
         throw error;
       }
 
+      const rawPosts = data || [];
+      const missingAuthorIds = [...new Set(
+        ensureArray(rawPosts)
+          .filter((item) => !getAuthorName(item) && item?.autor_id)
+          .map((item) => item.autor_id),
+      )];
+
+      let postsWithAuthors = rawPosts;
+      if (missingAuthorIds.length > 0) {
+        const { data: autoresData, error: autoresError } = await supabase
+          .from('usuarios_biblioteca')
+          .select('id, nome')
+          .in('id', missingAuthorIds);
+
+        if (!autoresError) {
+          const autoresMap = new Map(ensureArray(autoresData).map((item) => [item.id, item.nome]));
+          postsWithAuthors = rawPosts.map((item) =>
+            getAuthorName(item) || !item?.autor_id
+              ? item
+              : {
+                  ...item,
+                  usuarios_biblioteca: { nome: safeText(autoresMap.get(item.autor_id), '') || null },
+                },
+          );
+        }
+      }
+
       setEnabled(true);
-      setPosts(data || []);
+      setPosts(postsWithAuthors);
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -178,7 +213,7 @@ export default function ArquivosAula() {
     () =>
       [...new Set(
         ensureArray(posts)
-          .map((item) => safeText(item?.usuarios_biblioteca?.nome, '').trim())
+          .map((item) => getAuthorName(item))
           .filter(Boolean),
       )].sort((a, b) => a.localeCompare(b, 'pt-BR')),
     [posts],
@@ -194,7 +229,7 @@ export default function ArquivosAula() {
       });
     }
     if (professorFilter !== 'all') {
-      list = list.filter((item) => safeText(item?.usuarios_biblioteca?.nome, '').trim() === professorFilter);
+      list = list.filter((item) => getAuthorName(item) === professorFilter);
     }
     return list;
   }, [alunoTurma, isProfessor, posts, professorFilter]);
@@ -494,7 +529,7 @@ export default function ArquivosAula() {
                       <span className="text-xs text-muted-foreground">{formatDateBR(post?.created_at)}</span>
                     </div>
                     <p className="text-sm font-medium">
-                      Professor: {safeText(post?.usuarios_biblioteca?.nome, 'Professor não identificado')}
+                      Professor: {safeText(getAuthorName(post), 'Professor não identificado')}
                     </p>
                     <p className="text-sm whitespace-pre-wrap">{safeText(post?.mensagem, '')}</p>
                     <div className="space-y-2">
