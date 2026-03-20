@@ -109,7 +109,7 @@ export default function Dashboard() {
           .limit(5),
         supabase
           .from('emprestimos')
-          .select('id, livro_id, created_at, data_emprestimo, livros(titulo)')
+          .select('id, livro_id, created_at, data_emprestimo, status, livros(titulo)')
           .order('created_at', { ascending: false }),
         supabase.from('tenants').select('id, nome, subdominio, ativo').eq('ativo', true).order('nome'),
       ]);
@@ -246,9 +246,12 @@ export default function Dashboard() {
   useRealtimeSubscription({ table: 'usuarios_biblioteca', onChange: handleRealtimeChange });
   useRealtimeSubscription({ table: 'emprestimos', onChange: handleRealtimeChange });
 
+  const livrosEmprestados = Math.min(stats.emprestimosAtivos, stats.totalLivros);
+  const livrosDisponiveis = Math.max(0, stats.totalLivros - livrosEmprestados);
+
   const pieData = [
-    { name: 'Disponíveis', value: stats.livrosDisponiveis },
-    { name: 'Emprestados', value: Math.max(0, stats.totalLivros - stats.livrosDisponiveis) },
+    { name: 'Disponíveis', value: livrosDisponiveis },
+    { name: 'Emprestados', value: livrosEmprestados },
   ];
 
   const statCards = [
