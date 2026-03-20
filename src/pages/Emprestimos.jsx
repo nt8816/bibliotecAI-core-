@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -49,6 +50,11 @@ function formatDateBR(value) {
   }
 }
 
+function toIsoDateTime(dateValue, fallbackHour = '12:00') {
+  if (!dateValue) return null;
+  return new Date(`${dateValue}T${fallbackHour}:00`).toISOString();
+}
+
 function isTempLoginEmail(value) {
   return /@temp\.bibliotecai\.com$/i.test(String(value || '').trim());
 }
@@ -62,16 +68,26 @@ export default function Emprestimos() {
   const [emprestimos, setEmprestimos] = useState([]);
   const [solicitacoes, setSolicitacoes] = useState([]);
   const [livrosDisponiveis, setLivrosDisponiveis] = useState([]);
+  const [livrosCatalogo, setLivrosCatalogo] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
   const [escolaAtualId, setEscolaAtualId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isOldLoanDialogOpen, setIsOldLoanDialogOpen] = useState(false);
   const [selectedLivro, setSelectedLivro] = useState('');
   const [selectedUsuario, setSelectedUsuario] = useState('');
   const [dataDevolucao, setDataDevolucao] = useState(undefined);
+  const [oldLoanLivro, setOldLoanLivro] = useState('');
+  const [oldLoanUsuario, setOldLoanUsuario] = useState('');
+  const [oldLoanStatus, setOldLoanStatus] = useState('devolvido');
+  const [oldLoanDataEmprestimo, setOldLoanDataEmprestimo] = useState('');
+  const [oldLoanDataPrevista, setOldLoanDataPrevista] = useState('');
+  const [oldLoanDataDevolucao, setOldLoanDataDevolucao] = useState('');
   const [saving, setSaving] = useState(false);
   const [searchUsuario, setSearchUsuario] = useState('');
   const [searchLivro, setSearchLivro] = useState('');
+  const [oldSearchUsuario, setOldSearchUsuario] = useState('');
+  const [oldSearchLivro, setOldSearchLivro] = useState('');
   const [respostaPorSolicitacao, setRespostaPorSolicitacao] = useState({});
   const [sortDirection, setSortDirection] = useState('desc');
   const [activeTab, setActiveTab] = useState('ativos');
@@ -98,7 +114,7 @@ export default function Emprestimos() {
           .from('emprestimos')
           .select('*, livros(titulo, autor, escola_id), usuarios_biblioteca(nome, email, escola_id)')
           .order('data_emprestimo', { ascending: false }),
-        supabase.from('livros').select('id, titulo, autor, disponivel, escola_id').eq('disponivel', true).order('titulo'),
+        supabase.from('livros').select('id, titulo, autor, disponivel, escola_id').order('titulo'),
         supabase.from('usuarios_biblioteca').select('id, nome, email, escola_id').order('nome'),
         canManageLoans
           ? supabase
@@ -119,7 +135,8 @@ export default function Emprestimos() {
           (item) => isSameSchool(item?.usuarios_biblioteca?.escola_id) || isSameSchool(item?.livros?.escola_id),
         ),
       );
-      setLivrosDisponiveis((livrosRes.data || []).filter((item) => isSameSchool(item?.escola_id)));
+      setLivrosCatalogo((livrosRes.data || []).filter((item) => isSameSchool(item?.escola_id)));
+      setLivrosDisponiveis((livrosRes.data || []).filter((item) => isSameSchool(item?.escola_id) && item?.disponivel));
       setUsuarios((usuariosRes.data || []).filter((item) => isSameSchool(item?.escola_id)));
       setSolicitacoes(
         (solicitacoesRes.data || []).filter(
@@ -276,6 +293,106 @@ export default function Emprestimos() {
     } finally {
       setSaving(false);
       setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
+    }
+  };
+
+  const resetOldLoanForm = useCallback(() => {
+    setOldLoanLivro('');
+    setOldLoanUsuario('');
+    setOldLoanStatus('devolvido');
+    setOldLoanDataEmprestimo('');
+    setOldLoanDataPrevista('');
+    setOldLoanDataDevolucao('');
+    setOldSearchUsuario('');
+    setOldSearchLivro('');
+  }, []);
+
+  const handleCreateOldEmprestimo = async () => {
+    if (!oldLoanLivro || !oldLoanUsuario || !oldLoanDataEmprestimo) {
+      toast({
+        variant: 'destructive',
+        title: 'Campos obrigatórios',
+        description: 'Selecione o aluno, o livro e a data do empréstimo.',
+      });
+      return;
+    }
+
+    if (oldLoanStatus === 'devolvido' && !oldLoanDataDevolucao) {
+      toast({
+        variant: 'destructive',
+        title: 'Data obrigatória',
+        description: 'Informe a data de devolução para registrar um empréstimo já devolvido.',
+      });
+      return;
+    }
+
+    if (oldLoanDataPrevista && oldLoanDataPrevista < oldLoanDataEmprestimo) {
+      toast({
+        variant: 'destructive',
+        title: 'Período inválido',
+        description: 'A devolução prevista não pode ser anterior à data do empréstimo.',
+      });
+      return;
+    }
+
+    if (oldLoanDataDevolucao && oldLoanDataDevolucao < oldLoanDataEmprestimo) {
+      toast({
+        variant: 'destructive',
+        title: 'Período inválido',
+        description: 'A devolução real não pode ser anterior à data do empréstimo.',
+      });
+      return;
+    }
+
+    const livroSelecionado = livrosCatalogo.find((livro) => livro.id === oldLoanLivro);
+    if (oldLoanStatus === 'ativo' && livroSelecionado && !livroSelecionado.disponivel) {
+      toast({
+        variant: 'destructive',
+        title: 'Livro indisponível',
+        description: 'Esse livro já está marcado como indisponível no acervo atual.',
+      });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const insertData = {
+        livro_id: oldLoanLivro,
+        usuario_id: oldLoanUsuario,
+        status: oldLoanStatus,
+        data_emprestimo: toIsoDateTime(oldLoanDataEmprestimo),
+        data_devolucao_prevista: oldLoanDataPrevista
+          ? toIsoDateTime(oldLoanDataPrevista)
+          : toIsoDateTime(oldLoanDataEmprestimo),
+        data_devolucao_real: oldLoanStatus === 'devolvido' ? toIsoDateTime(oldLoanDataDevolucao) : null,
+      };
+
+      const { error: insertError } = await supabase.from('emprestimos').insert(insertData);
+      if (insertError) throw insertError;
+
+      if (oldLoanStatus === 'ativo') {
+        const { error: livroError } = await supabase
+          .from('livros')
+          .update({ disponivel: false })
+          .eq('id', oldLoanLivro);
+        if (livroError) throw livroError;
+      }
+
+      toast({
+        title: 'Empréstimo antigo registrado',
+        description: 'O histórico foi salvo com sucesso.',
+      });
+      setIsOldLoanDialogOpen(false);
+      resetOldLoanForm();
+      fetchData();
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: error?.message || 'Não foi possível registrar este empréstimo antigo.',
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -436,6 +553,18 @@ export default function Emprestimos() {
 
   const filteredLivrosDialog = livrosDisponiveis.filter(
     (l) => l.titulo.toLowerCase().includes(searchLivro.toLowerCase()) || l.autor.toLowerCase().includes(searchLivro.toLowerCase()),
+  );
+
+  const oldLoanLivrosBase = oldLoanStatus === 'ativo' ? livrosDisponiveis : livrosCatalogo;
+  const filteredOldUsuarios = usuarios.filter(
+    (u) =>
+      u.nome.toLowerCase().includes(oldSearchUsuario.toLowerCase()) ||
+      String(u.email || '').toLowerCase().includes(oldSearchUsuario.toLowerCase()),
+  );
+  const filteredOldLivrosDialog = oldLoanLivrosBase.filter(
+    (l) =>
+      l.titulo.toLowerCase().includes(oldSearchLivro.toLowerCase()) ||
+      l.autor.toLowerCase().includes(oldSearchLivro.toLowerCase()),
   );
 
   const today = new Date();
@@ -830,6 +959,186 @@ export default function Emprestimos() {
                     <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
                       <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">Cancelar</Button>
                       <Button onClick={handleCreateEmprestimo} disabled={saving} className="w-full sm:w-auto">{saving ? 'Registrando...' : 'Registrar Empréstimo'}</Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog
+                  open={isOldLoanDialogOpen}
+                  onOpenChange={(open) => {
+                    setIsOldLoanDialogOpen(open);
+                    if (!open) {
+                      resetOldLoanForm();
+                    }
+                  }}
+                >
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="w-full sm:w-auto">
+                      <Plus className="w-4 h-4 mr-2" /> Registrar empréstimo antigo
+                    </Button>
+                  </DialogTrigger>
+
+                  <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Registrar empréstimo antigo</DialogTitle>
+                      <DialogDescription>
+                        Use este formulário para lançar empréstimos anteriores no histórico da biblioteca.
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid gap-4 py-4 sm:grid-cols-2">
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label>Status do registro</Label>
+                        <Select value={oldLoanStatus} onValueChange={setOldLoanStatus}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione o status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="devolvido">Já devolvido</SelectItem>
+                            <SelectItem value="ativo">Ainda emprestado</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Aluno / Usuário</Label>
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Pesquisar por nome ou email..."
+                            className="pl-9"
+                            value={oldSearchUsuario}
+                            onChange={(e) => {
+                              setOldSearchUsuario(e.target.value);
+                              setOldLoanUsuario('');
+                            }}
+                          />
+                        </div>
+
+                        {oldLoanUsuario ? (
+                          <div className="flex items-center justify-between rounded-md border bg-primary/10 p-2">
+                            <span className="text-sm font-medium">{usuarios.find((u) => u.id === oldLoanUsuario)?.nome}</span>
+                            <Button variant="ghost" size="sm" onClick={() => { setOldLoanUsuario(''); setOldSearchUsuario(''); }}>
+                              Trocar
+                            </Button>
+                          </div>
+                        ) : oldSearchUsuario.length >= 2 ? (
+                          <div className="max-h-40 overflow-y-auto rounded-md border">
+                            {filteredOldUsuarios.length === 0 ? (
+                              <p className="p-3 text-sm text-muted-foreground">Nenhum usuário encontrado</p>
+                            ) : (
+                              filteredOldUsuarios.slice(0, 10).map((u) => (
+                                <button
+                                  key={u.id}
+                                  className="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
+                                  onClick={() => {
+                                    setOldLoanUsuario(u.id);
+                                    setOldSearchUsuario(u.nome);
+                                  }}
+                                >
+                                  <p className="font-medium">{u.nome}</p>
+                                  <p className="text-xs text-muted-foreground">{getVisibleEmail(u.nome, u.email)}</p>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Livro</Label>
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <Input
+                            placeholder={oldLoanStatus === 'ativo' ? 'Pesquisar livro disponível...' : 'Pesquisar livro...'}
+                            className="pl-9"
+                            value={oldSearchLivro}
+                            onChange={(e) => {
+                              setOldSearchLivro(e.target.value);
+                              setOldLoanLivro('');
+                            }}
+                          />
+                        </div>
+
+                        {oldLoanLivro ? (
+                          <div className="flex items-center justify-between rounded-md border bg-primary/10 p-2">
+                            <span className="text-sm font-medium">{oldLoanLivrosBase.find((l) => l.id === oldLoanLivro)?.titulo}</span>
+                            <Button variant="ghost" size="sm" onClick={() => { setOldLoanLivro(''); setOldSearchLivro(''); }}>
+                              Trocar
+                            </Button>
+                          </div>
+                        ) : oldSearchLivro.length >= 2 ? (
+                          <div className="max-h-40 overflow-y-auto rounded-md border">
+                            {filteredOldLivrosDialog.length === 0 ? (
+                              <p className="p-3 text-sm text-muted-foreground">
+                                {oldLoanStatus === 'ativo' ? 'Nenhum livro disponível encontrado' : 'Nenhum livro encontrado'}
+                              </p>
+                            ) : (
+                              filteredOldLivrosDialog.slice(0, 10).map((l) => (
+                                <button
+                                  key={l.id}
+                                  className="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
+                                  onClick={() => {
+                                    setOldLoanLivro(l.id);
+                                    setOldSearchLivro(l.titulo);
+                                  }}
+                                >
+                                  <p className="font-medium">{l.titulo}</p>
+                                  <p className="text-xs text-muted-foreground">{l.autor}</p>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="oldLoanDataEmprestimo">Data do empréstimo</Label>
+                        <Input
+                          id="oldLoanDataEmprestimo"
+                          type="date"
+                          value={oldLoanDataEmprestimo}
+                          max={format(new Date(), 'yyyy-MM-dd')}
+                          onChange={(e) => setOldLoanDataEmprestimo(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="oldLoanDataPrevista">Devolução prevista</Label>
+                        <Input
+                          id="oldLoanDataPrevista"
+                          type="date"
+                          value={oldLoanDataPrevista}
+                          onChange={(e) => setOldLoanDataPrevista(e.target.value)}
+                        />
+                      </div>
+
+                      {oldLoanStatus === 'devolvido' && (
+                        <div className="space-y-2 sm:col-span-2">
+                          <Label htmlFor="oldLoanDataDevolucao">Data da devolução</Label>
+                          <Input
+                            id="oldLoanDataDevolucao"
+                            type="date"
+                            value={oldLoanDataDevolucao}
+                            max={format(new Date(), 'yyyy-MM-dd')}
+                            onChange={(e) => setOldLoanDataDevolucao(e.target.value)}
+                          />
+                        </div>
+                      )}
+
+                      <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground sm:col-span-2">
+                        Registros marcados como <strong>{oldLoanStatus === 'ativo' ? 'ainda emprestados' : 'já devolvidos'}</strong>{' '}
+                        entram no histórico real do sistema. Livros ativos ficam indisponíveis no acervo atual.
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                      <Button variant="outline" onClick={() => setIsOldLoanDialogOpen(false)} className="w-full sm:w-auto">
+                        Cancelar
+                      </Button>
+                      <Button onClick={handleCreateOldEmprestimo} disabled={saving} className="w-full sm:w-auto">
+                        {saving ? 'Salvando...' : 'Registrar no histórico'}
+                      </Button>
                     </div>
                   </DialogContent>
                 </Dialog>
