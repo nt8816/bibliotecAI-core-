@@ -3,15 +3,30 @@ import { supabase } from '@/integrations/supabase/client';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/hooks/useAuth';
 
+function ensureArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function normalizeTurmaKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function useSystemNotifications() {
   const { isGestor, isBibliotecaria, isAluno, user } = useAuth();
-  const [counts, setCounts] = useState({ atrasados: 0, solicitacoesPendentes: 0 });
+  const [counts, setCounts] = useState({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0 });
+  const [notifications, setNotifications] = useState([]);
 
   const canView = isGestor || isBibliotecaria || isAluno;
 
   const fetchCounts = useCallback(async () => {
     if (!canView || !user?.id) {
-      setCounts({ atrasados: 0, solicitacoesPendentes: 0 });
+      setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0 });
+      setNotifications([]);
       return;
     }
 
@@ -25,12 +40,13 @@ export function useSystemNotifications() {
       .maybeSingle();
 
     if (perfilError || !perfil?.id) {
-      setCounts({ atrasados: 0, solicitacoesPendentes: 0 });
+      setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0 });
+      setNotifications([]);
       return;
     }
 
     if (isAluno) {
-      const [atrasadosRes, solicitacoesRes] = await Promise.all([
+      const [atrasadosRes, solicitacoesRes, comunicadosRes, notificacoesLidasRes] = await Promise.all([
         supabase
           .from('emprestimos')
           .select('id', { count: 'exact', head: true })
@@ -42,17 +58,50 @@ export function useSystemNotifications() {
           .select('id', { count: 'exact', head: true })
           .eq('usuario_id', perfil.id)
           .in('status', ['pendente', 'em_andamento']),
+        perfil.escola_id
+          ? supabase
+              .from('comunidade_posts')
+              .select('id, titulo, conteudo, turma_publico, created_at')
+              .eq('escola_id', perfil.escola_id)
+              .eq('tipo', 'comunicado')
+              .order('created_at', { ascending: false })
+              .limit(20)
+          : Promise.resolve({ data: [], error: null }),
+        supabase
+          .from('notificacoes_lidas')
+          .select('notification_id')
+          .eq('usuario_id', perfil.id),
       ]);
+
+      const turmaAluno = normalizeTurmaKey(perfil.turma);
+      const lidas = new Set(ensureArray(notificacoesLidasRes.data).map((item) => item.notification_id));
+      const comunicados = ensureArray(comunicadosRes.data)
+        .filter((item) => {
+          const turmaComunicado = normalizeTurmaKey(item?.turma_publico);
+          return !turmaComunicado || turmaComunicado === turmaAluno;
+        })
+        .map((item) => ({
+          id: `comunicado-${item.id}`,
+          tipo: 'comunicado',
+          titulo: item.titulo || 'Novo comunicado',
+          descricao: item.conteudo || 'Confira o comunicado da sua turma na comunidade.',
+          created_at: item.created_at || null,
+          path: '/aluno/comunidade',
+        }))
+        .filter((item) => !lidas.has(item.id));
 
       setCounts({
         atrasados: atrasadosRes.count || 0,
         solicitacoesPendentes: solicitacoesRes.count || 0,
+        comunicados: comunicados.length,
       });
+      setNotifications(comunicados);
       return;
     }
 
     if (!perfil.escola_id) {
-      setCounts({ atrasados: 0, solicitacoesPendentes: 0 });
+      setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0 });
+      setNotifications([]);
       return;
     }
 
@@ -73,7 +122,9 @@ export function useSystemNotifications() {
     setCounts({
       atrasados: atrasadosRes.count || 0,
       solicitacoesPendentes: solicitacoesRes.count || 0,
+      comunicados: 0,
     });
+    setNotifications([]);
   }, [canView, isAluno, user?.id]);
 
   useEffect(() => {
@@ -82,6 +133,8 @@ export function useSystemNotifications() {
 
   useRealtimeSubscription({ table: 'emprestimos', onChange: fetchCounts });
   useRealtimeSubscription({ table: 'solicitacoes_emprestimo', onChange: fetchCounts });
+  useRealtimeSubscription({ table: 'comunidade_posts', onChange: fetchCounts });
+  useRealtimeSubscription({ table: 'notificacoes_lidas', onChange: fetchCounts });
 
-  return { counts, canViewNotifications: canView };
+  return { counts, notifications, canViewNotifications: canView };
 }

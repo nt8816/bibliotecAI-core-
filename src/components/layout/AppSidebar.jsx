@@ -44,8 +44,8 @@ export function AppSidebar() {
   const collapsed = state === 'collapsed';
   const navigate = useNavigate();
   const { signOut, user, userRole, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
-  const { counts, canViewNotifications } = useSystemNotifications();
-  const totalPendencias = counts.atrasados + counts.solicitacoesPendentes;
+  const { counts, notifications, canViewNotifications } = useSystemNotifications();
+  const totalPendencias = counts.atrasados + counts.solicitacoesPendentes + counts.comunicados;
   const hasPendencias = totalPendencias > 0;
   const settingsPath = '/configuracoes';
   const isTempLoginEmail = /@temp\.bibliotecai\.com$/i.test(String(user?.email || ''));
@@ -57,6 +57,11 @@ export function AppSidebar() {
     await signOut();
   };
   const handleMenuItemClick = () => {
+    if (isMobile) setOpenMobile(false);
+  };
+  const handleSidebarNotificationClick = (item) => {
+    const targetPath = item?.path || '/aluno/comunidade';
+    navigate(targetPath);
     if (isMobile) setOpenMobile(false);
   };
 
@@ -265,6 +270,24 @@ export function AppSidebar() {
 
                   {hasPendencias ? (
                     <div className="space-y-2">
+                      {userRole === 'aluno' && notifications.length > 0 && (
+                        <>
+                          {notifications.slice(0, 5).map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              className="w-full rounded-md border p-2 text-sm flex items-start justify-between gap-2 text-left hover:bg-accent transition-colors"
+                              onClick={() => handleSidebarNotificationClick(item)}
+                            >
+                              <div className="min-w-0">
+                                <p className="font-medium truncate">{item.titulo}</p>
+                                <p className="text-xs text-muted-foreground line-clamp-2">{item.descricao}</p>
+                              </div>
+                              <Badge variant="destructive">Novo</Badge>
+                            </button>
+                          ))}
+                        </>
+                      )}
                       <button
                         type="button"
                         className="w-full rounded-md border p-2 text-sm flex items-center justify-between gap-2 text-left hover:bg-accent transition-colors"
