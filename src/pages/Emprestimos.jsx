@@ -29,6 +29,7 @@ import {
   XCircle,
   ArrowUpDown,
   Loader2,
+  Trash2,
 } from 'lucide-react';
 import { format, isPast, addMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -78,6 +79,7 @@ export default function Emprestimos() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState('xlsx');
   const [exporting, setExporting] = useState(false);
+  const [deleteConfirmEmprestimo, setDeleteConfirmEmprestimo] = useState(null);
 
   const { isBibliotecaria, user } = useAuth();
   const { toast } = useToast();
@@ -277,6 +279,24 @@ export default function Emprestimos() {
     }
   };
 
+  const handleExcluirHistorico = async (emprestimo) => {
+    if (!canManageLoans || !emprestimo?.id || emprestimo?.status !== 'devolvido') return;
+
+    setActionLoading({ devolucaoId: null, solicitacaoId: emprestimo.id, tipo: 'excluir_historico' });
+    try {
+      const { error } = await supabase.from('emprestimos').delete().eq('id', emprestimo.id);
+      if (error) throw error;
+
+      toast({ title: 'Histórico excluído', description: 'O registro foi removido com sucesso.' });
+      setDeleteConfirmEmprestimo(null);
+      fetchData();
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível excluir este empréstimo.' });
+    } finally {
+      setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
+    }
+  };
+
   const filtrarEmprestimosPorPeriodo = (period) => {
     if (period.mode === 'total') return emprestimos;
     const start = new Date(`${period.startDate}T00:00:00`);
@@ -451,17 +471,36 @@ export default function Emprestimos() {
               )}
             </div>
 
-            {showDevolucao && canManageLoans && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-3 w-full"
-                onClick={() => handleDevolucao(emprestimo)}
-                disabled={actionLoading.devolucaoId === emprestimo.id}
-              >
-                {actionLoading.devolucaoId === emprestimo.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
-                Devolver
-              </Button>
+            {canManageLoans && (
+              <>
+                {showDevolucao ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-3 w-full"
+                    onClick={() => handleDevolucao(emprestimo)}
+                    disabled={actionLoading.devolucaoId === emprestimo.id}
+                  >
+                    {actionLoading.devolucaoId === emprestimo.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                    Devolver
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="mt-3 w-full"
+                    onClick={() => setDeleteConfirmEmprestimo(emprestimo)}
+                    disabled={actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico'}
+                  >
+                    {actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico' ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4 mr-2" />
+                    )}
+                    Excluir histórico
+                  </Button>
+                )}
+              </>
             )}
           </div>
         ))}
@@ -503,6 +542,99 @@ export default function Emprestimos() {
                     </Button>
                   </TableCell>
                 )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </>
+  );
+
+  const renderHistoricoTable = (data) => (
+    <>
+      <div className="space-y-3 md:hidden">
+        {data.map((emprestimo) => (
+          <div key={emprestimo.id} className="rounded-lg border bg-card p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold truncate">{emprestimo.livros?.titulo || '-'}</p>
+                <p className="text-xs text-muted-foreground truncate">{emprestimo.livros?.autor || '-'}</p>
+              </div>
+              <div className="shrink-0">{getStatusBadge(emprestimo)}</div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+              <p className="text-muted-foreground">Usuário</p>
+              <p className="text-right truncate">{emprestimo.usuarios_biblioteca?.nome || '-'}</p>
+              <p className="text-muted-foreground">E-mail</p>
+              <p className="text-right truncate">{getVisibleEmail(emprestimo.usuarios_biblioteca?.nome, emprestimo.usuarios_biblioteca?.email)}</p>
+              <p className="text-muted-foreground">Empréstimo</p>
+              <p className="text-right">{formatDateBR(emprestimo.data_emprestimo)}</p>
+              <p className="text-muted-foreground">Devolução real</p>
+              <p className="text-right">{emprestimo.data_devolucao_real ? formatDateBR(emprestimo.data_devolucao_real) : '-'}</p>
+            </div>
+
+            <Button
+              size="sm"
+              variant="destructive"
+              className="mt-3 w-full"
+              onClick={() => setDeleteConfirmEmprestimo(emprestimo)}
+              disabled={actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico'}
+            >
+              {actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico' ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4 mr-2" />
+              )}
+              Excluir histórico
+            </Button>
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden md:block overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Livro</TableHead>
+              <TableHead>Usuário</TableHead>
+              <TableHead>Data Empréstimo</TableHead>
+              <TableHead>Devolução Prevista</TableHead>
+              <TableHead>Devolução Real</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Ações</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.map((emprestimo) => (
+              <TableRow key={emprestimo.id}>
+                <TableCell>
+                  <p className="font-medium">{emprestimo.livros?.titulo || '-'}</p>
+                  <p className="text-sm text-muted-foreground">{emprestimo.livros?.autor || '-'}</p>
+                </TableCell>
+                <TableCell>
+                  <p className="font-medium">{emprestimo.usuarios_biblioteca?.nome || '-'}</p>
+                  <p className="text-sm text-muted-foreground">{getVisibleEmail(emprestimo.usuarios_biblioteca?.nome, emprestimo.usuarios_biblioteca?.email)}</p>
+                </TableCell>
+                <TableCell>{formatDateBR(emprestimo.data_emprestimo)}</TableCell>
+                <TableCell>{formatDateBR(emprestimo.data_devolucao_prevista)}</TableCell>
+                <TableCell>{emprestimo.data_devolucao_real ? formatDateBR(emprestimo.data_devolucao_real) : '-'}</TableCell>
+                <TableCell>{getStatusBadge(emprestimo)}</TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => setDeleteConfirmEmprestimo(emprestimo)}
+                    disabled={actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico'}
+                  >
+                    {actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico' ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4 mr-2" />
+                    )}
+                    Excluir
+                  </Button>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -830,7 +962,7 @@ export default function Emprestimos() {
                 {emprestimosHistorico.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">Nenhum empréstimo no histórico</p>
                 ) : (
-                  renderTable(emprestimosHistorico, false)
+                  renderHistoricoTable(emprestimosHistorico)
                 )}
               </TabsContent>
             </Tabs>
@@ -846,6 +978,51 @@ export default function Emprestimos() {
         loading={exporting}
         onConfirm={handleConfirmExport}
       />
+      <Dialog
+        open={Boolean(deleteConfirmEmprestimo)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteConfirmEmprestimo(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Excluir empréstimo do histórico</DialogTitle>
+            <DialogDescription>
+              Essa ação remove permanentemente este registro do histórico.
+            </DialogDescription>
+          </DialogHeader>
+
+          {deleteConfirmEmprestimo && (
+            <div className="rounded-lg border bg-muted/30 p-4 text-sm">
+              <p className="font-medium">{deleteConfirmEmprestimo.livros?.titulo || 'Livro'}</p>
+              <p className="text-muted-foreground">
+                Usuário: {deleteConfirmEmprestimo.usuarios_biblioteca?.nome || '-'}
+              </p>
+              <p className="text-muted-foreground">
+                Devolvido em: {formatDateBR(deleteConfirmEmprestimo.data_devolucao_real)}
+              </p>
+            </div>
+          )}
+
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setDeleteConfirmEmprestimo(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => handleExcluirHistorico(deleteConfirmEmprestimo)}
+              disabled={!deleteConfirmEmprestimo || (actionLoading.solicitacaoId === deleteConfirmEmprestimo?.id && actionLoading.tipo === 'excluir_historico')}
+            >
+              {actionLoading.solicitacaoId === deleteConfirmEmprestimo?.id && actionLoading.tipo === 'excluir_historico' ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4 mr-2" />
+              )}
+              Confirmar exclusão
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }
