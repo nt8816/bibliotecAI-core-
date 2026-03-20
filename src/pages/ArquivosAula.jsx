@@ -125,6 +125,7 @@ export default function ArquivosAula() {
   const [escolaId, setEscolaId] = useState(null);
   const [alunoTurma, setAlunoTurma] = useState(null);
   const [professorTurmas, setProfessorTurmas] = useState([]);
+  const [professoresPermitidos, setProfessoresPermitidos] = useState([]);
   const [mensagem, setMensagem] = useState('');
   const [turmaPublico, setTurmaPublico] = useState('');
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -161,8 +162,43 @@ export default function ArquivosAula() {
         setProfessorTurmas(
           [...new Set(ensureArray(turmasData).map((item) => safeText(item?.turma, '').trim()).filter(Boolean))].sort(),
         );
+        setProfessoresPermitidos([]);
       } else {
         setProfessorTurmas([]);
+        if (perfil.escola_id && perfil.turma) {
+          const { data: professorTurmasData, error: professorTurmasError } = await supabase
+            .from('professor_turmas')
+            .select('professor_id')
+            .eq('escola_id', perfil.escola_id)
+            .eq('turma', perfil.turma);
+
+          if (!professorTurmasError && !isMissingTableError(professorTurmasError)) {
+            const professorIds = [...new Set(
+              ensureArray(professorTurmasData).map((item) => item?.professor_id).filter(Boolean),
+            )];
+
+            if (professorIds.length > 0) {
+              const { data: professoresData, error: professoresError } = await supabase
+                .from('usuarios_biblioteca')
+                .select('id, nome')
+                .in('id', professorIds);
+
+              if (!professoresError) {
+                setProfessoresPermitidos(
+                  [...new Set(
+                    ensureArray(professoresData).map((item) => safeText(item?.nome, '').trim()).filter(Boolean),
+                  )].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+                );
+              }
+            } else {
+              setProfessoresPermitidos([]);
+            }
+          } else {
+            setProfessoresPermitidos([]);
+          }
+        } else {
+          setProfessoresPermitidos([]);
+        }
       }
 
       const { data, error } = await supabase
@@ -226,11 +262,11 @@ export default function ArquivosAula() {
   const professoresDisponiveis = useMemo(
     () =>
       [...new Set(
-        ensureArray(posts)
+        [...ensureArray(professoresPermitidos), ...ensureArray(posts)
           .map((item) => getAuthorName(item))
-          .filter(Boolean),
+          .filter(Boolean)],
       )].sort((a, b) => a.localeCompare(b, 'pt-BR')),
-    [posts],
+    [posts, professoresPermitidos],
   );
 
   const visiblePosts = useMemo(() => {
