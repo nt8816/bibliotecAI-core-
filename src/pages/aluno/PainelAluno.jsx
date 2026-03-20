@@ -858,6 +858,8 @@ export default function PainelAluno() {
   const [shareCriacaoTitulo, setShareCriacaoTitulo] = useState('');
   const [shareCriacaoDescricao, setShareCriacaoDescricao] = useState('');
   const [shareCriacaoTipo, setShareCriacaoTipo] = useState('dica');
+  const [deleteStudioSlideDialogOpen, setDeleteStudioSlideDialogOpen] = useState(false);
+  const [deleteStudioSlideItem, setDeleteStudioSlideItem] = useState(null);
   const [deleteCriacaoDialogOpen, setDeleteCriacaoDialogOpen] = useState(false);
   const [deleteCriacaoItem, setDeleteCriacaoItem] = useState(null);
   const [quizLivroId, setQuizLivroId] = useState('');
@@ -2544,6 +2546,19 @@ export default function PainelAluno() {
     }
   };
 
+  const abrirConfirmacaoExclusaoSlide = (slide) => {
+    if (!slide?.id) return;
+    setDeleteStudioSlideItem(slide);
+    setDeleteStudioSlideDialogOpen(true);
+  };
+
+  const confirmarExclusaoSlide = () => {
+    if (!deleteStudioSlideItem?.id) return;
+    setStudioSlides((prev) => prev.filter((item) => item.id !== deleteStudioSlideItem.id));
+    setDeleteStudioSlideDialogOpen(false);
+    setDeleteStudioSlideItem(null);
+  };
+
   const handleGerarImagemIA = async () => {
     const prompt = studioPrompt.trim();
     if (!prompt) {
@@ -3890,7 +3905,7 @@ export default function PainelAluno() {
                           size="sm"
                           variant="destructive"
                           className="absolute right-1 top-1 h-6 w-6 p-0"
-                          onClick={() => setStudioSlides((prev) => prev.filter((item) => item.id !== slide.id))}
+                          onClick={() => abrirConfirmacaoExclusaoSlide(slide)}
                         >
                           <Trash2 className="w-3 h-3" />
                         </Button>
@@ -4937,6 +4952,38 @@ export default function PainelAluno() {
               disabled={saving || !deleteCriacaoItem}
             >
               {saving ? 'Apagando...' : 'Confirmar exclusão'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteStudioSlideDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteStudioSlideDialogOpen(open);
+          if (!open) {
+            setDeleteStudioSlideItem(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Excluir imagem</DialogTitle>
+            <DialogDescription>
+              Confirme se deseja remover esta imagem do projeto atual.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-muted-foreground">
+            Essa imagem será removida da montagem atual antes de salvar ou compartilhar.
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDeleteStudioSlideDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={confirmarExclusaoSlide} disabled={!deleteStudioSlideItem}>
+              Remover imagem
             </Button>
           </div>
         </DialogContent>
