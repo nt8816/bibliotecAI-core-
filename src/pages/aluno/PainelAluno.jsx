@@ -858,6 +858,8 @@ export default function PainelAluno() {
   const [shareCriacaoTitulo, setShareCriacaoTitulo] = useState('');
   const [shareCriacaoDescricao, setShareCriacaoDescricao] = useState('');
   const [shareCriacaoTipo, setShareCriacaoTipo] = useState('dica');
+  const [deleteCriacaoDialogOpen, setDeleteCriacaoDialogOpen] = useState(false);
+  const [deleteCriacaoItem, setDeleteCriacaoItem] = useState(null);
   const [quizLivroId, setQuizLivroId] = useState('');
   const [quizTema, setQuizTema] = useState('');
   const [quiz, setQuiz] = useState([]);
@@ -3046,10 +3048,14 @@ export default function PainelAluno() {
     }
   };
 
+  const abrirConfirmacaoExclusaoCriacao = (criacao) => {
+    if (!criacao?.id) return;
+    setDeleteCriacaoItem(criacao);
+    setDeleteCriacaoDialogOpen(true);
+  };
+
   const apagarCriacaoLaboratorio = async (criacao) => {
     if (!criacao?.id) return;
-    const ok = window.confirm('Deseja apagar esta criação do laboratório?');
-    if (!ok) return;
 
     setSaving(true);
     try {
@@ -3069,6 +3075,8 @@ export default function PainelAluno() {
         throw error;
       }
 
+      setDeleteCriacaoDialogOpen(false);
+      setDeleteCriacaoItem(null);
       toast({ title: 'Criação removida.' });
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro ao apagar', description: error?.message || 'NÃ£o foi possÃ­vel apagar.' });
@@ -4139,7 +4147,7 @@ export default function PainelAluno() {
                                 <Send className="w-3 h-3 mr-1" />
                                 {criacao.publicado_comunidade || criacao.comunidade_post_id ? 'Compartilhado' : 'Compartilhar'}
                               </Button>
-                              <Button type="button" size="sm" variant="destructive" onClick={() => apagarCriacaoLaboratorio(criacao)} disabled={saving}>
+                              <Button type="button" size="sm" variant="destructive" onClick={() => abrirConfirmacaoExclusaoCriacao(criacao)} disabled={saving}>
                                 <Trash2 className="w-3 h-3 mr-1" />
                                 Apagar
                               </Button>
@@ -4887,6 +4895,48 @@ export default function PainelAluno() {
               disabled={saving || !shareCriacaoItem}
             >
               {saving ? 'Compartilhando...' : 'Publicar na comunidade'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteCriacaoDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteCriacaoDialogOpen(open);
+          if (!open) {
+            setDeleteCriacaoItem(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Excluir criação salva</DialogTitle>
+            <DialogDescription>
+              Esta ação remove a criação do laboratório
+              {deleteCriacaoItem?.comunidade_post_id ? ' e também a publicação vinculada na comunidade' : ''}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-muted-foreground">
+            <p className="font-medium text-foreground">
+              {repairMojibakeText(deleteCriacaoItem?.titulo) || 'Criação sem título'}
+            </p>
+            <p className="mt-1">
+              Deseja apagar esta criação do laboratório? Essa ação não poderá ser desfeita.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDeleteCriacaoDialogOpen(false)} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => apagarCriacaoLaboratorio(deleteCriacaoItem)}
+              disabled={saving || !deleteCriacaoItem}
+            >
+              {saving ? 'Apagando...' : 'Confirmar exclusão'}
             </Button>
           </div>
         </DialogContent>
