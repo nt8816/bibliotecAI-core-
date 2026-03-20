@@ -9,6 +9,16 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
+function repairMojibakeText(value) {
+  const text = String(value || '');
+  if (!text || !/[ÃÂ]/.test(text)) return text;
+  try {
+    return decodeURIComponent(escape(text));
+  } catch {
+    return text;
+  }
+}
+
 function normalizeTurmaKey(value) {
   return String(value || '')
     .normalize('NFD')
@@ -121,7 +131,7 @@ function RankingList({ items, currentStudentId }) {
     return (
       <Card>
         <CardContent className="py-10 text-sm text-muted-foreground">
-          Nenhum aluno disponivel neste ranking.
+          Nenhum aluno disponível neste ranking.
         </CardContent>
       </Card>
     );
@@ -147,12 +157,12 @@ function RankingList({ items, currentStudentId }) {
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm text-muted-foreground">#{position}</span>
-                    <p className="font-semibold">{aluno.nome || 'Aluno sem nome'}</p>
-                    {isCurrentStudent && <Badge variant="default">Voce</Badge>}
+                    <p className="font-semibold">{repairMojibakeText(aluno.nome) || 'Aluno sem nome'}</p>
+                    {isCurrentStudent && <Badge variant="default">Você</Badge>}
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <span>Turma: {aluno.turma || 'Sem turma'}</span>
-                    <span>Nivel {aluno.nivel}</span>
+                    <span>Turma: {repairMojibakeText(aluno.turma) || 'Sem turma'}</span>
+                    <span>Nível {aluno.nivel}</span>
                     <span>{aluno.livrosLidos} livros lidos</span>
                   </div>
                 </div>
@@ -163,7 +173,7 @@ function RankingList({ items, currentStudentId }) {
                   {aluno.xpTotal} XP
                 </Badge>
                 <Badge variant="secondary" className="text-sm">
-                  Nivel {aluno.nivel}
+                  Nível {aluno.nivel}
                 </Badge>
               </div>
             </CardContent>
@@ -202,109 +212,19 @@ export default function RankingAluno() {
           .limit(1)
           .maybeSingle();
 
-        if (perfilError || !perfil) throw perfilError || new Error('Perfil do aluno nao encontrado.');
+        if (perfilError || !perfil) throw perfilError || new Error('Perfil do aluno não encontrado.');
 
-        const { data: alunos, error: alunosError } = await supabase
-          .from('usuarios_biblioteca')
-          .select('id, nome, turma')
-          .eq('escola_id', perfil.escola_id)
-          .eq('tipo', 'aluno');
+        const { data: rankingData, error: rankingError } = await supabase.rpc('get_aluno_rankings');
+        if (rankingError) throw rankingError;
 
-        if (alunosError) throw alunosError;
-
-        const alunoIds = (alunos || []).map((item) => item.id).filter(Boolean);
-
-        const emptyResult = { data: [], error: null };
-        const [
-          livrosRes,
-          emprestimosRes,
-          avaliacoesRes,
-          entregasRes,
-          preferenciasRes,
-        ] = await Promise.all([
-          supabase.from('livros').select('id, area').eq('escola_id', perfil.escola_id),
-          alunoIds.length > 0
-            ? supabase.from('emprestimos').select('usuario_id, livro_id, status').in('usuario_id', alunoIds)
-            : Promise.resolve(emptyResult),
-          alunoIds.length > 0
-            ? supabase.from('avaliacoes_livros').select('usuario_id').in('usuario_id', alunoIds)
-            : Promise.resolve(emptyResult),
-          alunoIds.length > 0
-            ? supabase.from('atividades_entregas').select('aluno_id, status, pontos_ganhos').in('aluno_id', alunoIds)
-            : Promise.resolve(emptyResult),
-          alunoIds.length > 0
-            ? supabase.from('preferencias_aluno').select('usuario_id, desafio_ia_xp_bonus').in('usuario_id', alunoIds)
-            : Promise.resolve(emptyResult),
-        ]);
-
-        const maybeError = [
-          livrosRes.error,
-          emprestimosRes.error,
-          avaliacoesRes.error,
-          entregasRes.error,
-          preferenciasRes.error,
-        ].find(Boolean);
-
-        if (maybeError) throw maybeError;
-
-        const livrosById = new Map((livrosRes.data || []).map((livro) => [livro.id, livro]));
-        const livroIdsLidosPorAluno = new Map();
-        const avaliacoesPorAluno = new Map();
-        const atividadesAprovadasPorAluno = new Map();
-        const pontosGanhosPorAluno = new Map();
-        const bonusDesafioPorAluno = new Map();
-
-        (emprestimosRes.data || []).forEach((item) => {
-          if (item.status !== 'devolvido' || !item.usuario_id || !item.livro_id) return;
-          const current = livroIdsLidosPorAluno.get(item.usuario_id) || new Set();
-          current.add(item.livro_id);
-          livroIdsLidosPorAluno.set(item.usuario_id, current);
-        });
-
-        (avaliacoesRes.data || []).forEach((item) => {
-          if (!item.usuario_id) return;
-          avaliacoesPorAluno.set(item.usuario_id, (avaliacoesPorAluno.get(item.usuario_id) || 0) + 1);
-        });
-
-        (entregasRes.data || []).forEach((item) => {
-          if (!item.aluno_id || item.status !== 'aprovada') return;
-          atividadesAprovadasPorAluno.set(item.aluno_id, (atividadesAprovadasPorAluno.get(item.aluno_id) || 0) + 1);
-          pontosGanhosPorAluno.set(
-            item.aluno_id,
-            (pontosGanhosPorAluno.get(item.aluno_id) || 0) + Number(item.pontos_ganhos || 0),
-          );
-        });
-
-        (preferenciasRes.data || []).forEach((item) => {
-          if (!item.usuario_id) return;
-          bonusDesafioPorAluno.set(item.usuario_id, Number(item.desafio_ia_xp_bonus || 0));
-        });
-
-        const rankingCalculado = (alunos || [])
-          .map((aluno) => {
-            const livrosLidosSet = livroIdsLidosPorAluno.get(aluno.id) || new Set();
-            const xpLeituras = Array.from(livrosLidosSet).reduce((acc, livroId) => {
-              const livro = livrosById.get(livroId);
-              return acc + getLivroXpPorCategoria(livro?.area);
-            }, 0);
-            const avaliacoesCount = avaliacoesPorAluno.get(aluno.id) || 0;
-            const atividadesAprovadas = atividadesAprovadasPorAluno.get(aluno.id) || 0;
-            const pontosGanhos = pontosGanhosPorAluno.get(aluno.id) || 0;
-            const bonusDesafio = bonusDesafioPorAluno.get(aluno.id) || 0;
-            const xpTotal = xpLeituras + (avaliacoesCount * 15) + (atividadesAprovadas * 25) + pontosGanhos + bonusDesafio;
-
-            return {
-              ...aluno,
-              livrosLidos: livrosLidosSet.size,
-              xpTotal,
-              nivel: getNivelFromXp(xpTotal),
-            };
-          })
-          .sort((a, b) => {
-            if (b.xpTotal !== a.xpTotal) return b.xpTotal - a.xpTotal;
-            if (b.nivel !== a.nivel) return b.nivel - a.nivel;
-            return String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR');
-          });
+        const rankingCalculado = (rankingData || []).map((aluno) => ({
+          ...aluno,
+          nome: repairMojibakeText(aluno.nome),
+          turma: repairMojibakeText(aluno.turma),
+          xpTotal: Number(aluno.xp_total || 0),
+          nivel: Number(aluno.nivel || getNivelFromXp(aluno.xp_total || 0)),
+          livrosLidos: Number(aluno.livros_lidos || 0),
+        }));
 
         if (!active) return;
         setCurrentStudentId(perfil.id);
@@ -315,7 +235,7 @@ export default function RankingAluno() {
         toast({
           variant: 'destructive',
           title: 'Erro ao carregar ranking',
-          description: error?.message || 'Nao foi possivel montar o ranking agora.',
+          description: error?.message || 'Não foi possível montar o ranking agora.',
         });
       } finally {
         if (active) setLoading(false);
@@ -365,8 +285,8 @@ export default function RankingAluno() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm text-muted-foreground">
-              <p>Posicao atual: <span className="font-semibold text-foreground">#{minhaPosicaoSala || '-'}</span></p>
-              <p>Comparacao com os alunos da sua turma usando XP total e nivel.</p>
+              <p>Posição atual: <span className="font-semibold text-foreground">#{minhaPosicaoSala || '-'}</span></p>
+              <p>Comparação com os alunos da sua turma usando XP total e nível.</p>
             </CardContent>
           </Card>
 
@@ -378,8 +298,8 @@ export default function RankingAluno() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm text-muted-foreground">
-              <p>Posicao atual: <span className="font-semibold text-foreground">#{minhaPosicaoEscola || '-'}</span></p>
-              <p>Comparacao geral entre todos os alunos da escola.</p>
+              <p>Posição atual: <span className="font-semibold text-foreground">#{minhaPosicaoEscola || '-'}</span></p>
+              <p>Comparação geral entre todos os alunos da escola.</p>
             </CardContent>
           </Card>
         </div>
