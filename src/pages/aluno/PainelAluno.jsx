@@ -2895,6 +2895,122 @@ export default function PainelAluno() {
     }
   };
 
+  const compartilharCriacaoSalvaNaComunidade = async (criacao) => {
+    if (!optionalFeaturesEnabled || !alunoId || !escolaId) {
+      toast({
+        variant: 'destructive',
+        title: 'Laboratório indisponível',
+        description: 'Não foi possível compartilhar agora. Verifique se as migrations do banco foram aplicadas.',
+      });
+      return;
+    }
+    if (!criacao?.id) return;
+    if (criacao.publicado_comunidade || criacao.comunidade_post_id) {
+      toast({ title: 'Criação já compartilhada', description: 'Essa criação já foi enviada para a comunidade.' });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const tituloBase = repairMojibakeText(criacao.titulo) || 'Criação do aluno';
+      const descricaoBase = repairMojibakeText(criacao.descricao);
+      const conteudoJson = extractQuizFromCriacao(criacao) || {};
+      let payload = null;
+
+      if (criacao.tipo === 'quiz') {
+        const perguntas = ensureArray(conteudoJson?.perguntas);
+        if (perguntas.length === 0) {
+          throw new Error('Não foi possível compartilhar este quiz porque ele não tem perguntas válidas.');
+        }
+        const descricaoQuiz = repairMojibakeText(criacao.descricao) || 'compreensão da leitura';
+        const resumoQuestoes = perguntas.map((pergunta, index) => `${index + 1}) ${pergunta.enunciado}`).join('\n');
+        const quizPayload = {
+          perguntas,
+          tema: descricaoQuiz,
+          livro_id: criacao.livro_id || null,
+          criado_em: criacao.created_at || new Date().toISOString(),
+        };
+        payload = {
+          autor_id: alunoId,
+          escola_id: escolaId,
+          livro_id: criacao.livro_id || null,
+          tipo: 'quiz',
+          titulo: tituloBase,
+          conteudo: [`Quiz interativo (${descricaoQuiz})`, resumoQuestoes, serializeQuizParaComunidade(quizPayload)]
+            .filter(Boolean)
+            .join('\n'),
+          imagem_urls: ensureArray(criacao.imagem_urls),
+          tags: Array.from(new Set([...(ensureArray(criacao.tags)), 'quiz'])),
+        };
+      } else if (criacao.tipo === 'resenha') {
+        payload = {
+          autor_id: alunoId,
+          escola_id: escolaId,
+          livro_id: criacao.livro_id || null,
+          tipo: 'resenha',
+          titulo: tituloBase,
+          conteudo: descricaoBase || 'Nova resenha compartilhada pelo aluno.',
+          imagem_urls: ensureArray(criacao.imagem_urls),
+          tags: Array.from(new Set(ensureArray(criacao.tags))),
+        };
+      } else if (criacao.tipo === 'resumo') {
+        payload = {
+          autor_id: alunoId,
+          escola_id: escolaId,
+          livro_id: criacao.livro_id || null,
+          tipo: 'sugestao',
+          titulo: tituloBase,
+          conteudo: extractResumoTextoFromCriacao(criacao) || descricaoBase || 'Resumo compartilhado pelo aluno.',
+          imagem_urls: ensureArray(criacao.imagem_urls),
+          tags: Array.from(new Set([...(ensureArray(criacao.tags)), 'resumo'])),
+        };
+      } else {
+        payload = {
+          autor_id: alunoId,
+          escola_id: escolaId,
+          livro_id: criacao.livro_id || null,
+          audiobook_id: conteudoJson?.audiobook_id || null,
+          tipo: 'dica',
+          titulo: tituloBase,
+          conteudo: descricaoBase || 'Projeto criativo compartilhado pelo aluno.',
+          imagem_urls: ensureArray(criacao.imagem_urls),
+          tags: Array.from(new Set(ensureArray(criacao.tags))),
+        };
+      }
+
+      const { data: postCriado, error } = await insertCommunityPostCompat(payload, { expectSingleId: true });
+      if (error) throw error;
+
+      const { error: updateError } = await supabase
+        .from('laboratorio_criacoes')
+        .update({
+          publicado_comunidade: true,
+          comunidade_post_id: postCriado?.id || null,
+        })
+        .eq('id', criacao.id);
+
+      if (updateError) throw updateError;
+
+      setCriacoesLaboratorio((prev) =>
+        ensureArray(prev).map((item) =>
+          item.id === criacao.id
+            ? { ...item, publicado_comunidade: true, comunidade_post_id: postCriado?.id || null }
+            : item,
+        ),
+      );
+
+      toast({ title: 'Criação compartilhada na comunidade!' });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: error?.message || 'Não foi possível compartilhar a criação salva.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const apagarCriacaoLaboratorio = async (criacao) => {
     if (!criacao?.id) return;
     const ok = window.confirm('Deseja apagar esta criação do laboratório?');
@@ -3977,10 +4093,22 @@ export default function PainelAluno() {
                                 {criacao.tipo} • {formatDateBR(criacao.created_at)}
                               </p>
                             </div>
-                            <Button type="button" size="sm" variant="destructive" onClick={() => apagarCriacaoLaboratorio(criacao)} disabled={saving}>
-                              <Trash2 className="w-3 h-3 mr-1" />
-                              Apagar
-                            </Button>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={criacao.publicado_comunidade || criacao.comunidade_post_id ? 'secondary' : 'outline'}
+                                onClick={() => compartilharCriacaoSalvaNaComunidade(criacao)}
+                                disabled={saving || criacao.publicado_comunidade || Boolean(criacao.comunidade_post_id)}
+                              >
+                                <Send className="w-3 h-3 mr-1" />
+                                {criacao.publicado_comunidade || criacao.comunidade_post_id ? 'Compartilhado' : 'Compartilhar'}
+                              </Button>
+                              <Button type="button" size="sm" variant="destructive" onClick={() => apagarCriacaoLaboratorio(criacao)} disabled={saving}>
+                                <Trash2 className="w-3 h-3 mr-1" />
+                                Apagar
+                              </Button>
+                            </div>
                           </div>
                           {ensureArray(criacao.imagem_urls).length > 0 && (
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
