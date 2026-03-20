@@ -38,6 +38,7 @@ const MeusAlunos = lazy(() => import('./pages/professor/MeusAlunos'));
 const PainelProfessor = lazy(() => import('./pages/professor/PainelProfessor'));
 const RelatoriosLeitura = lazy(() => import('./pages/professor/RelatoriosLeitura'));
 const PainelAluno = lazy(() => import('./pages/aluno/PainelAluno'));
+const RankingAluno = lazy(() => import('./pages/aluno/RankingAluno'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -289,6 +290,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <ArquivosAula />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/aluno/ranking"
+        element={
+          <ProtectedRoute>
+            <RankingAluno />
           </ProtectedRoute>
         }
       />

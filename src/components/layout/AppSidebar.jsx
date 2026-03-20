@@ -6,6 +6,7 @@
   ClipboardList,
   FlaskConical,
   BarChart3,
+  Trophy,
   LogOut,
   Link as LinkIcon,
   School,
@@ -119,6 +120,7 @@ export function AppSidebar() {
       { title: 'Atividades', url: '/aluno/atividades', icon: ClipboardList },
       { title: 'Comunidade', url: '/aluno/comunidade', icon: MessageSquare },
       { title: 'Arquivos de Aula', url: '/aluno/arquivos-de-aula', icon: FileStack },
+      { title: 'Ranking', url: '/aluno/ranking', icon: Trophy },
     ];
   };
 
