@@ -148,25 +148,34 @@ function normalizeLivroCategoria(value) {
 function getLivroXpPorCategoria(area) {
   const categoria = normalizeLivroCategoria(area);
 
-  if (!categoria) return 22;
+  if (!categoria) return 18;
 
   if (
     categoria.includes('quadrinho') ||
     categoria.includes('hq') ||
     categoria.includes('gibi') ||
-    categoria.includes('manga')
+    categoria.includes('manga') ||
+    categoria.includes('comic')
   ) {
-    return 10;
+    return 5;
   }
 
   if (
     categoria.includes('infantil') ||
+    categoria.includes('ilustrado') ||
+    categoria.includes('figur') ||
+    categoria.includes('visual')
+  ) {
+    return 8;
+  }
+
+  if (
     categoria.includes('poesia') ||
     categoria.includes('poema') ||
     categoria.includes('conto') ||
     categoria.includes('cronica')
   ) {
-    return 18;
+    return 12;
   }
 
   if (
@@ -175,7 +184,7 @@ function getLivroXpPorCategoria(area) {
     categoria.includes('musica') ||
     categoria.includes('cultura')
   ) {
-    return 20;
+    return 14;
   }
 
   if (
@@ -189,7 +198,7 @@ function getLivroXpPorCategoria(area) {
     categoria.includes('filosofia') ||
     categoria.includes('sociologia')
   ) {
-    return 25;
+    return 20;
   }
 
   if (
@@ -203,10 +212,10 @@ function getLivroXpPorCategoria(area) {
     categoria.includes('informatica') ||
     categoria.includes('desenvolvimento')
   ) {
-    return 30;
+    return 25;
   }
 
-  return 22;
+  return 18;
 }
 
 function getLivroXpDescricao(area) {
@@ -216,9 +225,19 @@ function getLivroXpDescricao(area) {
     categoria.includes('quadrinho') ||
     categoria.includes('hq') ||
     categoria.includes('gibi') ||
-    categoria.includes('manga')
+    categoria.includes('manga') ||
+    categoria.includes('comic')
   ) {
-    return 'XP reduzido por ser uma leitura mais visual';
+    return 'XP minimo por ser uma leitura predominantemente visual';
+  }
+
+  if (
+    categoria.includes('infantil') ||
+    categoria.includes('ilustrado') ||
+    categoria.includes('figur') ||
+    categoria.includes('visual')
+  ) {
+    return 'XP reduzido por ter forte apoio visual';
   }
 
   if (
