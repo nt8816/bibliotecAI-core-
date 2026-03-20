@@ -20,6 +20,7 @@ export function useSystemNotifications() {
   const { isGestor, isBibliotecaria, isAluno, user } = useAuth();
   const [counts, setCounts] = useState({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0 });
   const [notifications, setNotifications] = useState([]);
+  const [profileId, setProfileId] = useState(null);
 
   const canView = isGestor || isBibliotecaria || isAluno;
 
@@ -27,6 +28,7 @@ export function useSystemNotifications() {
     if (!canView || !user?.id) {
       setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0 });
       setNotifications([]);
+      setProfileId(null);
       return;
     }
 
@@ -42,8 +44,11 @@ export function useSystemNotifications() {
     if (perfilError || !perfil?.id) {
       setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0 });
       setNotifications([]);
+      setProfileId(null);
       return;
     }
+
+    setProfileId(perfil.id);
 
     if (isAluno) {
       const [atrasadosRes, solicitacoesRes, comunicadosRes, notificacoesLidasRes] = await Promise.all([
@@ -136,5 +141,26 @@ export function useSystemNotifications() {
   useRealtimeSubscription({ table: 'comunidade_posts', onChange: fetchCounts });
   useRealtimeSubscription({ table: 'notificacoes_lidas', onChange: fetchCounts });
 
-  return { counts, notifications, canViewNotifications: canView };
+  const markNotificationRead = useCallback(
+    async (notificationId) => {
+      if (!profileId || !notificationId) return;
+
+      setNotifications((prev) => ensureArray(prev).filter((item) => item.id !== notificationId));
+      setCounts((prev) => ({
+        ...prev,
+        comunicados: Math.max(0, (prev.comunicados || 0) - (String(notificationId).startsWith('comunicado-') ? 1 : 0)),
+      }));
+
+      const { error } = await supabase
+        .from('notificacoes_lidas')
+        .upsert({ usuario_id: profileId, notification_id: notificationId }, { onConflict: 'usuario_id,notification_id' });
+
+      if (error) {
+        await fetchCounts();
+      }
+    },
+    [fetchCounts, profileId],
+  );
+
+  return { counts, notifications, canViewNotifications: canView, markNotificationRead };
 }
