@@ -28,6 +28,8 @@ function safeText(value, fallback = '-') {
 }
 
 function getAuthorName(post) {
+  const snapshotName = safeText(post?.autor_nome, '').trim();
+  if (snapshotName) return snapshotName;
   const nested = post?.usuarios_biblioteca;
   if (Array.isArray(nested)) {
     return safeText(nested[0]?.nome, '').trim();
@@ -51,6 +53,16 @@ function isMissingTableError(error) {
     error?.code === 'PGRST205' ||
     message.includes('could not find the table') ||
     message.includes('does not exist')
+  );
+}
+
+function isMissingColumnError(error, columnName, tableName) {
+  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  const column = String(columnName || '').toLowerCase();
+  const table = String(tableName || '').toLowerCase();
+  return (
+    message.includes(`could not find the '${column}' column`) &&
+    (!table || message.includes(`'${table}'`) || message.includes(`"${table}"`))
   );
 }
 
@@ -109,6 +121,7 @@ export default function ArquivosAula() {
   const [saving, setSaving] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [perfilId, setPerfilId] = useState(null);
+  const [perfilNome, setPerfilNome] = useState('');
   const [escolaId, setEscolaId] = useState(null);
   const [alunoTurma, setAlunoTurma] = useState(null);
   const [professorTurmas, setProfessorTurmas] = useState([]);
@@ -125,7 +138,7 @@ export default function ArquivosAula() {
     try {
       const { data: perfil, error: perfilError } = await supabase
         .from('usuarios_biblioteca')
-        .select('id, escola_id, turma, tipo')
+        .select('id, escola_id, turma, tipo, nome')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
@@ -135,6 +148,7 @@ export default function ArquivosAula() {
       if (perfilError || !perfil) throw perfilError || new Error('Perfil nao encontrado.');
 
       setPerfilId(perfil.id);
+      setPerfilNome(safeText(perfil.nome, '').trim());
       setEscolaId(perfil.escola_id || null);
       setAlunoTurma(perfil.turma || null);
 
@@ -304,13 +318,18 @@ export default function ArquivosAula() {
 
       const payload = {
         autor_id: perfilId,
+        autor_nome: perfilNome || null,
         escola_id: escolaId,
         turma_publico: turmaPublico === ALL_TURMAS_OPTION ? null : turmaPublico,
         mensagem: mensagem.trim(),
         arquivos,
       };
 
-      const { error } = await supabase.from('arquivos_aula_posts').insert(payload);
+      let { error } = await supabase.from('arquivos_aula_posts').insert(payload);
+      if (error && isMissingColumnError(error, 'autor_nome', 'arquivos_aula_posts')) {
+        const { autor_nome: _ignored, ...fallbackPayload } = payload;
+        ({ error } = await supabase.from('arquivos_aula_posts').insert(fallbackPayload));
+      }
       if (error) throw error;
 
       setMensagem('');
