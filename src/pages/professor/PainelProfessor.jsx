@@ -38,6 +38,8 @@ const emptyAtividade = {
   data_entrega: '',
   livro_id: '',
   aluno_id: '',
+  target_mode: 'aluno',
+  turma: '',
 };
 
 function getDateInputValue(date) {
@@ -478,6 +480,8 @@ export default function PainelProfessor() {
         data_entrega: atividade.data_entrega ? atividade.data_entrega.split('T')[0] : '',
         livro_id: atividade.livro_id,
         aluno_id: atividade.aluno_id,
+        target_mode: 'aluno',
+        turma: atividade.usuarios_biblioteca?.turma || '',
       });
       setAtividadeFormularioPerguntas(ensureArray(meta.formulario?.perguntas));
     } else {
@@ -551,8 +555,27 @@ export default function PainelProfessor() {
   };
 
   const handleSaveAtividade = async () => {
-    if (!atividadeForm.titulo.trim() || !atividadeForm.aluno_id || !atividadeForm.livro_id) {
-      toast({ variant: 'destructive', title: 'Campos obrigatórios', description: 'Preencha título, aluno e livro.' });
+    if (!atividadeForm.titulo.trim()) {
+      toast({ variant: 'destructive', title: 'Campos obrigatórios', description: 'Preencha o título da atividade.' });
+      return;
+    }
+
+    if (atividadeForm.target_mode === 'turma' && editingAtividade) {
+      toast({
+        variant: 'destructive',
+        title: 'Edição individual',
+        description: 'Atividades por turma podem ser criadas em lote, mas a edição continua individual por aluno.',
+      });
+      return;
+    }
+
+    if (atividadeForm.target_mode === 'turma' && !atividadeForm.turma) {
+      toast({ variant: 'destructive', title: 'Campos obrigatórios', description: 'Selecione a turma que receberá a atividade.' });
+      return;
+    }
+
+    if (atividadeForm.target_mode !== 'turma' && !atividadeForm.aluno_id) {
+      toast({ variant: 'destructive', title: 'Campos obrigatórios', description: 'Selecione o aluno que receberá a atividade.' });
       return;
     }
 
@@ -583,30 +606,54 @@ export default function PainelProfessor() {
 
     setSaving(true);
     try {
-      const payload = {
+      const payloadBase = {
         titulo: atividadeForm.titulo.trim(),
         descricao:
           buildDescricaoWithForm(atividadeForm.descricao || null, { perguntas: perguntasNormalizadas }) || null,
         pontos_extras: Number(atividadeForm.pontos_extras || 0),
         data_entrega: atividadeForm.data_entrega ? new Date(atividadeForm.data_entrega).toISOString() : null,
-        livro_id: atividadeForm.livro_id,
-        aluno_id: atividadeForm.aluno_id,
+        livro_id: atividadeForm.livro_id || null,
         professor_id: professorId,
       };
 
       if (editingAtividade) {
         const { error } = await supabase
           .from('atividades_leitura')
-          .update(payload)
+          .update({
+            ...payloadBase,
+            aluno_id: atividadeForm.aluno_id,
+          })
           .eq('id', editingAtividade.id)
           .in('professor_id', professorProfileIds);
         if (error) throw error;
-      } else {
+      } else if (atividadeForm.target_mode === 'turma') {
+        const alunosAlvo = alunosDaTurmaSelecionada.filter((item) => item?.id);
+        if (alunosAlvo.length === 0) {
+          throw new Error('Nenhum aluno encontrado para a turma selecionada.');
+        }
+
+        const payload = alunosAlvo.map((aluno) => ({
+          ...payloadBase,
+          aluno_id: aluno.id,
+        }));
+
         const { error } = await supabase.from('atividades_leitura').insert(payload);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('atividades_leitura').insert({
+          ...payloadBase,
+          aluno_id: atividadeForm.aluno_id,
+        });
         if (error) throw error;
       }
 
-      toast({ title: editingAtividade ? 'Atividade atualizada' : 'Atividade criada' });
+      toast({
+        title: editingAtividade ? 'Atividade atualizada' : 'Atividade criada',
+        description:
+          !editingAtividade && atividadeForm.target_mode === 'turma'
+            ? `A atividade foi enviada para ${alunosDaTurmaSelecionada.length} aluno(s) da turma.`
+            : undefined,
+      });
       setIsAtividadeDialogOpen(false);
       setEditingAtividade(null);
       setAtividadeForm(emptyAtividade);
@@ -692,6 +739,10 @@ export default function PainelProfessor() {
     if (!termo) return usuarios;
     return usuarios.filter((u) => String(u?.nome || '').toLowerCase().includes(termo));
   }, [atividadeAlunoBusca, usuarios]);
+  const alunosDaTurmaSelecionada = useMemo(
+    () => usuarios.filter((u) => String(u?.turma || '').trim() === String(atividadeForm.turma || '').trim()),
+    [atividadeForm.turma, usuarios],
+  );
   const livrosFiltradosAtividade = useMemo(() => {
     const termo = String(atividadeLivroBusca || '').trim().toLowerCase();
     if (!termo) return livros;
@@ -792,7 +843,7 @@ export default function PainelProfessor() {
                     <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" translate="no">
                       <DialogHeader>
                         <DialogTitle>{editingAtividade ? 'Editar atividade' : 'Nova atividade'}</DialogTitle>
-                        <DialogDescription>Defina tarefa, livro, prazo e pontuação.</DialogDescription>
+                        <DialogDescription>Defina tarefa, destino, livro opcional, prazo e pontuação.</DialogDescription>
                       </DialogHeader>
 
                       <div className="space-y-4 py-4">
@@ -955,37 +1006,86 @@ export default function PainelProfessor() {
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {!editingAtividade && (
+                            <div className="space-y-2 sm:col-span-2">
+                              <Label>Destino da atividade</Label>
+                              <select
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                value={atividadeForm.target_mode || 'aluno'}
+                                onChange={(e) =>
+                                  setAtividadeForm((prev) => ({
+                                    ...prev,
+                                    target_mode: e.target.value === 'turma' ? 'turma' : 'aluno',
+                                    aluno_id: e.target.value === 'turma' ? '' : prev.aluno_id,
+                                  }))
+                                }
+                              >
+                                <option value="aluno">Aluno espec�fico</option>
+                                <option value="turma">Turma inteira</option>
+                              </select>
+                            </div>
+                          )}
+
                           <div className="space-y-2">
-                            <Label>Aluno *</Label>
-                            <Input
-                              placeholder="Buscar aluno por nome"
-                              value={atividadeAlunoBusca}
-                              onChange={(e) => setAtividadeAlunoBusca(e.target.value)}
-                            />
-                            <select
-                              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                              value={atividadeForm.aluno_id || 'none'}
-                              onChange={(e) =>
-                                setAtividadeForm((prev) => ({
-                                  ...prev,
-                                  aluno_id: e.target.value === 'none' ? '' : e.target.value,
-                                }))
-                              }
-                            >
-                              <option value="none">Selecione</option>
-                              {alunosFiltradosAtividade.map((u) => (
-                                <option key={u.id} value={u.id}>
-                                  {u.nome} {u.turma ? `(${u.turma})` : ''}
-                                </option>
-                              ))}
-                            </select>
-                            {atividadeAlunoBusca && alunosFiltradosAtividade.length === 0 ? (
-                              <p className="text-xs text-muted-foreground">Nenhum aluno encontrado para essa busca.</p>
-                            ) : null}
+                            <Label>{atividadeForm.target_mode === 'turma' && !editingAtividade ? 'Turma *' : 'Aluno *'}</Label>
+                            {atividadeForm.target_mode === 'turma' && !editingAtividade ? (
+                              <>
+                                <select
+                                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                  value={atividadeForm.turma || 'none'}
+                                  onChange={(e) =>
+                                    setAtividadeForm((prev) => ({
+                                      ...prev,
+                                      turma: e.target.value === 'none' ? '' : e.target.value,
+                                    }))
+                                  }
+                                >
+                                  <option value="none">Selecione a turma</option>
+                                  {professorTurmasPermitidas.map((turma) => (
+                                    <option key={turma} value={turma}>
+                                      {turma}
+                                    </option>
+                                  ))}
+                                </select>
+                                {atividadeForm.turma && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Esta atividade será criada para {alunosDaTurmaSelecionada.length} aluno(s) dessa turma.
+                                  </p>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <Input
+                                  placeholder="Buscar aluno por nome"
+                                  value={atividadeAlunoBusca}
+                                  onChange={(e) => setAtividadeAlunoBusca(e.target.value)}
+                                />
+                                <select
+                                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                  value={atividadeForm.aluno_id || 'none'}
+                                  onChange={(e) =>
+                                    setAtividadeForm((prev) => ({
+                                      ...prev,
+                                      aluno_id: e.target.value === 'none' ? '' : e.target.value,
+                                    }))
+                                  }
+                                >
+                                  <option value="none">Selecione</option>
+                                  {alunosFiltradosAtividade.map((u) => (
+                                    <option key={u.id} value={u.id}>
+                                      {u.nome} {u.turma ? `(${u.turma})` : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                                {atividadeAlunoBusca && alunosFiltradosAtividade.length === 0 ? (
+                                  <p className="text-xs text-muted-foreground">Nenhum aluno encontrado para essa busca.</p>
+                                ) : null}
+                              </>
+                            )}
                           </div>
 
                           <div className="space-y-2">
-                            <Label>Livro *</Label>
+                            <Label>Livro (opcional)</Label>
                             <Input
                               placeholder="Buscar livro por título"
                               value={atividadeLivroBusca}
@@ -1001,7 +1101,7 @@ export default function PainelProfessor() {
                                 }))
                               }
                             >
-                              <option value="none">Selecione</option>
+                              <option value="none">Sem livro específico</option>
                               {livrosFiltradosAtividade.map((l) => (
                                 <option key={l.id} value={l.id}>
                                   {l.titulo}
@@ -1408,3 +1508,4 @@ export default function PainelProfessor() {
     </MainLayout>
   );
 }
+
