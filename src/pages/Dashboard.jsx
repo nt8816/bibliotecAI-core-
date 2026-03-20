@@ -48,6 +48,16 @@ function buildLastMonths(size = 6) {
   return keys;
 }
 
+function formatPercentLabel(percent) {
+  const value = percent * 100;
+
+  if (Number.isNaN(value)) return '0%';
+  if (value === 0 || value === 100) return `${value.toFixed(0)}%`;
+  if (value < 1 || value > 99) return `${value.toFixed(1)}%`;
+
+  return `${value.toFixed(0)}%`;
+}
+
 export default function Dashboard() {
   const { userRole, user, isBibliotecaria } = useAuth();
   const navigate = useNavigate();
@@ -131,6 +141,7 @@ export default function Dashboard() {
           monthlyKeys.map((key) => [key, { key, mes: monthLabel(key), emprestimos: 0 }]),
         );
         const livroCountMap = new Map();
+        const livrosEmprestadosAtivos = new Set();
 
         emprestimosDetalhadosResult.value.data.forEach((emp) => {
           const loanDate = emp.data_emprestimo || emp.created_at;
@@ -139,6 +150,10 @@ export default function Dashboard() {
             if (monthlyMap.has(key)) {
               monthlyMap.get(key).emprestimos += 1;
             }
+          }
+
+          if (emp?.status === 'ativo' && emp?.livro_id) {
+            livrosEmprestadosAtivos.add(emp.livro_id);
           }
 
           const livroNome = emp?.livros?.titulo || 'Livro sem título';
@@ -153,6 +168,10 @@ export default function Dashboard() {
             .sort((a, b) => b.emprestimos - a.emprestimos)
             .slice(0, 5),
         );
+        setStats((prev) => ({
+          ...prev,
+          livrosDisponiveis: Math.max(0, Number(prev.totalLivros || 0) - livrosEmprestadosAtivos.size),
+        }));
       }
 
       if (escolasAtivasResult.status === 'fulfilled') {
@@ -390,7 +409,7 @@ export default function Dashboard() {
                           outerRadius={96}
                           paddingAngle={5}
                           dataKey="value"
-                          label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                          label={({ name, percent }) => `${name}: ${formatPercentLabel(percent)}`}
                         >
                           {pieData.map((_, index) => (
                             <Cell key={`dashboard-pie-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
