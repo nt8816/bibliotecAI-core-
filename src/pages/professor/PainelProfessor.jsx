@@ -209,6 +209,7 @@ export default function PainelProfessor() {
   const [atividades, setAtividades] = useState([]);
   const [entregas, setEntregas] = useState([]);
   const [professorTurmasPermitidas, setProfessorTurmasPermitidas] = useState([]);
+  const [professorProfileIds, setProfessorProfileIds] = useState([]);
   const [escolaId, setEscolaId] = useState(null);
 
   const [loading, setLoading] = useState(true);
@@ -249,6 +250,7 @@ export default function PainelProfessor() {
         ;
       const professorData = ensureArray(professorProfiles)[0] || null;
       const professorIds = ensureArray(professorProfiles).map((item) => item?.id).filter(Boolean);
+      setProfessorProfileIds(professorIds);
       setEscolaId(professorData?.escola_id || null);
       if (professorError || !professorData) throw professorError || new Error('Perfil de professor não encontrado.');
 
@@ -273,6 +275,7 @@ export default function PainelProfessor() {
         setAtividades([]);
         setEntregas([]);
         setAvaliacaoForm({});
+        setProfessorProfileIds(professorIds);
         return;
       }
 
@@ -307,10 +310,12 @@ export default function PainelProfessor() {
         supabase
           .from('sugestoes_livros')
           .select('*, livros(titulo, autor), usuarios_biblioteca!sugestoes_livros_aluno_id_fkey(nome, turma)')
+          .in('professor_id', professorIds)
           .order('created_at', { ascending: false }),
         supabase
           .from('atividades_leitura')
           .select('*, livros(titulo, autor), usuarios_biblioteca!atividades_leitura_aluno_id_fkey(nome, turma)')
+          .in('professor_id', professorIds)
           .order('created_at', { ascending: false }),
       ]);
 
@@ -318,7 +323,7 @@ export default function PainelProfessor() {
         ? await supabase
             .from('atividades_entregas')
             .select(
-              '*, atividades_leitura(titulo, descricao, pontos_extras, data_entrega, livro_id, livros(titulo, autor)), usuarios_biblioteca!atividades_entregas_aluno_id_fkey(nome, turma)',
+              '*, atividades_leitura(id, professor_id, titulo, descricao, pontos_extras, data_entrega, livro_id, livros(titulo, autor)), usuarios_biblioteca!atividades_entregas_aluno_id_fkey(nome, turma)',
             )
             .order('updated_at', { ascending: false })
         : { data: [], error: null };
@@ -334,7 +339,8 @@ export default function PainelProfessor() {
       }
 
       const entregasRes = (entregasData || []).filter((item) =>
-        turmaSet.has(normalizeTurmaKey(item?.usuarios_biblioteca?.turma)),
+        turmaSet.has(normalizeTurmaKey(item?.usuarios_biblioteca?.turma)) &&
+        professorIds.includes(item?.atividades_leitura?.professor_id),
       );
       const sugestoesFiltradas = (sugestoesRes.data || []).filter((item) =>
         turmaSet.has(normalizeTurmaKey(item?.usuarios_biblioteca?.turma)),
@@ -448,7 +454,11 @@ export default function PainelProfessor() {
     if (!window.confirm('Excluir esta sugestão?')) return;
 
     try {
-      const { error } = await supabase.from('sugestoes_livros').delete().eq('id', id);
+      const { error } = await supabase
+        .from('sugestoes_livros')
+        .delete()
+        .eq('id', id)
+        .in('professor_id', professorProfileIds);
       if (error) throw error;
       toast({ title: 'Sugestão excluída.' });
       await fetchData();
@@ -585,7 +595,11 @@ export default function PainelProfessor() {
       };
 
       if (editingAtividade) {
-        const { error } = await supabase.from('atividades_leitura').update(payload).eq('id', editingAtividade.id);
+        const { error } = await supabase
+          .from('atividades_leitura')
+          .update(payload)
+          .eq('id', editingAtividade.id)
+          .in('professor_id', professorProfileIds);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('atividades_leitura').insert(payload);
@@ -610,7 +624,11 @@ export default function PainelProfessor() {
     if (!window.confirm('Excluir esta atividade?')) return;
 
     try {
-      const { error } = await supabase.from('atividades_leitura').delete().eq('id', id);
+      const { error } = await supabase
+        .from('atividades_leitura')
+        .delete()
+        .eq('id', id)
+        .in('professor_id', professorProfileIds);
       if (error) throw error;
       toast({ title: 'Atividade excluída.' });
       await fetchData();
@@ -621,6 +639,14 @@ export default function PainelProfessor() {
 
   const handleSalvarAvaliacaoEntrega = async (entrega) => {
     const data = avaliacaoForm[entrega.id] || {};
+    if (!professorProfileIds.includes(entrega?.atividades_leitura?.professor_id)) {
+      toast({
+        variant: 'destructive',
+        title: 'Sem permissao',
+        description: 'Voce so pode avaliar entregas de atividades criadas por voce.',
+      });
+      return;
+    }
 
     setSaving(true);
     try {
@@ -635,7 +661,11 @@ export default function PainelProfessor() {
       if (error) throw error;
 
       const novoStatusAtividade = payload.status === 'aprovada' ? 'concluido' : 'em_andamento';
-      await supabase.from('atividades_leitura').update({ status: novoStatusAtividade }).eq('id', entrega.atividade_id);
+      await supabase
+        .from('atividades_leitura')
+        .update({ status: novoStatusAtividade })
+        .eq('id', entrega.atividade_id)
+        .in('professor_id', professorProfileIds);
 
       toast({ title: 'Avaliação salva', description: 'Pontos e feedback atualizados para o aluno.' });
       await fetchData();
