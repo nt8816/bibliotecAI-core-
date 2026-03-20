@@ -62,6 +62,7 @@ export default function Emprestimos() {
   const [solicitacoes, setSolicitacoes] = useState([]);
   const [livrosDisponiveis, setLivrosDisponiveis] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
+  const [escolaAtualId, setEscolaAtualId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedLivro, setSelectedLivro] = useState('');
@@ -78,7 +79,7 @@ export default function Emprestimos() {
   const [exportFormat, setExportFormat] = useState('xlsx');
   const [exporting, setExporting] = useState(false);
 
-  const { isBibliotecaria } = useAuth();
+  const { isBibliotecaria, user } = useAuth();
   const { toast } = useToast();
   const { trackEvent } = usePrivateTelemetry();
   const canManageLoans = isBibliotecaria;
@@ -87,17 +88,20 @@ export default function Emprestimos() {
 
   const fetchData = useCallback(async () => {
     try {
+      const { data: escolaId, error: escolaError } = await supabase.rpc('get_user_escola_id', { _user_id: user.id });
+      if (escolaError) throw escolaError;
+
       const [emprestimosRes, livrosRes, usuariosRes, solicitacoesRes] = await Promise.all([
         supabase
           .from('emprestimos')
-          .select('*, livros(titulo, autor), usuarios_biblioteca(nome, email)')
+          .select('*, livros(titulo, autor, escola_id), usuarios_biblioteca(nome, email, escola_id)')
           .order('data_emprestimo', { ascending: false }),
-        supabase.from('livros').select('id, titulo, autor, disponivel').eq('disponivel', true).order('titulo'),
-        supabase.from('usuarios_biblioteca').select('id, nome, email').order('nome'),
+        supabase.from('livros').select('id, titulo, autor, disponivel, escola_id').eq('disponivel', true).order('titulo'),
+        supabase.from('usuarios_biblioteca').select('id, nome, email, escola_id').order('nome'),
         canManageLoans
           ? supabase
               .from('solicitacoes_emprestimo')
-              .select('*, livros(id, titulo, autor, disponivel), usuarios_biblioteca(nome, email)')
+              .select('*, livros(id, titulo, autor, disponivel, escola_id), usuarios_biblioteca(nome, email, escola_id)')
               .order('created_at', { ascending: false })
           : Promise.resolve({ data: [], error: null }),
       ]);
@@ -105,16 +109,27 @@ export default function Emprestimos() {
       const maybeError = [emprestimosRes.error, livrosRes.error, usuariosRes.error, solicitacoesRes.error].find(Boolean);
       if (maybeError) throw maybeError;
 
-      setEmprestimos(emprestimosRes.data || []);
-      setLivrosDisponiveis(livrosRes.data || []);
-      setUsuarios(usuariosRes.data || []);
-      setSolicitacoes(solicitacoesRes.data || []);
+      const isSameSchool = (candidateEscolaId) => !escolaId || candidateEscolaId === escolaId;
+
+      setEscolaAtualId(escolaId || null);
+      setEmprestimos(
+        (emprestimosRes.data || []).filter(
+          (item) => isSameSchool(item?.usuarios_biblioteca?.escola_id) || isSameSchool(item?.livros?.escola_id),
+        ),
+      );
+      setLivrosDisponiveis((livrosRes.data || []).filter((item) => isSameSchool(item?.escola_id)));
+      setUsuarios((usuariosRes.data || []).filter((item) => isSameSchool(item?.escola_id)));
+      setSolicitacoes(
+        (solicitacoesRes.data || []).filter(
+          (item) => isSameSchool(item?.usuarios_biblioteca?.escola_id) || isSameSchool(item?.livros?.escola_id),
+        ),
+      );
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível carregar os dados.' });
     } finally {
       setLoading(false);
     }
-  }, [canManageLoans, toast]);
+  }, [canManageLoans, toast, user?.id]);
 
   useEffect(() => {
     fetchData();
