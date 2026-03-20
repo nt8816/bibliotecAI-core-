@@ -32,7 +32,7 @@ export function useSystemNotifications() {
 
     const { data: perfil, error: perfilError } = await supabase
       .from('usuarios_biblioteca')
-      .select('id, escola_id')
+      .select('id, escola_id, turma')
       .eq('user_id', user.id)
       .order('updated_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })

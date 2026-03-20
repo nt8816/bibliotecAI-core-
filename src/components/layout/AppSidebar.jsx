@@ -47,6 +47,7 @@ export function AppSidebar() {
   const { counts, notifications, canViewNotifications } = useSystemNotifications();
   const totalPendencias = counts.atrasados + counts.solicitacoesPendentes + counts.comunicados;
   const hasPendencias = totalPendencias > 0;
+  const hasUnreadComunicados = counts.comunicados > 0;
   const settingsPath = '/configuracoes';
   const isTempLoginEmail = /@temp\.bibliotecai\.com$/i.test(String(user?.email || ''));
   const visibleUserIdentity = isTempLoginEmail
@@ -247,11 +248,11 @@ export function AppSidebar() {
                   variant="ghost"
                   size={collapsed ? 'icon' : 'sm'}
                   className={collapsed
-                    ? 'relative mx-auto text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                    : 'relative h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
+                    ? `relative mx-auto text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${hasUnreadComunicados ? 'bg-amber-500/15 text-amber-100 ring-1 ring-amber-400/60 shadow-[0_0_14px_rgba(251,191,36,0.18)]' : ''}`
+                    : `relative h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${hasUnreadComunicados ? 'bg-amber-500/15 text-amber-50 ring-1 ring-amber-400/60 shadow-[0_0_16px_rgba(251,191,36,0.22)] animate-pulse' : ''}`}
                   aria-label="Abrir notificações"
                 >
-                  <Bell className="size-4 sm:size-5" />
+                  <Bell className={`size-4 sm:size-5 ${hasUnreadComunicados ? 'text-amber-300' : ''}`} />
                   {!collapsed && <span className="truncate text-xs sm:text-sm">Notificações</span>}
                   {hasPendencias && (
                     <span className="absolute -right-1 -top-1 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] leading-[1.1rem] text-center font-bold">
