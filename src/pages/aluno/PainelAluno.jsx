@@ -129,6 +129,14 @@ function repairMojibakeText(value) {
   }
 }
 
+function normalizeCriacaoShareTipo(criacao) {
+  const tipo = String(criacao?.tipo || '');
+  if (tipo === 'quiz') return 'quiz';
+  if (tipo === 'resenha') return 'resenha';
+  if (tipo === 'resumo') return 'sugestao';
+  return 'dica';
+}
+
 function mergeById(list, incoming, idKey = 'id') {
   const map = new Map(ensureArray(list).map((item) => [item?.[idKey], item]));
   ensureArray(incoming).forEach((item) => {
@@ -845,6 +853,11 @@ export default function PainelAluno() {
   const [studioAudioFundoUrl, setStudioAudioFundoUrl] = useState('');
   const [studioPreviewIndex, setStudioPreviewIndex] = useState(0);
   const [selectedStudioImageUrl, setSelectedStudioImageUrl] = useState('');
+  const [shareCriacaoDialogOpen, setShareCriacaoDialogOpen] = useState(false);
+  const [shareCriacaoItem, setShareCriacaoItem] = useState(null);
+  const [shareCriacaoTitulo, setShareCriacaoTitulo] = useState('');
+  const [shareCriacaoDescricao, setShareCriacaoDescricao] = useState('');
+  const [shareCriacaoTipo, setShareCriacaoTipo] = useState('dica');
   const [quizLivroId, setQuizLivroId] = useState('');
   const [quizTema, setQuizTema] = useState('');
   const [quiz, setQuiz] = useState([]);
@@ -2895,7 +2908,26 @@ export default function PainelAluno() {
     }
   };
 
-  const compartilharCriacaoSalvaNaComunidade = async (criacao) => {
+  const abrirCompartilhamentoCriacao = (criacao) => {
+    if (!criacao?.id) return;
+    if (criacao.publicado_comunidade || criacao.comunidade_post_id) {
+      toast({ title: 'Criação já compartilhada', description: 'Essa criação já foi enviada para a comunidade.' });
+      return;
+    }
+    setShareCriacaoItem(criacao);
+    setShareCriacaoTitulo(repairMojibakeText(criacao.titulo) || 'Criação do aluno');
+    setShareCriacaoDescricao(
+      repairMojibakeText(
+        criacao.tipo === 'resumo'
+          ? extractResumoTextoFromCriacao(criacao) || criacao.descricao
+          : criacao.descricao,
+      ) || '',
+    );
+    setShareCriacaoTipo(normalizeCriacaoShareTipo(criacao));
+    setShareCriacaoDialogOpen(true);
+  };
+
+  const compartilharCriacaoSalvaNaComunidade = async (criacao, customizacao = {}) => {
     if (!optionalFeaturesEnabled || !alunoId || !escolaId) {
       toast({
         variant: 'destructive',
@@ -2912,8 +2944,9 @@ export default function PainelAluno() {
 
     setSaving(true);
     try {
-      const tituloBase = repairMojibakeText(criacao.titulo) || 'Criação do aluno';
-      const descricaoBase = repairMojibakeText(criacao.descricao);
+      const tituloBase = String(customizacao.titulo || repairMojibakeText(criacao.titulo) || 'Criação do aluno').trim();
+      const descricaoBase = String(customizacao.descricao || repairMojibakeText(criacao.descricao) || '').trim();
+      const tipoPersonalizado = String(customizacao.tipo || normalizeCriacaoShareTipo(criacao)).trim();
       const conteudoJson = extractQuizFromCriacao(criacao) || {};
       let payload = null;
 
@@ -2958,9 +2991,9 @@ export default function PainelAluno() {
           autor_id: alunoId,
           escola_id: escolaId,
           livro_id: criacao.livro_id || null,
-          tipo: 'sugestao',
+          tipo: ['dica', 'sugestao'].includes(tipoPersonalizado) ? tipoPersonalizado : 'sugestao',
           titulo: tituloBase,
-          conteudo: extractResumoTextoFromCriacao(criacao) || descricaoBase || 'Resumo compartilhado pelo aluno.',
+          conteudo: descricaoBase || extractResumoTextoFromCriacao(criacao) || 'Resumo compartilhado pelo aluno.',
           imagem_urls: ensureArray(criacao.imagem_urls),
           tags: Array.from(new Set([...(ensureArray(criacao.tags)), 'resumo'])),
         };
@@ -2970,7 +3003,7 @@ export default function PainelAluno() {
           escola_id: escolaId,
           livro_id: criacao.livro_id || null,
           audiobook_id: conteudoJson?.audiobook_id || null,
-          tipo: 'dica',
+          tipo: ['dica', 'sugestao', 'resenha'].includes(tipoPersonalizado) ? tipoPersonalizado : 'dica',
           titulo: tituloBase,
           conteudo: descricaoBase || 'Projeto criativo compartilhado pelo aluno.',
           imagem_urls: ensureArray(criacao.imagem_urls),
@@ -2999,6 +3032,8 @@ export default function PainelAluno() {
         ),
       );
 
+      setShareCriacaoDialogOpen(false);
+      setShareCriacaoItem(null);
       toast({ title: 'Criação compartilhada na comunidade!' });
     } catch (error) {
       toast({
@@ -4098,7 +4133,7 @@ export default function PainelAluno() {
                                 type="button"
                                 size="sm"
                                 variant={criacao.publicado_comunidade || criacao.comunidade_post_id ? 'secondary' : 'outline'}
-                                onClick={() => compartilharCriacaoSalvaNaComunidade(criacao)}
+                                onClick={() => abrirCompartilhamentoCriacao(criacao)}
                                 disabled={saving || criacao.publicado_comunidade || Boolean(criacao.comunidade_post_id)}
                               >
                                 <Send className="w-3 h-3 mr-1" />
@@ -4767,6 +4802,92 @@ export default function PainelAluno() {
           </DialogHeader>
           <div className="whitespace-pre-wrap text-sm text-muted-foreground">
             {resumoRapidoData?.texto || 'Resumo indisponivel.'}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={shareCriacaoDialogOpen}
+        onOpenChange={(open) => {
+          setShareCriacaoDialogOpen(open);
+          if (!open) {
+            setShareCriacaoItem(null);
+            setShareCriacaoTitulo('');
+            setShareCriacaoDescricao('');
+            setShareCriacaoTipo('dica');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Compartilhar criação na comunidade</DialogTitle>
+            <DialogDescription>
+              Personalize o título, a descrição e o tipo da postagem antes de publicar.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Título</Label>
+              <Input
+                value={shareCriacaoTitulo}
+                onChange={(e) => setShareCriacaoTitulo(e.target.value)}
+                placeholder="Título da publicação"
+              />
+            </div>
+
+            {shareCriacaoItem?.tipo !== 'quiz' && shareCriacaoItem?.tipo !== 'resenha' && (
+              <div className="space-y-2">
+                <Label>Tipo da publicação</Label>
+                <select
+                  value={shareCriacaoTipo}
+                  onChange={(e) => setShareCriacaoTipo(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="dica">Dica</option>
+                  <option value="sugestao">Sugestão</option>
+                  {shareCriacaoItem?.tipo === 'imagem' && <option value="resenha">Resenha</option>}
+                </select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>{shareCriacaoItem?.tipo === 'quiz' ? 'Resumo do quiz' : 'Descrição'}</Label>
+              <Textarea
+                value={shareCriacaoDescricao}
+                onChange={(e) => setShareCriacaoDescricao(e.target.value)}
+                placeholder="Escreva o texto que será publicado"
+                rows={5}
+              />
+            </div>
+
+            {ensureArray(shareCriacaoItem?.imagem_urls).length > 0 && (
+              <div className="grid grid-cols-2 gap-2 rounded-md border p-2">
+                {ensureArray(shareCriacaoItem?.imagem_urls)
+                  .slice(0, 4)
+                  .map((img, index) => (
+                    <img key={`${shareCriacaoItem?.id || 'share'}-${index}`} src={img} alt={`Prévia ${index + 1}`} className="h-24 w-full rounded-md object-cover border" />
+                  ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShareCriacaoDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() =>
+                compartilharCriacaoSalvaNaComunidade(shareCriacaoItem, {
+                  titulo: shareCriacaoTitulo,
+                  descricao: shareCriacaoDescricao,
+                  tipo: shareCriacaoTipo,
+                })
+              }
+              disabled={saving || !shareCriacaoItem}
+            >
+              {saving ? 'Compartilhando...' : 'Publicar na comunidade'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
