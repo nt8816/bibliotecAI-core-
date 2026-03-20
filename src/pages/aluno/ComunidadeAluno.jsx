@@ -1101,6 +1101,26 @@ export default function ComunidadeAluno() {
 
       if (error) throw error;
       if (!data?.id) {
+        const { data: restante, error: restanteError } = await supabase
+          .from('comunidade_posts')
+          .select('id')
+          .eq('id', post.id)
+          .maybeSingle();
+
+        if (restanteError) throw restanteError;
+
+        if (!restante?.id) {
+          setPosts((prev) => {
+            const nextList = ensureArray(prev).filter((item) => item.id !== post.id);
+            syncPostsCache(nextList);
+            return nextList;
+          });
+          setLikes((prev) => ensureArray(prev).filter((item) => item?.post_id !== post.id));
+          toast({ title: 'Post removido com sucesso.' });
+          setDeleteConfirmPost(null);
+          return;
+        }
+
         throw new Error('Voce so pode apagar publicacoes feitas por voce.');
       }
 
@@ -1673,7 +1693,7 @@ export default function ComunidadeAluno() {
           <DialogHeader>
             <DialogTitle>Excluir publicacao</DialogTitle>
             <DialogDescription>
-              Essa acao remove o post da comunidade e nao pode ser desfeita.
+              Essa acao remove a publicacao da comunidade e nao pode ser desfeita.
             </DialogDescription>
           </DialogHeader>
 
@@ -1684,6 +1704,11 @@ export default function ComunidadeAluno() {
             <p className="text-sm text-muted-foreground">
               Deseja realmente apagar esta publicacao?
             </p>
+            {deleteConfirmPost?.tipo === 'comunicado' && (
+              <p className="text-xs text-muted-foreground">
+                O comunicado tambem deixara de aparecer nas notificacoes e na remocao programada.
+              </p>
+            )}
           </div>
 
           <div className="flex justify-end gap-2">
