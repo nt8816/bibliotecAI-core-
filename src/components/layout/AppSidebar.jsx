@@ -88,6 +88,7 @@ export function AppSidebar() {
         { title: 'Usuários', url: '/usuarios', icon: Users },
         { title: 'Relatórios', url: '/relatorios', icon: BarChart3 },
         { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
+        { title: 'Ranking', url: '/ranking', icon: Trophy },
       ];
     }
 
@@ -98,6 +99,7 @@ export function AppSidebar() {
         { title: 'Usuários', url: '/usuarios', icon: Users },
         { title: 'Empréstimos', url: '/emprestimos', icon: BookMarked },
         { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
+        { title: 'Ranking', url: '/ranking', icon: Trophy },
       ];
     }
 
@@ -110,6 +112,7 @@ export function AppSidebar() {
         { title: 'Relatórios de Leitura', url: '/professor/relatorios', icon: BarChart3 },
         { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
         { title: 'Arquivos de Aula', url: '/arquivos-de-aula', icon: FileStack },
+        { title: 'Ranking', url: '/ranking', icon: Trophy },
       ];
     }
 

@@ -89,6 +89,14 @@ function AppRoutes() {
           </ProtectedRoute>
         )}
       />
+      <Route
+        path="/ranking"
+        element={(
+          <ProtectedRoute>
+            <RankingAluno />
+          </ProtectedRoute>
+        )}
+      />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
       <Route

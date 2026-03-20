@@ -1,17 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Trophy, Medal, Crown, Loader2, GraduationCap, School } from 'lucide-react';
+import {
+  Trophy,
+  Medal,
+  Crown,
+  Loader2,
+  GraduationCap,
+  School,
+  Filter,
+} from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
 function repairMojibakeText(value) {
   const text = String(value || '');
-  if (!text || !/[ÃÂ]/.test(text)) return text;
+  if (!text || !/[ÃƒÃ‚]/.test(text)) return text;
   try {
     return decodeURIComponent(escape(text));
   } catch {
@@ -110,9 +119,13 @@ export default function RankingAluno() {
   const [currentStudentId, setCurrentStudentId] = useState(null);
   const [currentTurma, setCurrentTurma] = useState(null);
   const [rankingEscola, setRankingEscola] = useState([]);
+  const [turmaFiltro, setTurmaFiltro] = useState('all');
+
+  const isAluno = userRole === 'aluno';
+  const canUseSchoolRanking = ['aluno', 'professor', 'gestor', 'bibliotecaria'].includes(userRole || '');
 
   useEffect(() => {
-    if (!user?.id || userRole !== 'aluno') {
+    if (!user?.id || !canUseSchoolRanking) {
       setLoading(false);
       return;
     }
@@ -131,9 +144,15 @@ export default function RankingAluno() {
           .limit(1)
           .maybeSingle();
 
-        if (perfilError || !perfil) throw perfilError || new Error('Perfil do aluno não encontrado.');
+        if (perfilError || !perfil) {
+          throw perfilError || new Error('Perfil do usuário não encontrado.');
+        }
 
-        const { data: rankingData, error: rankingError } = await supabase.rpc('get_aluno_rankings');
+        const rankingRequest = isAluno
+          ? supabase.rpc('get_aluno_rankings')
+          : supabase.rpc('get_school_rankings');
+
+        const { data: rankingData, error: rankingError } = await rankingRequest;
         if (rankingError) throw rankingError;
 
         const rankingCalculado = (rankingData || []).map((aluno) => ({
@@ -146,7 +165,7 @@ export default function RankingAluno() {
         }));
 
         if (!active) return;
-        setCurrentStudentId(perfil.id);
+        setCurrentStudentId(isAluno ? perfil.id : null);
         setCurrentTurma(perfil.turma || null);
         setRankingEscola(rankingCalculado);
       } catch (error) {
@@ -165,12 +184,30 @@ export default function RankingAluno() {
     return () => {
       active = false;
     };
-  }, [toast, user?.id, userRole]);
+  }, [canUseSchoolRanking, isAluno, toast, user?.id]);
 
   const rankingSala = useMemo(() => {
     const turmaKey = normalizeTurmaKey(currentTurma);
     return rankingEscola.filter((aluno) => normalizeTurmaKey(aluno.turma) === turmaKey);
   }, [currentTurma, rankingEscola]);
+
+  const turmaOptions = useMemo(() => {
+    const uniqueTurmas = Array.from(
+      new Map(
+        rankingEscola
+          .filter((aluno) => aluno.turma)
+          .map((aluno) => [normalizeTurmaKey(aluno.turma), repairMojibakeText(aluno.turma)]),
+      ).values(),
+    );
+
+    return uniqueTurmas.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [rankingEscola]);
+
+  const rankingFiltradoPorTurma = useMemo(() => {
+    if (turmaFiltro === 'all') return rankingEscola;
+    const turmaKey = normalizeTurmaKey(turmaFiltro);
+    return rankingEscola.filter((aluno) => normalizeTurmaKey(aluno.turma) === turmaKey);
+  }, [rankingEscola, turmaFiltro]);
 
   const minhaPosicaoSala = useMemo(
     () => rankingSala.findIndex((aluno) => aluno.id === currentStudentId) + 1 || 0,
@@ -192,51 +229,121 @@ export default function RankingAluno() {
     );
   }
 
+  if (!canUseSchoolRanking) {
+    return (
+      <MainLayout title="Ranking">
+        <Card>
+          <CardContent className="py-10 text-sm text-muted-foreground">
+            Esta área está disponível apenas para alunos, professores, gestão e bibliotecária.
+          </CardContent>
+        </Card>
+      </MainLayout>
+    );
+  }
+
+  if (isAluno) {
+    return (
+      <MainLayout title="Ranking">
+        <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card className="border-primary/20 bg-gradient-to-br from-primary/10 via-card to-card">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <GraduationCap className="h-5 w-5" />
+                  Ranking da Sala
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  Posição atual: <span className="font-semibold text-foreground">#{minhaPosicaoSala || '-'}</span>
+                </p>
+                <p>Comparação com os alunos da sua turma usando XP total e nível.</p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-primary/20 bg-gradient-to-br from-secondary/10 via-card to-card">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <School className="h-5 w-5" />
+                  Ranking da Escola
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  Posição atual: <span className="font-semibold text-foreground">#{minhaPosicaoEscola || '-'}</span>
+                </p>
+                <p>Comparação geral entre todos os alunos da escola.</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Tabs defaultValue="sala" className="space-y-4">
+            <TabsList className="grid w-full max-w-md grid-cols-2">
+              <TabsTrigger value="sala">Ranking da sala</TabsTrigger>
+              <TabsTrigger value="escola">Ranking da escola</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="sala" className="space-y-4">
+              <RankingList items={rankingSala} currentStudentId={currentStudentId} />
+            </TabsContent>
+
+            <TabsContent value="escola" className="space-y-4">
+              <RankingList items={rankingEscola} currentStudentId={currentStudentId} />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </MainLayout>
+    );
+  }
+
   return (
     <MainLayout title="Ranking">
       <div className="space-y-6">
         <div className="grid gap-4 md:grid-cols-2">
-          <Card className="border-primary/20 bg-gradient-to-br from-primary/10 via-card to-card">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <GraduationCap className="h-5 w-5" />
-                Ranking da Sala
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm text-muted-foreground">
-              <p>Posição atual: <span className="font-semibold text-foreground">#{minhaPosicaoSala || '-'}</span></p>
-              <p>Comparação com os alunos da sua turma usando XP total e nível.</p>
-            </CardContent>
-          </Card>
-
           <Card className="border-primary/20 bg-gradient-to-br from-secondary/10 via-card to-card">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <School className="h-5 w-5" />
-                Ranking da Escola
+                Ranking Escolar
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm text-muted-foreground">
-              <p>Posição atual: <span className="font-semibold text-foreground">#{minhaPosicaoEscola || '-'}</span></p>
-              <p>Comparação geral entre todos os alunos da escola.</p>
+              <p>
+                Total de alunos no ranking: <span className="font-semibold text-foreground">{rankingEscola.length}</span>
+              </p>
+              <p>O ranking usa XP total e nível real dos alunos da escola.</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-primary/20 bg-gradient-to-br from-primary/10 via-card to-card">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Filter className="h-5 w-5" />
+                Filtro por Turma
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Select value={turmaFiltro} onValueChange={setTurmaFiltro}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a turma" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as turmas</SelectItem>
+                  {turmaOptions.map((turma) => (
+                    <SelectItem key={turma} value={turma}>
+                      {turma}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-muted-foreground">
+                Professores, gestão e bibliotecária visualizam o ranking escolar e podem filtrar por turma.
+              </p>
             </CardContent>
           </Card>
         </div>
 
-        <Tabs defaultValue="sala" className="space-y-4">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
-            <TabsTrigger value="sala">Ranking da sala</TabsTrigger>
-            <TabsTrigger value="escola">Ranking da escola</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="sala" className="space-y-4">
-            <RankingList items={rankingSala} currentStudentId={currentStudentId} />
-          </TabsContent>
-
-          <TabsContent value="escola" className="space-y-4">
-            <RankingList items={rankingEscola} currentStudentId={currentStudentId} />
-          </TabsContent>
-        </Tabs>
+        <RankingList items={rankingFiltradoPorTurma} currentStudentId={null} />
       </div>
     </MainLayout>
   );
