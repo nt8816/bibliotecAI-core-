@@ -346,7 +346,7 @@ export default function Emprestimos() {
       toast({
         variant: 'destructive',
         title: 'Prazo inv??lido',
-        description: 'A devolu????o prevista pode ser de no m??ximo 1 m??s ap??s a data do empr??stimo.',
+        description: 'A devolução prevista pode ser de no máximo 1 mês após a data do empréstimo.',
       });
       return;
     }
@@ -1128,7 +1128,7 @@ export default function Emprestimos() {
                           onChange={(e) => setOldLoanDataPrevista(e.target.value)}
                         />
                         <p className="text-xs text-muted-foreground">
-                          Se ficar vazia, o sistema usa automaticamente at?? 1 m??s ap??s a data do empr??stimo.
+                          Se ficar vazia, o sistema usa automaticamente até 1 mês após a data do empréstimo.
                         </p>
                       </div>
 
