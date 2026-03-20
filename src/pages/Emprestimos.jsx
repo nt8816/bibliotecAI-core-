@@ -55,6 +55,11 @@ function toIsoDateTime(dateValue, fallbackHour = '12:00') {
   return new Date(`${dateValue}T${fallbackHour}:00`).toISOString();
 }
 
+function addOneMonthToDateInput(dateValue) {
+  if (!dateValue) return '';
+  return format(addMonths(new Date(`${dateValue}T12:00:00`), 1), 'yyyy-MM-dd');
+}
+
 function isTempLoginEmail(value) {
   return /@temp\.bibliotecai\.com$/i.test(String(value || '').trim());
 }
@@ -325,12 +330,23 @@ export default function Emprestimos() {
       });
       return;
     }
+    const defaultOldLoanDataPrevista = addOneMonthToDateInput(oldLoanDataEmprestimo);
+    const effectiveOldLoanDataPrevista = oldLoanDataPrevista || defaultOldLoanDataPrevista;
 
-    if (oldLoanDataPrevista && oldLoanDataPrevista < oldLoanDataEmprestimo) {
+    if (effectiveOldLoanDataPrevista && effectiveOldLoanDataPrevista < oldLoanDataEmprestimo) {
       toast({
         variant: 'destructive',
-        title: 'Período inválido',
-        description: 'A devolução prevista não pode ser anterior à data do empréstimo.',
+        title: 'Per??odo inv??lido',
+        description: 'A devolu????o prevista n??o pode ser anterior ?? data do empr??stimo.',
+      });
+      return;
+    }
+
+    if (effectiveOldLoanDataPrevista && effectiveOldLoanDataPrevista > defaultOldLoanDataPrevista) {
+      toast({
+        variant: 'destructive',
+        title: 'Prazo inv??lido',
+        description: 'A devolu????o prevista pode ser de no m??ximo 1 m??s ap??s a data do empr??stimo.',
       });
       return;
     }
@@ -361,9 +377,7 @@ export default function Emprestimos() {
         usuario_id: oldLoanUsuario,
         status: oldLoanStatus,
         data_emprestimo: toIsoDateTime(oldLoanDataEmprestimo),
-        data_devolucao_prevista: oldLoanDataPrevista
-          ? toIsoDateTime(oldLoanDataPrevista)
-          : toIsoDateTime(oldLoanDataEmprestimo),
+        data_devolucao_prevista: toIsoDateTime(effectiveOldLoanDataPrevista),
         data_devolucao_real: oldLoanStatus === 'devolvido' ? toIsoDateTime(oldLoanDataDevolucao) : null,
       };
 
@@ -1109,8 +1123,13 @@ export default function Emprestimos() {
                           id="oldLoanDataPrevista"
                           type="date"
                           value={oldLoanDataPrevista}
+                          min={oldLoanDataEmprestimo || undefined}
+                          max={oldLoanDataEmprestimo ? addOneMonthToDateInput(oldLoanDataEmprestimo) : undefined}
                           onChange={(e) => setOldLoanDataPrevista(e.target.value)}
                         />
+                        <p className="text-xs text-muted-foreground">
+                          Se ficar vazia, o sistema usa automaticamente at?? 1 m??s ap??s a data do empr??stimo.
+                        </p>
                       </div>
 
                       {oldLoanStatus === 'devolvido' && (
