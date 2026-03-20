@@ -51,6 +51,14 @@ function toEndOfDayIso(dateValue) {
   return Number.isNaN(localDate.getTime()) ? null : localDate.toISOString();
 }
 
+function getTodayInputValue() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function isExpiredComunicado(post) {
   if (post?.tipo !== 'comunicado' || !post?.expires_at) return false;
   const expiresAt = new Date(post.expires_at);
@@ -283,6 +291,7 @@ export default function ComunidadeAluno() {
   const [editConteudo, setEditConteudo] = useState('');
   const [likingPostIds, setLikingPostIds] = useState(new Set());
   const [deleteConfirmPost, setDeleteConfirmPost] = useState(null);
+  const minComunicadoDate = getTodayInputValue();
 
   const loadTurmasPublicacao = useCallback(
     async ({ perfilId, escolaIdAtual } = {}) => {
@@ -772,6 +781,14 @@ export default function ComunidadeAluno() {
         variant: 'destructive',
         title: 'Defina a data final',
         description: 'Informe a data em que o comunicado deve sumir.',
+      });
+      return;
+    }
+    if (postTipo === 'comunicado' && postExpiraEm < minComunicadoDate) {
+      toast({
+        variant: 'destructive',
+        title: 'Data invalida',
+        description: 'A data de remocao do comunicado nao pode ser anterior a hoje.',
       });
       return;
     }
@@ -1498,7 +1515,7 @@ export default function ComunidadeAluno() {
                     id="comunicado-expira-em"
                     type="date"
                     value={postExpiraEm}
-                    min={new Date().toISOString().slice(0, 10)}
+                    min={minComunicadoDate}
                     onChange={(e) => setPostExpiraEm(e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground">
