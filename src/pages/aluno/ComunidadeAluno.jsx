@@ -776,14 +776,6 @@ export default function ComunidadeAluno() {
       });
       return;
     }
-    if (postTipo === 'comunicado' && !postExpiraEm) {
-      toast({
-        variant: 'destructive',
-        title: 'Defina a data final',
-        description: 'Informe a data em que o comunicado deve sumir.',
-      });
-      return;
-    }
     if (postTipo === 'comunicado' && postExpiraEm < minComunicadoDate) {
       toast({
         variant: 'destructive',
@@ -1530,7 +1522,7 @@ export default function ComunidadeAluno() {
 
               {canPublicarComunicado && postTipo === 'comunicado' && (
                 <div className="space-y-2 sm:col-span-3">
-                  <Label htmlFor="comunicado-expira-em">Data para remover o comunicado</Label>
+                  <Label htmlFor="comunicado-expira-em">Data para remover o comunicado (opcional)</Label>
                   <Input
                     id="comunicado-expira-em"
                     type="date"
@@ -1539,7 +1531,8 @@ export default function ComunidadeAluno() {
                     onChange={(e) => setPostExpiraEm(e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Quando essa data vencer, o comunicado sera apagado da comunidade e das notificacoes.
+                    Se voce definir uma data, o comunicado sera apagado da comunidade e das notificacoes quando ela vencer.
+                    Sem data, ele continuara visivel ate ser apagado manualmente.
                   </p>
                 </div>
               )}
