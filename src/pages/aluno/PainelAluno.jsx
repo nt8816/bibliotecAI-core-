@@ -2591,7 +2591,7 @@ export default function PainelAluno() {
       const titulo = studioTitulo.trim() || 'Projeto criativo do aluno';
       const conteudo =
         studioDescricao.trim() ||
-        'CriaÃ§Ã£o de mÃ­dia com imagens em sequÃªncia e Ã¡udio de fundo feita no estÃºdio do aluno.';
+        'Criação de mídia com imagens em sequência e áudio de fundo feita no estúdio do aluno.';
       const imagemUrls = studioSlides.map((slide) => slide.url);
 
       const { data: postCriado, error } = await insertCommunityPostCompat(
@@ -2671,7 +2671,7 @@ export default function PainelAluno() {
         tipo: 'imagem',
         titulo: studioTitulo.trim() || 'Projeto criativo do aluno',
         descricao:
-          studioDescricao.trim() || 'Projeto salvo no laboratÃ³rio do aluno para ediÃ§Ã£o/compartilhamento posterior.',
+          studioDescricao.trim() || 'Projeto salvo no laboratório do aluno para edição/compartilhamento posterior.',
         conteudo_json: {
           prompt: studioPrompt.trim() || null,
           audiobook_id: studioAudiobookId || null,
@@ -2680,7 +2680,7 @@ export default function PainelAluno() {
         tags,
       });
 
-      toast({ title: 'Projeto salvo no laboratÃ³rio!' });
+      toast({ title: 'Projeto salvo no laboratório!' });
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'NÃ£o foi possÃ­vel salvar o projeto.' });
     } finally {
@@ -2873,7 +2873,7 @@ export default function PainelAluno() {
         comunidade_post_id: postId,
       });
 
-      toast({ title: publicarNaComunidade ? 'Quiz salvo e compartilhado!' : 'Quiz salvo no laboratÃ³rio!' });
+      toast({ title: publicarNaComunidade ? 'Quiz salvo e compartilhado!' : 'Quiz salvo no laboratório!' });
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -2887,7 +2887,7 @@ export default function PainelAluno() {
 
   const apagarCriacaoLaboratorio = async (criacao) => {
     if (!criacao?.id) return;
-    const ok = window.confirm('Deseja apagar esta criaÃ§Ã£o do laboratÃ³rio?');
+    const ok = window.confirm('Deseja apagar esta criação do laboratório?');
     if (!ok) return;
 
     setSaving(true);
@@ -2908,7 +2908,7 @@ export default function PainelAluno() {
         throw error;
       }
 
-      toast({ title: 'CriaÃ§Ã£o removida.' });
+      toast({ title: 'Criação removida.' });
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro ao apagar', description: error?.message || 'NÃ£o foi possÃ­vel apagar.' });
     } finally {
@@ -3114,7 +3114,7 @@ export default function PainelAluno() {
         },
         ...prev,
       ]);
-      toast({ title: 'Resumo salvo no laboratÃ³rio' });
+      toast({ title: 'Resumo salvo no laboratório' });
       setResumoTexto('');
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'NÃ£o foi possÃ­vel salvar o resumo.' });
@@ -3914,7 +3914,7 @@ export default function PainelAluno() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">CriaÃ§Ãµes salvas no laboratÃ³rio</CardTitle>
+                <CardTitle className="text-base">Criações salvas no laboratório</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex flex-wrap gap-2 rounded-lg border p-1 bg-muted/20">
@@ -3953,7 +3953,7 @@ export default function PainelAluno() {
                 </div>
 
                 {criacoesLaboratorioFiltradas.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nenhuma criaÃ§Ã£o salva ainda.</p>
+                  <p className="text-sm text-muted-foreground">Nenhuma criação salva ainda.</p>
                 ) : (
                   <div className="space-y-3">
                     {criacoesLaboratorioFiltradas.slice(0, criacoesLimit).map((criacao) => {
@@ -3962,9 +3962,9 @@ export default function PainelAluno() {
                         <div key={criacao.id} className="rounded-md border p-3 space-y-2">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
-                              <p className="font-medium">{criacao.titulo || 'CriaÃ§Ã£o sem tÃ­tulo'}</p>
+                              <p className="font-medium">{criacao.titulo || 'Criação sem título'}</p>
                               <p className="text-xs text-muted-foreground">
-                                {criacao.tipo} â€¢ {formatDateBR(criacao.created_at)}
+                                {criacao.tipo} • {formatDateBR(criacao.created_at)}
                               </p>
                             </div>
                             <Button type="button" size="sm" variant="destructive" onClick={() => apagarCriacaoLaboratorio(criacao)} disabled={saving}>
@@ -3976,7 +3976,7 @@ export default function PainelAluno() {
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                               {ensureArray(criacao.imagem_urls).slice(0, 4).map((img, index) => (
                                 <button type="button" key={`${criacao.id}-${index}`} onClick={() => setSelectedStudioImageUrl(img)}>
-                                  <img src={img} alt={`CriaÃ§Ã£o ${index + 1}`} className="h-20 w-full rounded-md border object-cover cursor-zoom-in" />
+                                  <img src={img} alt={`Criação ${index + 1}`} className="h-20 w-full rounded-md border object-cover cursor-zoom-in" />
                                 </button>
                               ))}
                             </div>
