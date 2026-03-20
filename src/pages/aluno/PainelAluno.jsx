@@ -137,6 +137,107 @@ function normalizeCriacaoShareTipo(criacao) {
   return 'dica';
 }
 
+function normalizeLivroCategoria(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function getLivroXpPorCategoria(area) {
+  const categoria = normalizeLivroCategoria(area);
+
+  if (!categoria) return 22;
+
+  if (
+    categoria.includes('quadrinho') ||
+    categoria.includes('hq') ||
+    categoria.includes('gibi') ||
+    categoria.includes('manga')
+  ) {
+    return 10;
+  }
+
+  if (
+    categoria.includes('infantil') ||
+    categoria.includes('poesia') ||
+    categoria.includes('poema') ||
+    categoria.includes('conto') ||
+    categoria.includes('cronica')
+  ) {
+    return 18;
+  }
+
+  if (
+    categoria.includes('arte') ||
+    categoria.includes('teatro') ||
+    categoria.includes('musica') ||
+    categoria.includes('cultura')
+  ) {
+    return 20;
+  }
+
+  if (
+    categoria.includes('literatura') ||
+    categoria.includes('romance') ||
+    categoria.includes('portugues') ||
+    categoria.includes('gramatica') ||
+    categoria.includes('historia') ||
+    categoria.includes('geografia') ||
+    categoria.includes('biografia') ||
+    categoria.includes('filosofia') ||
+    categoria.includes('sociologia')
+  ) {
+    return 25;
+  }
+
+  if (
+    categoria.includes('matematica') ||
+    categoria.includes('fisica') ||
+    categoria.includes('quimica') ||
+    categoria.includes('biologia') ||
+    categoria.includes('ciencia') ||
+    categoria.includes('tecnico') ||
+    categoria.includes('programacao') ||
+    categoria.includes('informatica') ||
+    categoria.includes('desenvolvimento')
+  ) {
+    return 30;
+  }
+
+  return 22;
+}
+
+function getLivroXpDescricao(area) {
+  const categoria = normalizeLivroCategoria(area);
+
+  if (
+    categoria.includes('quadrinho') ||
+    categoria.includes('hq') ||
+    categoria.includes('gibi') ||
+    categoria.includes('manga')
+  ) {
+    return 'XP reduzido por ser uma leitura mais visual';
+  }
+
+  if (
+    categoria.includes('matematica') ||
+    categoria.includes('fisica') ||
+    categoria.includes('quimica') ||
+    categoria.includes('biologia') ||
+    categoria.includes('ciencia') ||
+    categoria.includes('tecnico') ||
+    categoria.includes('programacao') ||
+    categoria.includes('informatica') ||
+    categoria.includes('desenvolvimento')
+  ) {
+    return 'XP elevado por exigir leitura mais densa';
+  }
+
+  return 'XP definido pela categoria do livro';
+}
+
 function mergeById(list, incoming, idKey = 'id') {
   const map = new Map(ensureArray(list).map((item) => [item?.[idKey], item]));
   ensureArray(incoming).forEach((item) => {
@@ -1667,6 +1768,14 @@ export default function PainelAluno() {
     }));
   }, [atividades, entregas]);
 
+  const livrosById = useMemo(() => {
+    const map = new Map();
+    ensureArray(livros).forEach((livro) => {
+      if (livro?.id) map.set(livro.id, livro);
+    });
+    return map;
+  }, [livros]);
+
   const livrosLidos = useMemo(() => {
     const devolvidos = emprestimos
       .filter((e) => e.status === 'devolvido')
@@ -1674,6 +1783,22 @@ export default function PainelAluno() {
       .filter(Boolean);
     return new Set(devolvidos).size;
   }, [emprestimos]);
+
+  const xpLeituras = useMemo(() => {
+    const livrosDevolvidosUnicos = Array.from(
+      new Set(
+        emprestimos
+          .filter((e) => e.status === 'devolvido')
+          .map((e) => e.livro_id)
+          .filter(Boolean),
+      ),
+    );
+
+    return livrosDevolvidosUnicos.reduce((acc, livroId) => {
+      const livro = livrosById.get(livroId);
+      return acc + getLivroXpPorCategoria(livro?.area);
+    }, 0);
+  }, [emprestimos, livrosById]);
 
   const pontosGanhos = useMemo(
     () => entregas.filter((e) => e.status === 'aprovada').reduce((acc, e) => acc + Number(e.pontos_ganhos || 0), 0),
@@ -1715,11 +1840,11 @@ export default function PainelAluno() {
   }, [emprestimos]);
 
   const pontosExperiencia = useMemo(() => {
-    const baseLeituras = livrosLidos * 35;
+    const baseLeituras = xpLeituras;
     const baseAvaliacoes = avaliacoes.length * 15;
     const baseAtividades = atividadesAprovadas * 25;
     return baseLeituras + baseAvaliacoes + baseAtividades + Number(pontosGanhos || 0) + Number(desafioXpBonus || 0);
-  }, [atividadesAprovadas, avaliacoes.length, desafioXpBonus, livrosLidos, pontosGanhos]);
+  }, [atividadesAprovadas, avaliacoes.length, desafioXpBonus, pontosGanhos, xpLeituras]);
 
   const nivelAtual = useMemo(() => Math.max(1, Math.floor(pontosExperiencia / 150) + 1), [pontosExperiencia]);
 
@@ -1820,14 +1945,6 @@ export default function PainelAluno() {
       return true;
     });
   }, [catalogoAreaFilter, catalogoAutorFilter, catalogoDisponibilidadeFilter, filteredLivros]);
-
-  const livrosById = useMemo(() => {
-    const map = new Map();
-    ensureArray(livros).forEach((livro) => {
-      if (livro?.id) map.set(livro.id, livro);
-    });
-    return map;
-  }, [livros]);
 
   const livrosSugeriveisDesafio = useMemo(
     () =>
@@ -4360,6 +4477,8 @@ export default function PainelAluno() {
                         const isSpeakingThis = speakingLivroId === livro.id;
                         const isLoadingThis = isSpeakingThis && speakingPhase === 'loading';
                         const isPlayingThis = isSpeakingThis && speakingPhase === 'playing';
+                        const xpLivro = getLivroXpPorCategoria(livro.area);
+                        const xpLivroDescricao = getLivroXpDescricao(livro.area);
                         return (
                         <div key={livro.id} className="rounded-2xl border bg-card flex flex-col min-h-[360px] overflow-hidden">
                           <div className="min-h-[92px] bg-gradient-to-br from-secondary/30 via-secondary/10 to-transparent p-3 flex items-start justify-between gap-2">
@@ -4377,6 +4496,12 @@ export default function PainelAluno() {
                                   {[livro.vol ? `Vol. ${livro.vol}` : null, livro.ano ? `Ano ${livro.ano}` : null].filter(Boolean).join(' - ')}
                                 </p>
                               )}
+                              <div className="flex flex-wrap items-center gap-2 pt-1">
+                                <Badge variant="outline" className="text-[11px] border-primary/40 text-primary">
+                                  {xpLivro} XP
+                                </Badge>
+                                <span className="text-[11px] text-muted-foreground">{xpLivroDescricao}</span>
+                              </div>
                               <Badge variant={livro.disponivel ? 'default' : 'secondary'} className="text-[11px]">
                                 {livro.disponivel ? 'Disponivel' : 'Emprestado'}
                               </Badge>
