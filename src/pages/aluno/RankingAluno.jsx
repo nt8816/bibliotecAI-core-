@@ -28,87 +28,6 @@ function normalizeTurmaKey(value) {
     .trim();
 }
 
-function normalizeLivroCategoria(value) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-}
-
-function getLivroXpPorCategoria(area) {
-  const categoria = normalizeLivroCategoria(area);
-
-  if (!categoria) return 18;
-
-  if (
-    categoria.includes('quadrinho') ||
-    categoria.includes('hq') ||
-    categoria.includes('gibi') ||
-    categoria.includes('manga') ||
-    categoria.includes('comic')
-  ) {
-    return 5;
-  }
-
-  if (
-    categoria.includes('infantil') ||
-    categoria.includes('ilustrado') ||
-    categoria.includes('figur') ||
-    categoria.includes('visual')
-  ) {
-    return 8;
-  }
-
-  if (
-    categoria.includes('poesia') ||
-    categoria.includes('poema') ||
-    categoria.includes('conto') ||
-    categoria.includes('cronica')
-  ) {
-    return 12;
-  }
-
-  if (
-    categoria.includes('arte') ||
-    categoria.includes('teatro') ||
-    categoria.includes('musica') ||
-    categoria.includes('cultura')
-  ) {
-    return 14;
-  }
-
-  if (
-    categoria.includes('literatura') ||
-    categoria.includes('romance') ||
-    categoria.includes('portugues') ||
-    categoria.includes('gramatica') ||
-    categoria.includes('historia') ||
-    categoria.includes('geografia') ||
-    categoria.includes('biografia') ||
-    categoria.includes('filosofia') ||
-    categoria.includes('sociologia')
-  ) {
-    return 20;
-  }
-
-  if (
-    categoria.includes('matematica') ||
-    categoria.includes('fisica') ||
-    categoria.includes('quimica') ||
-    categoria.includes('biologia') ||
-    categoria.includes('ciencia') ||
-    categoria.includes('tecnico') ||
-    categoria.includes('programacao') ||
-    categoria.includes('informatica') ||
-    categoria.includes('desenvolvimento')
-  ) {
-    return 25;
-  }
-
-  return 18;
-}
-
 function getNivelFromXp(xp) {
   return Math.max(1, Math.floor(Number(xp || 0) / 150) + 1);
 }
@@ -163,7 +82,7 @@ function RankingList({ items, currentStudentId }) {
                   <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                     <span>Turma: {repairMojibakeText(aluno.turma) || 'Sem turma'}</span>
                     <span>Nível {aluno.nivel}</span>
-                    <span>{aluno.livrosLidos} livros lidos</span>
+                    <span>{aluno.livrosLidos} livros com XP</span>
                   </div>
                 </div>
               </div>
