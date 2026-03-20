@@ -4636,13 +4636,13 @@ export default function PainelAluno() {
       <Dialog open={Boolean(selectedStudioImageUrl)} onOpenChange={(open) => !open && setSelectedStudioImageUrl('')}>
         <DialogContent className="max-w-5xl">
           <DialogHeader>
-            <DialogTitle>VisualizaÃ§Ã£o ampliada</DialogTitle>
+            <DialogTitle>Visualização ampliada</DialogTitle>
             <DialogDescription>Clique fora para fechar. Use a imagem em tamanho maior para analisar detalhes.</DialogDescription>
           </DialogHeader>
           {selectedStudioImageUrl && (
             <img
               src={selectedStudioImageUrl}
-              alt="Imagem ampliada do laboratÃ³rio"
+              alt="Imagem ampliada do laboratório"
               className="w-full max-h-[75vh] object-contain rounded-md border"
             />
           )}
