@@ -282,6 +282,7 @@ export default function ComunidadeAluno() {
   const [editTitulo, setEditTitulo] = useState('');
   const [editConteudo, setEditConteudo] = useState('');
   const [likingPostIds, setLikingPostIds] = useState(new Set());
+  const [deleteConfirmPost, setDeleteConfirmPost] = useState(null);
 
   const loadTurmasPublicacao = useCallback(
     async ({ perfilId, escolaIdAtual } = {}) => {
@@ -1071,9 +1072,6 @@ export default function ComunidadeAluno() {
   const apagarPost = async (post) => {
     if (!podeGerenciarPost(post)) return;
 
-    const ok = window.confirm('Deseja apagar este post da comunidade?');
-    if (!ok) return;
-
     setSaving(true);
     try {
       const { data, error } = await supabase
@@ -1097,6 +1095,7 @@ export default function ComunidadeAluno() {
       setLikes((prev) => ensureArray(prev).filter((item) => item?.post_id !== post.id));
 
       toast({ title: 'Post apagado com sucesso.' });
+      setDeleteConfirmPost(null);
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -1399,7 +1398,7 @@ export default function ComunidadeAluno() {
                           </Button>
                         )}
                         {podeGerenciarPost(post) && (
-                          <Button variant="ghost" size="sm" onClick={() => apagarPost(post)} disabled={!enabled || saving}>
+                          <Button variant="ghost" size="sm" onClick={() => setDeleteConfirmPost(post)} disabled={!enabled || saving}>
                             <Trash2 className="w-4 h-4 mr-1 text-destructive" />
                             Apagar
                           </Button>
@@ -1643,6 +1642,41 @@ export default function ComunidadeAluno() {
                 {saving ? 'Salvando...' : 'Salvar alteracoes'}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deleteConfirmPost)}
+        onOpenChange={(open) => {
+          if (!open && !saving) setDeleteConfirmPost(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Excluir publicacao</DialogTitle>
+            <DialogDescription>
+              Essa acao remove o post da comunidade e nao pode ser desfeita.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-xl border bg-muted/30 p-4 space-y-2">
+            <p className="text-sm font-semibold break-words">
+              {safeText(deleteConfirmPost?.titulo, 'Post da comunidade')}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Deseja realmente apagar esta publicacao?
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDeleteConfirmPost(null)} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={() => apagarPost(deleteConfirmPost)} disabled={saving}>
+              <Trash2 className="w-4 h-4 mr-2" />
+              {saving ? 'Apagando...' : 'Confirmar exclusao'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
