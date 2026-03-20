@@ -776,7 +776,7 @@ export default function ComunidadeAluno() {
       });
       return;
     }
-    if (postTipo === 'comunicado' && postExpiraEm < minComunicadoDate) {
+    if (postTipo === 'comunicado' && postExpiraEm && postExpiraEm < minComunicadoDate) {
       toast({
         variant: 'destructive',
         title: 'Data invalida',
