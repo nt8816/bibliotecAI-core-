@@ -1339,8 +1339,23 @@ export default function PainelAluno() {
           .filter((item) => item.status === 'aprovada')
           .reduce((acc, item) => acc + Number(item.pontos_ganhos || 0), 0);
         const xpBonusCarregado = Math.max(0, Number(preferenciasAlunoOpt.data?.desafio_ia_xp_bonus || 0));
+        const livrosCatalogoCarregados = readCache(livrosCacheKey) || [];
+        const livrosCatalogoMap = new Map(
+          livrosCatalogoCarregados.map((item) => [item.id, item]),
+        );
+        const xpLeiturasCarregado = Array.from(
+          new Set(
+            (emprestimosRes.data || [])
+              .filter((item) => item.status === 'devolvido')
+              .map((item) => item.livro_id)
+              .filter(Boolean),
+          ),
+        ).reduce((acc, livroId) => {
+          const livro = livrosCatalogoMap.get(livroId);
+          return acc + getLivroXpPorCategoria(livro?.area);
+        }, 0);
         const pontosExperienciaCarregados =
-          metricasCarregadas.livros_lidos * 35 +
+          xpLeiturasCarregado +
           metricasCarregadas.avaliacoes * 15 +
           metricasCarregadas.atividades_aprovadas * 25 +
           pontosAprovadosCarregados +
@@ -1396,7 +1411,7 @@ export default function PainelAluno() {
       }
     });
     return request;
-  }, [desafioCacheKey, fetchLivrosPage, optionalFeaturesEnabled, toast, user]);
+  }, [desafioCacheKey, fetchLivrosPage, livrosCacheKey, optionalFeaturesEnabled, toast, user]);
 
   useEffect(() => {
     fetchData();
