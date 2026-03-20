@@ -1208,7 +1208,7 @@ export default function PainelAluno() {
             .order('created_at', { ascending: false }),
           supabase
             .from('atividades_leitura')
-            .select('*, livros(titulo, autor)')
+            .select('*, livros(titulo, autor), professor:usuarios_biblioteca!atividades_leitura_professor_id_fkey(nome)')
             .eq('aluno_id', perfil.id)
             .order('created_at', { ascending: false }),
           comunicadosPromise,
@@ -1612,7 +1612,11 @@ export default function PainelAluno() {
   const handleAtividadeUpsert = useCallback(
     async (payload) => {
       const row = payload?.new;
-      const data = await fetchRowById('atividades_leitura', row?.id, '*, livros(titulo, autor)');
+      const data = await fetchRowById(
+        'atividades_leitura',
+        row?.id,
+        '*, livros(titulo, autor), professor:usuarios_biblioteca!atividades_leitura_professor_id_fkey(nome)',
+      );
       if (!data || data.aluno_id !== alunoId) return;
       setAtividades((prev) => sortByDateDesc(upsertById(prev, data)));
     },
@@ -3842,6 +3846,9 @@ export default function PainelAluno() {
                             <div>
                               <p className="font-semibold">{atividade.titulo}</p>
                               <p className="text-xs text-muted-foreground">{atividade.livros?.titulo || 'Livro nao informado'}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Professor: {atividade.professor?.nome || 'Professor nao informado'}
+                              </p>
                               {atividade.atividadeMeta?.descricaoLimpa && <p className="text-sm mt-1">{atividade.atividadeMeta.descricaoLimpa}</p>}
                             </div>
                             <div className="text-right">
