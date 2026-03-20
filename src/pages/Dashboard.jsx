@@ -74,7 +74,7 @@ export default function Dashboard() {
   const [livrosMaisEmprestados, setLivrosMaisEmprestados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showGestorWelcome, setShowGestorWelcome] = useState(false);
-  const [escolasAtivas, setEscolasAtivas] = useState([]);
+  const [escolasCadastradas, setEscolasCadastradas] = useState([]);
 
   const fetchInFlightRef = useRef(null);
   const realtimeDebounceRef = useRef(null);
@@ -91,7 +91,7 @@ export default function Dashboard() {
         atrasadosResult,
         emprestimosRecentesResult,
         emprestimosDetalhadosResult,
-        escolasAtivasResult,
+        escolasResult,
       ] = await Promise.allSettled([
         supabase.from('livros').select('*', { count: 'exact', head: true }),
         supabase.from('livros').select('*', { count: 'exact', head: true }).eq('disponivel', true),
@@ -111,7 +111,7 @@ export default function Dashboard() {
           .from('emprestimos')
           .select('id, livro_id, created_at, data_emprestimo, status, livros(titulo)')
           .order('created_at', { ascending: false }),
-        supabase.from('tenants').select('id, nome, subdominio, ativo').eq('ativo', true).order('nome'),
+        supabase.from('tenants').select('id, nome, subdominio, ativo').order('nome'),
       ]);
 
       setStats({
@@ -174,8 +174,8 @@ export default function Dashboard() {
         }));
       }
 
-      if (escolasAtivasResult.status === 'fulfilled') {
-        setEscolasAtivas(escolasAtivasResult.value.data || []);
+      if (escolasResult.status === 'fulfilled') {
+        setEscolasCadastradas(escolasResult.value.data || []);
       }
 
       setLoading(false);
@@ -336,17 +336,28 @@ export default function Dashboard() {
         {userRole === 'super_admin' && (
           <Card>
             <CardHeader>
-              <CardTitle>Escolas em funcionamento</CardTitle>
+              <CardTitle>Todas as escolas cadastradas</CardTitle>
             </CardHeader>
             <CardContent>
-              {escolasAtivas.length === 0 ? (
-                <p className="text-muted-foreground">Nenhuma escola ativa no momento.</p>
+              {escolasCadastradas.length === 0 ? (
+                <p className="text-muted-foreground">Nenhuma escola cadastrada no momento.</p>
               ) : (
                 <div className="space-y-2">
-                  {escolasAtivas.map((escola) => (
+                  {escolasCadastradas.map((escola) => (
                     <div key={escola.id} className="flex items-center justify-between rounded-md border p-3">
                       <div>
-                        <p className="font-medium">{escola.nome}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{escola.nome}</p>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                              escola.ativo
+                                ? 'bg-emerald-500/10 text-emerald-600'
+                                : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {escola.ativo ? 'Ativa' : 'Inativa'}
+                          </span>
+                        </div>
                         <p className="text-xs text-muted-foreground">{escola.subdominio}</p>
                       </div>
                       <Button size="sm" variant="outline" onClick={() => navigate('/admin/tenants')}>
