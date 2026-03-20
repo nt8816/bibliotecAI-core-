@@ -16,6 +16,12 @@ function normalizeTurmaKey(value) {
     .trim();
 }
 
+function isExpiredComunicado(item) {
+  if (!item?.expires_at) return false;
+  const expiresAt = new Date(item.expires_at);
+  return !Number.isNaN(expiresAt.getTime()) && expiresAt <= new Date();
+}
+
 export function useSystemNotifications() {
   const { isGestor, isBibliotecaria, isAluno, user } = useAuth();
   const [counts, setCounts] = useState({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0 });
@@ -51,6 +57,8 @@ export function useSystemNotifications() {
     setProfileId(perfil.id);
 
     if (isAluno) {
+      await supabase.rpc('cleanup_expired_comunicados');
+
       const [atrasadosRes, solicitacoesRes, comunicadosRes, notificacoesLidasRes] = await Promise.all([
         supabase
           .from('emprestimos')
@@ -66,7 +74,7 @@ export function useSystemNotifications() {
         perfil.escola_id
           ? supabase
               .from('comunidade_posts')
-              .select('id, titulo, conteudo, turma_publico, created_at')
+              .select('id, titulo, conteudo, turma_publico, created_at, expires_at')
               .eq('escola_id', perfil.escola_id)
               .eq('tipo', 'comunicado')
               .order('created_at', { ascending: false })
@@ -82,6 +90,7 @@ export function useSystemNotifications() {
       const lidas = new Set(ensureArray(notificacoesLidasRes.data).map((item) => item.notification_id));
       const comunicados = ensureArray(comunicadosRes.data)
         .filter((item) => {
+          if (isExpiredComunicado(item)) return false;
           const turmaComunicado = normalizeTurmaKey(item?.turma_publico);
           return !turmaComunicado || turmaComunicado === turmaAluno;
         })

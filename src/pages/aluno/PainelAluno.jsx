@@ -93,6 +93,12 @@ function normalizeTurmaKey(value) {
     .trim();
 }
 
+function isExpiredComunicado(item) {
+  if (!item?.expires_at) return false;
+  const expiresAt = new Date(item.expires_at);
+  return !Number.isNaN(expiresAt.getTime()) && expiresAt <= new Date();
+}
+
 function upsertById(list, item, idKey = 'id') {
   const entries = ensureArray(list);
   const id = item?.[idKey];
@@ -1144,6 +1150,8 @@ export default function PainelAluno() {
     const request = (async () => {
       setLoading(true);
       try {
+        await supabase.rpc('cleanup_expired_comunicados');
+
         const { data: perfil, error: perfilError } = await supabase
           .from('usuarios_biblioteca')
           .select('id, escola_id, turma')
@@ -1162,7 +1170,7 @@ export default function PainelAluno() {
         const comunicadosPromise = perfil.escola_id
           ? supabase
               .from('comunidade_posts')
-              .select('id, titulo, conteudo, turma_publico, created_at, tipo')
+              .select('id, titulo, conteudo, turma_publico, created_at, tipo, expires_at')
               .eq('escola_id', perfil.escola_id)
               .eq('tipo', 'comunicado')
               .order('created_at', { ascending: false })
@@ -1309,6 +1317,7 @@ export default function PainelAluno() {
         setCriacoesLaboratorio(criacoesLaboratorioOpt.data);
         setComunicados(
           ensureArray(comunicadosRes.data).filter((item) => {
+            if (isExpiredComunicado(item)) return false;
             const turmaDestino = normalizeTurmaKey(item?.turma_publico);
             return !turmaDestino || turmaDestino === normalizeTurmaKey(perfil.turma);
           }),
@@ -1745,6 +1754,10 @@ export default function PainelAluno() {
     (payload) => {
       const row = payload?.new ?? payload;
       if (!row?.id || row?.tipo !== 'comunicado') return;
+      if (isExpiredComunicado(row)) {
+        setComunicados((prev) => removeById(prev, row.id));
+        return;
+      }
       if (escolaId && row?.escola_id && row.escola_id !== escolaId) return;
 
       const turmaDestino = normalizeTurmaKey(row?.turma_publico);

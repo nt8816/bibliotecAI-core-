@@ -45,6 +45,18 @@ function normalizeTurmaKey(value) {
     .trim();
 }
 
+function toEndOfDayIso(dateValue) {
+  if (!dateValue) return null;
+  const localDate = new Date(`${dateValue}T23:59:59.999`);
+  return Number.isNaN(localDate.getTime()) ? null : localDate.toISOString();
+}
+
+function isExpiredComunicado(post) {
+  if (post?.tipo !== 'comunicado' || !post?.expires_at) return false;
+  const expiresAt = new Date(post.expires_at);
+  return !Number.isNaN(expiresAt.getTime()) && expiresAt <= new Date();
+}
+
 function mergeById(list, incoming, idKey = 'id') {
   const map = new Map(ensureArray(list).map((item) => [item?.[idKey], item]));
   ensureArray(incoming).forEach((item) => {
@@ -178,7 +190,7 @@ async function insertCommunityPostCompat(payload) {
   let { data, error } = await runInsert(payload);
 
   if (error) {
-    const missingColumns = ['escola_id', 'imagem_urls', 'audiobook_id', 'turma_publico'];
+    const missingColumns = ['escola_id', 'imagem_urls', 'audiobook_id', 'turma_publico', 'expires_at'];
     for (const column of missingColumns) {
       if (Object.hasOwn(payload, column) && isMissingColumnError(error, column, 'comunidade_posts')) {
         const { [column]: _ignored, ...fallbackPayload } = payload;
@@ -251,6 +263,7 @@ export default function ComunidadeAluno() {
   const [postConteudo, setPostConteudo] = useState('');
   const [postComIA, setPostComIA] = useState(false);
   const [postTurmaPublico, setPostTurmaPublico] = useState('');
+  const [postExpiraEm, setPostExpiraEm] = useState('');
   const [imageDataUrls, setImageDataUrls] = useState([]);
   const [selectedImageUrl, setSelectedImageUrl] = useState('');
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
@@ -348,10 +361,11 @@ export default function ComunidadeAluno() {
       if (reset && useCache) {
         const cached = readCache(POSTS_CACHE_KEY);
         if (Array.isArray(cached)) {
-          setPosts(cached);
-          setPostsOffset(cached.length);
-          setPostsHasMore(cached.length === POSTS_PAGE_SIZE);
-          return cached;
+          const validCached = cached.filter((item) => !isExpiredComunicado(item));
+          setPosts(validCached);
+          setPostsOffset(validCached.length);
+          setPostsHasMore(validCached.length === POSTS_PAGE_SIZE);
+          return validCached;
         }
       }
       setPostsLoadingMore(true);
@@ -362,7 +376,7 @@ export default function ComunidadeAluno() {
           .order('created_at', { ascending: false })
           .range(offset, offset + POSTS_PAGE_SIZE - 1);
         if (error) throw error;
-        const items = data || [];
+        const items = ensureArray(data).filter((item) => !isExpiredComunicado(item));
         setPosts((prev) => (reset ? items : mergeById(prev, items)));
         setPostsOffset(offset + items.length);
         setPostsHasMore(items.length === POSTS_PAGE_SIZE);
@@ -439,6 +453,8 @@ export default function ComunidadeAluno() {
 
     setLoading(true);
     try {
+      await supabase.rpc('cleanup_expired_comunicados');
+
       const { data: perfil, error: perfilError } = await supabase
         .from('usuarios_biblioteca')
         .select('id, escola_id, turma, tipo')
@@ -532,7 +548,7 @@ export default function ComunidadeAluno() {
 
   const onPostInsert = useCallback((payload) => {
     const nextPost = payload?.new;
-    if (!nextPost?.id) return;
+    if (!nextPost?.id || isExpiredComunicado(nextPost)) return;
 
     setPosts((prev) => {
       const list = ensureArray(prev);
@@ -550,7 +566,8 @@ export default function ComunidadeAluno() {
     if (!nextPost?.id) return;
 
     setPosts((prev) => {
-      const nextList = ensureArray(prev).map((item) => (item.id === nextPost.id ? { ...item, ...nextPost } : item));
+      const baseList = ensureArray(prev).filter((item) => item.id !== nextPost.id);
+      const nextList = isExpiredComunicado(nextPost) ? baseList : [nextPost, ...baseList];
       syncPostsCache(nextList);
       return nextList;
     });
@@ -651,7 +668,7 @@ export default function ComunidadeAluno() {
   }, [likes]);
 
   const postsFiltrados = useMemo(() => {
-    let list = ensureArray(posts);
+    let list = ensureArray(posts).filter((post) => !isExpiredComunicado(post));
     if (!isGestor && !isBibliotecaria && !isSuperAdmin) {
       if (isProfessor) {
         const turmaSet = new Set(ensureArray(professorTurmas).map(normalizeTurmaKey).filter(Boolean));
@@ -717,6 +734,7 @@ export default function ComunidadeAluno() {
     setPostConteudo('');
     setPostComIA(false);
     setPostTurmaPublico('');
+    setPostExpiraEm('');
     setImageDataUrls([]);
   };
 
@@ -748,16 +766,26 @@ export default function ComunidadeAluno() {
       });
       return;
     }
+    if (postTipo === 'comunicado' && !postExpiraEm) {
+      toast({
+        variant: 'destructive',
+        title: 'Defina a data final',
+        description: 'Informe a data em que o comunicado deve sumir.',
+      });
+      return;
+    }
 
     setSaving(true);
     try {
       const turmaPublico = requerTurmaDestino
         ? (postTurmaPublico === ALL_TURMAS_OPTION ? null : postTurmaPublico.trim())
         : null;
+      const expiresAt = postTipo === 'comunicado' && postExpiraEm ? toEndOfDayIso(postExpiraEm) : null;
       const { data: novoPost, error } = await insertCommunityPostCompat({
         autor_id: alunoId,
         escola_id: escolaId,
         turma_publico: turmaPublico,
+        expires_at: expiresAt,
         livro_id: postLivroId || null,
         audiobook_id: postAudiobookId || null,
         tipo: postTipo,
@@ -1461,6 +1489,22 @@ export default function ComunidadeAluno() {
                       </option>
                     ))}
                   </select>
+                </div>
+              )}
+
+              {canPublicarComunicado && postTipo === 'comunicado' && (
+                <div className="space-y-2 sm:col-span-3">
+                  <Label htmlFor="comunicado-expira-em">Data para remover o comunicado</Label>
+                  <Input
+                    id="comunicado-expira-em"
+                    type="date"
+                    value={postExpiraEm}
+                    min={new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => setPostExpiraEm(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Quando essa data vencer, o comunicado sera apagado da comunidade e das notificacoes.
+                  </p>
                 </div>
               )}
             </div>
