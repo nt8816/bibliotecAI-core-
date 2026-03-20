@@ -22,6 +22,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { generateTextWithCloudflare } from '@/lib/cloudflareAiApi';
 import { ExportPeriodDialog } from '@/components/export/ExportPeriodDialog';
+import { canonicalizeBookArea } from '@/lib/bookAreas';
 
 const emptyLivro = {
   area: '',
@@ -143,14 +144,19 @@ export default function Livros() {
         livrosData = data || [];
       }
 
-      setLivros(livrosData);
+      setLivros(
+        livrosData.map((livro) => ({
+          ...livro,
+          area: canonicalizeBookArea(livro.area, preCategorias),
+        })),
+      );
     } catch (error) {
       console.error('Error fetching books:', error);
       toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível carregar os livros.' });
     } finally {
       setLoading(false);
     }
-  }, [escolaId, toast]);
+  }, [escolaId, preCategorias, toast]);
 
   useEffect(() => {
     fetchLivros();
@@ -186,7 +192,7 @@ export default function Livros() {
       if (categoriasError) throw categoriasError;
 
       const nomes = [...new Set((categorias || []).map((c) => String(c.nome || '').trim()).filter(Boolean))];
-      setPreCategorias(nomes.length > 0 ? nomes : DEFAULT_PRE_CATEGORIES);
+      setPreCategorias((nomes.length > 0 ? nomes : DEFAULT_PRE_CATEGORIES).map((nome) => canonicalizeBookArea(nome)));
     } catch (error) {
       console.error('Error fetching categorias_livros:', error);
       setPreCategorias(DEFAULT_PRE_CATEGORIES);
@@ -208,7 +214,7 @@ export default function Livros() {
     if (livro) {
       setEditingLivro(livro);
       setFormData({
-        area: livro.area,
+        area: canonicalizeBookArea(livro.area, preCategorias),
         tombo: livro.tombo || '',
         autor: livro.autor,
         titulo: livro.titulo,
@@ -229,7 +235,7 @@ export default function Livros() {
   };
 
   const handleAdicionarPreCategoria = () => {
-    const categoria = novaPreCategoria.trim().replace(/\s+/g, ' ');
+    const categoria = canonicalizeBookArea(novaPreCategoria, preCategorias);
     if (!categoria) return;
     const exists = preCategorias.some((item) => item.toLowerCase() === categoria.toLowerCase());
     if (exists) {
@@ -362,8 +368,13 @@ export default function Livros() {
 
     setSaving(true);
     try {
+      const normalizedFormData = {
+        ...formData,
+        area: canonicalizeBookArea(formData.area, preCategorias),
+      };
+
       if (editingLivro) {
-        const { error } = await supabase.from('livros').update(formData).eq('id', editingLivro.id);
+        const { error } = await supabase.from('livros').update(normalizedFormData).eq('id', editingLivro.id);
         if (error) throw error;
         toast({ title: 'Sucesso', description: 'Livro atualizado com sucesso.' });
       } else {
@@ -372,7 +383,7 @@ export default function Livros() {
         }
 
         const { error } = await supabase.from('livros').insert({
-          ...formData,
+          ...normalizedFormData,
           escola_id: escolaId,
         });
         if (error) throw error;
@@ -644,7 +655,17 @@ export default function Livros() {
       throw new Error(data?.error || 'PDF não pôde ser convertido automaticamente.');
     }
 
-    return data.livros.map((l) => ({ ...emptyLivro, ...l, titulo: l.titulo || '', autor: l.autor || '', area: l.area || '', disponivel: true, status: 'pendente' })).filter((l) => l.titulo);
+    return data.livros
+      .map((l) => ({
+        ...emptyLivro,
+        ...l,
+        titulo: l.titulo || '',
+        autor: l.autor || '',
+        area: canonicalizeBookArea(l.area || '', preCategorias),
+        disponivel: true,
+        status: 'pendente',
+      }))
+      .filter((l) => l.titulo);
   };
 
   const handleImportFileChange = async (e) => {
@@ -694,7 +715,7 @@ export default function Livros() {
         const l = updated[i];
         try {
           const payload = {
-            area: l.area || '',
+            area: canonicalizeBookArea(l.area || '', preCategorias),
             tombo: l.tombo || null,
             autor: l.autor || '',
             titulo: l.titulo,
@@ -752,9 +773,9 @@ export default function Livros() {
 
   const areaOptions = useMemo(
     () =>
-      [...new Set(livros.map((livro) => String(livro.area || '').trim()).filter(Boolean))]
+      [...new Set(livros.map((livro) => canonicalizeBookArea(livro.area, preCategorias)).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b, 'pt-BR')),
-    [livros],
+    [livros, preCategorias],
   );
 
   const filteredLivros = useMemo(() => {
@@ -764,16 +785,16 @@ export default function Livros() {
         || livro.titulo.toLowerCase().includes(term)
         || livro.autor.toLowerCase().includes(term)
         || (livro.tombo || '').toLowerCase().includes(term)
-        || (livro.area || '').toLowerCase().includes(term);
+        || canonicalizeBookArea(livro.area, preCategorias).toLowerCase().includes(term);
 
-      const areaMatches = areaFilter === 'all' || (livro.area || '').trim() === areaFilter;
+      const areaMatches = areaFilter === 'all' || canonicalizeBookArea(livro.area, preCategorias) === areaFilter;
       const statusMatches = statusFilter === 'all'
         || (statusFilter === 'disponivel' && livro.disponivel)
         || (statusFilter === 'emprestado' && !livro.disponivel);
 
       return searchMatches && areaMatches && statusMatches;
     });
-  }, [livros, searchTerm, areaFilter, statusFilter]);
+  }, [livros, searchTerm, areaFilter, statusFilter, preCategorias]);
 
   const totalLivros = livros.length;
   const totalDisponiveis = livros.filter((livro) => livro.disponivel).length;

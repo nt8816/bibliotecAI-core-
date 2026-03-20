@@ -48,6 +48,7 @@ import {
   generateImageWithCloudflare,
   generateTextWithCloudflare,
 } from '@/lib/cloudflareAiApi';
+import { canonicalizeBookArea } from '@/lib/bookAreas';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -1939,14 +1940,14 @@ export default function PainelAluno() {
         return (
           livro.titulo?.toLowerCase().includes(t) ||
           livro.autor?.toLowerCase().includes(t) ||
-          livro.area?.toLowerCase().includes(t)
+          canonicalizeBookArea(livro.area).toLowerCase().includes(t)
         );
       }),
     [livros, searchTerm],
   );
 
   const catalogoAreas = useMemo(() => {
-    const set = new Set(ensureArray(livros).map((livro) => livro?.area).filter(Boolean));
+    const set = new Set(ensureArray(livros).map((livro) => canonicalizeBookArea(livro?.area)).filter(Boolean));
     return Array.from(set).sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
   }, [livros]);
 
@@ -1957,7 +1958,7 @@ export default function PainelAluno() {
 
   const filteredCatalogo = useMemo(() => {
     return filteredLivros.filter((livro) => {
-      if (catalogoAreaFilter !== 'all' && livro.area !== catalogoAreaFilter) return false;
+      if (catalogoAreaFilter !== 'all' && canonicalizeBookArea(livro.area) !== catalogoAreaFilter) return false;
       if (catalogoDisponibilidadeFilter === 'disponivel' && !livro.disponivel) return false;
       if (catalogoDisponibilidadeFilter === 'emprestado' && livro.disponivel) return false;
       if (catalogoAutorFilter !== 'all' && livro.autor !== catalogoAutorFilter) return false;
@@ -1973,7 +1974,7 @@ export default function PainelAluno() {
         .map((livro) => ({
           titulo: livro.titulo,
           autor: livro.autor || '',
-          area: livro.area || '',
+          area: canonicalizeBookArea(livro.area) || '',
           sinopse: livro.sinopse || '',
         })),
     [livros],
@@ -4498,10 +4499,11 @@ export default function PainelAluno() {
                         const isPlayingThis = isSpeakingThis && speakingPhase === 'playing';
                         const xpLivro = getLivroXpPorCategoria(livro.area);
                         const xpLivroDescricao = getLivroXpDescricao(livro.area);
+                        const livroArea = canonicalizeBookArea(livro.area) || 'Geral';
                         return (
                         <div key={livro.id} className="rounded-2xl border bg-card flex flex-col min-h-[360px] overflow-hidden">
                           <div className="min-h-[92px] bg-gradient-to-br from-secondary/30 via-secondary/10 to-transparent p-3 flex items-start justify-between gap-2">
-                            <Badge variant="outline" className="text-[11px] px-2 py-0.5">{livro.area || 'Geral'}</Badge>
+                            <Badge variant="outline" className="text-[11px] px-2 py-0.5">{livroArea}</Badge>
                             <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => toggleWishlist(livro.id)}>
                               <Heart className={`w-4 h-4 ${wishlist.includes(livro.id) ? 'fill-destructive text-destructive' : ''}`} />
                             </Button>
