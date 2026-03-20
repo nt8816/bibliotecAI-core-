@@ -119,6 +119,16 @@ function sortByTitulo(list) {
   return [...ensureArray(list)].sort((a, b) => String(a?.titulo || '').localeCompare(String(b?.titulo || ''), 'pt-BR'));
 }
 
+function repairMojibakeText(value) {
+  const text = String(value || '');
+  if (!text || !/[ÃÂ]/.test(text)) return text;
+  try {
+    return decodeURIComponent(escape(text));
+  } catch {
+    return text;
+  }
+}
+
 function mergeById(list, incoming, idKey = 'id') {
   const map = new Map(ensureArray(list).map((item) => [item?.[idKey], item]));
   ensureArray(incoming).forEach((item) => {
@@ -3962,7 +3972,7 @@ export default function PainelAluno() {
                         <div key={criacao.id} className="rounded-md border p-3 space-y-2">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
-                              <p className="font-medium">{criacao.titulo || 'Criação sem título'}</p>
+                              <p className="font-medium">{repairMojibakeText(criacao.titulo) || 'Criação sem título'}</p>
                               <p className="text-xs text-muted-foreground">
                                 {criacao.tipo} • {formatDateBR(criacao.created_at)}
                               </p>
@@ -3981,7 +3991,7 @@ export default function PainelAluno() {
                               ))}
                             </div>
                           )}
-                          {criacao.descricao && <p className="text-sm text-muted-foreground">{criacao.descricao}</p>}
+                          {criacao.descricao && <p className="text-sm text-muted-foreground">{repairMojibakeText(criacao.descricao)}</p>}
                           {criacao.tipo === 'quiz' && (
                             <div className="flex justify-end">
                               <Button type="button" size="sm" variant="outline" onClick={() => carregarQuizSalvo(criacao)}>
