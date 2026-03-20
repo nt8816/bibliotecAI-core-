@@ -51,8 +51,8 @@ export function AppSidebar() {
   const settingsPath = '/configuracoes';
   const isTempLoginEmail = /@temp\.bibliotecai\.com$/i.test(String(user?.email || ''));
   const visibleUserIdentity = isTempLoginEmail
-    ? (user?.user_metadata?.nome || 'UsuÃ¡rio')
-    : (user?.email || 'UsuÃ¡rio');
+    ? (user?.user_metadata?.nome || 'Usuário')
+    : (user?.email || 'Usuário');
 
   const handleSignOut = async () => {
     await signOut();
@@ -84,8 +84,8 @@ export function AppSidebar() {
       return [
         ...commonItems,
         { title: 'Livros', url: '/livros', icon: BookOpen },
-        { title: 'UsuÃ¡rios', url: '/usuarios', icon: Users },
-        { title: 'RelatÃ³rios', url: '/relatorios', icon: BarChart3 },
+        { title: 'Usuários', url: '/usuarios', icon: Users },
+        { title: 'Relatórios', url: '/relatorios', icon: BarChart3 },
         { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
       ];
     }
@@ -94,8 +94,8 @@ export function AppSidebar() {
       return [
         ...commonItems,
         { title: 'Livros', url: '/livros', icon: BookOpen },
-        { title: 'UsuÃ¡rios', url: '/usuarios', icon: Users },
-        { title: 'EmprÃ©stimos', url: '/emprestimos', icon: BookMarked },
+        { title: 'Usuários', url: '/usuarios', icon: Users },
+        { title: 'Empréstimos', url: '/emprestimos', icon: BookMarked },
         { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
       ];
     }
@@ -105,8 +105,8 @@ export function AppSidebar() {
         { title: 'Dashboard', url: '/professor/dashboard', icon: LayoutDashboard },
         { title: 'Livros', url: '/livros', icon: BookOpen },
         { title: 'Meus Alunos', url: '/professor/alunos', icon: GraduationCap },
-        { title: 'SugestÃµes e Atividades', url: '/professor/painel', icon: Lightbulb },
-        { title: 'RelatÃ³rios de Leitura', url: '/professor/relatorios', icon: BarChart3 },
+        { title: 'Sugestões e Atividades', url: '/professor/painel', icon: Lightbulb },
+        { title: 'Relatórios de Leitura', url: '/professor/relatorios', icon: BarChart3 },
         { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
         { title: 'Arquivos de Aula', url: '/arquivos-de-aula', icon: FileStack },
       ];
@@ -115,7 +115,7 @@ export function AppSidebar() {
     return [
       { title: 'Meu Perfil', url: '/aluno/perfil', icon: LayoutDashboard },
       { title: 'Biblioteca', url: '/aluno/biblioteca', icon: BookOpen },
-      { title: 'LaboratÃ³rio', url: '/aluno/laboratorio', icon: FlaskConical },
+      { title: 'Laboratório', url: '/aluno/laboratorio', icon: FlaskConical },
       { title: 'Atividades', url: '/aluno/atividades', icon: ClipboardList },
       { title: 'Comunidade', url: '/aluno/comunidade', icon: MessageSquare },
       { title: 'Arquivos de Aula', url: '/aluno/arquivos-de-aula', icon: FileStack },
@@ -123,7 +123,7 @@ export function AppSidebar() {
   };
 
   const gestorMenuItems = [
-    { title: 'ConfiguraÃ§Ã£o da Escola', url: '/configuracao-escola', icon: School },
+    { title: 'Configuração da Escola', url: '/configuracao-escola', icon: School },
     { title: 'Tokens de Convite', url: '/tokens', icon: LinkIcon },
   ];
 
@@ -138,7 +138,7 @@ export function AppSidebar() {
       super_admin: { label: 'Super Admin', className: 'bg-destructive/20 text-destructive' },
       gestor: { label: 'Gestor', className: 'bg-primary/20 text-primary' },
       professor: { label: 'Professor', className: 'bg-info/20 text-info' },
-      bibliotecaria: { label: 'BibliotecÃ¡ria', className: 'bg-secondary/20 text-secondary' },
+      bibliotecaria: { label: 'Bibliotecária', className: 'bg-secondary/20 text-secondary' },
       aluno: { label: 'Aluno', className: 'bg-muted text-muted-foreground' },
     };
 
@@ -207,7 +207,7 @@ export function AppSidebar() {
 
         {isGestor && !isSuperAdmin && (
           <SidebarGroup>
-            {!collapsed && <SidebarGroupLabel className="text-sidebar-foreground/60">AdministraÃ§Ã£o</SidebarGroupLabel>}
+            {!collapsed && <SidebarGroupLabel className="text-sidebar-foreground/60">Administração</SidebarGroupLabel>}
             <SidebarGroupContent>
               <SidebarMenu>
                 {gestorMenuItems.map((item) => (
@@ -253,10 +253,10 @@ export function AppSidebar() {
                   className={collapsed
                     ? `relative mx-auto text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${hasUnreadComunicados ? 'bg-amber-500/15 text-amber-100 ring-1 ring-amber-400/60 shadow-[0_0_14px_rgba(251,191,36,0.18)]' : ''}`
                     : `relative h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${hasUnreadComunicados ? 'bg-amber-500/15 text-amber-50 ring-1 ring-amber-400/60 shadow-[0_0_16px_rgba(251,191,36,0.22)] animate-pulse' : ''}`}
-                  aria-label="Abrir notificaÃ§Ãµes"
+                  aria-label="Abrir notificações"
                 >
                   <Bell className={`size-4 sm:size-5 ${hasUnreadComunicados ? 'text-amber-300' : ''}`} />
-                  {!collapsed && <span className="truncate text-xs sm:text-sm">NotificaÃ§Ãµes</span>}
+                  {!collapsed && <span className="truncate text-xs sm:text-sm">Notificações</span>}
                   {hasPendencias && (
                     <span className="absolute -right-1 -top-1 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] leading-[1.1rem] text-center font-bold">
                       {totalPendencias > 99 ? '99+' : totalPendencias}
@@ -268,7 +268,7 @@ export function AppSidebar() {
               <PopoverContent align="end" className="w-72">
                 <div className="space-y-3">
                   <div>
-                    <p className="font-semibold text-sm">NotificaÃ§Ãµes</p>
+                    <p className="font-semibold text-sm">Notificações</p>
                     <p className="text-xs text-muted-foreground">Atualizado em tempo real</p>
                   </div>
 
@@ -314,7 +314,7 @@ export function AppSidebar() {
                       )}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">Sem pendÃªncias no momento.</p>
+                    <p className="text-sm text-muted-foreground">Sem pendências no momento.</p>
                   )}
                 </div>
               </PopoverContent>
@@ -329,10 +329,10 @@ export function AppSidebar() {
               ? 'mx-auto text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
               : 'h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
             onClick={() => navigate(settingsPath)}
-            aria-label="Abrir configuraÃ§Ãµes"
+            aria-label="Abrir configurações"
           >
             <Settings className="size-4 sm:size-5" />
-            {!collapsed && <span className="truncate text-xs sm:text-sm">ConfiguraÃ§Ãµes</span>}
+            {!collapsed && <span className="truncate text-xs sm:text-sm">Configurações</span>}
           </Button>
         </div>
 
