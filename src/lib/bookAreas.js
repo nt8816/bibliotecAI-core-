@@ -54,10 +54,19 @@ export function normalizeAreaKey(value) {
 }
 
 function toTitleCase(value) {
+  const smallWords = new Set(['da', 'de', 'do', 'das', 'dos', 'e']);
+
   return String(value || '')
-    .toLowerCase()
-    .replace(/\b\p{L}/gu, (match) => match.toUpperCase())
-    .trim();
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('pt-BR')
+    .split(' ')
+    .map((part, index) => {
+      if (!part) return part;
+      if (index > 0 && smallWords.has(part)) return part;
+      return part.charAt(0).toLocaleUpperCase('pt-BR') + part.slice(1);
+    })
+    .join(' ');
 }
 
 function levenshtein(a, b) {
