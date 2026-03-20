@@ -108,6 +108,7 @@ export default function ArquivosAula() {
   const [turmaPublico, setTurmaPublico] = useState('');
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [posts, setPosts] = useState([]);
+  const [professorFilter, setProfessorFilter] = useState('all');
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -173,6 +174,16 @@ export default function ArquivosAula() {
     fetchData();
   }, [fetchData]);
 
+  const professoresDisponiveis = useMemo(
+    () =>
+      [...new Set(
+        ensureArray(posts)
+          .map((item) => safeText(item?.usuarios_biblioteca?.nome, '').trim())
+          .filter(Boolean),
+      )].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [posts],
+  );
+
   const visiblePosts = useMemo(() => {
     let list = ensureArray(posts);
     if (!isProfessor) {
@@ -182,8 +193,11 @@ export default function ArquivosAula() {
         return !turmaPost || turmaPost === turmaAluno;
       });
     }
+    if (professorFilter !== 'all') {
+      list = list.filter((item) => safeText(item?.usuarios_biblioteca?.nome, '').trim() === professorFilter);
+    }
     return list;
-  }, [alunoTurma, isProfessor, posts]);
+  }, [alunoTurma, isProfessor, posts, professorFilter]);
 
   const handleSelectFiles = (files) => {
     const incoming = Array.from(files || []);
@@ -448,6 +462,24 @@ export default function ArquivosAula() {
             <CardTitle className="text-base">Materiais publicados</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="mb-4 grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Filtrar por professor</Label>
+                <select
+                  value={professorFilter}
+                  onChange={(e) => setProfessorFilter(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="all">Todos os professores</option>
+                  {professoresDisponiveis.map((nome) => (
+                    <option key={nome} value={nome}>
+                      {nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             {loading ? (
               <p className="text-center text-muted-foreground py-8">Carregando...</p>
             ) : visiblePosts.length === 0 ? (
@@ -458,9 +490,12 @@ export default function ArquivosAula() {
                   <div key={post.id} className="rounded-xl border p-4 space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="outline">{post?.turma_publico ? `Turma ${post.turma_publico}` : 'Todas as turmas'}</Badge>
-                      <Badge variant="secondary">{safeText(post?.usuarios_biblioteca?.nome, 'Professor')}</Badge>
+                      <Badge variant="secondary">Professor</Badge>
                       <span className="text-xs text-muted-foreground">{formatDateBR(post?.created_at)}</span>
                     </div>
+                    <p className="text-sm font-medium">
+                      Professor: {safeText(post?.usuarios_biblioteca?.nome, 'Professor não identificado')}
+                    </p>
                     <p className="text-sm whitespace-pre-wrap">{safeText(post?.mensagem, '')}</p>
                     <div className="space-y-2">
                       {ensureArray(post?.arquivos).map((arquivo, index) => (
