@@ -254,7 +254,7 @@ export default function PainelProfessor() {
       const professorIds = ensureArray(professorProfiles).map((item) => item?.id).filter(Boolean);
       setProfessorProfileIds(professorIds);
       setEscolaId(professorData?.escola_id || null);
-      if (professorError || !professorData) throw professorError || new Error('Perfil de professor não encontrado.');
+      if (professorError || !professorData) throw professorError || new Error('Perfil de professor nÃ£o encontrado.');
 
       const { data: turmasData, error: turmasError } = await supabase
         .from('professor_turmas')
@@ -262,7 +262,7 @@ export default function PainelProfessor() {
         .in('professor_id', professorIds);
       if (turmasError) {
         if (isMissingTableError(turmasError)) {
-          throw new Error('Tabela professor_turmas não encontrada. Aplique as migrations do Supabase.');
+          throw new Error('Tabela professor_turmas nÃ£o encontrada. Aplique as migrations do Supabase.');
         }
         throw turmasError;
       }
@@ -380,7 +380,7 @@ export default function PainelProfessor() {
         variant: 'destructive',
         title: 'Erro',
         description: isMissingTableError(error)
-          ? 'Tabelas novas não encontradas. Aplique a migration do Supabase.'
+          ? 'Tabelas novas nÃ£o encontradas. Aplique a migration do Supabase.'
           : error?.message || 'Falha ao carregar dados.',
       });
     } finally {
@@ -413,7 +413,7 @@ export default function PainelProfessor() {
       .maybeSingle();
 
     if (error || !data) {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Perfil de professor não encontrado.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Perfil de professor nÃ£o encontrado.' });
       return null;
     }
 
@@ -439,21 +439,21 @@ export default function PainelProfessor() {
       });
       if (error) throw error;
 
-      toast({ title: 'Sugestão enviada!' });
+      toast({ title: 'SugestÃ£o enviada!' });
       setSelectedAluno('');
       setSelectedLivro('');
       setMensagem('');
       setIsSugestaoDialogOpen(false);
       await fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Falha ao enviar sugestão.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Falha ao enviar sugestÃ£o.' });
     } finally {
       setSaving(false);
     }
   };
 
   const handleDeleteSugestao = async (id) => {
-    if (!window.confirm('Excluir esta sugestão?')) return;
+    if (!window.confirm('Excluir esta sugestÃ£o?')) return;
 
     try {
       const { error } = await supabase
@@ -462,7 +462,7 @@ export default function PainelProfessor() {
         .eq('id', id)
         .in('professor_id', professorProfileIds);
       if (error) throw error;
-      toast({ title: 'Sugestão excluída.' });
+      toast({ title: 'SugestÃ£o excluÃ­da.' });
       await fetchData();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Falha ao excluir.' });
@@ -512,8 +512,8 @@ export default function PainelProfessor() {
     if (!atividadeForm.titulo.trim()) {
       toast({
         variant: 'destructive',
-        title: 'Informe o título',
-        description: 'Preencha o título da atividade para gerar um formulário com IA.',
+        title: 'Informe o tÃ­tulo',
+        description: 'Preencha o tÃ­tulo da atividade para gerar um formulÃ¡rio com IA.',
       });
       return;
     }
@@ -523,14 +523,14 @@ export default function PainelProfessor() {
       const promptBase = atividadeFormularioPrompt.trim() || atividadeForm.descricao || atividadeForm.titulo;
       const ia = await generateTextWithCloudflare({
         prompt: [
-          'Crie um formulário escolar em português para esta atividade.',
-          'Responda SOMENTE com JSON válido no formato:',
+          'Crie um formulÃ¡rio escolar em portuguÃªs para esta atividade.',
+          'Responda SOMENTE com JSON vÃ¡lido no formato:',
           '{"perguntas":[{"id":"q1","pergunta":"...","tipo":"texto|multipla_escolha","opcoes":["..."]}]}',
-          'Crie de 3 a 6 perguntas objetivas e úteis.',
+          'Crie de 3 a 6 perguntas objetivas e Ãºteis.',
           `Atividade: ${atividadeForm.titulo}`,
           `Contexto: ${promptBase}`,
         ].join('\n'),
-        fallbackErrorMessage: 'Não foi possível gerar formulário com IA.',
+        fallbackErrorMessage: 'NÃ£o foi possÃ­vel gerar formulÃ¡rio com IA.',
       });
 
       const parsedFromText = extractJsonFromIAPlainText(ia?.text);
@@ -538,16 +538,16 @@ export default function PainelProfessor() {
       const perguntas = normalizeFormularioPerguntas(perguntasRaw);
 
       if (perguntas.length === 0) {
-        throw new Error('A IA não retornou perguntas válidas.');
+        throw new Error('A IA nÃ£o retornou perguntas vÃ¡lidas.');
       }
 
       setAtividadeFormularioPerguntas(perguntas);
-      toast({ title: 'Formulário gerado com IA!' });
+      toast({ title: 'FormulÃ¡rio gerado com IA!' });
     } catch (error) {
       toast({
         variant: 'destructive',
-        title: 'Erro ao gerar formulário',
-        description: error?.message || 'Não foi possível gerar o formulário com IA.',
+        title: 'Erro ao gerar formulÃ¡rio',
+        description: error?.message || 'NÃ£o foi possÃ­vel gerar o formulÃ¡rio com IA.',
       });
     } finally {
       setGerandoFormularioIA(false);
@@ -556,33 +556,33 @@ export default function PainelProfessor() {
 
   const handleSaveAtividade = async () => {
     if (!atividadeForm.titulo.trim()) {
-      toast({ variant: 'destructive', title: 'Campos obrigatórios', description: 'Preencha o título da atividade.' });
+      toast({ variant: 'destructive', title: 'Campos obrigatÃ³rios', description: 'Preencha o tÃ­tulo da atividade.' });
       return;
     }
 
     if (atividadeForm.target_mode === 'turma' && editingAtividade) {
       toast({
         variant: 'destructive',
-        title: 'Edição individual',
-        description: 'Atividades por turma podem ser criadas em lote, mas a edição continua individual por aluno.',
+        title: 'EdiÃ§Ã£o individual',
+        description: 'Atividades por turma podem ser criadas em lote, mas a ediÃ§Ã£o continua individual por aluno.',
       });
       return;
     }
 
     if (atividadeForm.target_mode === 'turma' && !atividadeForm.turma) {
-      toast({ variant: 'destructive', title: 'Campos obrigatórios', description: 'Selecione a turma que receberá a atividade.' });
+      toast({ variant: 'destructive', title: 'Campos obrigatÃ³rios', description: 'Selecione a turma que receberÃ¡ a atividade.' });
       return;
     }
 
     if (atividadeForm.target_mode !== 'turma' && !atividadeForm.aluno_id) {
-      toast({ variant: 'destructive', title: 'Campos obrigatórios', description: 'Selecione o aluno que receberá a atividade.' });
+      toast({ variant: 'destructive', title: 'Campos obrigatÃ³rios', description: 'Selecione o aluno que receberÃ¡ a atividade.' });
       return;
     }
 
     if (!isDateTodayOrAfter(atividadeForm.data_entrega)) {
       toast({
         variant: 'destructive',
-        title: 'Data inválida',
+        title: 'Data invÃ¡lida',
         description: 'A data de entrega deve ser hoje ou uma data futura.',
       });
       return;
@@ -596,7 +596,7 @@ export default function PainelProfessor() {
       toast({
         variant: 'destructive',
         title: 'Perguntas incompletas',
-        description: 'Cada pergunta de múltipla escolha precisa ter pelo menos 2 opções.',
+        description: 'Cada pergunta de mÃºltipla escolha precisa ter pelo menos 2 opÃ§Ãµes.',
       });
       return;
     }
@@ -677,7 +677,7 @@ export default function PainelProfessor() {
         .eq('id', id)
         .in('professor_id', professorProfileIds);
       if (error) throw error;
-      toast({ title: 'Atividade excluída.' });
+      toast({ title: 'Atividade excluÃ­da.' });
       await fetchData();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Falha ao excluir atividade.' });
@@ -714,14 +714,14 @@ export default function PainelProfessor() {
         .eq('id', entrega.atividade_id)
         .in('professor_id', professorProfileIds);
 
-      toast({ title: 'Avaliação salva', description: 'Pontos e feedback atualizados para o aluno.' });
+      toast({ title: 'AvaliaÃ§Ã£o salva', description: 'Pontos e feedback atualizados para o aluno.' });
       await fetchData();
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Erro',
         description: isMissingTableError(error)
-          ? 'Avaliação de entrega indisponível: aplique a migration do banco.'
+          ? 'AvaliaÃ§Ã£o de entrega indisponÃ­vel: aplique a migration do banco.'
           : error?.message || 'Falha ao avaliar entrega.',
       });
     } finally {
@@ -755,7 +755,7 @@ export default function PainelProfessor() {
         {professorTurmasPermitidas.length === 0 && (
           <div className="rounded-md border border-warning/30 bg-warning/5 p-3">
             <p className="text-sm text-warning">
-              Você ainda não possui turmas vinculadas. Peça ao gestor para liberar suas turmas.
+              VocÃª ainda nÃ£o possui turmas vinculadas. PeÃ§a ao gestor para liberar suas turmas.
             </p>
           </div>
         )}
@@ -768,7 +768,7 @@ export default function PainelProfessor() {
                   <Lightbulb className="size-5 sm:size-6 text-primary" />
                 </div>
                 <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground">Sugestões enviadas</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">SugestÃµes enviadas</p>
                   <p className="text-xl sm:text-2xl font-bold">{sugestoes.length}</p>
                 </div>
               </div>
@@ -810,7 +810,7 @@ export default function PainelProfessor() {
                   <Star className="size-5 sm:size-6 text-success" />
                 </div>
                 <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground">Pontos já liberados</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Pontos jÃ¡ liberados</p>
                   <p className="text-xl sm:text-2xl font-bold">{pontosDistribuidos}</p>
                 </div>
               </div>
@@ -827,7 +827,7 @@ export default function PainelProfessor() {
               <CheckCircle className="w-4 h-4" /> <span className="hidden sm:inline">Entregas dos alunos</span><span className="sm:hidden">Entregas</span>
             </TabsTrigger>
             <TabsTrigger value="sugestoes" className="gap-1.5 shrink-0">
-              <Lightbulb className="w-4 h-4" /> Sugestões
+              <Lightbulb className="w-4 h-4" /> SugestÃµes
             </TabsTrigger>
           </TabsList>
 
@@ -843,32 +843,32 @@ export default function PainelProfessor() {
                     <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" translate="no">
                       <DialogHeader>
                         <DialogTitle>{editingAtividade ? 'Editar atividade' : 'Nova atividade'}</DialogTitle>
-                        <DialogDescription>Defina tarefa, destino, livro opcional, prazo e pontuação.</DialogDescription>
+                        <DialogDescription>Defina tarefa, destino, livro opcional, prazo e pontuaÃ§Ã£o.</DialogDescription>
                       </DialogHeader>
 
                       <div className="space-y-4 py-4">
                         <div className="space-y-2">
-                          <Label>Título *</Label>
+                          <Label>TÃ­tulo *</Label>
                           <Input
                             value={atividadeForm.titulo}
                             onChange={(e) => setAtividadeForm((prev) => ({ ...prev, titulo: e.target.value }))}
-                            placeholder="Ex: Resenha crítica do livro"
+                            placeholder="Ex: Resenha crÃ­tica do livro"
                           />
                         </div>
 
                         <div className="space-y-2">
-                          <Label>Descrição</Label>
+                          <Label>DescriÃ§Ã£o</Label>
                           <Textarea
                             rows={3}
                             value={atividadeForm.descricao}
                             onChange={(e) => setAtividadeForm((prev) => ({ ...prev, descricao: e.target.value }))}
-                            placeholder="Instruções para o aluno"
+                            placeholder="InstruÃ§Ãµes para o aluno"
                           />
                         </div>
 
                         <div className="space-y-3 rounded-md border p-3">
                           <div className="flex items-center justify-between gap-2">
-                            <Label className="text-sm">Formulário da atividade (manual ou IA)</Label>
+                            <Label className="text-sm">FormulÃ¡rio da atividade (manual ou IA)</Label>
                             <Button type="button" size="sm" variant="outline" onClick={handleAdicionarPerguntaFormulario}>
                               <Plus className="w-3.5 h-3.5 mr-1" /> Pergunta
                             </Button>
@@ -876,7 +876,7 @@ export default function PainelProfessor() {
 
                           <div className="flex flex-col sm:flex-row gap-2">
                             <Input
-                              placeholder="Tema para IA (opcional): interpretação de texto, revisão do capítulo..."
+                              placeholder="Tema para IA (opcional): interpretaÃ§Ã£o de texto, revisÃ£o do capÃ­tulo..."
                               value={atividadeFormularioPrompt}
                               onChange={(e) => setAtividadeFormularioPrompt(e.target.value)}
                             />
@@ -887,7 +887,7 @@ export default function PainelProfessor() {
                           </div>
 
                           {atividadeFormularioPerguntas.length === 0 ? (
-                            <p className="text-xs text-muted-foreground">Sem perguntas no formulário. Você pode manter atividade aberta (texto/imagem) ou adicionar perguntas.</p>
+                            <p className="text-xs text-muted-foreground">Sem perguntas no formulÃ¡rio. VocÃª pode manter atividade aberta (texto/imagem) ou adicionar perguntas.</p>
                           ) : (
                             <div className="space-y-2">
                               {atividadeFormularioPerguntas.map((pergunta, idx) => (
@@ -934,14 +934,14 @@ export default function PainelProfessor() {
                                     }
                                   >
                                     <option value="texto">Resposta aberta</option>
-                                    <option value="multipla_escolha">Múltipla escolha</option>
+                                    <option value="multipla_escolha">MÃºltipla escolha</option>
                                   </select>
                                   {String(pergunta.tipo) === 'multipla_escolha' && (
                                     <div className="space-y-2">
                                       {ensureArray(pergunta.opcoes).map((opcao, optionIdx) => (
                                         <div key={`${pergunta.id || idx}-${optionIdx}`} className="flex items-center gap-2">
                                           <Input
-                                            placeholder={`Opção ${optionIdx + 1}`}
+                                            placeholder={`OpÃ§Ã£o ${optionIdx + 1}`}
                                             value={String(opcao || '')}
                                             onChange={(e) =>
                                               setAtividadeFormularioPerguntas((prev) =>
@@ -992,10 +992,10 @@ export default function PainelProfessor() {
                                         }
                                         disabled={ensureArray(pergunta.opcoes).length >= 6}
                                       >
-                                        <Plus className="w-3.5 h-3.5 mr-1" /> Adicionar opção
+                                        <Plus className="w-3.5 h-3.5 mr-1" /> Adicionar opÃ§Ã£o
                                       </Button>
                                       <p className="text-[11px] text-muted-foreground">
-                                        Adicione de 2 a 6 opções para cada pergunta.
+                                        Adicione de 2 a 6 opÃ§Ãµes para cada pergunta.
                                       </p>
                                     </div>
                                   )}
@@ -1020,7 +1020,7 @@ export default function PainelProfessor() {
                                   }))
                                 }
                               >
-                                <option value="aluno">Aluno espec�fico</option>
+                                <option value="aluno">Aluno específico</option>
                                 <option value="turma">Turma inteira</option>
                               </select>
                             </div>
@@ -1049,7 +1049,7 @@ export default function PainelProfessor() {
                                 </select>
                                 {atividadeForm.turma && (
                                   <p className="text-xs text-muted-foreground">
-                                    Esta atividade será criada para {alunosDaTurmaSelecionada.length} aluno(s) dessa turma.
+                                    Esta atividade serÃ¡ criada para {alunosDaTurmaSelecionada.length} aluno(s) dessa turma.
                                   </p>
                                 )}
                               </>
@@ -1087,7 +1087,7 @@ export default function PainelProfessor() {
                           <div className="space-y-2">
                             <Label>Livro (opcional)</Label>
                             <Input
-                              placeholder="Buscar livro por título"
+                              placeholder="Buscar livro por tÃ­tulo"
                               value={atividadeLivroBusca}
                               onChange={(e) => setAtividadeLivroBusca(e.target.value)}
                             />
@@ -1101,7 +1101,7 @@ export default function PainelProfessor() {
                                 }))
                               }
                             >
-                              <option value="none">Sem livro específico</option>
+                              <option value="none">Sem livro especÃ­fico</option>
                               {livrosFiltradosAtividade.map((l) => (
                                 <option key={l.id} value={l.id}>
                                   {l.titulo}
@@ -1168,7 +1168,7 @@ export default function PainelProfessor() {
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <p className="font-medium">{atividade.titulo}</p>
-                              <p className="text-xs text-muted-foreground">{atividade.usuarios_biblioteca?.nome || '-'} • {atividade.livros?.titulo || '-'}</p>
+                              <p className="text-xs text-muted-foreground">{atividade.usuarios_biblioteca?.nome || '-'} â€¢ {atividade.livros?.titulo || '-'}</p>
                             </div>
                             <Badge
                               variant={
@@ -1183,7 +1183,7 @@ export default function PainelProfessor() {
                             </Badge>
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            Pontos: {Number(atividade.pontos_extras || 0)} • Entrega: {formatDateBR(atividade.data_entrega)}
+                            Pontos: {Number(atividade.pontos_extras || 0)} â€¢ Entrega: {formatDateBR(atividade.data_entrega)}
                           </div>
                           <div className="flex justify-end gap-1">
                             <Button variant="ghost" size="icon" onClick={() => handleOpenAtividadeDialog(atividade)}>
@@ -1207,7 +1207,7 @@ export default function PainelProfessor() {
                           <TableHead>Pontos</TableHead>
                           <TableHead>Entrega</TableHead>
                           <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Ações</TableHead>
+                          <TableHead className="text-right">AÃ§Ãµes</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1262,7 +1262,7 @@ export default function PainelProfessor() {
                 {loading ? (
                   <p className="text-center text-muted-foreground py-8">Carregando...</p>
                 ) : entregas.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">Ainda não há entregas enviadas.</p>
+                  <p className="text-center text-muted-foreground py-8">Ainda nÃ£o hÃ¡ entregas enviadas.</p>
                 ) : (
                   <div className="space-y-4">
                     {entregas.map((entrega) => {
@@ -1288,7 +1288,7 @@ export default function PainelProfessor() {
                               <p className="text-xs text-muted-foreground">
                                 {entrega.usuarios_biblioteca?.nome || 'Aluno'}
                                 {entrega.usuarios_biblioteca?.turma ? ` (${entrega.usuarios_biblioteca.turma})` : ''}
-                                {' • '}
+                                {' â€¢ '}
                                 {entrega.atividades_leitura?.livros?.titulo || '-'}
                               </p>
                             </div>
@@ -1304,7 +1304,7 @@ export default function PainelProfessor() {
 
                           {Object.keys(entregaPayload.respostas || {}).length > 0 && (
                             <div className="rounded-md border p-3">
-                              <p className="text-xs text-muted-foreground mb-1">Respostas do formulário</p>
+                              <p className="text-xs text-muted-foreground mb-1">Respostas do formulÃ¡rio</p>
                               <div className="space-y-1">
                                 {Object.entries(entregaPayload.respostas).map(([perguntaId, resposta]) => (
                                   <p key={perguntaId} className="text-sm">
@@ -1345,8 +1345,8 @@ export default function PainelProfessor() {
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="enviada">Enviada</SelectItem>
-                                  <SelectItem value="em_revisao">Em revisão</SelectItem>
-                                  <SelectItem value="revisar">Pedir revisão</SelectItem>
+                                  <SelectItem value="em_revisao">Em revisÃ£o</SelectItem>
+                                  <SelectItem value="revisar">Pedir revisÃ£o</SelectItem>
                                   <SelectItem value="aprovada">Aprovada</SelectItem>
                                 </SelectContent>
                               </Select>
@@ -1369,7 +1369,7 @@ export default function PainelProfessor() {
                             </div>
 
                             <div className="space-y-2">
-                              <Label>Pontos máximos</Label>
+                              <Label>Pontos mÃ¡ximos</Label>
                               <Input value={Number(entrega.atividades_leitura?.pontos_extras || 0)} disabled />
                             </div>
                           </div>
@@ -1385,13 +1385,13 @@ export default function PainelProfessor() {
                                   [entrega.id]: { ...form, feedback_professor: e.target.value },
                                 }))
                               }
-                              placeholder="Comentário para orientar o aluno"
+                              placeholder="ComentÃ¡rio para orientar o aluno"
                             />
                           </div>
 
                           <div className="flex justify-end">
                             <Button onClick={() => handleSalvarAvaliacaoEntrega(entrega)} disabled={saving}>
-                              <CheckCircle className="w-4 h-4 mr-2" /> Salvar avaliação
+                              <CheckCircle className="w-4 h-4 mr-2" /> Salvar avaliaÃ§Ã£o
                             </Button>
                           </div>
                         </div>
@@ -1407,12 +1407,12 @@ export default function PainelProfessor() {
             <Card>
               <CardHeader>
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <CardTitle className="text-base">Sugestões de livros para alunos</CardTitle>
+                  <CardTitle className="text-base">SugestÃµes de livros para alunos</CardTitle>
 
                   <Dialog open={isSugestaoDialogOpen} onOpenChange={setIsSugestaoDialogOpen}>
                     <DialogContent className="max-w-lg" translate="no">
                       <DialogHeader>
-                        <DialogTitle>Enviar sugestão</DialogTitle>
+                        <DialogTitle>Enviar sugestÃ£o</DialogTitle>
                         <DialogDescription>Indique um livro com mensagem personalizada.</DialogDescription>
                       </DialogHeader>
 
@@ -1455,7 +1455,7 @@ export default function PainelProfessor() {
                             rows={3}
                             value={mensagem}
                             onChange={(e) => setMensagem(e.target.value)}
-                            placeholder="Ex: Foque no capítulo 2 para a atividade da semana"
+                            placeholder="Ex: Foque no capÃ­tulo 2 para a atividade da semana"
                           />
                         </div>
                       </div>
@@ -1471,7 +1471,7 @@ export default function PainelProfessor() {
                     </DialogContent>
                   </Dialog>
                   <Button onClick={() => setIsSugestaoDialogOpen(true)}>
-                    <Send className="w-4 h-4 mr-2" /> Nova sugestão
+                    <Send className="w-4 h-4 mr-2" /> Nova sugestÃ£o
                   </Button>
                 </div>
               </CardHeader>
@@ -1480,7 +1480,7 @@ export default function PainelProfessor() {
                 {loading ? (
                   <p className="text-center text-muted-foreground py-8">Carregando...</p>
                 ) : sugestoes.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">Nenhuma sugestão enviada.</p>
+                  <p className="text-center text-muted-foreground py-8">Nenhuma sugestÃ£o enviada.</p>
                 ) : (
                   <div className="space-y-3">
                     {sugestoes.map((s) => (
