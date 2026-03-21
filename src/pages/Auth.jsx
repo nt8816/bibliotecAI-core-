@@ -24,9 +24,9 @@ function getCurrentPosition() {
 
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: false,
-      timeout: 10000,
-      maximumAge: 10 * 60 * 1000,
+      enableHighAccuracy: true,
+      timeout: 30000,
+      maximumAge: 0,
     });
   });
 }
@@ -56,6 +56,7 @@ async function captureSecurityLocationContext() {
   const baseContext = {
     user_agent: navigator?.userAgent || null,
     language: navigator?.language || null,
+    requested_high_accuracy: true,
   };
 
   try {

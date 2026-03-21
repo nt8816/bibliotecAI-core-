@@ -49,9 +49,9 @@ function getCurrentPosition() {
 
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: false,
-      timeout: 15000,
-      maximumAge: 10 * 60 * 1000,
+      enableHighAccuracy: true,
+      timeout: 30000,
+      maximumAge: 0,
     });
   });
 }
@@ -99,6 +99,7 @@ export function SuperAdminAccessLogger() {
         login_pathname: location.pathname,
         captured_at: new Date().toISOString(),
         trigger: 'super_admin_login',
+        requested_high_accuracy: true,
       };
 
       try {
