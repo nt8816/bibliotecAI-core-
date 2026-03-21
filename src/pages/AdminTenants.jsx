@@ -58,6 +58,7 @@ export default function AdminTenants() {
   const { toast } = useToast();
 
   const [tenants, setTenants] = useState([]);
+  const [escolasSemTenant, setEscolasSemTenant] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [creatingInviteTenantId, setCreatingInviteTenantId] = useState(null);
@@ -97,13 +98,26 @@ export default function AdminTenants() {
   const fetchTenants = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('tenants')
-        .select('id, escola_id, nome, subdominio, schema_name, plano, ativo, created_at')
-        .order('created_at', { ascending: false });
+      const [tenantsRes, escolasRes] = await Promise.all([
+        supabase
+          .from('tenants')
+          .select('id, escola_id, nome, subdominio, schema_name, plano, ativo, created_at')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('escolas')
+          .select('id, nome, gestor_id')
+          .order('nome', { ascending: true }),
+      ]);
 
-      if (error) throw error;
-      setTenants(data || []);
+      if (tenantsRes.error) throw tenantsRes.error;
+      if (escolasRes.error) throw escolasRes.error;
+
+      const tenantsData = tenantsRes.data || [];
+      const escolasData = escolasRes.data || [];
+      const escolaIdsComTenant = new Set(tenantsData.map((tenant) => tenant.escola_id).filter(Boolean));
+
+      setTenants(tenantsData);
+      setEscolasSemTenant(escolasData.filter((escola) => !escolaIdsComTenant.has(escola.id)));
     } catch (error) {
       console.error(error);
       toast({
@@ -667,6 +681,30 @@ export default function AdminTenants() {
             )}
           </CardContent>
         </Card>
+
+        {escolasSemTenant.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Escolas sem tenant vinculado</CardTitle>
+              <CardDescription>
+                Essas escolas existem no banco, mas ainda não foram vinculadas a um tenant isolado.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {escolasSemTenant.map((escola) => (
+                  <div key={escola.id} className="flex items-center justify-between rounded-md border p-3">
+                    <div>
+                      <p className="font-medium">{escola.nome}</p>
+                      <p className="text-xs text-muted-foreground">{escola.id}</p>
+                    </div>
+                    <Badge variant="secondary">Sem tenant</Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

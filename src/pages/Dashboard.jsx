@@ -92,6 +92,7 @@ export default function Dashboard() {
         emprestimosRecentesResult,
         emprestimosDetalhadosResult,
         escolasResult,
+        escolasBaseResult,
       ] = await Promise.allSettled([
         supabase.from('livros').select('*', { count: 'exact', head: true }),
         supabase.from('livros').select('*', { count: 'exact', head: true }).eq('disponivel', true),
@@ -112,6 +113,7 @@ export default function Dashboard() {
           .select('id, livro_id, created_at, data_emprestimo, status, livros(titulo)')
           .order('created_at', { ascending: false }),
         supabase.from('tenants').select('id, nome, subdominio, ativo').order('nome'),
+        supabase.from('escolas').select('id, nome, gestor_id').order('nome'),
       ]);
 
       setStats({
@@ -174,8 +176,44 @@ export default function Dashboard() {
         }));
       }
 
-      if (escolasResult.status === 'fulfilled') {
-        setEscolasCadastradas(escolasResult.value.data || []);
+      if (escolasResult.status === 'fulfilled' || escolasBaseResult.status === 'fulfilled') {
+        const tenantsData = escolasResult.status === 'fulfilled' ? (escolasResult.value.data || []) : [];
+        const escolasBase = escolasBaseResult.status === 'fulfilled' ? (escolasBaseResult.value.data || []) : [];
+
+        const tenantByEscolaId = new Map(
+          tenantsData
+            .filter((tenant) => tenant?.escola_id)
+            .map((tenant) => [tenant.escola_id, tenant]),
+        );
+
+        const escolasCompletas = escolasBase.map((escola) => {
+          const tenant = tenantByEscolaId.get(escola.id);
+          return {
+            id: tenant?.id || escola.id,
+            escola_id: escola.id,
+            nome: tenant?.nome || escola.nome,
+            subdominio: tenant?.subdominio || null,
+            ativo: tenant?.ativo ?? true,
+            temTenant: Boolean(tenant),
+            gestor_id: escola.gestor_id || null,
+          };
+        });
+
+        const escolasSemBase = tenantsData
+          .filter((tenant) => tenant?.escola_id && !escolasBase.some((escola) => escola.id === tenant.escola_id))
+          .map((tenant) => ({
+            id: tenant.id,
+            escola_id: tenant.escola_id,
+            nome: tenant.nome,
+            subdominio: tenant.subdominio || null,
+            ativo: tenant.ativo ?? true,
+            temTenant: true,
+            gestor_id: null,
+          }));
+
+        setEscolasCadastradas(
+          [...escolasCompletas, ...escolasSemBase].sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR')),
+        );
       }
 
       setLoading(false);
@@ -357,8 +395,13 @@ export default function Dashboard() {
                           >
                             {escola.ativo ? 'Ativa' : 'Inativa'}
                           </span>
+                          {!escola.temTenant && (
+                            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600">
+                              Sem tenant vinculado
+                            </span>
+                          )}
                         </div>
-                        <p className="text-xs text-muted-foreground">{escola.subdominio}</p>
+                        <p className="text-xs text-muted-foreground">{escola.subdominio || 'Sem subdomínio cadastrado'}</p>
                       </div>
                       <Button size="sm" variant="outline" onClick={() => navigate('/admin/tenants')}>
                         Ver detalhes
