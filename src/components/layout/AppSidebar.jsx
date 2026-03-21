@@ -17,6 +17,7 @@
   Building2,
   Bell,
   Settings,
+  ShieldCheck,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -46,9 +47,9 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const { signOut, user, userRole, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
   const { counts, notifications, canViewNotifications, markNotificationRead } = useSystemNotifications();
-  const totalPendencias = counts.atrasados + counts.solicitacoesPendentes + counts.comunicados + (counts.reclamacoes || 0);
+  const totalPendencias = counts.atrasados + counts.solicitacoesPendentes + counts.comunicados + (counts.reclamacoes || 0) + (counts.seguranca || 0);
   const hasPendencias = totalPendencias > 0;
-  const hasUnreadComunicados = counts.comunicados > 0;
+  const hasUnreadComunicados = counts.comunicados > 0 || (counts.seguranca || 0) > 0;
   const settingsPath = '/configuracoes';
   const isTempLoginEmail = /@temp\.bibliotecai\.com$/i.test(String(user?.email || ''));
   const visibleUserIdentity = isTempLoginEmail
@@ -77,6 +78,7 @@ export function AppSidebar() {
       return [
         ...commonItems,
         { title: 'Tenants', url: '/admin/tenants', icon: Building2 },
+        { title: 'Super Admins', url: '/admin/super-admins', icon: ShieldCheck },
         { title: 'Logs', url: '/admin/logs', icon: ClipboardList },
         { title: 'Reclamacoes', url: '/reclamacoes', icon: Bell },
       ];
@@ -297,6 +299,16 @@ export function AppSidebar() {
                             </button>
                           ))}
                         </>
+                      )}
+                      {isSuperAdmin && counts.seguranca > 0 && (
+                        <button
+                          type="button"
+                          className="w-full rounded-md border p-2 text-sm flex items-center justify-between gap-2 text-left hover:bg-accent transition-colors"
+                          onClick={() => navigate('/admin/logs')}
+                        >
+                          <span>Alertas de seguranca</span>
+                          <Badge variant="destructive">{counts.seguranca}</Badge>
+                        </button>
                       )}
                       {isSuperAdmin && counts.reclamacoes > 0 && (
                         <button

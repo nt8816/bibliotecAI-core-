@@ -41,6 +41,14 @@ function resolveCoordinates(log) {
   return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
 }
 
+const SUPER_ADMIN_LOG_EVENTS = [
+  'super_admin_login_snapshot',
+  'super_admin_login_failed',
+  'super_admin_account_locked',
+  'super_admin_account_unlocked',
+  'super_admin_account_created',
+];
+
 export default function AdminLogs() {
   const { toast } = useToast();
   const [logs, setLogs] = useState([]);
@@ -58,7 +66,7 @@ export default function AdminLogs() {
       let query = supabase
         .from('system_logs')
         .select('id, created_at, user_id, level, event, message, path, ip, user_agent, input, output, context')
-        .eq('event', 'super_admin_login_snapshot')
+        .in('event', SUPER_ADMIN_LOG_EVENTS)
         .order('created_at', { ascending: false })
         .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 

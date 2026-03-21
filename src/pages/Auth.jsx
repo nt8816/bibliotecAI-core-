@@ -45,6 +45,51 @@ export default function Auth() {
 
   const loginWithIdentifier = async (login, password) => {
     const normalized = login.trim();
+    const { data: superAdminMatch } = await supabase.rpc('resolve_super_admin_login', { _identifier: normalized });
+
+    if (superAdminMatch?.matched) {
+      if (superAdminMatch?.bloqueado || superAdminMatch?.ativo === false) {
+        return {
+          error: {
+            message: 'Conta de Super Admin bloqueada. Outro Super Admin precisa fazer a liberacao.',
+          },
+        };
+      }
+
+      const superAdminEmail = String(superAdminMatch?.email || '').trim().toLowerCase();
+      const result = await signIn(superAdminEmail, password);
+
+      if (!result.error) {
+        await supabase.rpc('register_super_admin_login_success', {
+          _email: superAdminEmail,
+          _path: '/auth',
+        });
+        return result;
+      }
+
+      if (result.error.message === 'Invalid login credentials') {
+        const { data: failedAttemptData } = await supabase.rpc('register_super_admin_failed_attempt', {
+          _identifier: normalized,
+          _path: '/auth',
+        });
+
+        if (failedAttemptData?.blocked) {
+          return {
+            error: {
+              message: 'Conta de Super Admin bloqueada apos 4 tentativas falhas. Outro Super Admin precisa fazer a liberacao.',
+            },
+          };
+        }
+
+        return {
+          error: {
+            message: `Senha incorreta para Super Admin. Tentativas restantes: ${failedAttemptData?.remaining ?? 0}.`,
+          },
+        };
+      }
+
+      return result;
+    }
 
     if (normalized.includes('@')) {
       return signIn(normalized.toLowerCase(), password);

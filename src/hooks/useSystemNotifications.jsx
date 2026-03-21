@@ -24,7 +24,13 @@ function isExpiredComunicado(item) {
 
 export function useSystemNotifications() {
   const { isGestor, isBibliotecaria, isAluno, isSuperAdmin, user } = useAuth();
-  const [counts, setCounts] = useState({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0 });
+  const [counts, setCounts] = useState({
+    atrasados: 0,
+    solicitacoesPendentes: 0,
+    comunicados: 0,
+    reclamacoes: 0,
+    seguranca: 0,
+  });
   const [notifications, setNotifications] = useState([]);
   const [profileId, setProfileId] = useState(null);
 
@@ -32,30 +38,41 @@ export function useSystemNotifications() {
 
   const fetchCounts = useCallback(async () => {
     if (!canView || !user?.id) {
-      setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0 });
+      setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0, seguranca: 0 });
       setNotifications([]);
       setProfileId(null);
       return;
     }
 
     if (isSuperAdmin) {
-      const readKey = `notificacoes:reclamacoes:lidas:${user.id}`;
-      const lidas = new Set(JSON.parse(localStorage.getItem(readKey) || '[]'));
-      const { data, error } = await supabase
-        .from('reclamacoes_super_admin')
-        .select('id, assunto, mensagem, created_at, sender_nome, sender_role, escolas(nome), usuarios_biblioteca(turma)')
-        .in('status', ['nova', 'em_analise'])
-        .order('created_at', { ascending: false })
-        .limit(20);
+      const complaintReadKey = `notificacoes:reclamacoes:lidas:${user.id}`;
+      const securityReadKey = `notificacoes:seguranca-super-admin:lidas:${user.id}`;
+      const reclamacoesLidas = new Set(JSON.parse(localStorage.getItem(complaintReadKey) || '[]'));
+      const segurancaLidas = new Set(JSON.parse(localStorage.getItem(securityReadKey) || '[]'));
 
-      if (error) {
-        setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0 });
+      const [complaintsRes, securityRes] = await Promise.all([
+        supabase
+          .from('reclamacoes_super_admin')
+          .select('id, assunto, mensagem, created_at, sender_nome, sender_role, escolas(nome), usuarios_biblioteca(turma)')
+          .in('status', ['nova', 'em_analise'])
+          .order('created_at', { ascending: false })
+          .limit(20),
+        supabase
+          .from('system_logs')
+          .select('id, event, message, created_at')
+          .in('event', ['super_admin_login_failed', 'super_admin_account_locked'])
+          .order('created_at', { ascending: false })
+          .limit(20),
+      ]);
+
+      if (complaintsRes.error || securityRes.error) {
+        setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0, seguranca: 0 });
         setNotifications([]);
         setProfileId(null);
         return;
       }
 
-      const reclamacoes = ensureArray(data)
+      const reclamacoes = ensureArray(complaintsRes.data)
         .map((item) => {
           const escolaNome = item?.escolas?.nome || 'Escola nao identificada';
           const remetente = item?.sender_nome || 'Usuario';
@@ -72,10 +89,30 @@ export function useSystemNotifications() {
             path: '/reclamacoes',
           };
         })
-        .filter((item) => !lidas.has(item.id));
+        .filter((item) => !reclamacoesLidas.has(item.id));
 
-      setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: reclamacoes.length });
-      setNotifications(reclamacoes);
+      const alertasSeguranca = ensureArray(securityRes.data)
+        .map((item) => ({
+          id: `seguranca-${item.id}`,
+          tipo: 'seguranca',
+          titulo: item?.event === 'super_admin_account_locked' ? 'Conta bloqueada' : 'Tentativa de invasao',
+          descricao: item?.message || 'Alerta de seguranca para Super Admin.',
+          created_at: item?.created_at || null,
+          path: '/admin/logs',
+        }))
+        .filter((item) => !segurancaLidas.has(item.id));
+
+      const mergedNotifications = [...alertasSeguranca, ...reclamacoes]
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+
+      setCounts({
+        atrasados: 0,
+        solicitacoesPendentes: 0,
+        comunicados: 0,
+        reclamacoes: reclamacoes.length,
+        seguranca: alertasSeguranca.length,
+      });
+      setNotifications(mergedNotifications);
       setProfileId(null);
       return;
     }
@@ -90,7 +127,7 @@ export function useSystemNotifications() {
       .maybeSingle();
 
     if (perfilError || !perfil?.id) {
-      setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0 });
+      setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0, seguranca: 0 });
       setNotifications([]);
       setProfileId(null);
       return;
@@ -151,13 +188,14 @@ export function useSystemNotifications() {
         solicitacoesPendentes: solicitacoesRes.count || 0,
         comunicados: comunicados.length,
         reclamacoes: 0,
+        seguranca: 0,
       });
       setNotifications(comunicados);
       return;
     }
 
     if (!perfil.escola_id) {
-      setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0 });
+      setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0, seguranca: 0 });
       setNotifications([]);
       return;
     }
@@ -181,6 +219,7 @@ export function useSystemNotifications() {
       solicitacoesPendentes: solicitacoesRes.count || 0,
       comunicados: 0,
       reclamacoes: 0,
+      seguranca: 0,
     });
     setNotifications([]);
   }, [canView, isAluno, isSuperAdmin, user?.id]);
@@ -194,6 +233,7 @@ export function useSystemNotifications() {
   useRealtimeSubscription({ table: 'comunidade_posts', onChange: fetchCounts });
   useRealtimeSubscription({ table: 'notificacoes_lidas', onChange: fetchCounts });
   useRealtimeSubscription({ table: 'reclamacoes_super_admin', onChange: fetchCounts });
+  useRealtimeSubscription({ table: 'system_logs', onChange: fetchCounts });
 
   const markNotificationRead = useCallback(
     async (notificationId) => {
@@ -209,6 +249,20 @@ export function useSystemNotifications() {
         setCounts((prev) => ({
           ...prev,
           reclamacoes: Math.max(0, (prev.reclamacoes || 0) - 1),
+        }));
+        return;
+      }
+
+      if (String(notificationId).startsWith('seguranca-') && user?.id) {
+        const readKey = `notificacoes:seguranca-super-admin:lidas:${user.id}`;
+        const current = new Set(JSON.parse(localStorage.getItem(readKey) || '[]'));
+        current.add(notificationId);
+        localStorage.setItem(readKey, JSON.stringify(Array.from(current)));
+
+        setNotifications((prev) => ensureArray(prev).filter((item) => item.id !== notificationId));
+        setCounts((prev) => ({
+          ...prev,
+          seguranca: Math.max(0, (prev.seguranca || 0) - 1),
         }));
         return;
       }
