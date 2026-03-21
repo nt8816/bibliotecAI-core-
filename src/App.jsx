@@ -13,6 +13,7 @@ import { ThemeProvider } from '@/components/theme-provider';
 
 import { PrivateTelemetryTracker } from '@/components/PrivateTelemetryTracker';
 import { SystemLogObserver } from '@/components/SystemLogObserver';
+import { SuperAdminAccessLogger } from '@/components/SuperAdminAccessLogger';
 import { AppShellState } from '@/components/AppShellState';
 import { ConnectivityStatus } from '@/components/ConnectivityStatus';
 
@@ -361,6 +362,7 @@ const App = () => (
               <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
                 <PrivateTelemetryTracker />
                 <SystemLogObserver />
+                <SuperAdminAccessLogger />
                 <Suspense
                   fallback={(
                     <AppShellState

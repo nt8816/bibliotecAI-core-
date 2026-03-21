@@ -29,6 +29,18 @@ function escapeIlike(value) {
   return String(value || '').replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
+function resolveCity(log) {
+  return log?.context?.city || log?.context?.locality || '-';
+}
+
+function resolveCoordinates(log) {
+  const latitude = log?.context?.coordinates?.latitude;
+  const longitude = log?.context?.coordinates?.longitude;
+
+  if (typeof latitude !== 'number' || typeof longitude !== 'number') return '-';
+  return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+}
+
 export default function AdminLogs() {
   const { toast } = useToast();
   const [logs, setLogs] = useState([]);
@@ -218,6 +230,7 @@ export default function AdminLogs() {
                       <TableHead>Evento</TableHead>
                       <TableHead>Mensagem</TableHead>
                       <TableHead>IP</TableHead>
+                      <TableHead>Cidade</TableHead>
                       <TableHead className="text-right">Detalhes</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -234,6 +247,7 @@ export default function AdminLogs() {
                         <TableCell className="font-medium">{log.event}</TableCell>
                         <TableCell className="max-w-[260px] truncate">{log.message || '-'}</TableCell>
                         <TableCell>{log.ip || '-'}</TableCell>
+                        <TableCell>{resolveCity(log)}</TableCell>
                         <TableCell className="text-right">
                           <Button size="sm" variant="ghost" onClick={() => setSelectedLog(log)}>
                             <Eye className="w-4 h-4 mr-1" /> Ver
@@ -287,6 +301,8 @@ export default function AdminLogs() {
                 <div><span className="font-medium">Nível:</span> {selectedLog.level}</div>
                 <div><span className="font-medium">Evento:</span> {selectedLog.event}</div>
                 <div><span className="font-medium">IP:</span> {selectedLog.ip || '-'}</div>
+                <div><span className="font-medium">Cidade:</span> {resolveCity(selectedLog)}</div>
+                <div><span className="font-medium">Coordenadas:</span> {resolveCoordinates(selectedLog)}</div>
                 <div><span className="font-medium">Path:</span> {selectedLog.path || '-'}</div>
                 <div><span className="font-medium">User ID:</span> {selectedLog.user_id || '-'}</div>
                 <div><span className="font-medium">Escola:</span> {escolaById.get(selectedLog.escola_id) || selectedLog.escola_id || '-'}</div>
