@@ -16,10 +16,23 @@ const jsonResponse = (body: unknown, status = 200) =>
 const PASSWORD_ALLOWED_REGEX = /^[A-Za-z0-9!@#$%^&*()_+\-=.?]{6,64}$/;
 
 type GestorPayload = {
+  operation?: 'list' | 'update';
   escola_id?: string;
   gestor_id?: string;
   nova_senha?: string;
 };
+
+type GestorItem = {
+  id: string;
+  nome: string;
+  email: string;
+  user_id: string;
+};
+
+function pickAuthName(user: any) {
+  const metadata = user?.user_metadata || {};
+  return String(metadata.nome || metadata.name || metadata.full_name || '').trim();
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -32,7 +45,7 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
     if (!supabaseUrl || !anonKey || !serviceRoleKey) {
-      return jsonResponse({ success: false, error: 'Configura??o incompleta no servidor' }, 500);
+      return jsonResponse({ success: false, error: 'Configuracao incompleta no servidor' }, 500);
     }
 
     const manualUserToken = req.headers.get('x-user-access-token') || '';
@@ -40,7 +53,7 @@ Deno.serve(async (req) => {
     const userToken = String(manualUserToken || authHeader.replace(/^Bearer\s+/i, '')).trim();
 
     if (!userToken) {
-      return jsonResponse({ success: false, error: 'N?o autenticado' }, 401);
+      return jsonResponse({ success: false, error: 'Nao autenticado' }, 401);
     }
 
     const callerClient = createClient(supabaseUrl, anonKey, {
@@ -55,7 +68,7 @@ Deno.serve(async (req) => {
     const { data: callerUserData, error: callerUserError } = await callerClient.auth.getUser();
     const caller = callerUserData?.user;
     if (callerUserError || !caller) {
-      return jsonResponse({ success: false, error: 'Sess?o inv?lida' }, 401);
+      return jsonResponse({ success: false, error: 'Sessao invalida' }, 401);
     }
 
     const { data: callerRoles, error: callerRolesError } = await callerClient
@@ -64,35 +77,29 @@ Deno.serve(async (req) => {
       .eq('user_id', caller.id);
 
     if (callerRolesError) {
-      return jsonResponse({ success: false, error: 'N?o foi poss?vel validar permiss?es' }, 403);
+      return jsonResponse({ success: false, error: 'Nao foi possivel validar permissoes' }, 403);
     }
 
     const isSuperAdmin = (callerRoles || []).some((item) => item.role === 'super_admin');
     const isFixedPlatformAdmin = String(caller.email || '').trim().toLowerCase() === 'nt@gmail.com';
     if (!isSuperAdmin && !isFixedPlatformAdmin) {
-      return jsonResponse({ success: false, error: 'Sem permiss?o para redefinir senha de gestor' }, 403);
+      return jsonResponse({ success: false, error: 'Sem permissao para gerenciar senha de gestor' }, 403);
     }
 
     let payload: GestorPayload;
     try {
       payload = await req.json();
     } catch (_error) {
-      return jsonResponse({ success: false, error: 'JSON inv?lido no corpo da requisi??o' }, 400);
+      return jsonResponse({ success: false, error: 'JSON invalido no corpo da requisicao' }, 400);
     }
 
-    const escolaId = (payload?.escola_id || '').toString().trim();
-    const gestorId = (payload?.gestor_id || '').toString().trim();
-    const novaSenha = (payload?.nova_senha || '').toString().trim();
+    const operation = payload?.operation || 'update';
+    const escolaId = String(payload?.escola_id || '').trim();
+    const gestorId = String(payload?.gestor_id || '').trim();
+    const novaSenha = String(payload?.nova_senha || '').trim();
 
     if (!escolaId) {
-      return jsonResponse({ success: false, error: 'Escola n?o informada' }, 400);
-    }
-
-    if (!novaSenha || !PASSWORD_ALLOWED_REGEX.test(novaSenha)) {
-      return jsonResponse(
-        { success: false, error: 'Senha inv?lida. Use 6-64 caracteres (letras, n?meros e s?mbolos comuns).' },
-        400,
-      );
+      return jsonResponse({ success: false, error: 'Escola nao informada' }, 400);
     }
 
     const { data: escolaInfo, error: escolaError } = await adminClient
@@ -102,60 +109,122 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (escolaError || !escolaInfo) {
-      return jsonResponse({ success: false, error: 'Escola n?o encontrada' }, 404);
+      return jsonResponse({ success: false, error: 'Escola nao encontrada' }, 404);
     }
 
-    let gestorProfile = null;
-    let gestorLookupError = null;
-
-    const fetchGestorBy = async (column, value) => {
-      const normalizedValue = String(value || '').trim();
-      if (!normalizedValue) return null;
-
-      const { data: profile, error: profileError } = await adminClient
+    const buildGestores = async (): Promise<GestorItem[]> => {
+      const { data: perfis, error: perfisError } = await adminClient
         .from('usuarios_biblioteca')
-        .select('id, nome, email, user_id, escola_id, tipo')
+        .select('id, nome, email, user_id, tipo')
         .eq('escola_id', escolaId)
-        .eq(column, normalizedValue)
-        .order('updated_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .order('nome', { ascending: true });
 
-      if (profileError) {
-        gestorLookupError = profileError;
-        return null;
+      if (perfisError) throw perfisError;
+
+      const perfisEscola = Array.isArray(perfis) ? perfis : [];
+      const userIds = perfisEscola.map((item: any) => String(item?.user_id || '').trim()).filter(Boolean);
+
+      const { data: rolesData, error: rolesError } = userIds.length
+        ? await adminClient.from('user_roles').select('user_id, role').in('user_id', userIds)
+        : { data: [], error: null };
+
+      if (rolesError) throw rolesError;
+
+      const rolesByUserId = new Map<string, Set<string>>();
+      (rolesData || []).forEach((item: any) => {
+        const userId = String(item?.user_id || '').trim();
+        const role = String(item?.role || '').trim().toLowerCase();
+        if (!userId || !role) return;
+        const current = rolesByUserId.get(userId) || new Set<string>();
+        current.add(role);
+        rolesByUserId.set(userId, current);
+      });
+
+      const gestores: GestorItem[] = perfisEscola
+        .filter((perfil: any) => {
+          const userId = String(perfil?.user_id || '').trim();
+          const tipo = String(perfil?.tipo || '').trim().toLowerCase();
+          const roles = rolesByUserId.get(userId);
+          return tipo === 'gestor' || roles?.has('gestor') || userId === String(escolaInfo?.gestor_id || '').trim();
+        })
+        .map((perfil: any) => ({
+          id: String(perfil?.id || perfil?.user_id || ''),
+          nome: String(perfil?.nome || '').trim(),
+          email: String(perfil?.email || '').trim(),
+          user_id: String(perfil?.user_id || '').trim(),
+        }))
+        .filter((perfil) => perfil.id && perfil.user_id);
+
+      const gestorPrincipalId = String(escolaInfo?.gestor_id || '').trim();
+      const hasGestorPrincipal = gestorPrincipalId && gestores.some((item) => item.user_id === gestorPrincipalId || item.id === gestorPrincipalId);
+
+      if (gestorPrincipalId && !hasGestorPrincipal) {
+        const { data: authUserData } = await adminClient.auth.admin.getUserById(gestorPrincipalId);
+        const authUser = authUserData?.user;
+        gestores.push({
+          id: gestorPrincipalId,
+          nome: pickAuthName(authUser) || `Gestor principal - ${escolaInfo?.nome || 'Escola'}`,
+          email: String(authUser?.email || '').trim(),
+          user_id: gestorPrincipalId,
+        });
       }
 
-      return profile;
+      const unique = new Map<string, GestorItem>();
+      gestores.forEach((item) => {
+        const key = item.user_id || item.id;
+        if (!key) return;
+        const previous = unique.get(key);
+        if (!previous) {
+          unique.set(key, item);
+          return;
+        }
+
+        unique.set(key, {
+          id: previous.id || item.id,
+          user_id: previous.user_id || item.user_id,
+          nome: previous.nome || item.nome,
+          email: previous.email || item.email,
+        });
+      });
+
+      return Array.from(unique.values()).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     };
 
-    gestorProfile = await fetchGestorBy('id', gestorId);
-    if (!gestorProfile) gestorProfile = await fetchGestorBy('user_id', gestorId);
-    if (!gestorProfile) gestorProfile = await fetchGestorBy('user_id', String(escolaInfo.gestor_id || ''));
+    const gestores = await buildGestores();
 
-    if (gestorLookupError) {
-      return jsonResponse({ success: false, error: gestorLookupError.message || 'N?o foi poss?vel localizar o gestor' }, 500);
+    if (operation === 'list') {
+      return jsonResponse({ success: true, gestores });
     }
 
-    const gestorAuthUserId = String(gestorProfile?.user_id || gestorId || escolaInfo?.gestor_id || '').trim();
-    if (!gestorAuthUserId) {
-      return jsonResponse({ success: false, error: 'Gestor n?o encontrado para esta escola' }, 404);
+    if (!novaSenha || !PASSWORD_ALLOWED_REGEX.test(novaSenha)) {
+      return jsonResponse(
+        { success: false, error: 'Senha invalida. Use 6-64 caracteres (letras, numeros e simbolos comuns).' },
+        400,
+      );
     }
 
-    const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(gestorAuthUserId, {
+    const gestorSelecionado =
+      gestores.find((item) => item.id === gestorId || item.user_id === gestorId) ||
+      gestores[0] ||
+      null;
+
+    if (!gestorSelecionado?.user_id) {
+      return jsonResponse({ success: false, error: 'Gestor nao encontrado para esta escola' }, 404);
+    }
+
+    const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(gestorSelecionado.user_id, {
       password: novaSenha,
     });
 
     if (updateAuthError) {
-      return jsonResponse({ success: false, error: updateAuthError.message || 'N?o foi poss?vel redefinir a senha do gestor' }, 500);
+      return jsonResponse({ success: false, error: updateAuthError.message || 'Nao foi possivel redefinir a senha do gestor' }, 500);
     }
 
     return jsonResponse({
       success: true,
-      gestor_id: gestorProfile?.id || gestorId || gestorAuthUserId,
-      gestor_nome: gestorProfile?.nome || `Gestor principal${escolaInfo?.nome ? ` - ${escolaInfo.nome}` : ''}`,
-      gestor_email: gestorProfile?.email || '',
+      gestor_id: gestorSelecionado.id,
+      gestor_nome: gestorSelecionado.nome || 'Gestor',
+      gestor_email: gestorSelecionado.email || '',
       senha_temporaria: novaSenha,
     });
   } catch (error) {

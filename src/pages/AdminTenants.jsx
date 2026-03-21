@@ -256,76 +256,24 @@ export default function AdminTenants() {
     setLoadingGestoresTenantId(tenant.id);
 
     try {
-      const { data: escolaInfo, error: escolaError } = await supabase
-        .from('escolas')
-        .select('gestor_id, nome')
-        .eq('id', tenant.escola_id)
-        .maybeSingle();
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
 
-      if (escolaError) throw escolaError;
-
-      const { data, error } = await supabase
-        .from('usuarios_biblioteca')
-        .select('id, nome, email, user_id, tipo')
-        .eq('escola_id', tenant.escola_id)
-        .order('nome', { ascending: true });
-
-      if (error) throw error;
-
-      const perfisEscola = data || [];
-      const userIds = perfisEscola.map((item) => item?.user_id).filter(Boolean);
-
-      const { data: rolesData, error: rolesError } = userIds.length
-        ? await supabase.from('user_roles').select('user_id, role').in('user_id', userIds)
-        : { data: [], error: null };
-
-      if (rolesError) throw rolesError;
-
-      const rolesByUserId = new Map();
-      (rolesData || []).forEach((item) => {
-        if (!item?.user_id) return;
-        const current = rolesByUserId.get(item.user_id) || new Set();
-        current.add(String(item.role || '').trim().toLowerCase());
-        rolesByUserId.set(item.user_id, current);
-      });
-
-      let gestores = perfisEscola.filter((perfil) => {
-        const userId = String(perfil?.user_id || '').trim();
-        const tipo = String(perfil?.tipo || '').trim().toLowerCase();
-        const roles = rolesByUserId.get(userId);
-        return (
-          tipo === 'gestor'
-          || roles?.has('gestor')
-          || userId === String(escolaInfo?.gestor_id || '').trim()
-        );
-      });
-
-      if (gestores.length === 0) {
-        const gestorAuthId = String(escolaInfo?.gestor_id || '').trim();
-        if (gestorAuthId) {
-          const gestorByUserId = perfisEscola.find((item) => String(item?.user_id || '').trim() === gestorAuthId);
-
-          if (gestorByUserId?.id) {
-            gestores = [gestorByUserId];
-          } else {
-            gestores = [{
-              id: gestorAuthId,
-              nome: `Gestor principal${escolaInfo?.nome ? ` - ${escolaInfo.nome}` : ''}`,
-              email: '',
-              user_id: gestorAuthId,
-            }];
-          }
-        }
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        throw new Error('Sessão inválida. Faça login novamente.');
       }
 
-      const gestoresUnicos = [];
-      const gestorKeys = new Set();
-      gestores.forEach((gestor) => {
-        const key = String(gestor?.id || gestor?.user_id || '').trim();
-        if (!key || gestorKeys.has(key)) return;
-        gestorKeys.add(key);
-        gestoresUnicos.push(gestor);
+      const response = await invokeEdgeFunction('redefinir-senha-gestor', {
+        body: { operation: 'list', escola_id: tenant.escola_id },
+        requireAuth: false,
+        headers: {
+          'x-user-access-token': accessToken,
+        },
+        fallbackErrorMessage: 'Não foi possível carregar os gestores da escola.',
       });
+
+      const gestoresUnicos = Array.isArray(response?.gestores) ? response.gestores : [];
 
       setTenantGestores(gestoresUnicos);
       setSelectedGestorId(gestoresUnicos[0]?.id || '');
