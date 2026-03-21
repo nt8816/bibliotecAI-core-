@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Eye } from 'lucide-react';
@@ -47,48 +47,21 @@ export default function AdminLogs() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
-
-  const [escolas, setEscolas] = useState([]);
-  const [escolaFilter, setEscolaFilter] = useState('all');
   const [levelFilter, setLevelFilter] = useState('all');
   const [rangeFilter, setRangeFilter] = useState('7');
   const [search, setSearch] = useState('');
-
   const [selectedLog, setSelectedLog] = useState(null);
-
-  const escolaById = useMemo(
-    () => new Map(escolas.map((item) => [item.id, item.nome])),
-    [escolas],
-  );
-
-  const fetchEscolas = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from('escolas')
-        .select('id, nome')
-        .order('nome');
-      if (error) throw error;
-      setEscolas(data || []);
-    } catch (error) {
-      console.error(error);
-      toast({
-        title: 'Erro',
-        description: 'Não foi possível carregar escolas.',
-        variant: 'destructive',
-      });
-    }
-  }, [toast]);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
       let query = supabase
         .from('system_logs')
-        .select('id, created_at, escola_id, user_id, level, event, message, path, ip, user_agent, input, output, context', { count: 'exact' })
+        .select('id, created_at, user_id, level, event, message, path, ip, user_agent, input, output, context', { count: 'exact' })
+        .eq('event', 'super_admin_access_snapshot')
         .order('created_at', { ascending: false })
         .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 
-      if (escolaFilter !== 'all') query = query.eq('escola_id', escolaFilter);
       if (levelFilter !== 'all') query = query.eq('level', levelFilter);
       if (rangeFilter !== 'all') {
         const days = Number(rangeFilter);
@@ -113,17 +86,13 @@ export default function AdminLogs() {
       console.error(error);
       toast({
         title: 'Erro',
-        description: 'Nao foi possivel carregar logs.',
+        description: 'Nao foi possivel carregar os acessos do Super Admin.',
         variant: 'destructive',
       });
     } finally {
       setLoading(false);
     }
-  }, [escolaFilter, levelFilter, page, rangeFilter, search, toast]);
-
-  useEffect(() => {
-    fetchEscolas();
-  }, [fetchEscolas]);
+  }, [levelFilter, page, rangeFilter, search, toast]);
 
   useEffect(() => {
     fetchLogs();
@@ -132,13 +101,13 @@ export default function AdminLogs() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <MainLayout title="Logs do Sistema">
+    <MainLayout title="Logs do Super Admin">
       <div className="space-y-4">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Filtros</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="space-y-1">
               <Label htmlFor="logs-search">Busca</Label>
               <Input
@@ -152,24 +121,7 @@ export default function AdminLogs() {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="logs-escola">Escola</Label>
-              <select
-                id="logs-escola"
-                className="h-10 rounded-md border bg-background px-3 text-sm"
-                value={escolaFilter}
-                onChange={(e) => {
-                  setEscolaFilter(e.target.value);
-                  setPage(0);
-                }}
-              >
-                <option value="all">Todas as escolas</option>
-                {escolas.map((escola) => (
-                  <option key={escola.id} value={escola.id}>{escola.nome}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="logs-nivel">Nível</Label>
+              <Label htmlFor="logs-nivel">Nivel</Label>
               <select
                 id="logs-nivel"
                 className="h-10 rounded-md border bg-background px-3 text-sm"
@@ -179,14 +131,14 @@ export default function AdminLogs() {
                   setPage(0);
                 }}
               >
-                <option value="all">Todos os níveis</option>
+                <option value="all">Todos os niveis</option>
                 <option value="error">Error</option>
                 <option value="warn">Warn</option>
                 <option value="info">Info</option>
               </select>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="logs-periodo">Período</Label>
+              <Label htmlFor="logs-periodo">Periodo</Label>
               <select
                 id="logs-periodo"
                 className="h-10 rounded-md border bg-background px-3 text-sm"
@@ -196,9 +148,9 @@ export default function AdminLogs() {
                   setPage(0);
                 }}
               >
-                <option value="1">Últimas 24h</option>
-                <option value="7">Últimos 7 dias</option>
-                <option value="30">Últimos 30 dias</option>
+                <option value="1">Ultimas 24h</option>
+                <option value="7">Ultimos 7 dias</option>
+                <option value="30">Ultimos 30 dias</option>
                 <option value="all">Tudo</option>
               </select>
             </div>
@@ -212,21 +164,20 @@ export default function AdminLogs() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Eventos ({total})</CardTitle>
+            <CardTitle className="text-base">Acessos registrados ({total})</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <p className="text-sm text-muted-foreground">Carregando logs...</p>
+              <p className="text-sm text-muted-foreground">Carregando acessos do Super Admin...</p>
             ) : logs.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhum log encontrado.</p>
+              <p className="text-sm text-muted-foreground">Nenhum acesso do Super Admin encontrado.</p>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Data</TableHead>
-                      <TableHead>Escola</TableHead>
-                      <TableHead>Nível</TableHead>
+                      <TableHead>Nivel</TableHead>
                       <TableHead>Evento</TableHead>
                       <TableHead>Mensagem</TableHead>
                       <TableHead>IP</TableHead>
@@ -238,7 +189,6 @@ export default function AdminLogs() {
                     {logs.map((log) => (
                       <TableRow key={log.id}>
                         <TableCell className="whitespace-nowrap">{formatDateBR(log.created_at)}</TableCell>
-                        <TableCell>{escolaById.get(log.escola_id) || log.escola_id || '-'}</TableCell>
                         <TableCell>
                           <Badge variant={log.level === 'error' ? 'destructive' : log.level === 'warn' ? 'secondary' : 'outline'}>
                             {log.level}
@@ -250,7 +200,7 @@ export default function AdminLogs() {
                         <TableCell>{resolveCity(log)}</TableCell>
                         <TableCell className="text-right">
                           <Button size="sm" variant="ghost" onClick={() => setSelectedLog(log)}>
-                            <Eye className="w-4 h-4 mr-1" /> Ver
+                            <Eye className="mr-1 h-4 w-4" /> Ver
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -262,7 +212,7 @@ export default function AdminLogs() {
 
             {totalPages > 1 && (
               <div className="flex items-center justify-between pt-4">
-                <p className="text-xs text-muted-foreground">Página {page + 1} de {totalPages}</p>
+                <p className="text-xs text-muted-foreground">Pagina {page + 1} de {totalPages}</p>
                 <div className="flex gap-2">
                   <Button
                     type="button"
@@ -280,7 +230,7 @@ export default function AdminLogs() {
                     onClick={() => setPage((prev) => Math.min(totalPages - 1, prev + 1))}
                     disabled={page >= totalPages - 1}
                   >
-                    Próxima
+                    Proxima
                   </Button>
                 </div>
               </div>
@@ -292,20 +242,19 @@ export default function AdminLogs() {
       <Dialog open={!!selectedLog} onOpenChange={() => setSelectedLog(null)}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Detalhes do log</DialogTitle>
+            <DialogTitle>Detalhes do acesso</DialogTitle>
           </DialogHeader>
           {selectedLog && (
             <div className="space-y-3 text-sm">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div><span className="font-medium">Data:</span> {formatDateBR(selectedLog.created_at)}</div>
-                <div><span className="font-medium">Nível:</span> {selectedLog.level}</div>
+                <div><span className="font-medium">Nivel:</span> {selectedLog.level}</div>
                 <div><span className="font-medium">Evento:</span> {selectedLog.event}</div>
                 <div><span className="font-medium">IP:</span> {selectedLog.ip || '-'}</div>
                 <div><span className="font-medium">Cidade:</span> {resolveCity(selectedLog)}</div>
                 <div><span className="font-medium">Coordenadas:</span> {resolveCoordinates(selectedLog)}</div>
                 <div><span className="font-medium">Path:</span> {selectedLog.path || '-'}</div>
                 <div><span className="font-medium">User ID:</span> {selectedLog.user_id || '-'}</div>
-                <div><span className="font-medium">Escola:</span> {escolaById.get(selectedLog.escola_id) || selectedLog.escola_id || '-'}</div>
                 <div><span className="font-medium">User Agent:</span> {selectedLog.user_agent || '-'}</div>
               </div>
               {selectedLog.message && (
@@ -317,19 +266,19 @@ export default function AdminLogs() {
               <div className="grid grid-cols-1 gap-3">
                 <div>
                   <p className="font-medium">Input</p>
-                  <pre className="rounded-md border bg-muted/20 p-3 text-xs overflow-auto max-h-64">
+                  <pre className="max-h-64 overflow-auto rounded-md border bg-muted/20 p-3 text-xs">
                     {JSON.stringify(selectedLog.input, null, 2) || '-'}
                   </pre>
                 </div>
                 <div>
                   <p className="font-medium">Output</p>
-                  <pre className="rounded-md border bg-muted/20 p-3 text-xs overflow-auto max-h-64">
+                  <pre className="max-h-64 overflow-auto rounded-md border bg-muted/20 p-3 text-xs">
                     {JSON.stringify(selectedLog.output, null, 2) || '-'}
                   </pre>
                 </div>
                 <div>
                   <p className="font-medium">Contexto</p>
-                  <pre className="rounded-md border bg-muted/20 p-3 text-xs overflow-auto max-h-64">
+                  <pre className="max-h-64 overflow-auto rounded-md border bg-muted/20 p-3 text-xs">
                     {JSON.stringify(selectedLog.context, null, 2) || '-'}
                   </pre>
                 </div>
