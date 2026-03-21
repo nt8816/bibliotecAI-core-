@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { MessageSquareWarning, Send, ShieldAlert } from 'lucide-react';
+import { MessageSquareWarning, Send, ShieldAlert, X } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,6 +24,19 @@ function formatDateTime(value) {
   }
 }
 
+function ensureArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+async function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Falha ao ler arquivo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 function statusLabel(status) {
   if (status === 'respondida') return 'Respondida';
   if (status === 'em_analise') return 'Em analise';
@@ -38,7 +51,7 @@ function statusVariant(status) {
   return 'destructive';
 }
 
-const emptyForm = { assunto: '', mensagem: '' };
+const emptyForm = { assunto: '', mensagem: '', imageUrls: [] };
 
 export default function Reclamacoes() {
   const { user, userRole, isSuperAdmin } = useAuth();
@@ -69,7 +82,7 @@ export default function Reclamacoes() {
     try {
       let query = supabase
         .from('reclamacoes_super_admin')
-        .select('id, sender_user_id, sender_nome, sender_email, sender_role, escola_id, assunto, mensagem, status, resposta, created_at, updated_at, respondida_em, escolas(nome)')
+        .select('id, sender_user_id, sender_nome, sender_email, sender_role, escola_id, assunto, mensagem, image_urls, status, resposta, created_at, updated_at, respondida_em, escolas(nome)')
         .order('created_at', { ascending: false });
 
       if (!isSuperAdmin) {
@@ -110,6 +123,7 @@ export default function Reclamacoes() {
   const handleSubmit = async () => {
     const assunto = form.assunto.trim();
     const mensagem = form.mensagem.trim();
+    const imageUrls = ensureArray(form.imageUrls);
 
     if (assunto.length < 3) {
       toast({
@@ -135,6 +149,7 @@ export default function Reclamacoes() {
         sender_role: userRole,
         assunto,
         mensagem,
+        image_urls: imageUrls,
       });
 
       if (error) throw error;
@@ -193,6 +208,32 @@ export default function Reclamacoes() {
     setItems((current) => current.map((item) => (item.id === id ? { ...item, status: value } : item)));
   };
 
+  const handleSelectImages = async (files) => {
+    const selected = Array.from(files || []).filter((file) => file.type.startsWith('image/'));
+    if (selected.length === 0) return;
+
+    try {
+      const converted = await Promise.all(selected.slice(0, 4).map(fileToDataUrl));
+      setForm((prev) => ({
+        ...prev,
+        imageUrls: [...ensureArray(prev.imageUrls), ...converted].slice(0, 4),
+      }));
+    } catch {
+      toast({
+        title: 'Erro ao processar imagens',
+        description: 'Nao foi possivel carregar uma ou mais imagens.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleRemoveImage = (index) => {
+    setForm((prev) => ({
+      ...prev,
+      imageUrls: ensureArray(prev.imageUrls).filter((_, currentIndex) => currentIndex !== index),
+    }));
+  };
+
   return (
     <MainLayout title="Reclamacoes">
       <div className="space-y-4">
@@ -225,6 +266,38 @@ export default function Reclamacoes() {
                   disabled={saving}
                   rows={6}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reclamacao-imagens">Imagens (opcional, ate 4)</Label>
+                <Input
+                  id="reclamacao-imagens"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={saving}
+                  onChange={(e) => {
+                    handleSelectImages(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
+                {ensureArray(form.imageUrls).length > 0 && (
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {ensureArray(form.imageUrls).map((url, index) => (
+                      <div key={`${index}-${url.slice(0, 24)}`} className="relative overflow-hidden rounded-md border">
+                        <img src={url} alt={`Anexo ${index + 1}`} className="h-24 w-full object-cover" />
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="secondary"
+                          className="absolute right-1 top-1 h-7 w-7"
+                          onClick={() => handleRemoveImage(index)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="flex justify-end">
                 <Button type="button" onClick={handleSubmit} disabled={saving}>
@@ -322,6 +395,18 @@ export default function Reclamacoes() {
                         <Badge variant={statusVariant(item.status)}>{statusLabel(item.status)}</Badge>
                       </div>
                       <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.mensagem}</p>
+                      {ensureArray(item.image_urls).length > 0 && (
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {ensureArray(item.image_urls).map((url, index) => (
+                            <img
+                              key={`${item.id}-img-${index}`}
+                              src={url}
+                              alt={`Imagem da reclamacao ${index + 1}`}
+                              className="h-24 w-full rounded-md border object-cover"
+                            />
+                          ))}
+                        </div>
+                      )}
                       {item.resposta && (
                         <div className="rounded-md border bg-muted/30 p-3">
                           <p className="text-xs font-medium text-muted-foreground">Resposta do super admin</p>
@@ -359,6 +444,22 @@ export default function Reclamacoes() {
                     <div className="rounded-md border p-3 text-sm whitespace-pre-wrap">
                       {selectedItem.mensagem}
                     </div>
+
+                    {ensureArray(selectedItem.image_urls).length > 0 && (
+                      <div className="space-y-2">
+                        <Label>Anexos</Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {ensureArray(selectedItem.image_urls).map((url, index) => (
+                            <img
+                              key={`${selectedItem.id}-detail-${index}`}
+                              src={url}
+                              alt={`Anexo ${index + 1}`}
+                              className="h-32 w-full rounded-md border object-cover"
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="space-y-2">
                       <Label htmlFor="reclamacao-status">Status</Label>
