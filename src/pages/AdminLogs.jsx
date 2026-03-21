@@ -58,7 +58,7 @@ export default function AdminLogs() {
       let query = supabase
         .from('system_logs')
         .select('id, created_at, user_id, level, event, message, path, ip, user_agent, input, output, context')
-        .eq('event', 'super_admin_access_snapshot')
+        .eq('event', 'super_admin_login_snapshot')
         .order('created_at', { ascending: false })
         .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 

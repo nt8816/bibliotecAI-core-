@@ -7,10 +7,6 @@ import { logSystemEvent } from '@/lib/systemLogger';
 const LOG_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const STORAGE_PREFIX = 'super-admin-access-log:v1';
 
-function isEligiblePath(pathname) {
-  return pathname.startsWith('/admin') || pathname === '/reclamacoes';
-}
-
 function getStorageKey(userId) {
   return `${STORAGE_PREFIX}:${userId || 'anon'}`;
 }
@@ -88,7 +84,6 @@ export function SuperAdminAccessLogger() {
 
   useEffect(() => {
     if (loading || !user?.id || !isSuperAdmin) return;
-    if (!isEligiblePath(location.pathname)) return;
     if (inFlightRef.current) return;
 
     const lastSnapshotAt = readLastSnapshotAt(user.id);
@@ -101,8 +96,9 @@ export function SuperAdminAccessLogger() {
       const baseContext = {
         capture_window_hours: 24,
         geolocation_permission: permissionState,
-        pathname: location.pathname,
+        login_pathname: location.pathname,
         captured_at: new Date().toISOString(),
+        trigger: 'super_admin_login',
       };
 
       try {
@@ -129,8 +125,8 @@ export function SuperAdminAccessLogger() {
 
         logSystemEvent({
           level: 'info',
-          event: 'super_admin_access_snapshot',
-          message: 'Acesso de super admin registrado.',
+          event: 'super_admin_login_snapshot',
+          message: 'Login de super admin registrado.',
           path: location.pathname,
           context: {
             ...baseContext,
@@ -150,8 +146,8 @@ export function SuperAdminAccessLogger() {
       } catch (error) {
         logSystemEvent({
           level: 'warn',
-          event: 'super_admin_access_snapshot',
-          message: 'Acesso de super admin registrado sem localizacao precisa.',
+          event: 'super_admin_login_snapshot',
+          message: 'Login de super admin registrado sem localizacao precisa.',
           path: location.pathname,
           context: {
             ...baseContext,
