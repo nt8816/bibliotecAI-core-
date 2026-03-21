@@ -71,6 +71,9 @@ export default function AdminTenants() {
   const [tenantGestores, setTenantGestores] = useState([]);
   const [selectedGestorId, setSelectedGestorId] = useState('');
   const [loadingGestoresTenantId, setLoadingGestoresTenantId] = useState(null);
+  const [managingGestoresTenant, setManagingGestoresTenant] = useState(null);
+  const [gestorPendingDelete, setGestorPendingDelete] = useState(null);
+  const [deletingGestorId, setDeletingGestorId] = useState(null);
   const [deletingTenantId, setDeletingTenantId] = useState(null);
   const [tenantPendingDelete, setTenantPendingDelete] = useState(null);
   const [deletingEscolaId, setDeletingEscolaId] = useState(null);
@@ -242,15 +245,12 @@ export default function AdminTenants() {
     return `${window.location.origin}/?tenant=${tenant.subdominio}`;
   }, [baseDomain, wildcardEnabled]);
 
-  const openGestorPasswordDialog = async (tenant, mode = 'manual') => {
+  const loadGestoresForTenant = async (tenant) => {
     if (!tenant?.escola_id) {
       toast({ title: 'Escola inválida', description: 'Tenant sem escola vinculada.', variant: 'destructive' });
-      return;
+      return [];
     }
 
-    setManualPasswordTenant(tenant);
-    setManualPasswordMode(mode);
-    setManualGestorPassword('');
     setTenantGestores([]);
     setSelectedGestorId('');
     setLoadingGestoresTenantId(tenant.id);
@@ -285,15 +285,30 @@ export default function AdminTenants() {
           variant: 'destructive',
         });
       }
+
+      return gestoresUnicos;
     } catch (error) {
       toast({
         title: 'Falha ao carregar gestores',
         description: error?.message || 'Erro inesperado',
         variant: 'destructive',
       });
+      return [];
     } finally {
       setLoadingGestoresTenantId(null);
     }
+  };
+
+  const openGestorPasswordDialog = async (tenant, mode = 'manual') => {
+    setManualPasswordTenant(tenant);
+    setManualPasswordMode(mode);
+    setManualGestorPassword('');
+    await loadGestoresForTenant(tenant);
+  };
+
+  const openManageGestoresDialog = async (tenant) => {
+    setManagingGestoresTenant(tenant);
+    await loadGestoresForTenant(tenant);
   };
 
   const submitGestorPassword = async (tenant, gestorId, senha, successDescription) => {
@@ -373,6 +388,55 @@ export default function AdminTenants() {
     setManualPasswordTenant(null);
     setSelectedGestorId('');
     setTenantGestores([]);
+  };
+
+  const deleteGestor = async () => {
+    const tenant = managingGestoresTenant;
+    const gestor = gestorPendingDelete;
+
+    if (!tenant?.escola_id || !gestor?.id) return;
+
+    setDeletingGestorId(gestor.id);
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        throw new Error('Sessão inválida. Faça login novamente.');
+      }
+
+      const data = await invokeEdgeFunction('excluir-usuarios-biblioteca', {
+        body: { id: gestor.id },
+        requireAuth: false,
+        headers: {
+          'x-user-access-token': accessToken,
+        },
+        fallbackErrorMessage: 'Não foi possível excluir o gestor.',
+      });
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Não foi possível excluir o gestor.');
+      }
+
+      const gestoresRestantes = tenantGestores.filter((item) => item.id !== gestor.id);
+      setTenantGestores(gestoresRestantes);
+      setSelectedGestorId((current) => (current === gestor.id ? (gestoresRestantes[0]?.id || '') : current));
+      setGestorPendingDelete(null);
+
+      toast({
+        title: 'Gestor excluído',
+        description: `${gestor.nome || 'Gestor'} foi removido do banco de dados.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Falha ao excluir gestor',
+        description: error?.message || 'Erro inesperado',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingGestorId(null);
+    }
   };
 
   const toggleTenantStatus = async (tenant) => {
@@ -809,6 +873,15 @@ export default function AdminTenants() {
                             <Button
                               variant="outline"
                               size="sm"
+                              onClick={() => openManageGestoresDialog(tenant)}
+                              disabled={!tenant.ativo || Boolean(loadingGestoresTenantId)}
+                            >
+                              <KeyRound className="w-4 h-4 mr-1" />
+                              Gerenciar gestores
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
                               onClick={() => createInviteForTenant(tenant)}
                               disabled={creatingInviteTenantId === tenant.id || !tenant.ativo}
                             >
@@ -947,6 +1020,33 @@ export default function AdminTenants() {
         </Card>
 
         <AlertDialog
+          open={Boolean(gestorPendingDelete)}
+          onOpenChange={(open) => {
+            if (!open && !deletingGestorId) setGestorPendingDelete(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Apagar gestor permanentemente?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta ação remove o gestor <strong>{gestorPendingDelete?.nome || '-'}</strong> do banco de dados e da autenticação.
+                Depois disso, ele perderá o acesso ao sistema.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={Boolean(deletingGestorId)}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={deleteGestor}
+                disabled={Boolean(deletingGestorId)}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deletingGestorId ? 'Excluindo...' : 'Apagar gestor'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
           open={Boolean(tenantPendingDelete)}
           onOpenChange={(open) => {
             if (!open && !deletingTenantId) setTenantPendingDelete(null);
@@ -998,6 +1098,68 @@ export default function AdminTenants() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog
+          open={Boolean(managingGestoresTenant)}
+          onOpenChange={(open) => {
+            if (!open && !deletingGestorId) {
+              setManagingGestoresTenant(null);
+              setGestorPendingDelete(null);
+              setTenantGestores([]);
+              setSelectedGestorId('');
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Gerenciar gestores</DialogTitle>
+              <DialogDescription>
+                Escolha um gestor da escola {managingGestoresTenant?.nome || '-'} para remover do sistema.
+              </DialogDescription>
+            </DialogHeader>
+
+            {loadingGestoresTenantId ? (
+              <p className="text-sm text-muted-foreground">Carregando gestores da escola...</p>
+            ) : tenantGestores.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhum gestor disponível para essa escola.</p>
+            ) : (
+              <div className="space-y-2">
+                {tenantGestores.map((gestor) => (
+                  <div key={gestor.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
+                    <div className="min-w-0">
+                      <p className="font-medium">{gestor.nome || 'Gestor'}</p>
+                      <p className="text-sm text-muted-foreground">{gestor.email || 'Sem email cadastrado'}</p>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setGestorPendingDelete(gestor)}
+                      disabled={deletingGestorId === gestor.id}
+                    >
+                      <Trash2 className="w-4 h-4 mr-1" />
+                      {deletingGestorId === gestor.id ? 'Excluindo...' : 'Apagar'}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setManagingGestoresTenant(null);
+                  setGestorPendingDelete(null);
+                  setTenantGestores([]);
+                  setSelectedGestorId('');
+                }}
+                disabled={Boolean(deletingGestorId)}
+              >
+                Fechar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog
           open={Boolean(manualPasswordTenant)}

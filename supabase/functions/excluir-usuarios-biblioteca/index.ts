@@ -121,6 +121,20 @@ Deno.serve(async (req) => {
     }
 
     const authDeleteFailures: string[] = [];
+    const userIdsToDelete = foundProfiles
+      .map((profile) => String(profile.user_id || '').trim())
+      .filter(Boolean);
+
+    if (userIdsToDelete.length > 0) {
+      const { error: clearGestorLinkError } = await adminClient
+        .from('escolas')
+        .update({ gestor_id: null })
+        .in('gestor_id', userIdsToDelete);
+
+      if (clearGestorLinkError) {
+        return jsonResponse({ success: false, error: 'Não foi possível limpar o vínculo de gestor da escola' }, 500);
+      }
+    }
 
     for (const profile of foundProfiles) {
       const userId = String(profile.user_id || '').trim();
