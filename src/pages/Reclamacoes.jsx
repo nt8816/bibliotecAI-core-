@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { MessageSquareWarning, Send, ShieldAlert, X } from 'lucide-react';
@@ -56,6 +56,7 @@ const emptyForm = { assunto: '', mensagem: '', imageUrls: [] };
 export default function Reclamacoes() {
   const { user, userRole, isSuperAdmin } = useAuth();
   const { toast } = useToast();
+  const imageInputRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [items, setItems] = useState([]);
@@ -209,11 +210,23 @@ export default function Reclamacoes() {
   };
 
   const handleSelectImages = async (files) => {
-    const selected = Array.from(files || []).filter((file) => file.type.startsWith('image/'));
-    if (selected.length === 0) return;
+    const selectedFiles = Array.from(files || []);
+    if (selectedFiles.length === 0) return;
+
+    const invalidFiles = selectedFiles.filter((file) => !file.type.startsWith('image/'));
+    if (invalidFiles.length > 0) {
+      toast({
+        title: 'Arquivo invalido',
+        description: 'Essa area aceita apenas imagens.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const selected = selectedFiles.slice(0, 4);
 
     try {
-      const converted = await Promise.all(selected.slice(0, 4).map(fileToDataUrl));
+      const converted = await Promise.all(selected.map(fileToDataUrl));
       setForm((prev) => ({
         ...prev,
         imageUrls: [...ensureArray(prev.imageUrls), ...converted].slice(0, 4),
@@ -269,17 +282,32 @@ export default function Reclamacoes() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="reclamacao-imagens">Imagens (opcional, ate 4)</Label>
-                <Input
+                <input
                   id="reclamacao-imagens"
+                  ref={imageInputRef}
                   type="file"
                   accept="image/*"
                   multiple
+                  className="hidden"
                   disabled={saving}
                   onChange={(e) => {
                     handleSelectImages(e.target.files);
                     e.target.value = '';
                   }}
                 />
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={saving || ensureArray(form.imageUrls).length >= 4}
+                    onClick={() => imageInputRef.current?.click()}
+                  >
+                    Escolher imagens
+                  </Button>
+                  <p className="text-sm text-muted-foreground">
+                    Apenas imagens. Maximo de 4 anexos.
+                  </p>
+                </div>
                 {ensureArray(form.imageUrls).length > 0 && (
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {ensureArray(form.imageUrls).map((url, index) => (
