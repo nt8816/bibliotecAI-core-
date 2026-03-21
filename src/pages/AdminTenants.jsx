@@ -66,6 +66,8 @@ export default function AdminTenants() {
   const [resettingGestorTenantId, setResettingGestorTenantId] = useState(null);
   const [deletingTenantId, setDeletingTenantId] = useState(null);
   const [tenantPendingDelete, setTenantPendingDelete] = useState(null);
+  const [deletingEscolaId, setDeletingEscolaId] = useState(null);
+  const [escolaSemTenantPendingDelete, setEscolaSemTenantPendingDelete] = useState(null);
   const [lastResetPassword, setLastResetPassword] = useState(null);
   const [latestInvite, setLatestInvite] = useState(null);
   const [massTenantId, setMassTenantId] = useState('');
@@ -342,6 +344,51 @@ export default function AdminTenants() {
       });
     } finally {
       setDeletingTenantId(null);
+    }
+  };
+
+  const deleteOrphanSchool = async () => {
+    const escola = escolaSemTenantPendingDelete;
+    if (!escola?.id) return;
+
+    setDeletingEscolaId(escola.id);
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        throw new Error('Sessão inválida. Faça login novamente.');
+      }
+
+      const data = await invokeEdgeFunction('excluir-escola-tenant', {
+        body: { escola_id: escola.id },
+        requireAuth: false,
+        headers: {
+          'x-user-access-token': accessToken,
+        },
+        fallbackErrorMessage: 'Não foi possível excluir a escola.',
+      });
+
+      setEscolasSemTenant((prev) => prev.filter((item) => item.id !== escola.id));
+      setEscolaSemTenantPendingDelete(null);
+
+      const authFailures = Array.isArray(data?.auth_delete_failures) ? data.auth_delete_failures : [];
+      toast({
+        title: authFailures.length === 0 ? 'Escola excluída' : 'Escola excluída com alertas',
+        description: authFailures.length === 0
+          ? `Todos os dados da escola ${escola.nome} foram removidos do banco.`
+          : `A escola foi removida, mas ${authFailures.length} usuário(s) de autenticação exigem revisão manual.`,
+        variant: authFailures.length === 0 ? 'default' : 'destructive',
+      });
+    } catch (error) {
+      toast({
+        title: 'Falha ao excluir escola',
+        description: error?.message || 'Erro inesperado',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingEscolaId(null);
     }
   };
 
@@ -698,7 +745,18 @@ export default function AdminTenants() {
                       <p className="font-medium">{escola.nome}</p>
                       <p className="text-xs text-muted-foreground">{escola.id}</p>
                     </div>
-                    <Badge variant="secondary">Sem tenant</Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">Sem tenant</Badge>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setEscolaSemTenantPendingDelete(escola)}
+                        disabled={deletingEscolaId === escola.id}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        {deletingEscolaId === escola.id ? 'Excluindo...' : 'Apagar escola'}
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -793,6 +851,33 @@ export default function AdminTenants() {
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 {deletingTenantId ? 'Excluindo...' : 'Apagar definitivamente'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={Boolean(escolaSemTenantPendingDelete)}
+          onOpenChange={(open) => {
+            if (!open && !deletingEscolaId) setEscolaSemTenantPendingDelete(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Apagar escola permanentemente?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta ação remove a escola <strong>{escolaSemTenantPendingDelete?.nome || '-'}</strong> diretamente do banco de dados,
+                incluindo os registros vinculados a ela. Use isso apenas quando a escola não deve mais existir no ambiente.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={Boolean(deletingEscolaId)}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={deleteOrphanSchool}
+                disabled={Boolean(deletingEscolaId)}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deletingEscolaId ? 'Excluindo...' : 'Apagar definitivamente'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+﻿import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -71,39 +71,142 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const tenantId = String(body?.tenant_id || '').trim();
-    if (!tenantId) {
-      return jsonResponse({ error: 'tenant_id é obrigatório.' }, 400);
+    const escolaId = String(body?.escola_id || '').trim();
+
+    if (!tenantId && !escolaId) {
+      return jsonResponse({ error: 'tenant_id ou escola_id é obrigatório.' }, 400);
     }
 
-    const { data, error } = await adminClient.rpc('delete_tenant_school', {
-      _tenant_id: tenantId,
-    });
-
-    if (error) {
-      return jsonResponse({ error: error.message || 'Não foi possível excluir a escola.' }, 400);
-    }
-
-    const authUserIds = Array.isArray(data?.auth_user_ids) ? data.auth_user_ids : [];
     const currentUserId = String(user.id || '').trim();
-    const authUserIdsToDelete = authUserIds.filter((userId) => String(userId || '').trim() && String(userId || '').trim() !== currentUserId);
     const authDeleteFailures: string[] = [];
 
-    for (const userId of authUserIdsToDelete) {
-      const normalizedUserId = String(userId || '').trim();
-      if (!normalizedUserId) continue;
+    if (tenantId) {
+      const { data, error } = await adminClient.rpc('delete_tenant_school', {
+        _tenant_id: tenantId,
+      });
 
-      const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(normalizedUserId);
+      if (error) {
+        return jsonResponse({ error: error.message || 'Não foi possível excluir a escola.' }, 400);
+      }
+
+      const authUserIds = Array.isArray(data?.auth_user_ids) ? data.auth_user_ids : [];
+      const authUserIdsToDelete = authUserIds.filter((userId) => String(userId || '').trim() && String(userId || '').trim() !== currentUserId);
+
+      for (const userId of authUserIdsToDelete) {
+        const normalizedUserId = String(userId || '').trim();
+        if (!normalizedUserId) continue;
+
+        const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(normalizedUserId);
+        if (deleteUserError && !String(deleteUserError.message || '').toLowerCase().includes('user not found')) {
+          authDeleteFailures.push(`${normalizedUserId}: ${deleteUserError.message}`);
+        }
+      }
+
+      return jsonResponse({
+        success: true,
+        tenant_id: data?.tenant_id || tenantId,
+        escola_id: data?.escola_id || null,
+        escola_nome: data?.escola_nome || null,
+        schema_name: data?.schema_name || null,
+        auth_deleted: authUserIdsToDelete.length - authDeleteFailures.length,
+        auth_skipped_current_user: authUserIdsToDelete.length !== authUserIds.length,
+        auth_delete_failures: authDeleteFailures,
+      });
+    }
+
+    const { data: escola, error: escolaError } = await adminClient
+      .from('escolas')
+      .select('id, nome')
+      .eq('id', escolaId)
+      .maybeSingle();
+
+    if (escolaError) {
+      return jsonResponse({ error: escolaError.message || 'Não foi possível localizar a escola.' }, 400);
+    }
+
+    if (!escola) {
+      return jsonResponse({ error: 'Escola não encontrada.' }, 404);
+    }
+
+    const { data: usersData, error: usersError } = await adminClient
+      .from('usuarios_biblioteca')
+      .select('user_id')
+      .eq('escola_id', escolaId);
+
+    if (usersError) {
+      return jsonResponse({ error: usersError.message || 'Não foi possível carregar os usuários da escola.' }, 400);
+    }
+
+    const authUserIds = Array.isArray(usersData)
+      ? usersData.map((item) => String(item?.user_id || '').trim()).filter(Boolean)
+      : [];
+
+    const tablesByEscolaId = [
+      'atividade_entregas',
+      'atividades_leitura',
+      'audiobooks_biblioteca',
+      'arquivos_aula_posts',
+      'categorias_livros',
+      'comunidade_quiz_tentativas',
+      'comunidade_posts',
+      'emprestimos',
+      'laboratorio_criacoes',
+      'livros',
+      'professor_turmas',
+      'salas_cursos',
+      'solicitacoes_emprestimo',
+      'tenant_admin_invites',
+      'tokens_convite',
+      'usuarios_biblioteca',
+    ];
+
+    for (const tableName of tablesByEscolaId) {
+      const { error: tableDeleteError } = await adminClient
+        .from(tableName)
+        .delete()
+        .eq('escola_id', escolaId);
+
+      if (tableDeleteError) {
+        const message = String(tableDeleteError.message || '').toLowerCase();
+        if (!message.includes('relation') && !message.includes('does not exist')) {
+          return jsonResponse({ error: tableDeleteError.message || `Não foi possível limpar ${tableName}.` }, 400);
+        }
+      }
+    }
+
+    const { error: tenantDeleteError } = await adminClient
+      .from('tenants')
+      .delete()
+      .eq('escola_id', escolaId);
+
+    if (tenantDeleteError) {
+      return jsonResponse({ error: tenantDeleteError.message || 'Não foi possível remover o tenant vinculado.' }, 400);
+    }
+
+    const { error: escolaDeleteError } = await adminClient
+      .from('escolas')
+      .delete()
+      .eq('id', escolaId);
+
+    if (escolaDeleteError) {
+      return jsonResponse({ error: escolaDeleteError.message || 'Não foi possível remover a escola.' }, 400);
+    }
+
+    const authUserIdsToDelete = authUserIds.filter((userId) => userId && userId !== currentUserId);
+
+    for (const userId of authUserIdsToDelete) {
+      const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(userId);
       if (deleteUserError && !String(deleteUserError.message || '').toLowerCase().includes('user not found')) {
-        authDeleteFailures.push(`${normalizedUserId}: ${deleteUserError.message}`);
+        authDeleteFailures.push(`${userId}: ${deleteUserError.message}`);
       }
     }
 
     return jsonResponse({
       success: true,
-      tenant_id: data?.tenant_id || tenantId,
-      escola_id: data?.escola_id || null,
-      escola_nome: data?.escola_nome || null,
-      schema_name: data?.schema_name || null,
+      tenant_id: null,
+      escola_id: escolaId,
+      escola_nome: escola.nome || null,
+      schema_name: null,
       auth_deleted: authUserIdsToDelete.length - authDeleteFailures.length,
       auth_skipped_current_user: authUserIdsToDelete.length !== authUserIds.length,
       auth_delete_failures: authDeleteFailures,
