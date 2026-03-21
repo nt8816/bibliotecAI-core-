@@ -4160,7 +4160,7 @@ export default function PainelAluno() {
                 <CardTitle className="text-base">Quiz com IA</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
                   <div className="space-y-1">
                     <Label htmlFor="quiz-livro">Livro</Label>
                     <select
@@ -4177,15 +4177,24 @@ export default function PainelAluno() {
                       ))}
                     </select>
                   </div>
-                  <Input
-                    value={quizTema}
-                    onChange={(e) => setQuizTema(e.target.value)}
-                    placeholder="Tema do quiz (ex.: interpretacao)"
-                  />
-                  <Button type="button" variant="outline" onClick={gerarQuizComIA} disabled={gerandoQuizIA}>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    {gerandoQuizIA ? 'Gerando quiz...' : 'Gerar quiz IA'}
-                  </Button>
+                  <div className="space-y-1">
+                    <Label htmlFor="quiz-tema" className="opacity-0">
+                      Tema
+                    </Label>
+                    <Input
+                      id="quiz-tema"
+                      value={quizTema}
+                      onChange={(e) => setQuizTema(e.target.value)}
+                      placeholder="Tema do quiz (ex.: interpretacao)"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="opacity-0">Gerar</Label>
+                    <Button type="button" variant="outline" onClick={gerarQuizComIA} disabled={gerandoQuizIA} className="w-full">
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      {gerandoQuizIA ? 'Gerando quiz...' : 'Gerar quiz IA'}
+                    </Button>
+                  </div>
                 </div>
 
                 {quiz.length > 0 && (
