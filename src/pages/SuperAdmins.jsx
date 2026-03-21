@@ -133,6 +133,7 @@ export default function SuperAdmins() {
           cpf,
           senha: form.senha,
         },
+        transport: 'http',
         fallbackErrorMessage: 'Nao foi possivel criar o Super Admin.',
       });
 
@@ -161,6 +162,7 @@ export default function SuperAdmins() {
           operation: 'unlock',
           account_id: accountId,
         },
+        transport: 'http',
         fallbackErrorMessage: 'Nao foi possivel liberar a conta.',
       });
 
