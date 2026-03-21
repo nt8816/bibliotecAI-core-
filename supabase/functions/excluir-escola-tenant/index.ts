@@ -167,8 +167,14 @@ Deno.serve(async (req) => {
         .eq('escola_id', escolaId);
 
       if (tableDeleteError) {
-        const message = String(tableDeleteError.message || '').toLowerCase();
-        if (!message.includes('relation') && !message.includes('does not exist')) {
+        const message = `${tableDeleteError.message || ''} ${tableDeleteError.details || ''}`.toLowerCase();
+        const isMissingTable =
+          message.includes('relation')
+          || message.includes('does not exist')
+          || message.includes('schema cache')
+          || message.includes('could not find the table');
+
+        if (!isMissingTable) {
           return jsonResponse({ error: tableDeleteError.message || `Não foi possível limpar ${tableName}.` }, 400);
         }
       }
