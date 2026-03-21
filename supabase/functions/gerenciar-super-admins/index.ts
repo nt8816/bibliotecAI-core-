@@ -30,6 +30,29 @@ function normalizeCpf(value: string) {
   return String(value || '').replace(/\D/g, '');
 }
 
+function isValidCpf(value: string) {
+  const cpf = normalizeCpf(value);
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+
+  let sum = 0;
+  for (let index = 0; index < 9; index += 1) {
+    sum += Number(cpf[index]) * (10 - index);
+  }
+
+  let checkDigit = (sum * 10) % 11;
+  if (checkDigit === 10) checkDigit = 0;
+  if (checkDigit !== Number(cpf[9])) return false;
+
+  sum = 0;
+  for (let index = 0; index < 10; index += 1) {
+    sum += Number(cpf[index]) * (11 - index);
+  }
+
+  checkDigit = (sum * 10) % 11;
+  if (checkDigit === 10) checkDigit = 0;
+  return checkDigit === Number(cpf[10]);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders, status: 204 });
@@ -118,12 +141,12 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Email invalido' }, 400);
     }
 
-    if (cpf && cpf.length !== 11) {
-      return jsonResponse({ success: false, error: 'CPF deve ter 11 digitos' }, 400);
+    if (cpf && !isValidCpf(cpf)) {
+      return jsonResponse({ success: false, error: 'CPF invalido' }, 400);
     }
 
-    if (senha.length < 8) {
-      return jsonResponse({ success: false, error: 'Senha deve ter pelo menos 8 caracteres' }, 400);
+    if (senha.length < 6) {
+      return jsonResponse({ success: false, error: 'Senha deve ter pelo menos 6 caracteres' }, 400);
     }
 
     const { data: existingAccount } = await adminClient

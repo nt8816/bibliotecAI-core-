@@ -30,6 +30,33 @@ const emptyForm = {
   senha: '',
 };
 
+function normalizeCpf(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function isValidCpf(value) {
+  const cpf = normalizeCpf(value);
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+
+  let sum = 0;
+  for (let index = 0; index < 9; index += 1) {
+    sum += Number(cpf[index]) * (10 - index);
+  }
+
+  let checkDigit = (sum * 10) % 11;
+  if (checkDigit === 10) checkDigit = 0;
+  if (checkDigit !== Number(cpf[9])) return false;
+
+  sum = 0;
+  for (let index = 0; index < 10; index += 1) {
+    sum += Number(cpf[index]) * (11 - index);
+  }
+
+  checkDigit = (sum * 10) % 11;
+  if (checkDigit === 10) checkDigit = 0;
+  return checkDigit === Number(cpf[10]);
+}
+
 export default function SuperAdmins() {
   const { toast } = useToast();
   const [items, setItems] = useState([]);
@@ -64,10 +91,21 @@ export default function SuperAdmins() {
   }, [fetchItems]);
 
   const handleCreate = async () => {
-    if (form.nome.trim().length < 3 || !form.email.includes('@') || form.senha.trim().length < 8) {
+    const cpf = normalizeCpf(form.cpf);
+
+    if (form.nome.trim().length < 3 || !form.email.includes('@') || form.senha.trim().length < 6) {
       toast({
         title: 'Dados invalidos',
-        description: 'Preencha nome, email valido e senha com pelo menos 8 caracteres.',
+        description: 'Preencha nome, email valido e senha com pelo menos 6 caracteres.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (cpf && !isValidCpf(cpf)) {
+      toast({
+        title: 'CPF invalido',
+        description: 'Informe um CPF valido para o Super Admin.',
         variant: 'destructive',
       });
       return;
@@ -80,7 +118,7 @@ export default function SuperAdmins() {
           operation: 'create',
           nome: form.nome.trim(),
           email: form.email.trim(),
-          cpf: form.cpf.trim(),
+          cpf,
           senha: form.senha,
         },
         fallbackErrorMessage: 'Nao foi possivel criar o Super Admin.',
@@ -167,7 +205,7 @@ export default function SuperAdmins() {
               <Input
                 id="super-admin-cpf"
                 value={form.cpf}
-                onChange={(e) => setForm((prev) => ({ ...prev, cpf: e.target.value }))}
+                onChange={(e) => setForm((prev) => ({ ...prev, cpf: normalizeCpf(e.target.value) }))}
                 placeholder="Opcional"
                 disabled={saving}
               />
@@ -179,7 +217,7 @@ export default function SuperAdmins() {
                 type="password"
                 value={form.senha}
                 onChange={(e) => setForm((prev) => ({ ...prev, senha: e.target.value }))}
-                placeholder="Minimo 8 caracteres"
+                placeholder="Minimo 6 caracteres"
                 disabled={saving}
               />
             </div>
