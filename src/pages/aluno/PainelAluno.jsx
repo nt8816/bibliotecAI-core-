@@ -1001,6 +1001,9 @@ export default function PainelAluno() {
   const [atividadeRespostas, setAtividadeRespostas] = useState({});
   const [saving, setSaving] = useState(false);
   const [showAccessChoice, setShowAccessChoice] = useState(false);
+  const [primeiroAcessoPassword, setPrimeiroAcessoPassword] = useState('');
+  const [primeiroAcessoConfirmPassword, setPrimeiroAcessoConfirmPassword] = useState('');
+  const [updatingPrimeiroAcessoPassword, setUpdatingPrimeiroAcessoPassword] = useState(false);
   const [optionalFeaturesEnabled, setOptionalFeaturesEnabled] = useState(ENABLE_OPTIONAL_STUDENT_FEATURES);
   const [resumoLivroId, setResumoLivroId] = useState('');
   const [resumoTexto, setResumoTexto] = useState('');
@@ -1460,6 +1463,62 @@ export default function PainelAluno() {
       localStorage.setItem(alunoOnboardingKey, 'done');
     }
     setShowAccessChoice(false);
+  };
+
+  const handlePrimeiroAcessoPassword = async () => {
+    const novaSenha = primeiroAcessoPassword.trim();
+    const confirmarSenha = primeiroAcessoConfirmPassword.trim();
+
+    if (novaSenha.length < 6) {
+      toast({
+        title: 'Senha invalida',
+        description: 'Use uma senha com pelo menos 6 caracteres.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (novaSenha !== confirmarSenha) {
+      toast({
+        title: 'Confirmacao invalida',
+        description: 'A confirmacao da nova senha nao confere.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setUpdatingPrimeiroAcessoPassword(true);
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: novaSenha,
+        data: {
+          ...(user?.user_metadata || {}),
+          senha_definida: true,
+          senha_alterada_em: new Date().toISOString(),
+        },
+      });
+      if (error) throw error;
+
+      if (alunoSenhaDefinidaKey) {
+        localStorage.setItem(alunoSenhaDefinidaKey, 'true');
+      }
+
+      setPrimeiroAcessoPassword('');
+      setPrimeiroAcessoConfirmPassword('');
+      finalizeAlunoOnboarding();
+      toast({
+        title: 'Senha criada',
+        description: 'Sua nova senha foi salva e a senha inicial nao funciona mais.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Erro ao criar senha',
+        description: error?.message || 'Nao foi possivel definir sua nova senha agora.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdatingPrimeiroAcessoPassword(false);
+    }
   };
 
   useEffect(() => {
@@ -5197,7 +5256,11 @@ export default function PainelAluno() {
           if (open) setShowAccessChoice(true);
         }}
       >
-        <DialogContent>
+        <DialogContent
+          onPointerDownOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => event.preventDefault()}
+          className="[&>button:last-child]:hidden"
+        >
           <DialogHeader>
             <DialogTitle>Acesso do aluno</DialogTitle>
             <DialogDescription>
@@ -5205,15 +5268,38 @@ export default function PainelAluno() {
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
-            Sua matrícula continua como login, mas a senha inicial precisa ser trocada agora em Configurações.
+            Sua matricula continua como login. Assim que a nova senha for salva, a senha inicial deixa de funcionar.
+          </div>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="primeiroAcessoPassword">Nova senha</Label>
+              <Input
+                id="primeiroAcessoPassword"
+                type="password"
+                value={primeiroAcessoPassword}
+                onChange={(e) => setPrimeiroAcessoPassword(e.target.value)}
+                disabled={updatingPrimeiroAcessoPassword}
+                placeholder="Digite sua nova senha"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="primeiroAcessoConfirmPassword">Confirmar nova senha</Label>
+              <Input
+                id="primeiroAcessoConfirmPassword"
+                type="password"
+                value={primeiroAcessoConfirmPassword}
+                onChange={(e) => setPrimeiroAcessoConfirmPassword(e.target.value)}
+                disabled={updatingPrimeiroAcessoPassword}
+                placeholder="Repita a nova senha"
+              />
+            </div>
           </div>
           <div className="flex justify-end">
             <Button
-              onClick={() => {
-                navigate('/configuracoes', { state: { forcePasswordChange: true } });
-              }}
+              onClick={handlePrimeiroAcessoPassword}
+              disabled={updatingPrimeiroAcessoPassword}
             >
-              Criar nova senha agora
+              {updatingPrimeiroAcessoPassword ? 'Salvando...' : 'Salvar nova senha'}
             </Button>
           </div>
         </DialogContent>
