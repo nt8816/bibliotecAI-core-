@@ -690,9 +690,9 @@ export default function AdminTenants() {
                   disabled={massRunning}
                 >
                   <option value="">Selecione uma escola</option>
-                  {tenants.filter((t) => t.ativo).map((tenant) => (
+                  {tenants.map((tenant) => (
                     <option key={tenant.id} value={tenant.id}>
-                      {tenant.nome} ({tenant.subdominio})
+                      {tenant.nome} ({tenant.subdominio}){tenant.ativo ? '' : ' - inativa'}
                     </option>
                   ))}
                 </select>
