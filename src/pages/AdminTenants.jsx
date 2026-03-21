@@ -438,7 +438,7 @@ export default function AdminTenants() {
         title: authFailures.length === 0 ? 'Escola excluÃ­da' : 'Escola excluÃ­da com alertas',
         description: authFailures.length === 0
           ? `Todos os dados da escola ${tenant.nome} foram removidos.`
-          : `A escola foi removida, mas ${authFailures.length} usuÃ¡rio(s) de autenticaÃ§Ã£o exigem revisÃ£o manual.`,
+          : `A escola foi removida, mas ${authFailures.length} usuário(s) de autenticação exigem revisão manual.`,
         variant: authFailures.length === 0 ? 'default' : 'destructive',
       });
     } catch (error) {
@@ -483,7 +483,7 @@ export default function AdminTenants() {
         title: authFailures.length === 0 ? 'Escola excluÃ­da' : 'Escola excluÃ­da com alertas',
         description: authFailures.length === 0
           ? `Todos os dados da escola ${escola.nome} foram removidos do banco.`
-          : `A escola foi removida, mas ${authFailures.length} usuÃ¡rio(s) de autenticaÃ§Ã£o exigem revisÃ£o manual.`,
+          : `A escola foi removida, mas ${authFailures.length} usuário(s) de autenticação exigem revisão manual.`,
         variant: authFailures.length === 0 ? 'default' : 'destructive',
       });
     } catch (error) {
@@ -544,8 +544,8 @@ export default function AdminTenants() {
             `TÃ­tulo: ${livro.titulo}`,
             livro.autor ? `Autor: ${livro.autor}` : '',
             livro.sinopse
-              ? `NarraÃ§Ã£o sugerida: ${livro.sinopse}`
-              : 'NarraÃ§Ã£o sugerida: Este Ã¡udio apresenta o livro, seus temas principais e incentiva a leitura.',
+              ? `Narração sugerida: ${livro.sinopse}`
+              : 'Narração sugerida: Este áudio apresenta o livro, seus temas principais e incentiva a leitura.',
           ]
             .filter(Boolean)
             .join('\n');
@@ -600,12 +600,12 @@ export default function AdminTenants() {
       });
 
       toast({
-        title: 'GeraÃ§Ã£o em massa concluÃ­da',
+        title: 'Geração em massa concluída',
         description: `${success.length} de ${acervo.length} audiobooks gerados para ${tenant.nome}.`,
       });
     } catch (error) {
       toast({
-        title: 'Falha na geraÃ§Ã£o em massa',
+        title: 'Falha na geração em massa',
         description: error?.message || 'NÃ£o foi possÃ­vel gerar os audiobooks.',
         variant: 'destructive',
       });
@@ -635,7 +635,7 @@ export default function AdminTenants() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="subdominio">SubdomÃ­nio</Label>
+                <Label htmlFor="subdominio">Subdomínio</Label>
                 <Input
                   id="subdominio"
                   value={subdominio}
@@ -756,11 +756,11 @@ export default function AdminTenants() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Escola</TableHead>
-                      <TableHead>SubdomÃ­nio</TableHead>
+                      <TableHead>Subdomínio</TableHead>
                       <TableHead>Schema</TableHead>
                       <TableHead>Plano</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="text-right">AÃ§Ãµes</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -850,7 +850,7 @@ export default function AdminTenants() {
             <CardHeader>
               <CardTitle>Escolas sem tenant vinculado</CardTitle>
               <CardDescription>
-                Essas escolas existem no banco, mas ainda nÃ£o foram vinculadas a um tenant isolado.
+                Essas escolas existem no banco, mas ainda não foram vinculadas a um tenant isolado.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -884,7 +884,7 @@ export default function AdminTenants() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Volume2 className="w-5 h-5" />
-              GeraÃ§Ã£o em Massa de Ãudios
+              Geração em Massa de Áudios
             </CardTitle>
             <CardDescription>
               Gere audiobooks automaticamente usando o acervo da escola selecionada e publique na comunidade escolar.
@@ -925,7 +925,7 @@ export default function AdminTenants() {
 
             <Button type="button" onClick={gerarAudiosEmMassa} disabled={massRunning || !massTenantId}>
               <Sparkles className="w-4 h-4 mr-2" />
-              {massRunning ? `Gerando... ${massProgress.done}/${massProgress.total || 0}` : 'Gerar Ã¡udios em massa'}
+              {massRunning ? `Gerando... ${massProgress.done}/${massProgress.total || 0}` : 'Gerar áudios em massa'}
             </Button>
 
             {massSummary && (
@@ -956,7 +956,7 @@ export default function AdminTenants() {
             <AlertDialogHeader>
               <AlertDialogTitle>Apagar escola permanentemente?</AlertDialogTitle>
               <AlertDialogDescription>
-                Esta aÃ§Ã£o remove a escola <strong>{tenantPendingDelete?.nome || '-'}</strong>, o tenant, os dados relacionados no banco e o schema dedicado. Os usuÃ¡rios vinculados tambÃ©m serÃ£o removidos da autenticaÃ§Ã£o.
+                Esta ação remove a escola <strong>{tenantPendingDelete?.nome || '-'}</strong>, o tenant, os dados relacionados no banco e o schema dedicado. Os usuários vinculados também serão removidos da autenticação.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -982,8 +982,8 @@ export default function AdminTenants() {
             <AlertDialogHeader>
               <AlertDialogTitle>Apagar escola permanentemente?</AlertDialogTitle>
               <AlertDialogDescription>
-                Esta aÃ§Ã£o remove a escola <strong>{escolaSemTenantPendingDelete?.nome || '-'}</strong> diretamente do banco de dados,
-                incluindo os registros vinculados a ela. Use isso apenas quando a escola nÃ£o deve mais existir no ambiente.
+                Esta ação remove a escola <strong>{escolaSemTenantPendingDelete?.nome || '-'}</strong> diretamente do banco de dados,
+                incluindo os registros vinculados a ela. Use isso apenas quando a escola não deve mais existir no ambiente.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
