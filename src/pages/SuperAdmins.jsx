@@ -102,6 +102,16 @@ export default function SuperAdmins() {
     fetchItems();
   }, [fetchItems]);
 
+  const getUserAccessToken = async () => {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    const accessToken = data?.session?.access_token;
+    if (!accessToken) {
+      throw new Error('Sessao invalida. Faca login novamente.');
+    }
+    return accessToken;
+  };
+
   const handleCreate = async () => {
     const cpf = normalizeCpf(form.cpf);
 
@@ -125,6 +135,7 @@ export default function SuperAdmins() {
 
     setSaving(true);
     try {
+      const accessToken = await getUserAccessToken();
       await invokeEdgeFunction('gerenciar-super-admins', {
         body: {
           operation: 'create',
@@ -132,6 +143,10 @@ export default function SuperAdmins() {
           email: form.email.trim(),
           cpf,
           senha: form.senha,
+        },
+        requireAuth: false,
+        headers: {
+          'x-user-access-token': accessToken,
         },
         transport: 'http',
         fallbackErrorMessage: 'Nao foi possivel criar o Super Admin.',
@@ -157,10 +172,15 @@ export default function SuperAdmins() {
   const handleUnlock = async (accountId) => {
     setUnlockingId(accountId);
     try {
+      const accessToken = await getUserAccessToken();
       await invokeEdgeFunction('gerenciar-super-admins', {
         body: {
           operation: 'unlock',
           account_id: accountId,
+        },
+        requireAuth: false,
+        headers: {
+          'x-user-access-token': accessToken,
         },
         transport: 'http',
         fallbackErrorMessage: 'Nao foi possivel liberar a conta.',
