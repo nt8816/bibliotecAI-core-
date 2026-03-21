@@ -60,6 +60,7 @@ function isValidCpf(value) {
 export default function SuperAdmins() {
   const { toast } = useToast();
   const [items, setItems] = useState([]);
+  const [securityAlert, setSecurityAlert] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [unlockingId, setUnlockingId] = useState('');
@@ -68,13 +69,24 @@ export default function SuperAdmins() {
   const fetchItems = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('super_admin_accounts')
-        .select('id, nome, email, cpf, ativo, bloqueado, tentativas_falhas, ultima_tentativa_em, ultimo_login_em, bloqueado_em, created_at')
-        .order('created_at', { ascending: true });
+      const [accountsRes, alertsRes] = await Promise.all([
+        supabase
+          .from('super_admin_accounts')
+          .select('id, nome, email, cpf, ativo, bloqueado, tentativas_falhas, ultima_tentativa_em, ultimo_login_em, bloqueado_em, created_at')
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('system_logs')
+          .select('id, event, message, ip, created_at, context')
+          .in('event', ['super_admin_login_failed', 'super_admin_account_locked'])
+          .order('created_at', { ascending: false })
+          .limit(1),
+      ]);
 
-      if (error) throw error;
-      setItems(data || []);
+      if (accountsRes.error) throw accountsRes.error;
+      if (alertsRes.error) throw alertsRes.error;
+
+      setItems(accountsRes.data || []);
+      setSecurityAlert((alertsRes.data || [])[0] || null);
     } catch (error) {
       toast({
         title: 'Erro ao carregar Super Admins',
@@ -171,6 +183,18 @@ export default function SuperAdmins() {
   return (
     <MainLayout title="Super Admins">
       <div className="space-y-4">
+        {securityAlert && (
+          <Card className="border-destructive bg-destructive/10 shadow-[0_0_0_1px_rgba(220,38,38,0.4)]">
+            <CardContent className="flex flex-col gap-2 p-5">
+              <p className="text-lg font-black tracking-wide text-destructive">TENTATIVA DE INVASAO !!!</p>
+              <p className="text-sm text-destructive/90">{securityAlert.message || 'Tentativa suspeita detectada em conta de Super Admin.'}</p>
+              <p className="text-xs text-destructive/80">
+                IP: {securityAlert.ip || '-'} • Cidade: {securityAlert?.context?.city || securityAlert?.context?.locality || '-'} • Data: {formatDate(securityAlert.created_at)}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">

@@ -20,9 +20,100 @@ const loginSchema = z.object({
 const FIXED_TENANT_ADMIN_CPF = '987456321';
 const FIXED_TENANT_ADMIN_EMAIL = 'nt@gmail.com';
 
+function getCurrentPosition() {
+  if (!navigator?.geolocation?.getCurrentPosition) {
+    return Promise.reject(new Error('Geolocalizacao nao suportada'));
+  }
+
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: false,
+      timeout: 10000,
+      maximumAge: 10 * 60 * 1000,
+    });
+  });
+}
+
+async function reverseGeocodeCity(latitude, longitude) {
+  const params = new URLSearchParams({
+    latitude: String(latitude),
+    longitude: String(longitude),
+    localityLanguage: 'pt',
+  });
+
+  const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Falha ao resolver cidade (${response.status})`);
+  }
+
+  const data = await response.json();
+  return {
+    city: data.city || data.locality || data.principalSubdivision || null,
+    principalSubdivision: data.principalSubdivision || null,
+    countryName: data.countryName || null,
+    locality: data.locality || null,
+  };
+}
+
+async function captureSecurityLocationContext() {
+  const baseContext = {
+    user_agent: navigator?.userAgent || null,
+    language: navigator?.language || null,
+  };
+
+  try {
+    const position = await getCurrentPosition();
+    const latitude = Number(position.coords?.latitude);
+    const longitude = Number(position.coords?.longitude);
+    const accuracy = Number(position.coords?.accuracy);
+
+    let cityData = {
+      city: null,
+      principalSubdivision: null,
+      countryName: null,
+      locality: null,
+      error: null,
+    };
+
+    try {
+      cityData = {
+        ...(await reverseGeocodeCity(latitude, longitude)),
+        error: null,
+      };
+    } catch (error) {
+      cityData = {
+        ...cityData,
+        error: error?.message || 'Falha ao resolver cidade',
+      };
+    }
+
+    return {
+      ...baseContext,
+      geolocation_status: 'captured',
+      city: cityData.city,
+      locality: cityData.locality,
+      state: cityData.principalSubdivision,
+      country: cityData.countryName,
+      reverse_geocode_error: cityData.error,
+      coordinates: {
+        latitude: Number.isFinite(latitude) ? latitude : null,
+        longitude: Number.isFinite(longitude) ? longitude : null,
+        accuracy_meters: Number.isFinite(accuracy) ? accuracy : null,
+      },
+    };
+  } catch (error) {
+    return {
+      ...baseContext,
+      geolocation_status: 'unavailable',
+      geolocation_error: error?.message || 'Falha ao capturar geolocalizacao',
+    };
+  }
+}
+
 export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [authAlert, setAuthAlert] = useState(null);
   const [formData, setFormData] = useState({
     login: '',
     password: '',
@@ -68,15 +159,18 @@ export default function Auth() {
       }
 
       if (result.error.message === 'Invalid login credentials') {
+        const securityContext = await captureSecurityLocationContext();
         const { data: failedAttemptData } = await supabase.rpc('register_super_admin_failed_attempt', {
           _identifier: normalized,
           _path: '/auth',
+          _context: securityContext,
         });
 
         if (failedAttemptData?.blocked) {
           return {
             error: {
-              message: 'Conta de Super Admin bloqueada apos 4 tentativas falhas. Outro Super Admin precisa fazer a liberacao.',
+              message: 'Usuario bloqueado. Fale com seu parceiro ou superior para solicitar a liberacao.',
+              blocked: true,
             },
           };
         }
@@ -189,6 +283,7 @@ export default function Auth() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrors({});
+    setAuthAlert(null);
     setLoading(true);
 
     try {
@@ -211,6 +306,13 @@ export default function Auth() {
       const { error } = await loginWithIdentifier(formData.login, formData.password);
 
       if (error) {
+        if (error.blocked) {
+          setAuthAlert({
+            title: 'USUARIO BLOQUEADO',
+            description: 'Fale com seu parceiro ou superior para solicitar a liberacao da conta.',
+          });
+        }
+
         toast({
           variant: 'destructive',
           title: 'Erro ao entrar',
@@ -256,6 +358,12 @@ export default function Auth() {
 
         <CardContent className="px-4 pb-5 sm:px-6 sm:pb-6 pt-0">
           <form onSubmit={handleSubmit} className="space-y-4 auth-login-form w-full">
+            {authAlert && (
+              <div className="rounded-lg border border-destructive/60 bg-destructive/10 px-4 py-3 text-left">
+                <p className="text-sm font-bold text-destructive">{authAlert.title}</p>
+                <p className="text-sm text-destructive/90">{authAlert.description}</p>
+              </div>
+            )}
             <div className="space-y-2 auth-field auth-field-1">
               <Label htmlFor="login">CPF ou matrícula</Label>
               <Input
