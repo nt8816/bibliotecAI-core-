@@ -1,0 +1,405 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { MessageSquareWarning, Send, ShieldAlert } from 'lucide-react';
+
+import { MainLayout } from '@/components/layout/MainLayout';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+
+function formatDateTime(value) {
+  if (!value) return '-';
+  try {
+    return format(new Date(value), 'dd/MM/yyyy HH:mm', { locale: ptBR });
+  } catch {
+    return '-';
+  }
+}
+
+function statusLabel(status) {
+  if (status === 'respondida') return 'Respondida';
+  if (status === 'em_analise') return 'Em analise';
+  if (status === 'arquivada') return 'Arquivada';
+  return 'Nova';
+}
+
+function statusVariant(status) {
+  if (status === 'respondida') return 'default';
+  if (status === 'em_analise') return 'secondary';
+  if (status === 'arquivada') return 'outline';
+  return 'destructive';
+}
+
+const emptyForm = { assunto: '', mensagem: '' };
+
+export default function Reclamacoes() {
+  const { user, userRole, isSuperAdmin } = useAuth();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [items, setItems] = useState([]);
+  const [form, setForm] = useState(emptyForm);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedItemId, setSelectedItemId] = useState('');
+  const [responseDraft, setResponseDraft] = useState('');
+  const [updatingItem, setUpdatingItem] = useState(false);
+
+  const selectedItem = useMemo(
+    () => items.find((item) => item.id === selectedItemId) || null,
+    [items, selectedItemId],
+  );
+
+  const filteredItems = useMemo(() => {
+    if (statusFilter === 'all') return items;
+    return items.filter((item) => item.status === statusFilter);
+  }, [items, statusFilter]);
+
+  const fetchItems = useCallback(async () => {
+    if (!user?.id) return;
+
+    setLoading(true);
+    try {
+      let query = supabase
+        .from('reclamacoes_super_admin')
+        .select('id, sender_user_id, sender_nome, sender_email, sender_role, escola_id, assunto, mensagem, status, resposta, created_at, updated_at, respondida_em, escolas(nome)')
+        .order('created_at', { ascending: false });
+
+      if (!isSuperAdmin) {
+        query = query.eq('sender_user_id', user.id);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const nextItems = data || [];
+      setItems(nextItems);
+
+      if (nextItems.length === 0) {
+        setSelectedItemId('');
+        setResponseDraft('');
+        return;
+      }
+
+      const nextSelectedId = nextItems.some((item) => item.id === selectedItemId) ? selectedItemId : nextItems[0].id;
+      setSelectedItemId(nextSelectedId);
+      const nextSelected = nextItems.find((item) => item.id === nextSelectedId);
+      setResponseDraft(nextSelected?.resposta || '');
+    } catch (error) {
+      toast({
+        title: 'Erro ao carregar reclamacoes',
+        description: error?.message || 'Nao foi possivel carregar as reclamacoes.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [isSuperAdmin, selectedItemId, toast, user?.id]);
+
+  useEffect(() => {
+    fetchItems();
+  }, [fetchItems]);
+
+  const handleSubmit = async () => {
+    const assunto = form.assunto.trim();
+    const mensagem = form.mensagem.trim();
+
+    if (assunto.length < 3) {
+      toast({
+        title: 'Assunto invalido',
+        description: 'Informe um assunto com pelo menos 3 caracteres.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (mensagem.length < 10) {
+      toast({
+        title: 'Mensagem invalida',
+        description: 'Descreva a reclamacao com pelo menos 10 caracteres.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('reclamacoes_super_admin').insert({
+        sender_role: userRole,
+        assunto,
+        mensagem,
+      });
+
+      if (error) throw error;
+
+      setForm(emptyForm);
+      toast({
+        title: 'Reclamacao enviada',
+        description: 'Sua mensagem foi enviada para todos os super admins cadastrados.',
+      });
+      await fetchItems();
+    } catch (error) {
+      toast({
+        title: 'Erro ao enviar reclamacao',
+        description: error?.message || 'Nao foi possivel enviar a reclamacao.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAdminUpdate = async () => {
+    if (!selectedItem?.id) return;
+
+    setUpdatingItem(true);
+    try {
+      const payload = {
+        status: selectedItem.status,
+        resposta: responseDraft.trim() || null,
+      };
+
+      const { error } = await supabase
+        .from('reclamacoes_super_admin')
+        .update(payload)
+        .eq('id', selectedItem.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Reclamacao atualizada',
+        description: 'O status e a resposta foram salvos.',
+      });
+      await fetchItems();
+    } catch (error) {
+      toast({
+        title: 'Erro ao atualizar reclamacao',
+        description: error?.message || 'Nao foi possivel salvar as alteracoes.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdatingItem(false);
+    }
+  };
+
+  const handleStatusChange = (id, value) => {
+    setItems((current) => current.map((item) => (item.id === id ? { ...item, status: value } : item)));
+  };
+
+  return (
+    <MainLayout title="Reclamacoes">
+      <div className="space-y-4">
+        {!isSuperAdmin && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <MessageSquareWarning className="h-5 w-5" />
+                Enviar reclamacao
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reclamacao-assunto">Assunto</Label>
+                <Input
+                  id="reclamacao-assunto"
+                  value={form.assunto}
+                  onChange={(e) => setForm((prev) => ({ ...prev, assunto: e.target.value }))}
+                  placeholder="Resuma o problema"
+                  disabled={saving}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reclamacao-mensagem">Mensagem</Label>
+                <Textarea
+                  id="reclamacao-mensagem"
+                  value={form.mensagem}
+                  onChange={(e) => setForm((prev) => ({ ...prev, mensagem: e.target.value }))}
+                  placeholder="Explique sua reclamacao com o maximo de contexto possivel"
+                  disabled={saving}
+                  rows={6}
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button type="button" onClick={handleSubmit} disabled={saving}>
+                  <Send className="mr-2 h-4 w-4" />
+                  {saving ? 'Enviando...' : 'Enviar reclamacao'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className={`grid gap-4 ${isSuperAdmin ? 'lg:grid-cols-[minmax(0,1.4fr)_minmax(340px,0.9fr)]' : 'grid-cols-1'}`}>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                {isSuperAdmin ? <ShieldAlert className="h-5 w-5" /> : <MessageSquareWarning className="h-5 w-5" />}
+                {isSuperAdmin ? 'Caixa de reclamacoes' : 'Minhas reclamacoes'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {isSuperAdmin && (
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    className="h-10 rounded-md border bg-background px-3 text-sm"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                  >
+                    <option value="all">Todos os status</option>
+                    <option value="nova">Novas</option>
+                    <option value="em_analise">Em analise</option>
+                    <option value="respondida">Respondidas</option>
+                    <option value="arquivada">Arquivadas</option>
+                  </select>
+                </div>
+              )}
+
+              {loading ? (
+                <p className="text-sm text-muted-foreground">Carregando reclamacoes...</p>
+              ) : filteredItems.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {isSuperAdmin ? 'Nenhuma reclamacao recebida.' : 'Voce ainda nao enviou reclamacoes.'}
+                </p>
+              ) : isSuperAdmin ? (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Remetente</TableHead>
+                        <TableHead>Escola</TableHead>
+                        <TableHead>Assunto</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Abrir</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredItems.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell>{formatDateTime(item.created_at)}</TableCell>
+                          <TableCell>
+                            <div className="min-w-[180px]">
+                              <p className="font-medium">{item.sender_nome || item.sender_email || '-'}</p>
+                              <p className="text-xs text-muted-foreground">{item.sender_role || '-'}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>{item.escolas?.nome || '-'}</TableCell>
+                          <TableCell className="max-w-[280px] truncate">{item.assunto}</TableCell>
+                          <TableCell>
+                            <Badge variant={statusVariant(item.status)}>{statusLabel(item.status)}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              type="button"
+                              variant={selectedItemId === item.id ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => {
+                                setSelectedItemId(item.id);
+                                setResponseDraft(item.resposta || '');
+                              }}
+                            >
+                              Ver
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredItems.map((item) => (
+                    <div key={item.id} className="rounded-lg border p-4 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-medium">{item.assunto}</p>
+                        <Badge variant={statusVariant(item.status)}>{statusLabel(item.status)}</Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.mensagem}</p>
+                      {item.resposta && (
+                        <div className="rounded-md border bg-muted/30 p-3">
+                          <p className="text-xs font-medium text-muted-foreground">Resposta do super admin</p>
+                          <p className="text-sm whitespace-pre-wrap">{item.resposta}</p>
+                        </div>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Enviada em {formatDateTime(item.created_at)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {isSuperAdmin && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Detalhes da reclamacao</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {!selectedItem ? (
+                  <p className="text-sm text-muted-foreground">Selecione uma reclamacao para visualizar os detalhes.</p>
+                ) : (
+                  <>
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">{selectedItem.assunto}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedItem.sender_nome || selectedItem.sender_email || '-'} • {selectedItem.sender_role || '-'} • {selectedItem.escolas?.nome || 'Sem escola'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Recebida em {formatDateTime(selectedItem.created_at)}</p>
+                    </div>
+
+                    <div className="rounded-md border p-3 text-sm whitespace-pre-wrap">
+                      {selectedItem.mensagem}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="reclamacao-status">Status</Label>
+                      <select
+                        id="reclamacao-status"
+                        className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                        value={selectedItem.status}
+                        onChange={(e) => handleStatusChange(selectedItem.id, e.target.value)}
+                        disabled={updatingItem}
+                      >
+                        <option value="nova">Nova</option>
+                        <option value="em_analise">Em analise</option>
+                        <option value="respondida">Respondida</option>
+                        <option value="arquivada">Arquivada</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="reclamacao-resposta">Resposta</Label>
+                      <Textarea
+                        id="reclamacao-resposta"
+                        rows={6}
+                        value={responseDraft}
+                        onChange={(e) => setResponseDraft(e.target.value)}
+                        placeholder="Escreva uma resposta ou observacao interna"
+                        disabled={updatingItem}
+                      />
+                    </div>
+
+                    <div className="flex justify-end">
+                      <Button type="button" onClick={handleAdminUpdate} disabled={updatingItem}>
+                        {updatingItem ? 'Salvando...' : 'Salvar atualizacao'}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </MainLayout>
+  );
+}
