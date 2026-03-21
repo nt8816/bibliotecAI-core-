@@ -57,7 +57,7 @@ export default function AdminLogs() {
     try {
       let query = supabase
         .from('system_logs')
-        .select('id, created_at, user_id, level, event, message, path, ip, user_agent, input, output, context', { count: 'exact' })
+        .select('id, created_at, user_id, level, event, message, path, ip, user_agent, input, output, context')
         .eq('event', 'super_admin_access_snapshot')
         .order('created_at', { ascending: false })
         .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
@@ -78,10 +78,11 @@ export default function AdminLogs() {
         );
       }
 
-      const { data, error, count } = await query;
+      const { data, error } = await query;
       if (error) throw error;
-      setLogs(data || []);
-      setTotal(count || 0);
+      const nextLogs = data || [];
+      setLogs(nextLogs);
+      setTotal(nextLogs.length);
     } catch (error) {
       console.error(error);
       toast({
