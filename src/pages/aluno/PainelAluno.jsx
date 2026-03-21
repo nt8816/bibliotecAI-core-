@@ -4266,7 +4266,7 @@ export default function PainelAluno() {
                 <CardTitle className="text-base">Resumo com IA</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
                   <div className="space-y-1">
                     <Label htmlFor="resumo-livro">Livro</Label>
                     <select
@@ -4283,13 +4283,19 @@ export default function PainelAluno() {
                       ))}
                     </select>
                   </div>
-                  <Button type="button" variant="outline" onClick={gerarResumo} disabled={gerandoResumoIA}>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    {gerandoResumoIA ? 'Gerando resumo...' : 'Gerar resumo IA'}
-                  </Button>
-                  <Button type="button" onClick={salvarResumo}>
-                    Salvar resumo
-                  </Button>
+                  <div className="space-y-1">
+                    <Label className="opacity-0">Gerar</Label>
+                    <Button type="button" variant="outline" onClick={gerarResumo} disabled={gerandoResumoIA} className="w-full">
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      {gerandoResumoIA ? 'Gerando resumo...' : 'Gerar resumo IA'}
+                    </Button>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="opacity-0">Salvar</Label>
+                    <Button type="button" onClick={salvarResumo} className="w-full">
+                      Salvar resumo
+                    </Button>
+                  </div>
                 </div>
 
                 <Textarea
