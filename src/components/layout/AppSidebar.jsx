@@ -89,7 +89,6 @@ export function AppSidebar() {
         { title: 'Usuários', url: '/usuarios', icon: Users },
         { title: 'Relatórios', url: '/relatorios', icon: BarChart3 },
         { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
-        { title: 'Reclamacoes', url: '/reclamacoes', icon: Bell },
         { title: 'Ranking', url: '/ranking', icon: Trophy },
       ];
     }
@@ -101,7 +100,6 @@ export function AppSidebar() {
         { title: 'Usuários', url: '/usuarios', icon: Users },
         { title: 'Empréstimos', url: '/emprestimos', icon: BookMarked },
         { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
-        { title: 'Reclamacoes', url: '/reclamacoes', icon: Bell },
         { title: 'Ranking', url: '/ranking', icon: Trophy },
       ];
     }
@@ -114,7 +112,6 @@ export function AppSidebar() {
         { title: 'Sugestões e Atividades', url: '/professor/painel', icon: Lightbulb },
         { title: 'Relatórios de Leitura', url: '/professor/relatorios', icon: BarChart3 },
         { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
-        { title: 'Reclamacoes', url: '/reclamacoes', icon: Bell },
         { title: 'Arquivos de Aula', url: '/arquivos-de-aula', icon: FileStack },
         { title: 'Ranking', url: '/ranking', icon: Trophy },
       ];
@@ -126,7 +123,6 @@ export function AppSidebar() {
       { title: 'Laboratório', url: '/aluno/laboratorio', icon: FlaskConical },
       { title: 'Atividades', url: '/aluno/atividades', icon: ClipboardList },
       { title: 'Comunidade', url: '/aluno/comunidade', icon: MessageSquare },
-      { title: 'Reclamacoes', url: '/reclamacoes', icon: Bell },
       { title: 'Arquivos de Aula', url: '/aluno/arquivos-de-aula', icon: FileStack },
       { title: 'Ranking', url: '/aluno/ranking', icon: Trophy },
     ];

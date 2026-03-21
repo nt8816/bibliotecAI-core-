@@ -1,8 +1,23 @@
+import { useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { MessageSquareWarning } from 'lucide-react';
+
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+import { Button } from '@/components/ui/button';
 import { AccessibilityControls } from '@/components/accessibility/AccessibilityControls';
+import { useAuth } from '@/hooks/useAuth';
 import { AppSidebar } from './AppSidebar';
 
 export function MainLayout({ children, title }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { isAluno, isProfessor, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
+  const canCreateComplaint = useMemo(
+    () => (isAluno || isProfessor || isGestor || isBibliotecaria) && !isSuperAdmin,
+    [isAluno, isBibliotecaria, isGestor, isProfessor, isSuperAdmin],
+  );
+  const isComplaintsPage = location.pathname === '/reclamacoes';
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background">
@@ -18,7 +33,19 @@ export function MainLayout({ children, title }) {
               />
               <h1 className="truncate text-base font-bold text-foreground sm:text-xl">{title}</h1>
             </div>
-            <div className="shrink-0">
+            <div className="flex shrink-0 items-center gap-2">
+              {canCreateComplaint && !isComplaintsPage && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-2 rounded-full px-3 text-xs sm:text-sm"
+                  onClick={() => navigate('/reclamacoes')}
+                >
+                  <MessageSquareWarning className="h-4 w-4" />
+                  <span className="hidden sm:inline">Faça uma reclamação</span>
+                </Button>
+              )}
               <AccessibilityControls />
             </div>
           </header>
