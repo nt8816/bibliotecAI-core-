@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Sem permissão para redefinir senha de gestor' }, 403);
     }
 
-    let payload: { escola_id?: string; nova_senha?: string };
+    let payload: { escola_id?: string; gestor_id?: string; nova_senha?: string };
     try {
       payload = await req.json();
     } catch (_error) {
@@ -75,6 +75,7 @@ Deno.serve(async (req) => {
     }
 
     const escolaId = (payload?.escola_id || '').toString().trim();
+    const gestorId = (payload?.gestor_id || '').toString().trim();
     const novaSenha = (payload?.nova_senha || '').toString().trim();
 
     if (!escolaId) {
@@ -93,6 +94,7 @@ Deno.serve(async (req) => {
       .select('id, nome, email, user_id, escola_id')
       .eq('escola_id', escolaId)
       .eq('tipo', 'gestor')
+      .eq(gestorId ? 'id' : 'tipo', gestorId || 'gestor')
       .order('updated_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
       .limit(1)

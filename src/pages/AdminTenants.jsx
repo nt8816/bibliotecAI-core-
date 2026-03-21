@@ -67,6 +67,10 @@ export default function AdminTenants() {
   const [resettingGestorTenantId, setResettingGestorTenantId] = useState(null);
   const [manualPasswordTenant, setManualPasswordTenant] = useState(null);
   const [manualGestorPassword, setManualGestorPassword] = useState('');
+  const [manualPasswordMode, setManualPasswordMode] = useState('manual');
+  const [tenantGestores, setTenantGestores] = useState([]);
+  const [selectedGestorId, setSelectedGestorId] = useState('');
+  const [loadingGestoresTenantId, setLoadingGestoresTenantId] = useState(null);
   const [deletingTenantId, setDeletingTenantId] = useState(null);
   const [tenantPendingDelete, setTenantPendingDelete] = useState(null);
   const [deletingEscolaId, setDeletingEscolaId] = useState(null);
@@ -238,9 +242,59 @@ export default function AdminTenants() {
     return `${window.location.origin}/?tenant=${tenant.subdominio}`;
   }, [baseDomain, wildcardEnabled]);
 
-  const submitGestorPassword = async (tenant, senha, successDescription) => {
+  const openGestorPasswordDialog = async (tenant, mode = 'manual') => {
     if (!tenant?.escola_id) {
       toast({ title: 'Escola inválida', description: 'Tenant sem escola vinculada.', variant: 'destructive' });
+      return;
+    }
+
+    setManualPasswordTenant(tenant);
+    setManualPasswordMode(mode);
+    setManualGestorPassword('');
+    setTenantGestores([]);
+    setSelectedGestorId('');
+    setLoadingGestoresTenantId(tenant.id);
+
+    try {
+      const { data, error } = await supabase
+        .from('usuarios_biblioteca')
+        .select('id, nome, email, user_id')
+        .eq('escola_id', tenant.escola_id)
+        .eq('tipo', 'gestor')
+        .order('nome', { ascending: true });
+
+      if (error) throw error;
+
+      const gestores = data || [];
+      setTenantGestores(gestores);
+      setSelectedGestorId(gestores[0]?.id || '');
+
+      if (gestores.length === 0) {
+        toast({
+          title: 'Nenhum gestor encontrado',
+          description: 'Essa escola não tem gestores cadastrados para redefinir senha.',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Falha ao carregar gestores',
+        description: error?.message || 'Erro inesperado',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingGestoresTenantId(null);
+    }
+  };
+
+  const submitGestorPassword = async (tenant, gestorId, senha, successDescription) => {
+    if (!tenant?.escola_id) {
+      toast({ title: 'Escola inválida', description: 'Tenant sem escola vinculada.', variant: 'destructive' });
+      return;
+    }
+
+    if (!gestorId) {
+      toast({ title: 'Selecione um gestor', description: 'Escolha qual gestor terá a senha alterada.', variant: 'destructive' });
       return;
     }
 
@@ -255,7 +309,7 @@ export default function AdminTenants() {
       }
 
       const data = await invokeEdgeFunction('redefinir-senha-gestor', {
-        body: { escola_id: tenant.escola_id, nova_senha: senha },
+        body: { escola_id: tenant.escola_id, gestor_id: gestorId, nova_senha: senha },
         requireAuth: false,
         headers: {
           'x-user-access-token': accessToken,
@@ -284,7 +338,10 @@ export default function AdminTenants() {
     let senha = '';
     for (let i = 0; i < 10; i += 1) senha += chars.charAt(Math.floor(Math.random() * chars.length));
 
-    await submitGestorPassword(tenant, senha, `Nova senha temporária do gestor de ${tenant.nome} gerada.`);
+    await submitGestorPassword(tenant, selectedGestorId, senha, `Nova senha temporária do gestor de ${tenant.nome} gerada.`);
+    setManualPasswordTenant(null);
+    setSelectedGestorId('');
+    setTenantGestores([]);
   };
 
   const defineGestorPassword = async () => {
@@ -302,9 +359,11 @@ export default function AdminTenants() {
       return;
     }
 
-    await submitGestorPassword(tenant, senha, `Senha do gestor de ${tenant.nome} atualizada com sucesso.`);
+    await submitGestorPassword(tenant, selectedGestorId, senha, `Senha do gestor de ${tenant.nome} atualizada com sucesso.`);
     setManualGestorPassword('');
     setManualPasswordTenant(null);
+    setSelectedGestorId('');
+    setTenantGestores([]);
   };
 
   const toggleTenantStatus = async (tenant) => {
@@ -721,7 +780,7 @@ export default function AdminTenants() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => resetGestorPassword(tenant)}
+                              onClick={() => openGestorPasswordDialog(tenant, 'auto')}
                               disabled={!tenant.ativo || resettingGestorTenantId === tenant.id}
                             >
                               <KeyRound className="w-4 h-4 mr-1" />
@@ -731,8 +790,7 @@ export default function AdminTenants() {
                               variant="outline"
                               size="sm"
                               onClick={() => {
-                                setManualPasswordTenant(tenant);
-                                setManualGestorPassword('');
+                                openGestorPasswordDialog(tenant, 'manual');
                               }}
                               disabled={!tenant.ativo || resettingGestorTenantId === tenant.id}
                             >
@@ -938,31 +996,65 @@ export default function AdminTenants() {
             if (!open && !resettingGestorTenantId) {
               setManualPasswordTenant(null);
               setManualGestorPassword('');
+              setSelectedGestorId('');
+              setTenantGestores([]);
             }
           }}
         >
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Definir senha do gestor</DialogTitle>
+              <DialogTitle>{manualPasswordMode === 'auto' ? 'Gerar nova senha do gestor' : 'Definir senha do gestor'}</DialogTitle>
               <DialogDescription>
-                Escolha manualmente uma nova senha para o gestor da escola {manualPasswordTenant?.nome || '-'}.
+                Escolha qual gestor da escola {manualPasswordTenant?.nome || '-'} terá a senha alterada.
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-2">
-              <Label htmlFor="manualGestorPassword">Nova senha</Label>
-              <Input
-                id="manualGestorPassword"
-                type="text"
-                value={manualGestorPassword}
-                onChange={(e) => setManualGestorPassword(e.target.value)}
-                placeholder="Digite a senha do gestor"
-                disabled={Boolean(resettingGestorTenantId)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Use pelo menos 6 caracteres. Letras, números e símbolos comuns são aceitos.
-              </p>
+              <Label htmlFor="selectedGestor">Gestor da escola</Label>
+              <select
+                id="selectedGestor"
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                value={selectedGestorId}
+                onChange={(e) => setSelectedGestorId(e.target.value)}
+                disabled={Boolean(resettingGestorTenantId) || Boolean(loadingGestoresTenantId)}
+              >
+                <option value="">Selecione o gestor</option>
+                {tenantGestores.map((gestor) => (
+                  <option key={gestor.id} value={gestor.id}>
+                    {gestor.nome} ({gestor.email || 'sem email'})
+                  </option>
+                ))}
+              </select>
             </div>
+
+            {manualPasswordMode === 'manual' ? (
+              <div className="space-y-2">
+                <Label htmlFor="manualGestorPassword">Nova senha</Label>
+                <Input
+                  id="manualGestorPassword"
+                  type="text"
+                  value={manualGestorPassword}
+                  onChange={(e) => setManualGestorPassword(e.target.value)}
+                  placeholder="Digite a senha do gestor"
+                  disabled={Boolean(resettingGestorTenantId)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Use pelo menos 6 caracteres. Letras, números e símbolos comuns são aceitos.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+                O sistema vai gerar uma nova senha temporária para o gestor selecionado.
+              </div>
+            )}
+
+            {loadingGestoresTenantId && (
+              <p className="text-sm text-muted-foreground">Carregando gestores da escola...</p>
+            )}
+
+            {!loadingGestoresTenantId && tenantGestores.length === 0 && (
+              <p className="text-sm text-muted-foreground">Nenhum gestor disponível para essa escola.</p>
+            )}
 
             <DialogFooter>
               <Button
@@ -970,13 +1062,22 @@ export default function AdminTenants() {
                 onClick={() => {
                   setManualPasswordTenant(null);
                   setManualGestorPassword('');
+                  setSelectedGestorId('');
+                  setTenantGestores([]);
                 }}
                 disabled={Boolean(resettingGestorTenantId)}
               >
                 Cancelar
               </Button>
-              <Button onClick={defineGestorPassword} disabled={Boolean(resettingGestorTenantId)}>
-                {resettingGestorTenantId ? 'Salvando...' : 'Salvar nova senha'}
+              <Button
+                onClick={manualPasswordMode === 'auto' ? () => resetGestorPassword(manualPasswordTenant) : defineGestorPassword}
+                disabled={Boolean(resettingGestorTenantId) || Boolean(loadingGestoresTenantId) || !selectedGestorId}
+              >
+                {resettingGestorTenantId
+                  ? 'Salvando...'
+                  : manualPasswordMode === 'auto'
+                    ? 'Gerar nova senha'
+                    : 'Salvar nova senha'}
               </Button>
             </DialogFooter>
           </DialogContent>
