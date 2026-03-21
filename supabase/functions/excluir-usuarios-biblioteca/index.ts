@@ -160,15 +160,15 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: `Falha ao excluir contas de autenticacao: ${authDeleteFailures.join(' | ')}` }, 500);
     }
 
-    const orphanIds = foundProfiles
-      .filter((profile) => !profile.user_id)
-      .map((profile) => profile.id);
+    const profileIdsToDelete = foundProfiles
+      .map((profile) => String(profile.id || '').trim())
+      .filter(Boolean);
 
-    if (orphanIds.length > 0) {
+    if (profileIdsToDelete.length > 0) {
       const { error: deleteProfilesError } = await adminClient
         .from('usuarios_biblioteca')
         .delete()
-        .in('id', orphanIds);
+        .in('id', profileIdsToDelete);
 
       if (deleteProfilesError) {
         return jsonResponse({ success: false, error: 'Nao foi possivel excluir perfis sem autenticacao' }, 500);
