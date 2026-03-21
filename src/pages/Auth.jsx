@@ -17,9 +17,6 @@ const loginSchema = z.object({
   password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
 });
 
-const FIXED_TENANT_ADMIN_CPF = '987456321';
-const FIXED_TENANT_ADMIN_EMAIL = 'nt@gmail.com';
-
 function getCurrentPosition() {
   if (!navigator?.geolocation?.getCurrentPosition) {
     return Promise.reject(new Error('Geolocalizacao nao suportada'));
@@ -126,10 +123,6 @@ export default function Auth() {
 
   useEffect(() => {
     if (user) {
-      if (user.email?.toLowerCase?.() === FIXED_TENANT_ADMIN_EMAIL) {
-        navigate('/admin/tenants', { replace: true });
-        return;
-      }
       navigate('/dashboard', { replace: true });
     }
   }, [user, navigate]);
@@ -190,10 +183,6 @@ export default function Auth() {
     }
 
     const cpfDigits = normalized.replace(/\D/g, '');
-    if (cpfDigits === FIXED_TENANT_ADMIN_CPF) {
-      return signIn(FIXED_TENANT_ADMIN_EMAIL, password);
-    }
-
     const cpfCandidate = cpfDigits.length === 11 ? `${cpfDigits}@temp.bibliotecai.com` : null;
     const matriculaCompacta = normalized.replace(/\s+/g, '');
     const matriculaSomenteAlfanumerica = normalized.replace(/[^A-Za-z0-9]/g, '');

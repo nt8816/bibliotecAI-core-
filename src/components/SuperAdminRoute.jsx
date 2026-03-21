@@ -3,7 +3,6 @@ import { useAuth } from '@/hooks/useAuth';
 
 export function SuperAdminRoute({ children }) {
   const { loading, user, isSuperAdmin } = useAuth();
-  const isFixedAdmin = user?.email?.toLowerCase?.() === 'nt@gmail.com';
 
   if (loading) {
     return null;
@@ -13,7 +12,7 @@ export function SuperAdminRoute({ children }) {
     return <Navigate to="/auth" replace />;
   }
 
-  if (!isSuperAdmin && !isFixedAdmin) {
+  if (!isSuperAdmin) {
     return <Navigate to="/dashboard" replace />;
   }
 
