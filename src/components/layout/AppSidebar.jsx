@@ -46,7 +46,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const { signOut, user, userRole, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
   const { counts, notifications, canViewNotifications, markNotificationRead } = useSystemNotifications();
-  const totalPendencias = counts.atrasados + counts.solicitacoesPendentes + counts.comunicados;
+  const totalPendencias = counts.atrasados + counts.solicitacoesPendentes + counts.comunicados + (counts.reclamacoes || 0);
   const hasPendencias = totalPendencias > 0;
   const hasUnreadComunicados = counts.comunicados > 0;
   const settingsPath = '/configuracoes';
@@ -284,7 +284,7 @@ export function AppSidebar() {
 
                   {hasPendencias ? (
                     <div className="space-y-2">
-                      {userRole === 'aluno' && notifications.length > 0 && (
+                      {notifications.length > 0 && (
                         <>
                           {notifications.slice(0, 5).map((item) => (
                             <button
@@ -301,6 +301,16 @@ export function AppSidebar() {
                             </button>
                           ))}
                         </>
+                      )}
+                      {isSuperAdmin && counts.reclamacoes > 0 && (
+                        <button
+                          type="button"
+                          className="w-full rounded-md border p-2 text-sm flex items-center justify-between gap-2 text-left hover:bg-accent transition-colors"
+                          onClick={() => navigate('/reclamacoes')}
+                        >
+                          <span>Reclamacoes novas</span>
+                          <Badge>{counts.reclamacoes}</Badge>
+                        </button>
                       )}
                       {counts.solicitacoesPendentes > 0 && (
                         <button
