@@ -2,8 +2,6 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/hooks/useAuth';
@@ -73,7 +71,6 @@ export default function Dashboard() {
   const [emprestimosPorMes, setEmprestimosPorMes] = useState([]);
   const [livrosMaisEmprestados, setLivrosMaisEmprestados] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showGestorWelcome, setShowGestorWelcome] = useState(false);
   const [escolasCadastradas, setEscolasCadastradas] = useState([]);
 
   const fetchInFlightRef = useRef(null);
@@ -232,40 +229,6 @@ export default function Dashboard() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  useEffect(() => {
-    if (userRole !== 'gestor' || !user?.id) return;
-
-    const key = `onboarding:gestor:${user.id}`;
-    if (localStorage.getItem(key) === 'done') return;
-
-    setShowGestorWelcome(true);
-    setTimeout(() => {
-      toast({
-        title: 'Bem-vindo ao painel da escola',
-        description: 'Vamos te guiar com mensagens rápidas para configurar tudo.',
-      });
-    }, 300);
-    setTimeout(() => {
-      toast({
-        title: 'Passo 1 de 3',
-        description: 'Cadastre as turmas/salas para organizar os alunos por classe.',
-      });
-    }, 2200);
-    setTimeout(() => {
-      toast({
-        title: 'Passo 2 de 3',
-        description: 'Depois, convide equipe e alunos usando os Tokens de Convite.',
-      });
-    }, 4300);
-  }, [toast, user?.id, userRole]);
-
-  const markGestorOnboardingDone = () => {
-    if (user?.id) {
-      localStorage.setItem(`onboarding:gestor:${user.id}`, 'done');
-    }
-    setShowGestorWelcome(false);
-  };
 
   const handleRealtimeChange = useCallback(() => {
     if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
@@ -559,40 +522,6 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <Dialog
-        open={showGestorWelcome}
-        onOpenChange={(open) => {
-          setShowGestorWelcome(open);
-          if (!open) markGestorOnboardingDone();
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Primeiro acesso do gestor</DialogTitle>
-            <DialogDescription>
-              A escola já está criada. Deseja cadastrar as turmas agora ou continuar depois?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                markGestorOnboardingDone();
-              }}
-            >
-              Fazer depois
-            </Button>
-            <Button
-              onClick={() => {
-                markGestorOnboardingDone();
-                navigate('/configuracao-escola');
-              }}
-            >
-              Cadastrar turmas agora
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </MainLayout>
   );
 }
