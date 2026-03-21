@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Sessao invalida' }, 401);
     }
 
-    const { data: callerRoles, error: callerRolesError } = await callerClient
+    const { data: callerRoles, error: callerRolesError } = await adminClient
       .from('user_roles')
       .select('role')
       .eq('user_id', caller.id);
