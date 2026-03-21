@@ -47,25 +47,21 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Sessão inválida. Faça login novamente.' }, 401);
     }
 
-    const normalizedEmail = String(user.email || '').trim().toLowerCase();
-    const fixedPlatformAdmin = normalizedEmail === 'nt@gmail.com';
     let hasSuperAdminRole = false;
 
-    if (!fixedPlatformAdmin) {
-      const { data: roles, error: rolesError } = await adminClient
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id);
+    const { data: roles, error: rolesError } = await adminClient
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id);
 
-      if (rolesError) {
-        return jsonResponse({ error: rolesError.message || 'Não foi possível validar permissões.' }, 403);
-      }
-
-      hasSuperAdminRole = Array.isArray(roles)
-        && roles.some((item) => String(item?.role || '').trim().toLowerCase() === 'super_admin');
+    if (rolesError) {
+      return jsonResponse({ error: rolesError.message || 'Não foi possível validar permissões.' }, 403);
     }
 
-    if (!fixedPlatformAdmin && !hasSuperAdminRole) {
+    hasSuperAdminRole = Array.isArray(roles)
+      && roles.some((item) => String(item?.role || '').trim().toLowerCase() === 'super_admin');
+
+    if (!hasSuperAdminRole) {
       return jsonResponse({ error: 'Apenas o super admin pode excluir escolas.' }, 403);
     }
 

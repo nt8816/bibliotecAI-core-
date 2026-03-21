@@ -58,10 +58,9 @@ Deno.serve(async (req) => {
     }
 
     const isSuperAdmin = (callerRoles || []).some((item) => item.role === 'super_admin');
-    const isFixedPlatformAdmin = String(caller.email || '').trim().toLowerCase() === 'nt@gmail.com';
     const isGestor = (callerRoles || []).some((item) => item.role === 'gestor');
     const isBibliotecaria = (callerRoles || []).some((item) => item.role === 'bibliotecaria');
-    const hasElevatedAccess = isSuperAdmin || isFixedPlatformAdmin;
+    const hasElevatedAccess = isSuperAdmin;
 
     if (!hasElevatedAccess && !isGestor && !isBibliotecaria) {
       return jsonResponse({ success: false, error: 'Sem permissao para excluir usuarios' }, 403);

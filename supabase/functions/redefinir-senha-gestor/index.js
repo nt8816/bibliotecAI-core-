@@ -62,8 +62,7 @@ Deno.serve(async (req) => {
     }
 
     const isSuperAdmin = (callerRoles || []).some((item) => item.role === 'super_admin');
-    const isFixedPlatformAdmin = String(caller.email || '').trim().toLowerCase() === 'nt@gmail.com';
-    if (!isSuperAdmin && !isFixedPlatformAdmin) {
+    if (!isSuperAdmin) {
       return jsonResponse({ success: false, error: 'Sem permissão para redefinir senha de gestor' }, 403);
     }
 
