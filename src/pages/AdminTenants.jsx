@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Copy, Building2, Link as LinkIcon, Power, KeyRound, ExternalLink, Sparkles, Volume2, Trash2 } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -64,6 +65,8 @@ export default function AdminTenants() {
   const [creatingInviteTenantId, setCreatingInviteTenantId] = useState(null);
   const [togglingTenantId, setTogglingTenantId] = useState(null);
   const [resettingGestorTenantId, setResettingGestorTenantId] = useState(null);
+  const [manualPasswordTenant, setManualPasswordTenant] = useState(null);
+  const [manualGestorPassword, setManualGestorPassword] = useState('');
   const [deletingTenantId, setDeletingTenantId] = useState(null);
   const [tenantPendingDelete, setTenantPendingDelete] = useState(null);
   const [deletingEscolaId, setDeletingEscolaId] = useState(null);
@@ -124,7 +127,7 @@ export default function AdminTenants() {
       console.error(error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível carregar os tenants.',
+        description: 'NÃ£o foi possÃ­vel carregar os tenants.',
         variant: 'destructive',
       });
     } finally {
@@ -149,7 +152,7 @@ export default function AdminTenants() {
     e.preventDefault();
 
     if (!nomeEscola.trim() || !subdominio.trim()) {
-      toast({ title: 'Campos obrigatórios', description: 'Informe nome e subdomínio.', variant: 'destructive' });
+      toast({ title: 'Campos obrigatÃ³rios', description: 'Informe nome e subdomÃ­nio.', variant: 'destructive' });
       return;
     }
 
@@ -165,7 +168,7 @@ export default function AdminTenants() {
         _invite_expires_hours: 72,
       });
 
-      // Compatibilidade com bancos que ainda têm a assinatura antiga (_invite_email).
+      // Compatibilidade com bancos que ainda tÃªm a assinatura antiga (_invite_email).
       if (error && isMissingProvisionTenantSignature(error)) {
         ({ data, error } = await supabase.rpc('provision_tenant', {
           _escola_nome: nomeEscola,
@@ -192,7 +195,7 @@ export default function AdminTenants() {
       toast({
         title: 'Falha ao provisionar tenant',
         description: isMissingProvisionTenantSignature(error)
-          ? 'A função provision_tenant no Supabase está desatualizada. Aplique as migrations mais recentes e tente novamente.'
+          ? 'A funÃ§Ã£o provision_tenant no Supabase estÃ¡ desatualizada. Aplique as migrations mais recentes e tente novamente.'
           : (error.message || 'Erro inesperado'),
         variant: 'destructive',
       });
@@ -216,7 +219,7 @@ export default function AdminTenants() {
       if (error) throw error;
 
       setLatestInvite(data);
-      toast({ title: 'Novo link gerado', description: `Link temporário da escola ${tenant.nome} atualizado.` });
+      toast({ title: 'Novo link gerado', description: `Link temporÃ¡rio da escola ${tenant.nome} atualizado.` });
     } catch (error) {
       console.error(error);
       toast({
@@ -235,22 +238,28 @@ export default function AdminTenants() {
     return `${window.location.origin}/?tenant=${tenant.subdominio}`;
   }, [baseDomain, wildcardEnabled]);
 
-  const resetGestorPassword = async (tenant) => {
+  const submitGestorPassword = async (tenant, senha, successDescription) => {
     if (!tenant?.escola_id) {
       toast({ title: 'Escola inválida', description: 'Tenant sem escola vinculada.', variant: 'destructive' });
       return;
     }
 
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
-    let senha = '';
-    for (let i = 0; i < 10; i += 1) senha += chars.charAt(Math.floor(Math.random() * chars.length));
-
     setResettingGestorTenantId(tenant.id);
     try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        throw new Error('Sessão inválida. Faça login novamente.');
+      }
+
       const data = await invokeEdgeFunction('redefinir-senha-gestor', {
         body: { escola_id: tenant.escola_id, nova_senha: senha },
-        requireAuth: true,
-        signOutOnAuthFailure: true,
+        requireAuth: false,
+        headers: {
+          'x-user-access-token': accessToken,
+        },
         fallbackErrorMessage: 'Não foi possível redefinir a senha do gestor.',
       });
 
@@ -262,12 +271,40 @@ export default function AdminTenants() {
         gestorEmail: data?.gestor_email || '-',
         senha: data?.senha_temporaria || senha,
       });
-      toast({ title: 'Senha redefinida', description: `Nova senha temporária do gestor de ${tenant.nome} gerada.` });
+      toast({ title: 'Senha redefinida', description: successDescription });
     } catch (error) {
       toast({ title: 'Falha ao redefinir senha', description: error?.message || 'Erro inesperado', variant: 'destructive' });
     } finally {
       setResettingGestorTenantId(null);
     }
+  };
+
+  const resetGestorPassword = async (tenant) => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+    let senha = '';
+    for (let i = 0; i < 10; i += 1) senha += chars.charAt(Math.floor(Math.random() * chars.length));
+
+    await submitGestorPassword(tenant, senha, `Nova senha temporária do gestor de ${tenant.nome} gerada.`);
+  };
+
+  const defineGestorPassword = async () => {
+    const tenant = manualPasswordTenant;
+    const senha = manualGestorPassword.trim();
+
+    if (!tenant?.id) return;
+
+    if (senha.length < 6) {
+      toast({
+        title: 'Senha inválida',
+        description: 'Defina uma senha com pelo menos 6 caracteres.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    await submitGestorPassword(tenant, senha, `Senha do gestor de ${tenant.nome} atualizada com sucesso.`);
+    setManualGestorPassword('');
+    setManualPasswordTenant(null);
   };
 
   const toggleTenantStatus = async (tenant) => {
@@ -286,7 +323,7 @@ export default function AdminTenants() {
       setTenants((prev) => prev.map((item) => (item.id === tenant.id ? { ...item, ativo: nextStatus } : item)));
       toast({
         title: nextStatus ? 'Tenant ativado' : 'Tenant inativado',
-        description: `${tenant.nome} agora está ${nextStatus ? 'ativo' : 'inativo'}.`,
+        description: `${tenant.nome} agora estÃ¡ ${nextStatus ? 'ativo' : 'inativo'}.`,
       });
     } catch (error) {
       console.error(error);
@@ -311,7 +348,7 @@ export default function AdminTenants() {
 
       const accessToken = sessionData?.session?.access_token;
       if (!accessToken) {
-        throw new Error('Sessão inválida. Faça login novamente.');
+        throw new Error('SessÃ£o invÃ¡lida. FaÃ§a login novamente.');
       }
 
       const data = await invokeEdgeFunction('excluir-escola-tenant', {
@@ -320,7 +357,7 @@ export default function AdminTenants() {
         headers: {
           'x-user-access-token': accessToken,
         },
-        fallbackErrorMessage: 'Não foi possível excluir a escola.',
+        fallbackErrorMessage: 'NÃ£o foi possÃ­vel excluir a escola.',
       });
 
       setTenants((prev) => prev.filter((item) => item.id !== tenant.id));
@@ -330,10 +367,10 @@ export default function AdminTenants() {
 
       const authFailures = Array.isArray(data?.auth_delete_failures) ? data.auth_delete_failures : [];
       toast({
-        title: authFailures.length === 0 ? 'Escola excluída' : 'Escola excluída com alertas',
+        title: authFailures.length === 0 ? 'Escola excluÃ­da' : 'Escola excluÃ­da com alertas',
         description: authFailures.length === 0
           ? `Todos os dados da escola ${tenant.nome} foram removidos.`
-          : `A escola foi removida, mas ${authFailures.length} usuário(s) de autenticação exigem revisão manual.`,
+          : `A escola foi removida, mas ${authFailures.length} usuÃ¡rio(s) de autenticaÃ§Ã£o exigem revisÃ£o manual.`,
         variant: authFailures.length === 0 ? 'default' : 'destructive',
       });
     } catch (error) {
@@ -358,7 +395,7 @@ export default function AdminTenants() {
 
       const accessToken = sessionData?.session?.access_token;
       if (!accessToken) {
-        throw new Error('Sessão inválida. Faça login novamente.');
+        throw new Error('SessÃ£o invÃ¡lida. FaÃ§a login novamente.');
       }
 
       const data = await invokeEdgeFunction('excluir-escola-tenant', {
@@ -367,7 +404,7 @@ export default function AdminTenants() {
         headers: {
           'x-user-access-token': accessToken,
         },
-        fallbackErrorMessage: 'Não foi possível excluir a escola.',
+        fallbackErrorMessage: 'NÃ£o foi possÃ­vel excluir a escola.',
       });
 
       setEscolasSemTenant((prev) => prev.filter((item) => item.id !== escola.id));
@@ -375,10 +412,10 @@ export default function AdminTenants() {
 
       const authFailures = Array.isArray(data?.auth_delete_failures) ? data.auth_delete_failures : [];
       toast({
-        title: authFailures.length === 0 ? 'Escola excluída' : 'Escola excluída com alertas',
+        title: authFailures.length === 0 ? 'Escola excluÃ­da' : 'Escola excluÃ­da com alertas',
         description: authFailures.length === 0
           ? `Todos os dados da escola ${escola.nome} foram removidos do banco.`
-          : `A escola foi removida, mas ${authFailures.length} usuário(s) de autenticação exigem revisão manual.`,
+          : `A escola foi removida, mas ${authFailures.length} usuÃ¡rio(s) de autenticaÃ§Ã£o exigem revisÃ£o manual.`,
         variant: authFailures.length === 0 ? 'default' : 'destructive',
       });
     } catch (error) {
@@ -415,7 +452,7 @@ export default function AdminTenants() {
 
       const acervo = livros || [];
       if (acervo.length === 0) {
-        toast({ title: 'Acervo vazio', description: 'Não há livros nessa escola para gerar áudio.' });
+        toast({ title: 'Acervo vazio', description: 'NÃ£o hÃ¡ livros nessa escola para gerar Ã¡udio.' });
         return;
       }
 
@@ -436,18 +473,18 @@ export default function AdminTenants() {
         const livro = acervo[index];
         try {
           const roteiro = [
-            `Título: ${livro.titulo}`,
+            `TÃ­tulo: ${livro.titulo}`,
             livro.autor ? `Autor: ${livro.autor}` : '',
             livro.sinopse
-              ? `Narração sugerida: ${livro.sinopse}`
-              : 'Narração sugerida: Este áudio apresenta o livro, seus temas principais e incentiva a leitura.',
+              ? `NarraÃ§Ã£o sugerida: ${livro.sinopse}`
+              : 'NarraÃ§Ã£o sugerida: Este Ã¡udio apresenta o livro, seus temas principais e incentiva a leitura.',
           ]
             .filter(Boolean)
             .join('\n');
 
           const { audioDataUrl } = await generateAudioWithCloudflare({
             text: roteiro,
-            fallbackErrorMessage: `Falha ao gerar áudio do livro "${livro.titulo}".`,
+            fallbackErrorMessage: `Falha ao gerar Ã¡udio do livro "${livro.titulo}".`,
           });
 
           const { data: audioCriado, error: insertAudioError } = await supabase
@@ -495,13 +532,13 @@ export default function AdminTenants() {
       });
 
       toast({
-        title: 'Geração em massa concluída',
+        title: 'GeraÃ§Ã£o em massa concluÃ­da',
         description: `${success.length} de ${acervo.length} audiobooks gerados para ${tenant.nome}.`,
       });
     } catch (error) {
       toast({
-        title: 'Falha na geração em massa',
-        description: error?.message || 'Não foi possível gerar os audiobooks.',
+        title: 'Falha na geraÃ§Ã£o em massa',
+        description: error?.message || 'NÃ£o foi possÃ­vel gerar os audiobooks.',
         variant: 'destructive',
       });
     } finally {
@@ -519,7 +556,7 @@ export default function AdminTenants() {
               Provisionar Nova Escola
             </CardTitle>
             <CardDescription>
-              Primeiro crie a escola. Em seguida o sistema gera o link de acesso inicial da gestão por CPF.
+              Primeiro crie a escola. Em seguida o sistema gera o link de acesso inicial da gestÃ£o por CPF.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -530,7 +567,7 @@ export default function AdminTenants() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="subdominio">Subdomínio</Label>
+                <Label htmlFor="subdominio">SubdomÃ­nio</Label>
                 <Input
                   id="subdominio"
                   value={subdominio}
@@ -552,12 +589,12 @@ export default function AdminTenants() {
                   inputMode="numeric"
                   value={inviteCpf}
                   onChange={(e) => handleInviteCpfChange(e.target.value)}
-                  placeholder="Somente números"
+                  placeholder="Somente nÃºmeros"
                 />
               </div>
 
               <div className="md:col-span-2 flex items-center justify-between rounded-md border p-3 text-sm">
-                <span>Domínio base usado no link:</span>
+                <span>DomÃ­nio base usado no link:</span>
                 <Badge variant="outline">
                   {wildcardEnabled ? baseDomain : 'fallback local (?tenant=...)'}
                 </Badge>
@@ -565,8 +602,8 @@ export default function AdminTenants() {
 
               {!wildcardEnabled && (
                 <div className="md:col-span-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-muted-foreground">
-                  `vercel.app` não suporta wildcard de subdomínio para onboarding de tenant.
-                  O sistema vai gerar link compatível no domínio atual com `?tenant=...`.
+                  `vercel.app` nÃ£o suporta wildcard de subdomÃ­nio para onboarding de tenant.
+                  O sistema vai gerar link compatÃ­vel no domÃ­nio atual com `?tenant=...`.
                 </div>
               )}
 
@@ -585,7 +622,7 @@ export default function AdminTenants() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <LinkIcon className="w-5 h-5" />
-                Link Temporário do Gestor
+                Link TemporÃ¡rio do Gestor
               </CardTitle>
               <CardDescription>
                 Envie esse link para o gestor criar a conta inicial da escola.
@@ -612,10 +649,10 @@ export default function AdminTenants() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <KeyRound className="w-5 h-5" />
-                Nova senha temporária do gestor
+                Nova senha temporÃ¡ria do gestor
               </CardTitle>
               <CardDescription>
-                Compartilhe esta senha com o gestor de forma segura e peça para alterar no primeiro acesso.
+                Compartilhe esta senha com o gestor de forma segura e peÃ§a para alterar no primeiro acesso.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -623,7 +660,7 @@ export default function AdminTenants() {
                 <p><span className="font-medium">Escola:</span> {lastResetPassword.tenantNome}</p>
                 <p><span className="font-medium">Gestor:</span> {lastResetPassword.gestorNome}</p>
                 <p><span className="font-medium">Email:</span> {lastResetPassword.gestorEmail}</p>
-                <p className="mt-2"><span className="font-medium">Senha temporária:</span> <code>{lastResetPassword.senha}</code></p>
+                <p className="mt-2"><span className="font-medium">Senha temporÃ¡ria:</span> <code>{lastResetPassword.senha}</code></p>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => copyText(lastResetPassword.senha, 'Senha copiada')}>
@@ -651,11 +688,11 @@ export default function AdminTenants() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Escola</TableHead>
-                      <TableHead>Subdomínio</TableHead>
+                      <TableHead>SubdomÃ­nio</TableHead>
                       <TableHead>Schema</TableHead>
                       <TableHead>Plano</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
+                      <TableHead className="text-right">AÃ§Ãµes</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -689,6 +726,18 @@ export default function AdminTenants() {
                             >
                               <KeyRound className="w-4 h-4 mr-1" />
                               {resettingGestorTenantId === tenant.id ? 'Gerando senha...' : 'Nova senha gestor'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setManualPasswordTenant(tenant);
+                                setManualGestorPassword('');
+                              }}
+                              disabled={!tenant.ativo || resettingGestorTenantId === tenant.id}
+                            >
+                              <KeyRound className="w-4 h-4 mr-1" />
+                              Definir senha
                             </Button>
                             <Button
                               variant="outline"
@@ -734,7 +783,7 @@ export default function AdminTenants() {
             <CardHeader>
               <CardTitle>Escolas sem tenant vinculado</CardTitle>
               <CardDescription>
-                Essas escolas existem no banco, mas ainda não foram vinculadas a um tenant isolado.
+                Essas escolas existem no banco, mas ainda nÃ£o foram vinculadas a um tenant isolado.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -768,7 +817,7 @@ export default function AdminTenants() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Volume2 className="w-5 h-5" />
-              Geração em Massa de Áudios
+              GeraÃ§Ã£o em Massa de Ãudios
             </CardTitle>
             <CardDescription>
               Gere audiobooks automaticamente usando o acervo da escola selecionada e publique na comunidade escolar.
@@ -809,7 +858,7 @@ export default function AdminTenants() {
 
             <Button type="button" onClick={gerarAudiosEmMassa} disabled={massRunning || !massTenantId}>
               <Sparkles className="w-4 h-4 mr-2" />
-              {massRunning ? `Gerando... ${massProgress.done}/${massProgress.total || 0}` : 'Gerar áudios em massa'}
+              {massRunning ? `Gerando... ${massProgress.done}/${massProgress.total || 0}` : 'Gerar Ã¡udios em massa'}
             </Button>
 
             {massSummary && (
@@ -840,7 +889,7 @@ export default function AdminTenants() {
             <AlertDialogHeader>
               <AlertDialogTitle>Apagar escola permanentemente?</AlertDialogTitle>
               <AlertDialogDescription>
-                Esta ação remove a escola <strong>{tenantPendingDelete?.nome || '-'}</strong>, o tenant, os dados relacionados no banco e o schema dedicado. Os usuários vinculados também serão removidos da autenticação.
+                Esta aÃ§Ã£o remove a escola <strong>{tenantPendingDelete?.nome || '-'}</strong>, o tenant, os dados relacionados no banco e o schema dedicado. Os usuÃ¡rios vinculados tambÃ©m serÃ£o removidos da autenticaÃ§Ã£o.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -866,8 +915,8 @@ export default function AdminTenants() {
             <AlertDialogHeader>
               <AlertDialogTitle>Apagar escola permanentemente?</AlertDialogTitle>
               <AlertDialogDescription>
-                Esta ação remove a escola <strong>{escolaSemTenantPendingDelete?.nome || '-'}</strong> diretamente do banco de dados,
-                incluindo os registros vinculados a ela. Use isso apenas quando a escola não deve mais existir no ambiente.
+                Esta aÃ§Ã£o remove a escola <strong>{escolaSemTenantPendingDelete?.nome || '-'}</strong> diretamente do banco de dados,
+                incluindo os registros vinculados a ela. Use isso apenas quando a escola nÃ£o deve mais existir no ambiente.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -882,7 +931,58 @@ export default function AdminTenants() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog
+          open={Boolean(manualPasswordTenant)}
+          onOpenChange={(open) => {
+            if (!open && !resettingGestorTenantId) {
+              setManualPasswordTenant(null);
+              setManualGestorPassword('');
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Definir senha do gestor</DialogTitle>
+              <DialogDescription>
+                Escolha manualmente uma nova senha para o gestor da escola {manualPasswordTenant?.nome || '-'}.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2">
+              <Label htmlFor="manualGestorPassword">Nova senha</Label>
+              <Input
+                id="manualGestorPassword"
+                type="text"
+                value={manualGestorPassword}
+                onChange={(e) => setManualGestorPassword(e.target.value)}
+                placeholder="Digite a senha do gestor"
+                disabled={Boolean(resettingGestorTenantId)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Use pelo menos 6 caracteres. Letras, números e símbolos comuns são aceitos.
+              </p>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setManualPasswordTenant(null);
+                  setManualGestorPassword('');
+                }}
+                disabled={Boolean(resettingGestorTenantId)}
+              >
+                Cancelar
+              </Button>
+              <Button onClick={defineGestorPassword} disabled={Boolean(resettingGestorTenantId)}>
+                {resettingGestorTenantId ? 'Salvando...' : 'Salvar nova senha'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   );
 }
+

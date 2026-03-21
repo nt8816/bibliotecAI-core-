@@ -1,4 +1,4 @@
-﻿import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,7 +7,7 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 };
 
-const jsonResponse = (body, status = 200) =>
+const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     status,
@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Sem permissão para redefinir senha de gestor' }, 403);
     }
 
-    let payload;
+    let payload: { escola_id?: string; nova_senha?: string };
     try {
       payload = await req.json();
     } catch (_error) {
