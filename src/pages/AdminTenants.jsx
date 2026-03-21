@@ -407,7 +407,11 @@ export default function AdminTenants() {
       }
 
       const data = await invokeEdgeFunction('excluir-usuarios-biblioteca', {
-        body: { id: gestor.id, escola_id: tenant.escola_id },
+        body: {
+          id: gestor.id,
+          user_id: gestor.user_id,
+          escola_id: tenant.escola_id,
+        },
         requireAuth: false,
         headers: {
           'x-user-access-token': accessToken,
@@ -419,8 +423,11 @@ export default function AdminTenants() {
         throw new Error(data?.error || 'Não foi possível excluir o gestor.');
       }
 
-      const gestoresRestantes = tenantGestores.filter((item) => item.id !== gestor.id);
-      setTenantGestores(gestoresRestantes);
+      if (!data?.deleted_count && !data?.deleted_auth_only_count) {
+        throw new Error('Nenhum gestor foi removido do banco de dados.');
+      }
+
+      const gestoresRestantes = await loadGestoresForTenant(tenant);
       setSelectedGestorId((current) => (current === gestor.id ? (gestoresRestantes[0]?.id || '') : current));
       setGestorPendingDelete(null);
 

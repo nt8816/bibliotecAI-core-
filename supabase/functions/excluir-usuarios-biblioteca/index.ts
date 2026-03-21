@@ -100,23 +100,54 @@ Deno.serve(async (req) => {
       : payload?.id
         ? [String(payload.id).trim()]
         : [];
+    const explicitUserIds = Array.isArray(payload?.user_ids)
+      ? payload.user_ids.map((item) => String(item || '').trim()).filter(Boolean)
+      : payload?.user_id
+        ? [String(payload.user_id).trim()]
+        : [];
+    const requestedUserIds = [...new Set([...explicitUserIds, ...ids])];
 
-    if (ids.length === 0) {
+    if (ids.length === 0 && requestedUserIds.length === 0) {
       return jsonResponse({ success: false, error: 'Nenhum usuario informado para exclusao' }, 400);
     }
 
-    const { data: profiles, error: profilesError } = await adminClient
-      .from('usuarios_biblioteca')
-      .select('id, user_id, escola_id')
-      .in('id', ids);
+    const foundProfilesByKey = new Map<string, { id: string; user_id: string | null; escola_id: string | null }>();
 
-    if (profilesError) {
-      return jsonResponse({ success: false, error: 'Nao foi possivel carregar os usuarios para exclusao' }, 500);
+    if (ids.length > 0) {
+      const { data: profilesById, error: profilesByIdError } = await adminClient
+        .from('usuarios_biblioteca')
+        .select('id, user_id, escola_id')
+        .in('id', ids);
+
+      if (profilesByIdError) {
+        return jsonResponse({ success: false, error: 'Nao foi possivel carregar os usuarios para exclusao' }, 500);
+      }
+
+      (profilesById || []).forEach((profile) => {
+        foundProfilesByKey.set(String(profile.id), profile);
+      });
     }
 
-    const foundProfiles = profiles || [];
-    const foundIds = new Set(foundProfiles.map((item) => item.id));
-    const missingIds = ids.filter((id) => !foundIds.has(id));
+    if (requestedUserIds.length > 0) {
+      const { data: profilesByUserId, error: profilesByUserIdError } = await adminClient
+        .from('usuarios_biblioteca')
+        .select('id, user_id, escola_id')
+        .in('user_id', requestedUserIds);
+
+      if (profilesByUserIdError) {
+        return jsonResponse({ success: false, error: 'Nao foi possivel carregar os usuarios para exclusao' }, 500);
+      }
+
+      (profilesByUserId || []).forEach((profile) => {
+        foundProfilesByKey.set(String(profile.id), profile);
+      });
+    }
+
+    const foundProfiles = Array.from(foundProfilesByKey.values());
+    const foundTargetKeys = new Set(
+      foundProfiles.flatMap((profile) => [String(profile.id || '').trim(), String(profile.user_id || '').trim()]).filter(Boolean),
+    );
+    const missingIds = ids.filter((id) => !foundTargetKeys.has(id));
 
     const forbiddenProfile = foundProfiles.find((profile) =>
       !hasElevatedAccess && profile.escola_id !== callerProfile?.escola_id,
@@ -134,6 +165,33 @@ Deno.serve(async (req) => {
     const userIdsToDelete = foundProfiles
       .map((profile) => String(profile.user_id || '').trim())
       .filter(Boolean);
+    const authOnlyUserIds = requestedUserIds.filter((userId) => !foundTargetKeys.has(userId));
+
+    if (requestedSchoolId && authOnlyUserIds.length > 0) {
+      const { data: schoolsWithTargetGestor, error: schoolsWithTargetGestorError } = await adminClient
+        .from('escolas')
+        .select('id, gestor_id')
+        .eq('id', requestedSchoolId)
+        .in('gestor_id', authOnlyUserIds);
+
+      if (schoolsWithTargetGestorError) {
+        return jsonResponse({ success: false, error: 'Nao foi possivel validar o gestor principal da escola' }, 500);
+      }
+
+      const matchedSchoolGestorIds = (schoolsWithTargetGestor || [])
+        .map((school) => String(school.gestor_id || '').trim())
+        .filter(Boolean);
+
+      matchedSchoolGestorIds.forEach((userId) => {
+        if (!userIdsToDelete.includes(userId)) {
+          userIdsToDelete.push(userId);
+        }
+      });
+    }
+
+    if (foundProfiles.length === 0 && userIdsToDelete.length === 0) {
+      return jsonResponse({ success: false, error: 'Nenhum usuario encontrado para exclusao' }, 404);
+    }
 
     if (userIdsToDelete.length > 0) {
       const { error: clearGestorLinkError } = await adminClient
@@ -146,13 +204,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    for (const profile of foundProfiles) {
-      const userId = String(profile.user_id || '').trim();
-      if (!userId) continue;
-
+    for (const userId of [...new Set(userIdsToDelete)]) {
       const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(userId);
       if (deleteUserError && !String(deleteUserError.message || '').toLowerCase().includes('user not found')) {
-        authDeleteFailures.push(`${profile.id}: ${deleteUserError.message}`);
+        authDeleteFailures.push(`${userId}: ${deleteUserError.message}`);
       }
     }
 
@@ -178,8 +233,10 @@ Deno.serve(async (req) => {
     return jsonResponse({
       success: true,
       deleted_count: foundProfiles.length,
+      deleted_auth_only_count: Math.max(userIdsToDelete.length - foundProfiles.filter((profile) => profile.user_id).length, 0),
       missing_ids: missingIds,
       deleted_ids: foundProfiles.map((profile) => profile.id),
+      deleted_user_ids: [...new Set(userIdsToDelete)],
     });
   } catch (error) {
     console.error('excluir-usuarios-biblioteca error', error);
