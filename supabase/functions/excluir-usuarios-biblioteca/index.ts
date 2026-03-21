@@ -24,13 +24,13 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
     if (!supabaseUrl || !anonKey || !serviceRoleKey) {
-      return jsonResponse({ success: false, error: 'Configuração incompleta no servidor' }, 500);
+      return jsonResponse({ success: false, error: 'Configuracao incompleta no servidor' }, 500);
     }
 
     const rawToken = req.headers.get('x-user-access-token') || req.headers.get('Authorization') || '';
     const authHeader = rawToken.toLowerCase().startsWith('bearer ') ? rawToken : `Bearer ${rawToken}`;
     if (!rawToken) {
-      return jsonResponse({ success: false, error: 'Não autenticado' }, 401);
+      return jsonResponse({ success: false, error: 'Nao autenticado' }, 401);
     }
 
     const callerClient = createClient(supabaseUrl, anonKey, {
@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
     const { data: callerUserData, error: callerUserError } = await callerClient.auth.getUser();
     const caller = callerUserData?.user;
     if (callerUserError || !caller) {
-      return jsonResponse({ success: false, error: 'Sessão inválida' }, 401);
+      return jsonResponse({ success: false, error: 'Sessao invalida' }, 401);
     }
 
     const { data: callerRoles, error: callerRolesError } = await callerClient
@@ -54,35 +54,45 @@ Deno.serve(async (req) => {
       .eq('user_id', caller.id);
 
     if (callerRolesError) {
-      return jsonResponse({ success: false, error: 'Não foi possível validar permissões' }, 403);
+      return jsonResponse({ success: false, error: 'Nao foi possivel validar permissoes' }, 403);
     }
 
     const isSuperAdmin = (callerRoles || []).some((item) => item.role === 'super_admin');
+    const isFixedPlatformAdmin = String(caller.email || '').trim().toLowerCase() === 'nt@gmail.com';
     const isGestor = (callerRoles || []).some((item) => item.role === 'gestor');
     const isBibliotecaria = (callerRoles || []).some((item) => item.role === 'bibliotecaria');
+    const hasElevatedAccess = isSuperAdmin || isFixedPlatformAdmin;
 
-    if (!isSuperAdmin && !isGestor && !isBibliotecaria) {
-      return jsonResponse({ success: false, error: 'Sem permissão para excluir usuários' }, 403);
-    }
-
-    const { data: callerProfile, error: callerProfileError } = await adminClient
-      .from('usuarios_biblioteca')
-      .select('id, escola_id')
-      .eq('user_id', caller.id)
-      .order('updated_at', { ascending: false, nullsFirst: false })
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (callerProfileError || (!isSuperAdmin && !callerProfile?.escola_id)) {
-      return jsonResponse({ success: false, error: 'Não foi possível validar a escola do solicitante' }, 403);
+    if (!hasElevatedAccess && !isGestor && !isBibliotecaria) {
+      return jsonResponse({ success: false, error: 'Sem permissao para excluir usuarios' }, 403);
     }
 
     let payload: Record<string, unknown>;
     try {
       payload = await req.json();
     } catch {
-      return jsonResponse({ success: false, error: 'JSON inválido no corpo da requisição' }, 400);
+      return jsonResponse({ success: false, error: 'JSON invalido no corpo da requisicao' }, 400);
+    }
+
+    const requestedSchoolId = String(payload?.escola_id || '').trim();
+
+    const { data: callerProfile, error: callerProfileError } = hasElevatedAccess
+      ? { data: null, error: null }
+      : await adminClient
+        .from('usuarios_biblioteca')
+        .select('id, escola_id')
+        .eq('user_id', caller.id)
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (callerProfileError || (!hasElevatedAccess && !callerProfile?.escola_id)) {
+      return jsonResponse({ success: false, error: 'Nao foi possivel validar a escola do solicitante' }, 403);
+    }
+
+    if (!hasElevatedAccess && requestedSchoolId && callerProfile?.escola_id !== requestedSchoolId) {
+      return jsonResponse({ success: false, error: 'Voce nao pode excluir usuarios de outra escola' }, 403);
     }
 
     const ids = Array.isArray(payload?.ids)
@@ -92,7 +102,7 @@ Deno.serve(async (req) => {
         : [];
 
     if (ids.length === 0) {
-      return jsonResponse({ success: false, error: 'Nenhum usuário informado para exclusão' }, 400);
+      return jsonResponse({ success: false, error: 'Nenhum usuario informado para exclusao' }, 400);
     }
 
     const { data: profiles, error: profilesError } = await adminClient
@@ -101,7 +111,7 @@ Deno.serve(async (req) => {
       .in('id', ids);
 
     if (profilesError) {
-      return jsonResponse({ success: false, error: 'Não foi possível carregar os usuários para exclusão' }, 500);
+      return jsonResponse({ success: false, error: 'Nao foi possivel carregar os usuarios para exclusao' }, 500);
     }
 
     const foundProfiles = profiles || [];
@@ -109,15 +119,15 @@ Deno.serve(async (req) => {
     const missingIds = ids.filter((id) => !foundIds.has(id));
 
     const forbiddenProfile = foundProfiles.find((profile) =>
-      !isSuperAdmin && profile.escola_id !== callerProfile?.escola_id,
+      !hasElevatedAccess && profile.escola_id !== callerProfile?.escola_id,
     );
     if (forbiddenProfile) {
-      return jsonResponse({ success: false, error: 'Você não pode excluir usuários de outra escola' }, 403);
+      return jsonResponse({ success: false, error: 'Voce nao pode excluir usuarios de outra escola' }, 403);
     }
 
     const selfProfile = foundProfiles.find((profile) => profile.user_id === caller.id);
     if (selfProfile) {
-      return jsonResponse({ success: false, error: 'Você não pode excluir o próprio usuário por esta tela' }, 400);
+      return jsonResponse({ success: false, error: 'Voce nao pode excluir o proprio usuario por esta tela' }, 400);
     }
 
     const authDeleteFailures: string[] = [];
@@ -132,7 +142,7 @@ Deno.serve(async (req) => {
         .in('gestor_id', userIdsToDelete);
 
       if (clearGestorLinkError) {
-        return jsonResponse({ success: false, error: 'Não foi possível limpar o vínculo de gestor da escola' }, 500);
+        return jsonResponse({ success: false, error: 'Nao foi possivel limpar o vinculo de gestor da escola' }, 500);
       }
     }
 
@@ -147,7 +157,7 @@ Deno.serve(async (req) => {
     }
 
     if (authDeleteFailures.length > 0) {
-      return jsonResponse({ success: false, error: `Falha ao excluir contas de autenticação: ${authDeleteFailures.join(' | ')}` }, 500);
+      return jsonResponse({ success: false, error: `Falha ao excluir contas de autenticacao: ${authDeleteFailures.join(' | ')}` }, 500);
     }
 
     const orphanIds = foundProfiles
@@ -161,7 +171,7 @@ Deno.serve(async (req) => {
         .in('id', orphanIds);
 
       if (deleteProfilesError) {
-        return jsonResponse({ success: false, error: 'Não foi possível excluir perfis sem autenticação' }, 500);
+        return jsonResponse({ success: false, error: 'Nao foi possivel excluir perfis sem autenticacao' }, 500);
       }
     }
 

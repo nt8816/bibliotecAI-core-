@@ -407,7 +407,7 @@ export default function AdminTenants() {
       }
 
       const data = await invokeEdgeFunction('excluir-usuarios-biblioteca', {
-        body: { id: gestor.id },
+        body: { id: gestor.id, escola_id: tenant.escola_id },
         requireAuth: false,
         headers: {
           'x-user-access-token': accessToken,
