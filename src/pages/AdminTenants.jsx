@@ -774,10 +774,6 @@ export default function AdminTenants() {
                   <Copy className="w-4 h-4 mr-2" />
                   Copiar link
                 </Button>
-                <Button variant="outline" onClick={() => copyText(latestInvite.invite_token, 'Token copiado')}>
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copiar token
-                </Button>
               </div>
             </CardContent>
           </Card>
