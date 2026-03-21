@@ -225,6 +225,9 @@ export default function SuperAdmins() {
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-4">
+            <div className="md:col-span-4 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground/80">
+              Toda conta cadastrada como Super Admin recebe acesso total ao painel global, logs, reclamações, tenants e gestão de outras contas Super Admin.
+            </div>
             <div className="space-y-1">
               <Label htmlFor="super-admin-nome">Nome</Label>
               <Input
@@ -293,6 +296,7 @@ export default function SuperAdmins() {
                       <TableHead>Nome</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Permissoes</TableHead>
                       <TableHead>Tentativas</TableHead>
                       <TableHead>Ultimo login</TableHead>
                       <TableHead>Bloqueado em</TableHead>
@@ -307,6 +311,11 @@ export default function SuperAdmins() {
                         <TableCell>
                           <Badge variant={item.bloqueado ? 'destructive' : item.ativo ? 'outline' : 'secondary'}>
                             {item.bloqueado ? 'Bloqueado' : item.ativo ? 'Ativo' : 'Inativo'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className="bg-primary/15 text-primary hover:bg-primary/15">
+                            Acesso total
                           </Badge>
                         </TableCell>
                         <TableCell>{item.tentativas_falhas || 0}</TableCell>
@@ -325,7 +334,7 @@ export default function SuperAdmins() {
                               {unlockingId === item.id ? 'Liberando...' : 'Liberar'}
                             </Button>
                           ) : (
-                            <span className="text-sm text-muted-foreground">Sem acao</span>
+                            <span className="text-sm text-muted-foreground">Gestao liberada</span>
                           )}
                         </TableCell>
                       </TableRow>
