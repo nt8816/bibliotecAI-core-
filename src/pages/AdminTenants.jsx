@@ -265,7 +265,44 @@ export default function AdminTenants() {
 
       if (error) throw error;
 
-      const gestores = data || [];
+      let gestores = data || [];
+
+      if (gestores.length === 0) {
+        const { data: escolaInfo, error: escolaError } = await supabase
+          .from('escolas')
+          .select('gestor_id, nome')
+          .eq('id', tenant.escola_id)
+          .maybeSingle();
+
+        if (escolaError) throw escolaError;
+
+        const gestorAuthId = String(escolaInfo?.gestor_id || '').trim();
+        if (gestorAuthId) {
+          const { data: gestorByUserId, error: gestorByUserIdError } = await supabase
+            .from('usuarios_biblioteca')
+            .select('id, nome, email, user_id')
+            .eq('escola_id', tenant.escola_id)
+            .eq('user_id', gestorAuthId)
+            .order('updated_at', { ascending: false, nullsFirst: false })
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (gestorByUserIdError) throw gestorByUserIdError;
+
+          if (gestorByUserId?.id) {
+            gestores = [gestorByUserId];
+          } else {
+            gestores = [{
+              id: gestorAuthId,
+              nome: `Gestor principal${escolaInfo?.nome ? ` - ${escolaInfo.nome}` : ''}`,
+              email: '',
+              user_id: gestorAuthId,
+            }];
+          }
+        }
+      }
+
       setTenantGestores(gestores);
       setSelectedGestorId(gestores[0]?.id || '');
 
