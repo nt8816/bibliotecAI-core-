@@ -77,6 +77,7 @@ export const invokeEdgeFunction = async (
     if (requireAuth) {
       const accessToken = await getAccessToken({ forceRefresh });
       finalHeaders.Authorization = `Bearer ${accessToken}`;
+      finalHeaders['x-user-access-token'] = accessToken;
 
       if (!shouldUseHttpTransport) {
         return supabase.functions.invoke(functionName, { body, headers: finalHeaders });
@@ -94,6 +95,7 @@ export const invokeEdgeFunction = async (
         headers: {
           apikey: SUPABASE_PUBLISHABLE_KEY,
           Authorization: `Bearer ${accessToken}`,
+          'x-user-access-token': accessToken,
           'Content-Type': 'application/json',
           ...finalHeaders,
         },

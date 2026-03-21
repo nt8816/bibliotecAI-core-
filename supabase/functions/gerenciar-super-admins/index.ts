@@ -76,7 +76,6 @@ Deno.serve(async (req) => {
     }
 
     const callerClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: `Bearer ${userToken}` } },
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
@@ -84,7 +83,7 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const { data: callerUserData, error: callerUserError } = await callerClient.auth.getUser();
+    const { data: callerUserData, error: callerUserError } = await callerClient.auth.getUser(userToken);
     const caller = callerUserData?.user;
     if (callerUserError || !caller) {
       return jsonResponse({ success: false, error: 'Sessao invalida' }, 401);
