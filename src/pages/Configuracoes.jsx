@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useTheme } from 'next-themes';
 import { Loader2, Moon, Settings, Sun, UserRound } from 'lucide-react';
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -37,6 +39,7 @@ export default function Configuracoes() {
   const { userRole, user } = useAuth();
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
+  const location = useLocation();
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
   const [updatingPassword, setUpdatingPassword] = useState(false);
@@ -58,9 +61,14 @@ export default function Configuracoes() {
   );
   const alunoOnboardingKey = useMemo(() => (user?.id ? `onboarding:aluno:${user.id}` : ''), [user?.id]);
   const alunoSenhaDefinidaKey = useMemo(() => (user?.id ? `aluno:senha-definida:${user.id}` : ''), [user?.id]);
+  const isAluno = userRole === 'aluno';
+  const alunoSenhaDefinida = useMemo(
+    () => user?.user_metadata?.senha_definida === true || localStorage.getItem(alunoSenhaDefinidaKey) === 'true',
+    [alunoSenhaDefinidaKey, user?.user_metadata?.senha_definida],
+  );
+  const forcePasswordChange = Boolean(location.state?.forcePasswordChange) && isAluno && !alunoSenhaDefinida;
   const canEditTurma = userRole === 'aluno' || userRole === 'professor';
   const showMatricula = userRole === 'aluno';
-  const isAluno = userRole === 'aluno';
   const isGestao = userRole === 'gestor' || userRole === 'bibliotecaria' || userRole === 'super_admin';
   const showEmailInProfile = !isAluno && !isGestao;
   const showTelefoneInProfile = !isAluno && !isGestao;
@@ -346,8 +354,16 @@ export default function Configuracoes() {
             <div className="rounded-lg border p-3 space-y-3">
               <div className="space-y-1">
                 <p className="text-sm font-medium">Senha de acesso</p>
-                <p className="text-xs text-muted-foreground">Você pode alterar sua senha quando quiser.</p>
+                <p className="text-xs text-muted-foreground">Voce pode alterar sua senha quando quiser.</p>
               </div>
+              {forcePasswordChange && (
+                <Alert>
+                  <AlertTitle>Troca de senha obrigatoria</AlertTitle>
+                  <AlertDescription>
+                    Este e o seu primeiro acesso. Defina sua propria senha para concluir a entrada na plataforma.
+                  </AlertDescription>
+                </Alert>
+              )}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="currentPassword">Senha atual (opcional)</Label>

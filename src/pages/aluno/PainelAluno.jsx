@@ -1036,6 +1036,10 @@ export default function PainelAluno() {
   );
   const alunoOnboardingKey = useMemo(() => (user?.id ? `onboarding:aluno:${user.id}` : ''), [user?.id]);
   const alunoSenhaDefinidaKey = useMemo(() => (user?.id ? `aluno:senha-definida:${user.id}` : ''), [user?.id]);
+  const alunoSenhaDefinida = useMemo(
+    () => user?.user_metadata?.senha_definida === true || localStorage.getItem(alunoSenhaDefinidaKey) === 'true',
+    [alunoSenhaDefinidaKey, user?.user_metadata?.senha_definida],
+  );
   const livrosCacheKey = useMemo(() => {
     const termKey = catalogoSearchTerm.trim().toLowerCase();
     const escolaCacheKey = escolaId || 'sem-escola';
@@ -1420,11 +1424,7 @@ export default function PainelAluno() {
   useEffect(() => {
     if (!user?.id) return;
 
-    const senhaDefinida =
-      user?.user_metadata?.senha_definida === true ||
-      localStorage.getItem(alunoSenhaDefinidaKey) === 'true';
-
-    if (senhaDefinida) {
+    if (alunoSenhaDefinida) {
       if (alunoOnboardingKey) {
         localStorage.setItem(alunoOnboardingKey, 'done');
       }
@@ -1438,22 +1438,22 @@ export default function PainelAluno() {
     setTimeout(() => {
       toast({
         title: 'Bem-vindo ao BibliotecAI',
-        description: 'VocÃª receberÃ¡ dicas rÃ¡pidas para aprender o sistema.',
+        description: 'Você receberá dicas rápidas para aprender o sistema.',
       });
     }, 250);
     setTimeout(() => {
       toast({
         title: 'Passo 1 de 3',
-        description: 'Use o CatÃ¡logo para solicitar livros e montar sua lista de desejos.',
+        description: 'Use o Catálogo para solicitar livros e montar sua lista de desejos.',
       });
     }, 2100);
     setTimeout(() => {
       toast({
         title: 'Passo 2 de 3',
-        description: 'No painel vocÃª acompanha sugestÃµes, atividades e solicitaÃ§Ãµes.',
+        description: 'No painel você acompanha sugestões, atividades e solicitações.',
       });
     }, 4200);
-  }, [alunoOnboardingKey, alunoSenhaDefinidaKey, toast, user?.id, user?.user_metadata?.senha_definida]);
+  }, [alunoOnboardingKey, alunoSenhaDefinida, toast, user?.id]);
 
   const finalizeAlunoOnboarding = () => {
     if (alunoOnboardingKey) {
@@ -5189,37 +5189,28 @@ export default function PainelAluno() {
       <Dialog
         open={showAccessChoice}
         onOpenChange={(open) => {
-          setShowAccessChoice(open);
-          if (!open) finalizeAlunoOnboarding();
+          if (alunoSenhaDefinida) {
+            setShowAccessChoice(open);
+            return;
+          }
+
+          if (open) setShowAccessChoice(true);
         }}
       >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Acesso do aluno</DialogTitle>
             <DialogDescription>
-              Seu acesso inicial usa matrÃ­cula como login e senha. VocÃª pode manter agora ou criar uma nova senha.
+              No primeiro acesso, é obrigatório criar uma nova senha para continuar usando a conta.
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
-            Lembrete: vocÃª pode alterar sua senha quando quiser em ConfiguraÃ§Ãµes.
+            Sua matrícula continua como login, mas a senha inicial precisa ser trocada agora em Configurações.
           </div>
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                finalizeAlunoOnboarding();
-                toast({
-                  title: 'Acesso mantido',
-                  description: 'VocÃª pode alterar a senha depois em ConfiguraÃ§Ãµes.',
-                });
-              }}
-            >
-              Manter matrÃ­cula por enquanto
-            </Button>
+          <div className="flex justify-end">
             <Button
               onClick={() => {
-                finalizeAlunoOnboarding();
-                navigate('/configuracoes');
+                navigate('/configuracoes', { state: { forcePasswordChange: true } });
               }}
             >
               Criar nova senha agora
