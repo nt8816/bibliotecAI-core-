@@ -29,6 +29,7 @@ export function useSystemNotifications() {
     solicitacoesPendentes: 0,
     comunicados: 0,
     reclamacoes: 0,
+    reclamacoesAtrasadas: 0,
     seguranca: 0,
   });
   const [notifications, setNotifications] = useState([]);
@@ -38,7 +39,7 @@ export function useSystemNotifications() {
 
   const fetchCounts = useCallback(async () => {
     if (!canView || !user?.id) {
-      setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0, seguranca: 0 });
+      setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0, reclamacoesAtrasadas: 0, seguranca: 0 });
       setNotifications([]);
       setProfileId(null);
       return;
@@ -51,12 +52,7 @@ export function useSystemNotifications() {
       const segurancaLidas = new Set(JSON.parse(localStorage.getItem(securityReadKey) || '[]'));
 
       const [complaintsRes, securityRes] = await Promise.all([
-        supabase
-          .from('reclamacoes_super_admin')
-          .select('id, assunto, mensagem, created_at, sender_nome, sender_role, escolas(nome), usuarios_biblioteca(turma)')
-          .in('status', ['nova', 'em_analise'])
-          .order('created_at', { ascending: false })
-          .limit(20),
+        supabase.rpc('get_reclamacoes_super_admin_feed'),
         supabase
           .from('system_logs')
           .select('id, event, message, created_at')
@@ -66,29 +62,45 @@ export function useSystemNotifications() {
       ]);
 
       if (complaintsRes.error || securityRes.error) {
-        setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0, seguranca: 0 });
+        setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0, reclamacoesAtrasadas: 0, seguranca: 0 });
         setNotifications([]);
         setProfileId(null);
         return;
       }
 
-      const reclamacoes = ensureArray(complaintsRes.data)
+      const reclamacoesNaoLidas = ensureArray(complaintsRes.data)
         .map((item) => {
-          const escolaNome = item?.escolas?.nome || 'Escola nao identificada';
+          const escolaNome = item?.escola_nome || 'Escola nao identificada';
           const remetente = item?.sender_nome || 'Usuario';
           const role = String(item?.sender_role || '').trim().toLowerCase();
-          const turma = item?.usuarios_biblioteca?.turma ? ` • Turma ${item.usuarios_biblioteca.turma}` : '';
+          const turma = item?.sender_turma ? ` • Turma ${item.sender_turma}` : '';
           const contextoAluno = role === 'aluno' ? turma : '';
 
           return {
             id: `reclamacao-${item.id}`,
             tipo: 'reclamacao',
-            titulo: item?.assunto || 'Nova reclamacao',
+            titulo: item?.assunto || 'Reclamacao',
             descricao: `${escolaNome} • ${remetente}${contextoAluno}`,
             created_at: item?.created_at || null,
             path: '/reclamacoes',
+            status: item?.status || 'em_analise',
+            lida_em: item?.lida_em || null,
           };
         })
+        .filter((item) => item.status === 'em_analise')
+        .filter((item) => !item.lida_em)
+        .filter((item) => !reclamacoesLidas.has(item.id));
+
+      const reclamacoesAtrasadas = ensureArray(complaintsRes.data)
+        .filter((item) => item?.status === 'em_analise' && item?.alerta_prazo)
+        .map((item) => ({
+          id: `reclamacao-alerta-${item.id}`,
+          tipo: 'reclamacao_alerta',
+          titulo: 'Reclamacao parada ha mais de 4 dias',
+          descricao: `${item?.escola_nome || 'Escola nao identificada'} • ${item?.sender_nome || 'Usuario'}`,
+          created_at: item?.updated_at || item?.created_at || null,
+          path: '/reclamacoes',
+        }))
         .filter((item) => !reclamacoesLidas.has(item.id));
 
       const alertasSeguranca = ensureArray(securityRes.data)
@@ -102,14 +114,15 @@ export function useSystemNotifications() {
         }))
         .filter((item) => !segurancaLidas.has(item.id));
 
-      const mergedNotifications = [...alertasSeguranca, ...reclamacoes]
+      const mergedNotifications = [...alertasSeguranca, ...reclamacoesAtrasadas, ...reclamacoesNaoLidas]
         .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
 
       setCounts({
         atrasados: 0,
         solicitacoesPendentes: 0,
         comunicados: 0,
-        reclamacoes: reclamacoes.length,
+        reclamacoes: reclamacoesNaoLidas.length + reclamacoesAtrasadas.length,
+        reclamacoesAtrasadas: reclamacoesAtrasadas.length,
         seguranca: alertasSeguranca.length,
       });
       setNotifications(mergedNotifications);
@@ -127,7 +140,7 @@ export function useSystemNotifications() {
       .maybeSingle();
 
     if (perfilError || !perfil?.id) {
-      setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0, seguranca: 0 });
+      setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0, reclamacoesAtrasadas: 0, seguranca: 0 });
       setNotifications([]);
       setProfileId(null);
       return;
@@ -188,6 +201,7 @@ export function useSystemNotifications() {
         solicitacoesPendentes: solicitacoesRes.count || 0,
         comunicados: comunicados.length,
         reclamacoes: 0,
+        reclamacoesAtrasadas: 0,
         seguranca: 0,
       });
       setNotifications(comunicados);
@@ -195,7 +209,7 @@ export function useSystemNotifications() {
     }
 
     if (!perfil.escola_id) {
-      setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0, seguranca: 0 });
+      setCounts({ atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0, reclamacoesAtrasadas: 0, seguranca: 0 });
       setNotifications([]);
       return;
     }
@@ -219,6 +233,7 @@ export function useSystemNotifications() {
       solicitacoesPendentes: solicitacoesRes.count || 0,
       comunicados: 0,
       reclamacoes: 0,
+      reclamacoesAtrasadas: 0,
       seguranca: 0,
     });
     setNotifications([]);
@@ -239,7 +254,7 @@ export function useSystemNotifications() {
     async (notificationId) => {
       if (!notificationId) return;
 
-      if (String(notificationId).startsWith('reclamacao-') && user?.id) {
+      if ((String(notificationId).startsWith('reclamacao-') || String(notificationId).startsWith('reclamacao-alerta-')) && user?.id) {
         const readKey = `notificacoes:reclamacoes:lidas:${user.id}`;
         const current = new Set(JSON.parse(localStorage.getItem(readKey) || '[]'));
         current.add(notificationId);
@@ -249,6 +264,9 @@ export function useSystemNotifications() {
         setCounts((prev) => ({
           ...prev,
           reclamacoes: Math.max(0, (prev.reclamacoes || 0) - 1),
+          reclamacoesAtrasadas: String(notificationId).startsWith('reclamacao-alerta-')
+            ? Math.max(0, (prev.reclamacoesAtrasadas || 0) - 1)
+            : prev.reclamacoesAtrasadas || 0,
         }));
         return;
       }

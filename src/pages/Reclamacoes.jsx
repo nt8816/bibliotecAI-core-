@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { MessageSquareWarning, Send, ShieldAlert, X } from 'lucide-react';
@@ -41,14 +41,22 @@ function statusLabel(status) {
   if (status === 'respondida') return 'Respondida';
   if (status === 'em_analise') return 'Em analise';
   if (status === 'arquivada') return 'Arquivada';
-  return 'Nova';
+  return 'Em analise';
 }
 
 function statusVariant(status) {
   if (status === 'respondida') return 'default';
   if (status === 'em_analise') return 'secondary';
   if (status === 'arquivada') return 'outline';
-  return 'destructive';
+  return 'secondary';
+}
+
+function readLabel(item) {
+  return item?.lida_em ? 'Lida' : 'Nao lida';
+}
+
+function readVariant(item) {
+  return item?.lida_em ? 'outline' : 'destructive';
 }
 
 const emptyForm = { assunto: '', mensagem: '', imageUrls: [] };
@@ -223,6 +231,25 @@ export default function Reclamacoes() {
     }
   };
 
+  const handleOpenItem = async (item) => {
+    setSelectedItemId(item.id);
+    setResponseDraft(item.resposta || '');
+
+    if (!isSuperAdmin || item?.lida_em) return;
+
+    setItems((current) => current.map((entry) => (
+      entry.id === item.id ? { ...entry, lida_em: new Date().toISOString() } : entry
+    )));
+
+    const { error } = await supabase.rpc('mark_reclamacao_super_admin_lida', {
+      _reclamacao_id: item.id,
+    });
+
+    if (error) {
+      await fetchItems();
+    }
+  };
+
   const handleStatusChange = (id, value) => {
     setItems((current) => current.map((item) => (item.id === id ? { ...item, status: value } : item)));
   };
@@ -372,7 +399,6 @@ export default function Reclamacoes() {
                     onChange={(e) => setStatusFilter(e.target.value)}
                   >
                     <option value="all">Todos os status</option>
-                    <option value="nova">Novas</option>
                     <option value="em_analise">Em analise</option>
                     <option value="respondida">Respondidas</option>
                     <option value="arquivada">Arquivadas</option>
@@ -395,6 +421,7 @@ export default function Reclamacoes() {
                         <TableHead>Remetente</TableHead>
                         <TableHead>Escola</TableHead>
                         <TableHead>Assunto</TableHead>
+                        <TableHead>Leitura</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Abrir</TableHead>
                       </TableRow>
@@ -412,17 +439,20 @@ export default function Reclamacoes() {
                           <TableCell>{item.escola_nome_resolvida || '-'}</TableCell>
                           <TableCell className="max-w-[280px] truncate">{item.assunto}</TableCell>
                           <TableCell>
-                            <Badge variant={statusVariant(item.status)}>{statusLabel(item.status)}</Badge>
+                            <Badge variant={readVariant(item)}>{readLabel(item)}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant={statusVariant(item.status)}>{statusLabel(item.status)}</Badge>
+                              {item.alerta_prazo && <Badge variant="destructive">Atrasada</Badge>}
+                            </div>
                           </TableCell>
                           <TableCell className="text-right">
                             <Button
                               type="button"
                               variant={selectedItemId === item.id ? 'default' : 'outline'}
                               size="sm"
-                              onClick={() => {
-                                setSelectedItemId(item.id);
-                                setResponseDraft(item.resposta || '');
-                              }}
+                              onClick={() => handleOpenItem(item)}
                             >
                               Ver
                             </Button>
@@ -482,8 +512,13 @@ export default function Reclamacoes() {
                     <div className="space-y-1">
                       <p className="text-sm font-medium">{selectedItem.assunto}</p>
                       <p className="text-xs text-muted-foreground">
-                        {[selectedItem.sender_nome || selectedItem.sender_email || '-', selectedItem.sender_role || '-', selectedItem.escola_nome_resolvida].filter(Boolean).join(' � ')}
+                        {[selectedItem.sender_nome || selectedItem.sender_email || '-', selectedItem.sender_role || '-', selectedItem.escola_nome_resolvida].filter(Boolean).join(' • ')}
                       </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant={readVariant(selectedItem)}>{readLabel(selectedItem)}</Badge>
+                        <Badge variant={statusVariant(selectedItem.status)}>{statusLabel(selectedItem.status)}</Badge>
+                        {selectedItem.alerta_prazo && <Badge variant="destructive">Aguardando ha mais de 4 dias</Badge>}
+                      </div>
                       <p className="text-xs text-muted-foreground">Recebida em {formatDateTime(selectedItem.created_at)}</p>
                     </div>
 
@@ -516,7 +551,6 @@ export default function Reclamacoes() {
                         onChange={(e) => handleStatusChange(selectedItem.id, e.target.value)}
                         disabled={updatingItem}
                       >
-                        <option value="nova">Nova</option>
                         <option value="em_analise">Em analise</option>
                         <option value="respondida">Respondida</option>
                         <option value="arquivada">Arquivada</option>
@@ -550,4 +584,5 @@ export default function Reclamacoes() {
     </MainLayout>
   );
 }
+
 
