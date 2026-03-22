@@ -1,4 +1,5 @@
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { supabase } from '@/integrations/supabase/client';
 
 function sanitizeFileName(fileName) {
   return String(fileName || 'arquivo')
@@ -13,6 +14,16 @@ export function buildR2ObjectKey({ escolaId, ownerId, scope = 'arquivos-aula', f
   return `escolas/${escolaId}/${scope}/${ownerId}/${timestamp}-${safeName}`;
 }
 
+async function getUserAccessToken() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  const accessToken = data?.session?.access_token;
+  if (!accessToken) {
+    throw new Error('Sessao invalida. Faca login novamente.');
+  }
+  return accessToken;
+}
+
 export async function uploadFileToR2({ file, escolaId, ownerId, scope = 'arquivos-aula' }) {
   if (!file) throw new Error('Arquivo nao informado.');
   if (!escolaId || !ownerId) throw new Error('Contexto do upload incompleto.');
@@ -23,6 +34,7 @@ export async function uploadFileToR2({ file, escolaId, ownerId, scope = 'arquivo
     scope,
     fileName: file.name,
   });
+  const accessToken = await getUserAccessToken();
 
   const payload = await invokeEdgeFunction('r2-storage', {
     body: {
@@ -30,6 +42,10 @@ export async function uploadFileToR2({ file, escolaId, ownerId, scope = 'arquivo
       objectKey,
       contentType: file.type || 'application/octet-stream',
       fileName: file.name,
+    },
+    requireAuth: false,
+    headers: {
+      'x-user-access-token': accessToken,
     },
     transport: 'http',
     fallbackErrorMessage: 'Nao foi possivel iniciar o upload para o Cloudflare R2.',
@@ -83,11 +99,16 @@ export async function uploadDataUrlToR2({
 }
 
 export async function getR2DownloadUrl(objectKey, fileName) {
+  const accessToken = await getUserAccessToken();
   const payload = await invokeEdgeFunction('r2-storage', {
     body: {
       operation: 'create_download_url',
       objectKey,
       fileName,
+    },
+    requireAuth: false,
+    headers: {
+      'x-user-access-token': accessToken,
     },
     transport: 'http',
     fallbackErrorMessage: 'Nao foi possivel preparar o download do arquivo.',
@@ -97,10 +118,15 @@ export async function getR2DownloadUrl(objectKey, fileName) {
 }
 
 export async function deleteR2Object(objectKey) {
+  const accessToken = await getUserAccessToken();
   await invokeEdgeFunction('r2-storage', {
     body: {
       operation: 'delete_object',
       objectKey,
+    },
+    requireAuth: false,
+    headers: {
+      'x-user-access-token': accessToken,
     },
     transport: 'http',
     fallbackErrorMessage: 'Nao foi possivel excluir o arquivo do Cloudflare R2.',
