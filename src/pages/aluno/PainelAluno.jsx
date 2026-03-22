@@ -49,6 +49,7 @@ import {
   generateTextWithCloudflare,
 } from '@/lib/cloudflareAiApi';
 import { canonicalizeBookArea } from '@/lib/bookAreas';
+import { uploadDataUrlToR2 } from '@/lib/r2Storage';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -665,6 +666,27 @@ async function fileToDataUrl(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+async function persistStudioSlidesToR2({ slides, escolaId, alunoId }) {
+  const currentSlides = Array.isArray(slides) ? slides : [];
+
+  return Promise.all(currentSlides.map(async (slide, index) => {
+    const currentUrl = String(slide?.url || '');
+    if (!currentUrl) return null;
+    if (!currentUrl.startsWith('data:')) return currentUrl;
+
+    const extension = currentUrl.includes('image/png') ? 'png' : currentUrl.includes('image/webp') ? 'webp' : 'jpg';
+    const upload = await uploadDataUrlToR2({
+      dataUrl: currentUrl,
+      escolaId,
+      ownerId: alunoId,
+      scope: 'laboratorio',
+      fileName: `slide-${index + 1}.${extension}`,
+    });
+
+    return upload.publicUrl || upload.objectKey;
+  }));
 }
 
 async function generateImageWithIA(prompt) {
@@ -2860,7 +2882,11 @@ export default function PainelAluno() {
       const conteudo =
         studioDescricao.trim() ||
         'Criação de mídia com imagens em sequência e áudio de fundo feita no estúdio do aluno.';
-      const imagemUrls = studioSlides.map((slide) => slide.url);
+      const imagemUrls = await persistStudioSlidesToR2({
+        slides: studioSlides,
+        escolaId,
+        alunoId,
+      });
 
       const { data: postCriado, error } = await insertCommunityPostCompat(
         {
@@ -2932,6 +2958,11 @@ export default function PainelAluno() {
       const tags = [];
       if (studioSlides.some((slide) => slide.origem === 'ia')) tags.push('ia');
       if (studioAudioFundoUrl) tags.push('audio-fundo');
+      const imagemUrls = await persistStudioSlidesToR2({
+        slides: studioSlides,
+        escolaId,
+        alunoId,
+      });
 
       await salvarCriacaoLaboratorio({
         aluno_id: alunoId,
@@ -2944,7 +2975,7 @@ export default function PainelAluno() {
           prompt: studioPrompt.trim() || null,
           audiobook_id: studioAudiobookId || null,
         },
-        imagem_urls: studioSlides.map((slide) => slide.url),
+        imagem_urls: imagemUrls,
         tags,
       });
 

@@ -53,6 +53,34 @@ export async function uploadFileToR2({ file, escolaId, ownerId, scope = 'arquivo
   };
 }
 
+function dataUrlToFile(dataUrl, fileName = 'arquivo.bin') {
+  const source = String(dataUrl || '');
+  const match = source.match(/^data:([^;,]+)?(;base64)?,(.*)$/);
+  if (!match) throw new Error('Data URL invalida para upload.');
+
+  const mimeType = match[1] || 'application/octet-stream';
+  const encoded = match[3] || '';
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new File([bytes], fileName, { type: mimeType });
+}
+
+export async function uploadDataUrlToR2({
+  dataUrl,
+  escolaId,
+  ownerId,
+  scope = 'imagens',
+  fileName = 'arquivo.bin',
+}) {
+  const file = dataUrlToFile(dataUrl, fileName);
+  return uploadFileToR2({ file, escolaId, ownerId, scope });
+}
+
 export async function getR2DownloadUrl(objectKey, fileName) {
   const payload = await invokeEdgeFunction('r2-storage', {
     body: {
