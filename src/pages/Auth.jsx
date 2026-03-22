@@ -18,6 +18,7 @@ const loginSchema = z.object({
 });
 
 const EXACT_LOCATION_MAX_ACCURACY_METERS = 100;
+const DESKTOP_LOCATION_MAX_ACCURACY_METERS = 10000;
 
 function getCurrentPosition() {
   if (!navigator?.geolocation?.getCurrentPosition) {
@@ -112,10 +113,14 @@ async function captureSecurityLocationContext() {
 
 function hasExactLocation(context) {
   const accuracy = Number(context?.coordinates?.accuracy_meters);
+  const userAgent = String(navigator?.userAgent || '').toLowerCase();
+  const isDesktop = !/android|iphone|ipad|ipod|mobile/i.test(userAgent);
+  const maxAccuracy = isDesktop ? DESKTOP_LOCATION_MAX_ACCURACY_METERS : EXACT_LOCATION_MAX_ACCURACY_METERS;
+
   return context?.geolocation_status === 'captured'
     && Number.isFinite(accuracy)
     && accuracy > 0
-    && accuracy <= EXACT_LOCATION_MAX_ACCURACY_METERS;
+    && accuracy <= maxAccuracy;
 }
 
 export default function Auth() {
@@ -155,7 +160,7 @@ export default function Auth() {
       if (!hasExactLocation(locationContext)) {
         return {
           error: {
-            message: 'A localizacao exata e obrigatoria para seguranca da plataforma. Compartilhe a localizacao precisa para entrar como Super Admin.',
+            message: 'O Super Admin precisa compartilhar a localizacao do dispositivo para entrar. Em celular, use localizacao precisa. Em computador, permita a localizacao do navegador.',
             exactLocationRequired: true,
           },
         };

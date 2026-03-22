@@ -8,6 +8,7 @@ import { logSystemEvent } from '@/lib/systemLogger';
 
 const LOG_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const EXACT_LOCATION_MAX_ACCURACY_METERS = 100;
+const DESKTOP_LOCATION_MAX_ACCURACY_METERS = 10000;
 const STORAGE_PREFIX = 'super-admin-access-log:v1';
 
 function getStorageKey(userId) {
@@ -84,6 +85,20 @@ function isExactLocation(accuracy) {
   return Number.isFinite(accuracy) && accuracy > 0 && accuracy <= EXACT_LOCATION_MAX_ACCURACY_METERS;
 }
 
+function isDesktopDevice() {
+  if (typeof navigator === 'undefined') return false;
+  const userAgent = String(navigator.userAgent || '').toLowerCase();
+  return !/android|iphone|ipad|ipod|mobile/i.test(userAgent);
+}
+
+function isAcceptedLocationAccuracy(accuracy) {
+  if (!Number.isFinite(accuracy) || accuracy <= 0) return false;
+  if (isDesktopDevice()) {
+    return accuracy <= DESKTOP_LOCATION_MAX_ACCURACY_METERS;
+  }
+  return isExactLocation(accuracy);
+}
+
 export function SuperAdminAccessLogger() {
   const location = useLocation();
   const { user, loading, isSuperAdmin } = useAuth();
@@ -122,16 +137,17 @@ export function SuperAdminAccessLogger() {
         const longitude = Number(position.coords?.longitude);
         const accuracy = Number(position.coords?.accuracy);
 
-        if (!isExactLocation(accuracy)) {
-          setBlockedReason('A plataforma exige localizacao exata para acesso de Super Admin. Ative a localizacao precisa do dispositivo e permita o compartilhamento para continuar.');
+        if (!isAcceptedLocationAccuracy(accuracy)) {
+          setBlockedReason('A plataforma exige compartilhamento de localizacao para acesso de Super Admin. Em celular, use localizacao precisa. Em computador, permita a localizacao do navegador para continuar.');
           logSystemEvent({
             level: 'warn',
             event: 'super_admin_login_snapshot',
-            message: 'Login de super admin bloqueado por localizacao imprecisa.',
+            message: 'Login de super admin bloqueado por localizacao insuficiente.',
             path: location.pathname,
             context: {
               ...baseContext,
-              geolocation_status: 'imprecise',
+              geolocation_status: 'insufficient',
+              device_type: isDesktopDevice() ? 'desktop' : 'mobile',
               coordinates: {
                 latitude: Number.isFinite(latitude) ? latitude : null,
                 longitude: Number.isFinite(longitude) ? longitude : null,
@@ -139,6 +155,7 @@ export function SuperAdminAccessLogger() {
               },
               exact_location_required: true,
               exact_location_max_accuracy_meters: EXACT_LOCATION_MAX_ACCURACY_METERS,
+              desktop_location_max_accuracy_meters: DESKTOP_LOCATION_MAX_ACCURACY_METERS,
             },
           });
           return;
@@ -175,6 +192,8 @@ export function SuperAdminAccessLogger() {
             country: cityData.countryName,
             exact_location_required: true,
             exact_location_max_accuracy_meters: EXACT_LOCATION_MAX_ACCURACY_METERS,
+            desktop_location_max_accuracy_meters: DESKTOP_LOCATION_MAX_ACCURACY_METERS,
+            device_type: isDesktopDevice() ? 'desktop' : 'mobile',
             coordinates: {
               latitude: Number.isFinite(latitude) ? latitude : null,
               longitude: Number.isFinite(longitude) ? longitude : null,
@@ -197,6 +216,8 @@ export function SuperAdminAccessLogger() {
             geolocation_error: error?.message || 'Falha ao capturar localizacao',
             exact_location_required: true,
             exact_location_max_accuracy_meters: EXACT_LOCATION_MAX_ACCURACY_METERS,
+            desktop_location_max_accuracy_meters: DESKTOP_LOCATION_MAX_ACCURACY_METERS,
+            device_type: isDesktopDevice() ? 'desktop' : 'mobile',
           },
         });
       } finally {
