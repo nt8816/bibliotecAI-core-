@@ -83,7 +83,7 @@ export default function Reclamacoes() {
     try {
       let query = supabase
         .from('reclamacoes_super_admin')
-        .select('id, sender_user_id, sender_nome, sender_email, sender_role, escola_id, assunto, mensagem, image_urls, status, resposta, created_at, updated_at, respondida_em, escolas(nome)')
+        .select('id, sender_user_id, sender_profile_id, sender_nome, sender_email, sender_role, escola_id, assunto, mensagem, image_urls, status, resposta, created_at, updated_at, respondida_em, escolas!left(nome)')
         .order('created_at', { ascending: false });
 
       if (!isSuperAdmin) {
@@ -93,7 +93,40 @@ export default function Reclamacoes() {
       const { data, error } = await query;
       if (error) throw error;
 
-      const nextItems = data || [];
+      const baseItems = data || [];
+      const missingSchoolSenderIds = Array.from(
+        new Set(
+          baseItems
+            .filter((item) => !item?.escolas?.nome && item?.sender_user_id)
+            .map((item) => item.sender_user_id),
+        ),
+      );
+
+      let escolaNameBySenderId = new Map();
+
+      if (missingSchoolSenderIds.length > 0) {
+        const { data: senderProfiles, error: senderProfilesError } = await supabase
+          .from('usuarios_biblioteca')
+          .select('user_id, escola_id, escolas!left(nome)')
+          .in('user_id', missingSchoolSenderIds);
+
+        if (!senderProfilesError) {
+          escolaNameBySenderId = new Map(
+            (senderProfiles || [])
+              .filter((profile) => profile?.user_id && profile?.escolas?.nome)
+              .map((profile) => [profile.user_id, profile.escolas.nome]),
+          );
+        }
+      }
+
+      const nextItems = baseItems.map((item) => {
+        const escolaNomeResolvida = item?.escolas?.nome || escolaNameBySenderId.get(item?.sender_user_id) || null;
+        return {
+          ...item,
+          escolas: escolaNomeResolvida ? { ...(item.escolas || {}), nome: escolaNomeResolvida } : item.escolas,
+          escola_nome_resolvida: escolaNomeResolvida,
+        };
+      });
       setItems(nextItems);
 
       if (nextItems.length === 0) {
@@ -391,7 +424,7 @@ export default function Reclamacoes() {
                               <p className="text-xs text-muted-foreground">{item.sender_role || '-'}</p>
                             </div>
                           </TableCell>
-                          <TableCell>{item.escolas?.nome || '-'}</TableCell>
+                          <TableCell>{item.escola_nome_resolvida || '-'}</TableCell>
                           <TableCell className="max-w-[280px] truncate">{item.assunto}</TableCell>
                           <TableCell>
                             <Badge variant={statusVariant(item.status)}>{statusLabel(item.status)}</Badge>
