@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { getR2DownloadUrl, uploadFileToR2 } from '@/lib/r2Storage';
 
 function formatDateTime(value) {
   if (!value) return '-';
@@ -28,13 +29,16 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-async function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error || new Error('Falha ao ler arquivo.'));
-    reader.readAsDataURL(file);
-  });
+function isR2ObjectKey(value) {
+  return typeof value === 'string' && value.startsWith('escolas/');
+}
+
+function createPendingImage(file) {
+  return {
+    id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`,
+    file,
+    previewUrl: URL.createObjectURL(file),
+  };
 }
 
 function statusLabel(status) {
@@ -59,12 +63,13 @@ function readVariant(item) {
   return item?.lida_em ? 'outline' : 'destructive';
 }
 
-const emptyForm = { assunto: '', mensagem: '', imageUrls: [] };
+const emptyForm = { assunto: '', mensagem: '', pendingImages: [] };
 
 export default function Reclamacoes() {
   const { user, userRole, isSuperAdmin } = useAuth();
   const { toast } = useToast();
   const imageInputRef = useRef(null);
+  const pendingImagesRef = useRef([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [items, setItems] = useState([]);
@@ -92,10 +97,15 @@ export default function Reclamacoes() {
       const { data, error } = await supabase.rpc('get_reclamacoes_super_admin_feed');
       if (error) throw error;
 
-      const nextItems = (data || []).map((item) => ({
+      const nextItems = await Promise.all((data || []).map(async (item) => ({
         ...item,
         escola_nome_resolvida: item?.escola_nome || null,
-      }));
+        image_urls: await Promise.all(
+          ensureArray(item?.image_urls).map(async (url, index) => (
+            isR2ObjectKey(url) ? getR2DownloadUrl(url, `reclamacao-${item?.id || index + 1}-${index + 1}`) : url
+          )),
+        ),
+      })));
       setItems(nextItems);
 
       if (nextItems.length === 0) {
@@ -123,10 +133,20 @@ export default function Reclamacoes() {
     fetchItems();
   }, [fetchItems]);
 
+  useEffect(() => {
+    pendingImagesRef.current = ensureArray(form.pendingImages);
+  }, [form.pendingImages]);
+
+  useEffect(() => () => {
+    ensureArray(pendingImagesRef.current).forEach((image) => {
+      if (image?.previewUrl) URL.revokeObjectURL(image.previewUrl);
+    });
+  }, []);
+
   const handleSubmit = async () => {
     const assunto = form.assunto.trim();
     const mensagem = form.mensagem.trim();
-    const imageUrls = ensureArray(form.imageUrls);
+    const pendingImages = ensureArray(form.pendingImages);
 
     if (assunto.length < 3) {
       toast({
@@ -168,6 +188,18 @@ export default function Reclamacoes() {
         senderEmail = currentProfile?.email || senderEmail;
       }
 
+      const imageUrls = await Promise.all(
+        pendingImages.map(async (image) => {
+          const upload = await uploadFileToR2({
+            file: image.file,
+            escolaId: escolaId || 'sem-escola',
+            ownerId: senderProfileId || user?.id || 'anonimo',
+            scope: 'reclamacoes',
+          });
+          return upload.objectKey;
+        }),
+      );
+
       const { error } = await supabase.from('reclamacoes_super_admin').insert({
         sender_profile_id: senderProfileId,
         sender_role: userRole,
@@ -181,6 +213,9 @@ export default function Reclamacoes() {
 
       if (error) throw error;
 
+      pendingImages.forEach((image) => {
+        if (image?.previewUrl) URL.revokeObjectURL(image.previewUrl);
+      });
       setForm(emptyForm);
       toast({
         title: 'Reclamacao enviada',
@@ -268,28 +303,24 @@ export default function Reclamacoes() {
       return;
     }
 
-    const selected = selectedFiles.slice(0, 4);
-
-    try {
-      const converted = await Promise.all(selected.map(fileToDataUrl));
-      setForm((prev) => ({
-        ...prev,
-        imageUrls: [...ensureArray(prev.imageUrls), ...converted].slice(0, 4),
-      }));
-    } catch {
-      toast({
-        title: 'Erro ao processar imagens',
-        description: 'Nao foi possivel carregar uma ou mais imagens.',
-        variant: 'destructive',
-      });
-    }
+    const selected = selectedFiles.slice(0, 4).map(createPendingImage);
+    setForm((prev) => ({
+      ...prev,
+      pendingImages: [...ensureArray(prev.pendingImages), ...selected].slice(0, 4),
+    }));
   };
 
   const handleRemoveImage = (index) => {
-    setForm((prev) => ({
-      ...prev,
-      imageUrls: ensureArray(prev.imageUrls).filter((_, currentIndex) => currentIndex !== index),
-    }));
+    setForm((prev) => {
+      const currentImages = ensureArray(prev.pendingImages);
+      const removedImage = currentImages[index];
+      if (removedImage?.previewUrl) URL.revokeObjectURL(removedImage.previewUrl);
+
+      return {
+        ...prev,
+        pendingImages: currentImages.filter((_, currentIndex) => currentIndex !== index),
+      };
+    });
   };
 
   return (
@@ -344,7 +375,7 @@ export default function Reclamacoes() {
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={saving || ensureArray(form.imageUrls).length >= 4}
+                    disabled={saving || ensureArray(form.pendingImages).length >= 4}
                     onClick={() => imageInputRef.current?.click()}
                   >
                     Escolher imagens
@@ -353,11 +384,11 @@ export default function Reclamacoes() {
                     Apenas imagens. Maximo de 4 anexos.
                   </p>
                 </div>
-                {ensureArray(form.imageUrls).length > 0 && (
+                {ensureArray(form.pendingImages).length > 0 && (
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {ensureArray(form.imageUrls).map((url, index) => (
-                      <div key={`${index}-${url.slice(0, 24)}`} className="relative overflow-hidden rounded-md border">
-                        <img src={url} alt={`Anexo ${index + 1}`} className="h-24 w-full object-cover" />
+                    {ensureArray(form.pendingImages).map((image, index) => (
+                      <div key={image.id} className="relative overflow-hidden rounded-md border">
+                        <img src={image.previewUrl} alt={`Anexo ${index + 1}`} className="h-24 w-full object-cover" />
                         <Button
                           type="button"
                           size="icon"
