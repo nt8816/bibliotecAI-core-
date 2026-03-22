@@ -24,6 +24,14 @@ async function getUserAccessToken() {
   return accessToken;
 }
 
+function buildR2NetworkErrorMessage(error, action) {
+  const message = String(error?.message || '');
+  if (message.toLowerCase().includes('failed to fetch')) {
+    return `Falha de rede ao ${action} no Cloudflare R2. Verifique o CORS do bucket e tente novamente.`;
+  }
+  return message || `Nao foi possivel ${action} no Cloudflare R2.`;
+}
+
 export async function uploadFileToR2({ file, escolaId, ownerId, scope = 'arquivos-aula' }) {
   if (!file) throw new Error('Arquivo nao informado.');
   if (!escolaId || !ownerId) throw new Error('Contexto do upload incompleto.');
@@ -51,13 +59,18 @@ export async function uploadFileToR2({ file, escolaId, ownerId, scope = 'arquivo
     fallbackErrorMessage: 'Nao foi possivel iniciar o upload para o Cloudflare R2.',
   });
 
-  const uploadResponse = await fetch(payload.uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': file.type || 'application/octet-stream',
-    },
-    body: file,
-  });
+  let uploadResponse;
+  try {
+    uploadResponse = await fetch(payload.uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+      },
+      body: file,
+    });
+  } catch (error) {
+    throw new Error(buildR2NetworkErrorMessage(error, 'enviar o arquivo'));
+  }
 
   if (!uploadResponse.ok) {
     throw new Error(`Falha ao enviar arquivo para o Cloudflare R2 (HTTP ${uploadResponse.status}).`);
@@ -100,35 +113,44 @@ export async function uploadDataUrlToR2({
 
 export async function getR2DownloadUrl(objectKey, fileName) {
   const accessToken = await getUserAccessToken();
-  const payload = await invokeEdgeFunction('r2-storage', {
-    body: {
-      operation: 'create_download_url',
-      objectKey,
-      fileName,
-    },
-    requireAuth: false,
-    headers: {
-      'x-user-access-token': accessToken,
-    },
-    transport: 'http',
-    fallbackErrorMessage: 'Nao foi possivel preparar o download do arquivo.',
-  });
+  let payload;
+  try {
+    payload = await invokeEdgeFunction('r2-storage', {
+      body: {
+        operation: 'create_download_url',
+        objectKey,
+        fileName,
+      },
+      requireAuth: false,
+      headers: {
+        'x-user-access-token': accessToken,
+      },
+      transport: 'http',
+      fallbackErrorMessage: 'Nao foi possivel preparar o download do arquivo.',
+    });
+  } catch (error) {
+    throw new Error(buildR2NetworkErrorMessage(error, 'preparar o download'));
+  }
 
   return payload.downloadUrl;
 }
 
 export async function deleteR2Object(objectKey) {
   const accessToken = await getUserAccessToken();
-  await invokeEdgeFunction('r2-storage', {
-    body: {
-      operation: 'delete_object',
-      objectKey,
-    },
-    requireAuth: false,
-    headers: {
-      'x-user-access-token': accessToken,
-    },
-    transport: 'http',
-    fallbackErrorMessage: 'Nao foi possivel excluir o arquivo do Cloudflare R2.',
-  });
+  try {
+    await invokeEdgeFunction('r2-storage', {
+      body: {
+        operation: 'delete_object',
+        objectKey,
+      },
+      requireAuth: false,
+      headers: {
+        'x-user-access-token': accessToken,
+      },
+      transport: 'http',
+      fallbackErrorMessage: 'Nao foi possivel excluir o arquivo do Cloudflare R2.',
+    });
+  } catch (error) {
+    throw new Error(buildR2NetworkErrorMessage(error, 'excluir o arquivo'));
+  }
 }
