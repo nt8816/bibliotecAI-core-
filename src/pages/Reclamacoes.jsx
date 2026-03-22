@@ -81,127 +81,13 @@ export default function Reclamacoes() {
 
     setLoading(true);
     try {
-      let query = supabase
-        .from('reclamacoes_super_admin')
-        .select('id, sender_user_id, sender_profile_id, sender_nome, sender_email, sender_role, escola_id, assunto, mensagem, image_urls, status, resposta, created_at, updated_at, respondida_em, escolas!left(nome)')
-        .order('created_at', { ascending: false });
-
-      if (!isSuperAdmin) {
-        query = query.eq('sender_user_id', user.id);
-      }
-
-      const { data, error } = await query;
+      const { data, error } = await supabase.rpc('get_reclamacoes_super_admin_feed');
       if (error) throw error;
 
-      const baseItems = data || [];
-      const missingSchoolSenderIds = Array.from(
-        new Set(
-          baseItems
-            .filter((item) => !item?.escolas?.nome && item?.sender_user_id)
-            .map((item) => item.sender_user_id),
-        ),
-      );
-      const missingSchoolProfileIds = Array.from(
-        new Set(
-          baseItems
-            .filter((item) => !item?.escolas?.nome && item?.sender_profile_id)
-            .map((item) => item.sender_profile_id),
-        ),
-      );
-      const missingSchoolEmails = Array.from(
-        new Set(
-          baseItems
-            .filter((item) => !item?.escolas?.nome && item?.sender_email)
-            .map((item) => String(item.sender_email).trim().toLowerCase())
-            .filter(Boolean),
-        ),
-      );
-      const missingEscolaIds = Array.from(
-        new Set(
-          baseItems
-            .filter((item) => !item?.escolas?.nome && item?.escola_id)
-            .map((item) => item.escola_id),
-        ),
-      );
-
-      let escolaNameBySenderId = new Map();
-      let escolaNameByProfileId = new Map();
-      let escolaNameByEmail = new Map();
-      let escolaNameByEscolaId = new Map();
-
-      if (missingSchoolSenderIds.length > 0) {
-        const { data: senderProfiles, error: senderProfilesError } = await supabase
-          .from('usuarios_biblioteca')
-          .select('user_id, escola_id, escolas!left(nome)')
-          .in('user_id', missingSchoolSenderIds);
-
-        if (!senderProfilesError) {
-          escolaNameBySenderId = new Map(
-            (senderProfiles || [])
-              .filter((profile) => profile?.user_id && profile?.escolas?.nome)
-              .map((profile) => [profile.user_id, profile.escolas.nome]),
-          );
-        }
-      }
-
-      if (missingSchoolProfileIds.length > 0) {
-        const { data: senderProfilesById, error: senderProfilesByIdError } = await supabase
-          .from('usuarios_biblioteca')
-          .select('id, escola_id, escolas!left(nome)')
-          .in('id', missingSchoolProfileIds);
-
-        if (!senderProfilesByIdError) {
-          escolaNameByProfileId = new Map(
-            (senderProfilesById || [])
-              .filter((profile) => profile?.id && profile?.escolas?.nome)
-              .map((profile) => [profile.id, profile.escolas.nome]),
-          );
-        }
-      }
-
-      if (missingSchoolEmails.length > 0) {
-        const { data: senderProfilesByEmail, error: senderProfilesByEmailError } = await supabase
-          .from('usuarios_biblioteca')
-          .select('email, escola_id, escolas!left(nome)')
-          .in('email', missingSchoolEmails);
-
-        if (!senderProfilesByEmailError) {
-          escolaNameByEmail = new Map(
-            (senderProfilesByEmail || [])
-              .filter((profile) => profile?.email && profile?.escolas?.nome)
-              .map((profile) => [String(profile.email).trim().toLowerCase(), profile.escolas.nome]),
-          );
-        }
-      }
-
-      if (missingEscolaIds.length > 0) {
-        const { data: escolasData, error: escolasError } = await supabase
-          .from('escolas')
-          .select('id, nome')
-          .in('id', missingEscolaIds);
-
-        if (!escolasError) {
-          escolaNameByEscolaId = new Map(
-            (escolasData || [])
-              .filter((escola) => escola?.id && escola?.nome)
-              .map((escola) => [escola.id, escola.nome]),
-          );
-        }
-      }
-
-      const nextItems = baseItems.map((item) => {
-        const escolaNomeResolvida = item?.escolas?.nome
-          || escolaNameByEscolaId.get(item?.escola_id)
-          || escolaNameByProfileId.get(item?.sender_profile_id)
-          || escolaNameBySenderId.get(item?.sender_user_id)
-          || escolaNameByEmail.get(String(item?.sender_email || '').trim().toLowerCase())
-          || null;
-        return {
-          ...item,
-          escolas: escolaNomeResolvida ? { ...(item.escolas || {}), nome: escolaNomeResolvida } : item.escolas,
-          escola_nome_resolvida: escolaNomeResolvida,
-        };
-      });
+      const nextItems = (data || []).map((item) => ({
+        ...item,
+        escola_nome_resolvida: item?.escola_nome || null,
+      }));
       setItems(nextItems);
 
       if (nextItems.length === 0) {
@@ -223,7 +109,7 @@ export default function Reclamacoes() {
     } finally {
       setLoading(false);
     }
-  }, [isSuperAdmin, selectedItemId, toast, user?.id]);
+  }, [selectedItemId, toast, user?.id]);
 
   useEffect(() => {
     fetchItems();
@@ -598,6 +484,9 @@ export default function Reclamacoes() {
                       <p className="text-xs text-muted-foreground">
                         {selectedItem.sender_nome || selectedItem.sender_email || '-'} • {selectedItem.sender_role || '-'} • {selectedItem.escolas?.nome || 'Sem escola'}
                       </p>
+                      {selectedItem.escola_nome_resolvida && !selectedItem.escolas?.nome && (
+                        <p className="text-xs text-muted-foreground">Escola: {selectedItem.escola_nome_resolvida}</p>
+                      )}
                       <p className="text-xs text-muted-foreground">Recebida em {formatDateTime(selectedItem.created_at)}</p>
                     </div>
 
