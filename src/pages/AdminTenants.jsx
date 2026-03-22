@@ -88,7 +88,7 @@ export default function AdminTenants() {
 
   const [nomeEscola, setNomeEscola] = useState('');
   const [subdominio, setSubdominio] = useState('');
-  const [plano, setPlano] = useState('trial');
+  const plano = 'trial';
   const [inviteCpf, setInviteCpf] = useState('');
   const handleInviteCpfChange = (value) => {
     const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
@@ -192,7 +192,6 @@ export default function AdminTenants() {
       setLatestInvite(data);
       setNomeEscola('');
       setSubdominio('');
-      setPlano('trial');
       setInviteCpf('');
 
       toast({ title: 'Tenant criado', description: `Escola ${data.escola_nome} provisionada com sucesso.` });
@@ -716,11 +715,6 @@ export default function AdminTenants() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="plano">Plano</Label>
-                <Input id="plano" value={plano} onChange={(e) => setPlano(e.target.value)} placeholder="trial" />
-              </div>
-
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="inviteCpf">CPF do gestor (opcional)</Label>
                 <Input
@@ -825,7 +819,6 @@ export default function AdminTenants() {
                       <TableHead>Escola</TableHead>
                       <TableHead>Subdomínio</TableHead>
                       <TableHead>Schema</TableHead>
-                      <TableHead>Plano</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
@@ -836,7 +829,6 @@ export default function AdminTenants() {
                         <TableCell>{tenant.nome}</TableCell>
                         <TableCell>{tenant.subdominio}</TableCell>
                         <TableCell>{tenant.schema_name}</TableCell>
-                        <TableCell>{tenant.plano}</TableCell>
                         <TableCell>
                           <Badge variant={tenant.ativo ? 'outline' : 'destructive'}>
                             {tenant.ativo ? 'ativo' : 'inativo'}
