@@ -1,0 +1,2179 @@
+{
+  "generatedAt": "2026-03-22T12:22:59.630Z",
+  "summary": {
+    "scannedFiles": 135,
+    "totals": {
+      "auth": 74,
+      "queries": 311,
+      "rpc": 29,
+      "storage": 0,
+      "functions": 23,
+      "realtime": 63
+    },
+    "topFilesOverall": [
+      {
+        "path": "src/pages/aluno/PainelAluno.jsx",
+        "total": 47,
+        "categories": {
+          "auth": 1,
+          "queries": 32,
+          "rpc": 1,
+          "storage": 0,
+          "functions": 0,
+          "realtime": 13
+        }
+      },
+      {
+        "path": "src/pages/aluno/ComunidadeAluno.jsx",
+        "total": 27,
+        "categories": {
+          "auth": 0,
+          "queries": 20,
+          "rpc": 1,
+          "storage": 0,
+          "functions": 0,
+          "realtime": 6
+        }
+      },
+      {
+        "path": "src/pages/Dashboard.jsx",
+        "total": 23,
+        "categories": {
+          "auth": 0,
+          "queries": 15,
+          "rpc": 1,
+          "storage": 0,
+          "functions": 0,
+          "realtime": 7
+        }
+      },
+      {
+        "path": "src/pages/professor/PainelProfessor.jsx",
+        "total": 23,
+        "categories": {
+          "auth": 0,
+          "queries": 18,
+          "rpc": 0,
+          "storage": 0,
+          "functions": 0,
+          "realtime": 5
+        }
+      },
+      {
+        "path": "src/pages/Usuarios.jsx",
+        "total": 22,
+        "categories": {
+          "auth": 3,
+          "queries": 12,
+          "rpc": 1,
+          "storage": 0,
+          "functions": 3,
+          "realtime": 3
+        }
+      },
+      {
+        "path": "src/pages/AdminTenants.jsx",
+        "total": 21,
+        "categories": {
+          "auth": 5,
+          "queries": 8,
+          "rpc": 3,
+          "storage": 0,
+          "functions": 5,
+          "realtime": 0
+        }
+      },
+      {
+        "path": "src/pages/Emprestimos.jsx",
+        "total": 21,
+        "categories": {
+          "auth": 0,
+          "queries": 16,
+          "rpc": 1,
+          "storage": 0,
+          "functions": 0,
+          "realtime": 4
+        }
+      },
+      {
+        "path": "src/pages/ConfiguracaoEscola.jsx",
+        "total": 18,
+        "categories": {
+          "auth": 1,
+          "queries": 13,
+          "rpc": 1,
+          "storage": 0,
+          "functions": 1,
+          "realtime": 2
+        }
+      },
+      {
+        "path": "supabase/functions/registrar-gestor-tenant/index.ts",
+        "total": 18,
+        "categories": {
+          "auth": 5,
+          "queries": 12,
+          "rpc": 1,
+          "storage": 0,
+          "functions": 0,
+          "realtime": 0
+        }
+      },
+      {
+        "path": "src/hooks/useSystemNotifications.jsx",
+        "total": 17,
+        "categories": {
+          "auth": 0,
+          "queries": 9,
+          "rpc": 2,
+          "storage": 0,
+          "functions": 0,
+          "realtime": 6
+        }
+      },
+      {
+        "path": "supabase/functions/registrar-via-convite/index.ts",
+        "total": 16,
+        "categories": {
+          "auth": 5,
+          "queries": 11,
+          "rpc": 0,
+          "storage": 0,
+          "functions": 0,
+          "realtime": 0
+        }
+      },
+      {
+        "path": "src/pages/GerenciarTokens.jsx",
+        "total": 15,
+        "categories": {
+          "auth": 0,
+          "queries": 11,
+          "rpc": 1,
+          "storage": 0,
+          "functions": 0,
+          "realtime": 3
+        }
+      },
+      {
+        "path": "src/pages/Livros.jsx",
+        "total": 14,
+        "categories": {
+          "auth": 0,
+          "queries": 11,
+          "rpc": 0,
+          "storage": 0,
+          "functions": 1,
+          "realtime": 2
+        }
+      },
+      {
+        "path": "supabase/functions/provisionar-aluno-matricula/index.ts",
+        "total": 13,
+        "categories": {
+          "auth": 6,
+          "queries": 7,
+          "rpc": 0,
+          "storage": 0,
+          "functions": 0,
+          "realtime": 0
+        }
+      },
+      {
+        "path": "src/pages/professor/AtividadesLeitura.js",
+        "total": 11,
+        "categories": {
+          "auth": 0,
+          "queries": 8,
+          "rpc": 0,
+          "storage": 0,
+          "functions": 0,
+          "realtime": 3
+        }
+      },
+      {
+        "path": "src/pages/professor/SugestoesLivros.js",
+        "total": 11,
+        "categories": {
+          "auth": 0,
+          "queries": 8,
+          "rpc": 0,
+          "storage": 0,
+          "functions": 0,
+          "realtime": 3
+        }
+      },
+      {
+        "path": "supabase/functions/migrar-acervo-r2/index.ts",
+        "total": 11,
+        "categories": {
+          "auth": 1,
+          "queries": 10,
+          "rpc": 0,
+          "storage": 0,
+          "functions": 0,
+          "realtime": 0
+        }
+      },
+      {
+        "path": "supabase/functions/provisionar-aluno-matricula/index.js",
+        "total": 11,
+        "categories": {
+          "auth": 4,
+          "queries": 7,
+          "rpc": 0,
+          "storage": 0,
+          "functions": 0,
+          "realtime": 0
+        }
+      },
+      {
+        "path": "supabase/functions/ativar-aluno-matricula/index.ts",
+        "total": 10,
+        "categories": {
+          "auth": 5,
+          "queries": 5,
+          "rpc": 0,
+          "storage": 0,
+          "functions": 0,
+          "realtime": 0
+        }
+      },
+      {
+        "path": "supabase/functions/gerenciar-super-admins/index.ts",
+        "total": 10,
+        "categories": {
+          "auth": 4,
+          "queries": 5,
+          "rpc": 1,
+          "storage": 0,
+          "functions": 0,
+          "realtime": 0
+        }
+      }
+    ],
+    "topFilesByCategory": {
+      "auth": [
+        {
+          "path": "src/hooks/useAuth.js",
+          "count": 6
+        },
+        {
+          "path": "supabase/functions/provisionar-aluno-matricula/index.ts",
+          "count": 6
+        },
+        {
+          "path": "src/pages/AdminTenants.jsx",
+          "count": 5
+        },
+        {
+          "path": "supabase/functions/ativar-aluno-matricula/index.ts",
+          "count": 5
+        },
+        {
+          "path": "supabase/functions/registrar-gestor-tenant/index.ts",
+          "count": 5
+        },
+        {
+          "path": "supabase/functions/registrar-via-convite/index.ts",
+          "count": 5
+        },
+        {
+          "path": "src/lib/invokeEdgeFunction.js",
+          "count": 4
+        },
+        {
+          "path": "supabase/functions/gerenciar-super-admins/index.ts",
+          "count": 4
+        },
+        {
+          "path": "supabase/functions/provisionar-aluno-matricula/index.js",
+          "count": 4
+        },
+        {
+          "path": "src/pages/Usuarios.jsx",
+          "count": 3
+        },
+        {
+          "path": "supabase/functions/excluir-escola-tenant/index.ts",
+          "count": 3
+        },
+        {
+          "path": "supabase/functions/redefinir-senha-gestor/index.ts",
+          "count": 3
+        },
+        {
+          "path": "src/pages/Configuracoes.jsx",
+          "count": 2
+        },
+        {
+          "path": "supabase/functions/excluir-sala-escola/index.ts",
+          "count": 2
+        },
+        {
+          "path": "supabase/functions/excluir-usuarios-biblioteca/index.ts",
+          "count": 2
+        }
+      ],
+      "queries": [
+        {
+          "path": "src/pages/aluno/PainelAluno.jsx",
+          "count": 32
+        },
+        {
+          "path": "src/pages/aluno/ComunidadeAluno.jsx",
+          "count": 20
+        },
+        {
+          "path": "src/pages/professor/PainelProfessor.jsx",
+          "count": 18
+        },
+        {
+          "path": "src/pages/Emprestimos.jsx",
+          "count": 16
+        },
+        {
+          "path": "src/pages/Dashboard.jsx",
+          "count": 15
+        },
+        {
+          "path": "src/pages/ConfiguracaoEscola.jsx",
+          "count": 13
+        },
+        {
+          "path": "src/pages/Usuarios.jsx",
+          "count": 12
+        },
+        {
+          "path": "supabase/functions/registrar-gestor-tenant/index.ts",
+          "count": 12
+        },
+        {
+          "path": "src/pages/GerenciarTokens.jsx",
+          "count": 11
+        },
+        {
+          "path": "src/pages/Livros.jsx",
+          "count": 11
+        },
+        {
+          "path": "supabase/functions/registrar-via-convite/index.ts",
+          "count": 11
+        },
+        {
+          "path": "supabase/functions/migrar-acervo-r2/index.ts",
+          "count": 10
+        },
+        {
+          "path": "src/hooks/useSystemNotifications.jsx",
+          "count": 9
+        },
+        {
+          "path": "src/pages/ArquivosAula.jsx",
+          "count": 9
+        },
+        {
+          "path": "src/pages/AdminTenants.jsx",
+          "count": 8
+        }
+      ],
+      "rpc": [
+        {
+          "path": "src/pages/Auth.jsx",
+          "count": 6
+        },
+        {
+          "path": "src/pages/AdminTenants.jsx",
+          "count": 3
+        },
+        {
+          "path": "src/hooks/useSystemNotifications.jsx",
+          "count": 2
+        },
+        {
+          "path": "src/pages/aluno/RankingAluno.jsx",
+          "count": 2
+        },
+        {
+          "path": "src/pages/Reclamacoes.jsx",
+          "count": 2
+        },
+        {
+          "path": "supabase/functions/cloudflare-ai-proxy/index.ts",
+          "count": 2
+        },
+        {
+          "path": "src/lib/systemLogger.js",
+          "count": 1
+        },
+        {
+          "path": "src/pages/aluno/ComunidadeAluno.jsx",
+          "count": 1
+        },
+        {
+          "path": "src/pages/aluno/PainelAluno.jsx",
+          "count": 1
+        },
+        {
+          "path": "src/pages/ConfiguracaoEscola.jsx",
+          "count": 1
+        },
+        {
+          "path": "src/pages/Dashboard.jsx",
+          "count": 1
+        },
+        {
+          "path": "src/pages/Emprestimos.jsx",
+          "count": 1
+        },
+        {
+          "path": "src/pages/GerenciarTokens.jsx",
+          "count": 1
+        },
+        {
+          "path": "src/pages/OnboardingGestor.jsx",
+          "count": 1
+        },
+        {
+          "path": "src/pages/Usuarios.jsx",
+          "count": 1
+        }
+      ],
+      "storage": [],
+      "functions": [
+        {
+          "path": "src/pages/AdminTenants.jsx",
+          "count": 5
+        },
+        {
+          "path": "src/lib/cloudflareAiApi.js",
+          "count": 3
+        },
+        {
+          "path": "src/lib/r2Storage.js",
+          "count": 3
+        },
+        {
+          "path": "src/pages/Usuarios.jsx",
+          "count": 3
+        },
+        {
+          "path": "src/pages/SuperAdmins.jsx",
+          "count": 2
+        },
+        {
+          "path": "src/lib/invokeEdgeFunction.js",
+          "count": 1
+        },
+        {
+          "path": "src/lib/invokeEdgeFunction.test.js",
+          "count": 1
+        },
+        {
+          "path": "src/pages/Auth.jsx",
+          "count": 1
+        },
+        {
+          "path": "src/pages/ConfiguracaoEscola.jsx",
+          "count": 1
+        },
+        {
+          "path": "src/pages/Convite.jsx",
+          "count": 1
+        },
+        {
+          "path": "src/pages/Livros.jsx",
+          "count": 1
+        },
+        {
+          "path": "src/pages/OnboardingGestor.jsx",
+          "count": 1
+        }
+      ],
+      "realtime": [
+        {
+          "path": "src/pages/aluno/PainelAluno.jsx",
+          "count": 13
+        },
+        {
+          "path": "src/pages/Dashboard.jsx",
+          "count": 7
+        },
+        {
+          "path": "src/hooks/useSystemNotifications.jsx",
+          "count": 6
+        },
+        {
+          "path": "src/pages/aluno/ComunidadeAluno.jsx",
+          "count": 6
+        },
+        {
+          "path": "src/pages/professor/PainelProfessor.jsx",
+          "count": 5
+        },
+        {
+          "path": "src/pages/Emprestimos.jsx",
+          "count": 4
+        },
+        {
+          "path": "src/pages/GerenciarTokens.jsx",
+          "count": 3
+        },
+        {
+          "path": "src/pages/professor/AtividadesLeitura.js",
+          "count": 3
+        },
+        {
+          "path": "src/pages/professor/RelatoriosLeitura.jsx",
+          "count": 3
+        },
+        {
+          "path": "src/pages/professor/SugestoesLivros.js",
+          "count": 3
+        },
+        {
+          "path": "src/pages/Usuarios.jsx",
+          "count": 3
+        },
+        {
+          "path": "src/pages/ConfiguracaoEscola.jsx",
+          "count": 2
+        },
+        {
+          "path": "src/pages/Livros.jsx",
+          "count": 2
+        },
+        {
+          "path": "src/pages/professor/MeusAlunos.jsx",
+          "count": 2
+        },
+        {
+          "path": "src/hooks/useRealtimeSubscription.js",
+          "count": 1
+        }
+      ]
+    }
+  },
+  "files": [
+    {
+      "path": "src/pages/aluno/PainelAluno.jsx",
+      "total": 47,
+      "categories": {
+        "auth": 1,
+        "queries": 32,
+        "rpc": 1,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 13
+      }
+    },
+    {
+      "path": "src/pages/aluno/ComunidadeAluno.jsx",
+      "total": 27,
+      "categories": {
+        "auth": 0,
+        "queries": 20,
+        "rpc": 1,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 6
+      }
+    },
+    {
+      "path": "src/pages/Dashboard.jsx",
+      "total": 23,
+      "categories": {
+        "auth": 0,
+        "queries": 15,
+        "rpc": 1,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 7
+      }
+    },
+    {
+      "path": "src/pages/professor/PainelProfessor.jsx",
+      "total": 23,
+      "categories": {
+        "auth": 0,
+        "queries": 18,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 5
+      }
+    },
+    {
+      "path": "src/pages/Usuarios.jsx",
+      "total": 22,
+      "categories": {
+        "auth": 3,
+        "queries": 12,
+        "rpc": 1,
+        "storage": 0,
+        "functions": 3,
+        "realtime": 3
+      }
+    },
+    {
+      "path": "src/pages/AdminTenants.jsx",
+      "total": 21,
+      "categories": {
+        "auth": 5,
+        "queries": 8,
+        "rpc": 3,
+        "storage": 0,
+        "functions": 5,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/Emprestimos.jsx",
+      "total": 21,
+      "categories": {
+        "auth": 0,
+        "queries": 16,
+        "rpc": 1,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 4
+      }
+    },
+    {
+      "path": "src/pages/ConfiguracaoEscola.jsx",
+      "total": 18,
+      "categories": {
+        "auth": 1,
+        "queries": 13,
+        "rpc": 1,
+        "storage": 0,
+        "functions": 1,
+        "realtime": 2
+      }
+    },
+    {
+      "path": "supabase/functions/registrar-gestor-tenant/index.ts",
+      "total": 18,
+      "categories": {
+        "auth": 5,
+        "queries": 12,
+        "rpc": 1,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/hooks/useSystemNotifications.jsx",
+      "total": 17,
+      "categories": {
+        "auth": 0,
+        "queries": 9,
+        "rpc": 2,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 6
+      }
+    },
+    {
+      "path": "supabase/functions/registrar-via-convite/index.ts",
+      "total": 16,
+      "categories": {
+        "auth": 5,
+        "queries": 11,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/GerenciarTokens.jsx",
+      "total": 15,
+      "categories": {
+        "auth": 0,
+        "queries": 11,
+        "rpc": 1,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 3
+      }
+    },
+    {
+      "path": "src/pages/Livros.jsx",
+      "total": 14,
+      "categories": {
+        "auth": 0,
+        "queries": 11,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 1,
+        "realtime": 2
+      }
+    },
+    {
+      "path": "supabase/functions/provisionar-aluno-matricula/index.ts",
+      "total": 13,
+      "categories": {
+        "auth": 6,
+        "queries": 7,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/professor/AtividadesLeitura.js",
+      "total": 11,
+      "categories": {
+        "auth": 0,
+        "queries": 8,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 3
+      }
+    },
+    {
+      "path": "src/pages/professor/SugestoesLivros.js",
+      "total": 11,
+      "categories": {
+        "auth": 0,
+        "queries": 8,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 3
+      }
+    },
+    {
+      "path": "supabase/functions/migrar-acervo-r2/index.ts",
+      "total": 11,
+      "categories": {
+        "auth": 1,
+        "queries": 10,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "supabase/functions/provisionar-aluno-matricula/index.js",
+      "total": 11,
+      "categories": {
+        "auth": 4,
+        "queries": 7,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "supabase/functions/ativar-aluno-matricula/index.ts",
+      "total": 10,
+      "categories": {
+        "auth": 5,
+        "queries": 5,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "supabase/functions/gerenciar-super-admins/index.ts",
+      "total": 10,
+      "categories": {
+        "auth": 4,
+        "queries": 5,
+        "rpc": 1,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/ArquivosAula.jsx",
+      "total": 9,
+      "categories": {
+        "auth": 0,
+        "queries": 9,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "supabase/functions/excluir-escola-tenant/index.ts",
+      "total": 9,
+      "categories": {
+        "auth": 3,
+        "queries": 5,
+        "rpc": 1,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "supabase/functions/excluir-sala-escola/index.ts",
+      "total": 9,
+      "categories": {
+        "auth": 2,
+        "queries": 7,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "supabase/functions/excluir-usuarios-biblioteca/index.ts",
+      "total": 9,
+      "categories": {
+        "auth": 2,
+        "queries": 7,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/hooks/useAuth.js",
+      "total": 7,
+      "categories": {
+        "auth": 6,
+        "queries": 1,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/Auth.jsx",
+      "total": 7,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 6,
+        "storage": 0,
+        "functions": 1,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/professor/RelatoriosLeitura.jsx",
+      "total": 7,
+      "categories": {
+        "auth": 0,
+        "queries": 4,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 3
+      }
+    },
+    {
+      "path": "supabase/functions/redefinir-senha-gestor/index.ts",
+      "total": 7,
+      "categories": {
+        "auth": 3,
+        "queries": 4,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/Relatorios.jsx",
+      "total": 6,
+      "categories": {
+        "auth": 0,
+        "queries": 6,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/lib/invokeEdgeFunction.js",
+      "total": 5,
+      "categories": {
+        "auth": 4,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 1,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/professor/MeusAlunos.jsx",
+      "total": 5,
+      "categories": {
+        "auth": 0,
+        "queries": 3,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 2
+      }
+    },
+    {
+      "path": "src/pages/Reclamacoes.jsx",
+      "total": 5,
+      "categories": {
+        "auth": 0,
+        "queries": 3,
+        "rpc": 2,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/Relatorios.js",
+      "total": 5,
+      "categories": {
+        "auth": 0,
+        "queries": 5,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/SuperAdmins.jsx",
+      "total": 5,
+      "categories": {
+        "auth": 1,
+        "queries": 2,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 2,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "supabase/functions/redefinir-senha-aluno/index.js",
+      "total": 5,
+      "categories": {
+        "auth": 2,
+        "queries": 3,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "supabase/functions/redefinir-senha-aluno/index.ts",
+      "total": 5,
+      "categories": {
+        "auth": 2,
+        "queries": 3,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/lib/r2Storage.js",
+      "total": 4,
+      "categories": {
+        "auth": 1,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 3,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/Configuracoes.jsx",
+      "total": 4,
+      "categories": {
+        "auth": 2,
+        "queries": 2,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "supabase/functions/cloudflare-ai-proxy/index.ts",
+      "total": 4,
+      "categories": {
+        "auth": 1,
+        "queries": 1,
+        "rpc": 2,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "supabase/functions/redefinir-senha-gestor/index.js",
+      "total": 4,
+      "categories": {
+        "auth": 2,
+        "queries": 2,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/lib/cloudflareAiApi.js",
+      "total": 3,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 3,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/aluno/RankingAluno.jsx",
+      "total": 3,
+      "categories": {
+        "auth": 0,
+        "queries": 1,
+        "rpc": 2,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/Convite.jsx",
+      "total": 3,
+      "categories": {
+        "auth": 1,
+        "queries": 1,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 1,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/OnboardingGestor.jsx",
+      "total": 3,
+      "categories": {
+        "auth": 1,
+        "queries": 0,
+        "rpc": 1,
+        "storage": 0,
+        "functions": 1,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "supabase/functions/r2-storage/index.ts",
+      "total": 3,
+      "categories": {
+        "auth": 1,
+        "queries": 2,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/hooks/useRealtimeSubscription.js",
+      "total": 1,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 1
+      }
+    },
+    {
+      "path": "src/hooks/useTenant.jsx",
+      "total": 1,
+      "categories": {
+        "auth": 0,
+        "queries": 1,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/lib/invokeEdgeFunction.test.js",
+      "total": 1,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 1,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/lib/systemLogger.js",
+      "total": 1,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 1,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/AdminLogs.jsx",
+      "total": 1,
+      "categories": {
+        "auth": 0,
+        "queries": 1,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/App.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/accessibility/AccessibilityControls.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/accessibility/AccessibilityLogoIcon.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/AppErrorBoundary.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/AppShellState.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ConnectivityStatus.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/export/ExportPeriodDialog.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/layout/AppSidebar.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/layout/MainLayout.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/NavLink.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/PrivateTelemetryTracker.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ProtectedRoute.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/SuperAdminAccessLogger.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/SuperAdminRoute.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/SystemLogObserver.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/theme-provider.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/accordion.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/alert-dialog.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/alert.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/aspect-ratio.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/avatar.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/badge.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/breadcrumb.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/button.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/calendar.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/card.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/carousel.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/chart.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/checkbox.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/collapsible.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/command.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/context-menu.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/dialog.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/drawer.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/dropdown-menu.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/form.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/hover-card.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/input-otp.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/input.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/label.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/menubar.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/navigation-menu.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/pagination.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/popover.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/progress.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/radio-group.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/resizable.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/scroll-area.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/select.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/separator.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/sheet.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/sidebar.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/skeleton.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/slider.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/sonner.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/switch.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/table.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/tabs.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/textarea.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/toast.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/toaster.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/toggle-group.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/toggle.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/tooltip.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/components/ui/use-toast.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/hooks/use-mobile.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/hooks/use-toast.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/hooks/usePrivateTelemetry.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/integrations/supabase/client.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/integrations/supabase/types.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/integrations/supabase/types.ts",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/lib/bookAreas.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/lib/resolveR2Media.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/lib/utils.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/main.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/AdminAcesso.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/Index.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/NotFound.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/pages/TenantNotFound.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/test/example.test.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/test/painelAluno.test.jsx",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "src/test/setup.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "supabase/functions/gerar-imagem-ia/index.ts",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "supabase/functions/gerar-texto-ia/index.ts",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    },
+    {
+      "path": "supabase/functions/processar-arquivo/index.js",
+      "total": 0,
+      "categories": {
+        "auth": 0,
+        "queries": 0,
+        "rpc": 0,
+        "storage": 0,
+        "functions": 0,
+        "realtime": 0
+      }
+    }
+  ]
+}

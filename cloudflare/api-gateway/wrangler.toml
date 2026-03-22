@@ -1,0 +1,11 @@
+name = "bibliotecai-api-gateway"
+main = "src/index.ts"
+compatibility_date = "2026-03-22"
+
+[vars]
+APP_ENV = "development"
+
+# Ajuste estes bindings quando a API for conectada ao ambiente real.
+# Exemplo:
+# R2_BUCKET = "bibliotec-ia"
+# API_BASE_URL = "https://api.seudominio.com"
