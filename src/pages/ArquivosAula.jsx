@@ -11,8 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-
-const STORAGE_BUCKET = 'arquivos-aula';
+import { deleteR2Object, getR2DownloadUrl, uploadFileToR2 } from '@/lib/r2Storage';
 const ALL_TURMAS_OPTION = '__all_turmas__';
 const ACCEPTED_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg', 'ppt', 'pptx'];
 const ACCEPTED_INPUT = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.ppt,.pptx';
@@ -71,13 +70,6 @@ function getFileExtension(fileName) {
   return parts.length > 1 ? parts.pop().toLowerCase() : '';
 }
 
-function sanitizeFileName(fileName) {
-  return String(fileName || 'arquivo')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^A-Za-z0-9._-]/g, '_');
-}
-
 function formatBytes(value) {
   const size = Number(value || 0);
   if (!size) return '0 B';
@@ -93,12 +85,6 @@ function formatDateBR(value) {
   } catch {
     return '-';
   }
-}
-
-function getStoragePath({ escolaId, autorId, fileName }) {
-  const now = Date.now();
-  const safeName = sanitizeFileName(fileName);
-  return `${escolaId}/${autorId}/${now}-${safeName}`;
 }
 
 function downloadBlob(blob, fileName) {
@@ -340,12 +326,18 @@ export default function ArquivosAula() {
     try {
       const arquivos = [];
       for (const file of selectedFiles) {
-        const path = getStoragePath({ escolaId, autorId: perfilId, fileName: file.name });
-        const { error: uploadError } = await supabase.storage.from(STORAGE_BUCKET).upload(path, file, { upsert: false });
-        if (uploadError) throw uploadError;
+        const upload = await uploadFileToR2({
+          file,
+          escolaId,
+          ownerId: perfilId,
+          scope: 'arquivos-aula',
+        });
         arquivos.push({
           nome: file.name,
-          path,
+          path: upload.objectKey,
+          object_key: upload.objectKey,
+          provider: upload.provider,
+          public_url: upload.publicUrl,
           tamanho: file.size,
           mime_type: file.type || null,
           extensao: getFileExtension(file.name),
@@ -386,11 +378,21 @@ export default function ArquivosAula() {
   };
 
   const handleDownload = async (arquivo) => {
-    const path = safeText(arquivo?.path, '');
+    const path = safeText(arquivo?.object_key || arquivo?.path, '');
     if (!path) return;
 
     try {
-      const { data, error } = await supabase.storage.from(STORAGE_BUCKET).download(path);
+      if (String(arquivo?.provider || '').toLowerCase() === 'r2' || String(path).startsWith('escolas/')) {
+        const downloadUrl = await getR2DownloadUrl(path, safeText(arquivo?.nome, 'arquivo'));
+        const response = await fetch(downloadUrl);
+        if (!response.ok) throw new Error(`Falha ao baixar do Cloudflare R2 (HTTP ${response.status}).`);
+        const blob = await response.blob();
+        downloadBlob(blob, safeText(arquivo?.nome, 'arquivo'));
+        return;
+      }
+
+      const legacyStorageBucket = 'arquivos-aula';
+      const { data, error } = await supabase.storage.from(legacyStorageBucket).download(path);
       if (error) throw error;
       downloadBlob(data, safeText(arquivo?.nome, 'arquivo'));
     } catch (error) {
@@ -412,11 +414,20 @@ export default function ArquivosAula() {
 
     setSaving(true);
     try {
-      const filePath = safeText(arquivo?.path, '');
+      const filePath = safeText(arquivo?.object_key || arquivo?.path, '');
       if (filePath) {
-        const { error: storageError } = await supabase.storage.from(STORAGE_BUCKET).remove([filePath]);
-        if (storageError) {
-          console.warn('Falha ao remover arquivo do storage.', storageError);
+        if (String(arquivo?.provider || '').toLowerCase() === 'r2' || String(filePath).startsWith('escolas/')) {
+          try {
+            await deleteR2Object(filePath);
+          } catch (storageError) {
+            console.warn('Falha ao remover arquivo do Cloudflare R2.', storageError);
+          }
+        } else {
+          const legacyStorageBucket = 'arquivos-aula';
+          const { error: storageError } = await supabase.storage.from(legacyStorageBucket).remove([filePath]);
+          if (storageError) {
+            console.warn('Falha ao remover arquivo do storage legado.', storageError);
+          }
         }
       }
 
