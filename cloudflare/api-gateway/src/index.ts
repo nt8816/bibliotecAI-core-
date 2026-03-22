@@ -273,6 +273,7 @@ const routes: Record<string, RouteHandler> = {
     await supabaseAdminRequest(env, '/rest/v1/reclamacoes_super_admin', {
       method: 'POST',
       body: {
+        sender_user_id: user.id,
         sender_profile_id: profile?.id || null,
         sender_role: senderRole,
         sender_nome: profile?.nome || user.user_metadata?.nome || user.email || null,
