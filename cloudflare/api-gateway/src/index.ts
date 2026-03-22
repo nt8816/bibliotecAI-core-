@@ -242,12 +242,48 @@ function normalizeIdentifier(value: unknown) {
   return String(value || '').trim().toLowerCase();
 }
 
+function normalizeEmail(value: unknown) {
+  return normalizeIdentifier(value);
+}
+
 function normalizeDigits(value: unknown) {
   return String(value || '').replace(/\D/g, '');
 }
 
+function normalizeCpf(value: unknown) {
+  return normalizeDigits(value);
+}
+
 function normalizeMatricula(value: unknown) {
   return String(value || '').replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+}
+
+function isValidCpf(value: unknown) {
+  const cpf = normalizeCpf(value);
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+
+  let sum = 0;
+  for (let index = 0; index < 9; index += 1) {
+    sum += Number(cpf[index]) * (10 - index);
+  }
+
+  let checkDigit = (sum * 10) % 11;
+  if (checkDigit === 10) checkDigit = 0;
+  if (checkDigit !== Number(cpf[9])) return false;
+
+  sum = 0;
+  for (let index = 0; index < 10; index += 1) {
+    sum += Number(cpf[index]) * (11 - index);
+  }
+
+  checkDigit = (sum * 10) % 11;
+  if (checkDigit === 10) checkDigit = 0;
+  return checkDigit === Number(cpf[10]);
+}
+
+function pickAuthName(user: Record<string, unknown> | null | undefined) {
+  const metadata = (user?.user_metadata as Record<string, unknown> | undefined) || {};
+  return String(metadata.nome || metadata.name || metadata.full_name || '').trim();
 }
 
 function escapeLike(value: string) {
@@ -335,6 +371,106 @@ async function resolveSuperAdminMatch(identifier: string, env: Env) {
     ativo: account.ativo !== false,
     bloqueado: account.bloqueado === true,
     tentativas_falhas: Number(account.tentativas_falhas || 0),
+  };
+}
+
+async function buildGestoresForEscola(escolaId: string, env: Env) {
+  const escolaPayload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/escolas?${new URLSearchParams({
+      select: 'id,nome,gestor_id',
+      id: `eq.${escolaId}`,
+      limit: '1',
+    }).toString()}`,
+  );
+
+  const escolaInfo = Array.isArray(escolaPayload) ? (escolaPayload[0] || null) : null;
+  if (!escolaInfo?.id) {
+    throw new Error('Escola nao encontrada');
+  }
+
+  const perfisPayload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+      select: 'id,nome,email,user_id,tipo',
+      escola_id: `eq.${escolaId}`,
+      order: 'nome.asc',
+    }).toString()}`,
+  );
+
+  const perfisEscola = Array.isArray(perfisPayload) ? perfisPayload : [];
+  const userIds = perfisEscola.map((item) => String(item?.user_id || '').trim()).filter(Boolean);
+
+  const rolesPayload = userIds.length
+    ? await supabaseAdminRequest(
+      env,
+      `/rest/v1/user_roles?${new URLSearchParams({
+        select: 'user_id,role',
+        user_id: `in.(${userIds.join(',')})`,
+      }).toString()}`,
+    )
+    : [];
+
+  const rolesByUserId = new Map<string, Set<string>>();
+  (Array.isArray(rolesPayload) ? rolesPayload : []).forEach((item) => {
+    const userId = String(item?.user_id || '').trim();
+    const role = String(item?.role || '').trim().toLowerCase();
+    if (!userId || !role) return;
+    const current = rolesByUserId.get(userId) || new Set<string>();
+    current.add(role);
+    rolesByUserId.set(userId, current);
+  });
+
+  const gestores = perfisEscola
+    .filter((perfil) => {
+      const userId = String(perfil?.user_id || '').trim();
+      const tipo = String(perfil?.tipo || '').trim().toLowerCase();
+      const roles = rolesByUserId.get(userId);
+      return tipo === 'gestor' || roles?.has('gestor') || userId === String(escolaInfo?.gestor_id || '').trim();
+    })
+    .map((perfil) => ({
+      id: String(perfil?.id || perfil?.user_id || ''),
+      nome: String(perfil?.nome || '').trim(),
+      email: String(perfil?.email || '').trim(),
+      user_id: String(perfil?.user_id || '').trim(),
+    }))
+    .filter((perfil) => perfil.id && perfil.user_id);
+
+  const gestorPrincipalId = String(escolaInfo?.gestor_id || '').trim();
+  const hasGestorPrincipal = gestorPrincipalId && gestores.some((item) => item.user_id === gestorPrincipalId || item.id === gestorPrincipalId);
+
+  if (gestorPrincipalId && !hasGestorPrincipal) {
+    const authUserData = await supabaseAdminAuthRequest(env, `/users/${gestorPrincipalId}`);
+    const authUser = authUserData?.user || null;
+    gestores.push({
+      id: gestorPrincipalId,
+      nome: pickAuthName(authUser) || `Gestor principal - ${escolaInfo?.nome || 'Escola'}`,
+      email: String(authUser?.email || '').trim(),
+      user_id: gestorPrincipalId,
+    });
+  }
+
+  const unique = new Map<string, { id: string; nome: string; email: string; user_id: string }>();
+  gestores.forEach((item) => {
+    const key = item.user_id || item.id;
+    if (!key) return;
+    const previous = unique.get(key);
+    if (!previous) {
+      unique.set(key, item);
+      return;
+    }
+
+    unique.set(key, {
+      id: previous.id || item.id,
+      user_id: previous.user_id || item.user_id,
+      nome: previous.nome || item.nome,
+      email: previous.email || item.email,
+    });
+  });
+
+  return {
+    escolaInfo,
+    gestores: Array.from(unique.values()).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
   };
 }
 
