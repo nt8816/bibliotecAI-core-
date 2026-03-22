@@ -31,7 +31,15 @@ export async function createReclamacao(payload) {
   return requestWithFallback(
     async () => requestPlatformApi('/v1/reclamacoes', { method: 'POST', body: payload }),
     async () => {
-      const { error } = await supabase.from('reclamacoes_super_admin').insert(payload);
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
+
+      const insertPayload = {
+        ...payload,
+        sender_user_id: payload?.sender_user_id || authData?.user?.id || null,
+      };
+
+      const { error } = await supabase.from('reclamacoes_super_admin').insert(insertPayload);
       if (error) throw error;
       return { success: true };
     },

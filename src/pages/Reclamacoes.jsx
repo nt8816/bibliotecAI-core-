@@ -193,6 +193,7 @@ export default function Reclamacoes() {
       );
 
       await createReclamacao({
+        sender_user_id: user?.id || null,
         sender_profile_id: senderProfileId,
         sender_role: userRole,
         sender_nome: senderNome,
