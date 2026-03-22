@@ -116,6 +116,38 @@ async function supabaseAdminRequest(
   return payload;
 }
 
+async function supabaseAdminAuthRequest(
+  env: Env,
+  path: string,
+  { method = 'GET', body, headers }: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
+) {
+  const { supabaseUrl, serviceRoleKey } = getSupabaseConfig(env);
+  const response = await fetch(`${supabaseUrl}/auth/v1/admin${path}`, {
+    method,
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      'Content-Type': 'application/json',
+      ...(headers || {}),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  const payload = await parseResponse(response);
+  if (!response.ok) {
+    throw new Error(
+      (typeof payload === 'string' && payload.trim()) ||
+      payload?.msg ||
+      payload?.message ||
+      payload?.error_description ||
+      payload?.error ||
+      `Falha na consulta administrativa ao Auth do Supabase (HTTP ${response.status}).`,
+    );
+  }
+
+  return payload;
+}
+
 async function supabaseUserRpc(request: Request, env: Env, functionName: string, body: unknown = {}) {
   const token = getUserToken(request);
   if (!token) {
@@ -203,6 +235,141 @@ async function getLatestUserProfile(userId: string, env: Env) {
   });
 
   const payload = await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${params.toString()}`);
+  return Array.isArray(payload) ? (payload[0] || null) : null;
+}
+
+function normalizeIdentifier(value: unknown) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeDigits(value: unknown) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function normalizeMatricula(value: unknown) {
+  return String(value || '').replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+}
+
+function escapeLike(value: string) {
+  return value.replace(/[%_]/g, '');
+}
+
+function getRequestIp(request: Request) {
+  const forwarded = request.headers.get('x-forwarded-for') || '';
+  const firstForwarded = forwarded.split(',')[0]?.trim();
+  return firstForwarded || request.headers.get('cf-connecting-ip') || request.headers.get('x-real-ip') || null;
+}
+
+function getRequestUserAgent(request: Request) {
+  return request.headers.get('user-agent') || null;
+}
+
+async function insertSystemLog(
+  request: Request,
+  env: Env,
+  payload: Record<string, unknown>,
+) {
+  try {
+    await supabaseAdminRequest(env, '/rest/v1/system_logs', {
+      method: 'POST',
+      body: {
+        ip: getRequestIp(request),
+        user_agent: getRequestUserAgent(request),
+        ...payload,
+      },
+      headers: {
+        Prefer: 'return=minimal',
+      },
+    });
+  } catch {
+    // Logging must never break the primary flow.
+  }
+}
+
+async function findAuthUserByEmail(env: Env, email: string) {
+  let page = 1;
+  const perPage = 1000;
+  const expected = normalizeIdentifier(email);
+
+  while (true) {
+    const payload = await supabaseAdminAuthRequest(
+      env,
+      `/users?${new URLSearchParams({
+        page: String(page),
+        per_page: String(perPage),
+      }).toString()}`,
+    );
+
+    const users = Array.isArray(payload?.users) ? payload.users : [];
+    const found = users.find((item: Record<string, unknown>) => normalizeIdentifier(item?.email) === expected);
+    if (found?.id) return found;
+    if (users.length < perPage) return null;
+    page += 1;
+  }
+}
+
+async function resolveSuperAdminMatch(identifier: string, env: Env) {
+  const normalized = normalizeIdentifier(identifier);
+  const digits = normalizeDigits(identifier);
+  const payload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/super_admin_accounts?${new URLSearchParams({
+      select: 'id,nome,email,cpf,ativo,bloqueado,tentativas_falhas,bloqueado_em,created_at',
+      order: 'created_at.asc',
+      limit: '200',
+    }).toString()}`,
+  );
+
+  const items = Array.isArray(payload) ? payload : [];
+  const account = items.find((item) => normalizeIdentifier(item?.email) === normalized || (digits && String(item?.cpf || '') === digits));
+
+  if (!account?.id) {
+    return { matched: false };
+  }
+
+  return {
+    matched: true,
+    account_id: account.id,
+    email: normalizeIdentifier(account.email),
+    nome: account.nome || null,
+    ativo: account.ativo !== false,
+    bloqueado: account.bloqueado === true,
+    tentativas_falhas: Number(account.tentativas_falhas || 0),
+  };
+}
+
+async function fetchLatestProfileEmailByCpf(identifier: string, env: Env) {
+  const digits = normalizeDigits(identifier);
+  if (!digits) return null;
+
+  const payload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+      select: 'email',
+      cpf: `eq.${digits}`,
+      user_id: 'not.is.null',
+      order: 'updated_at.desc.nullslast,created_at.desc',
+      limit: '1',
+    }).toString()}`,
+  );
+
+  return Array.isArray(payload) ? (payload[0]?.email || null) : null;
+}
+
+async function fetchMatriculaProfile(identifier: string, env: Env) {
+  const compact = String(identifier || '').replace(/\s+/g, '');
+  const normalized = normalizeMatricula(identifier);
+  if (!compact && !normalized) return null;
+
+  const candidates = [...new Set([compact, normalized].filter(Boolean))];
+  if (!candidates.length) return null;
+
+  const orExpression = candidates.map((item) => `matricula.eq.${item}`).join(',');
+  const payload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/usuarios_biblioteca?select=email,user_id,matricula,tipo,updated_at,created_at&tipo=eq.aluno&or=(${orExpression})&order=updated_at.desc.nullslast,created_at.desc&limit=1`,
+  );
+
   return Array.isArray(payload) ? (payload[0] || null) : null;
 }
 
@@ -307,42 +474,24 @@ const routes: Record<string, RouteHandler> = {
   'POST /v1/auth/resolve-login': async (request, env) => {
     const body = await request.json().catch(() => ({}));
     const identifier = String(body?.identifier || '').trim();
-    const digits = identifier.replace(/\D/g, '');
-    const matricula = identifier.replace(/\s+/g, '');
+    const digits = normalizeDigits(identifier);
 
     if (!identifier) {
       return jsonResponse({ success: false, error: 'Identificador nao informado.' }, 400);
     }
 
     const [superAdminMatch, cpfEmail, matriculaEmail, matriculaActivated] = await Promise.all([
-      supabaseAdminRequest(
-        env,
-        `/rest/v1/rpc/resolve_super_admin_login`,
-        { method: 'POST', body: { _identifier: identifier } },
-      ),
-      supabaseAdminRequest(
-        env,
-        `/rest/v1/rpc/get_login_email_by_cpf`,
-        { method: 'POST', body: { _cpf: digits || identifier } },
-      ),
-      supabaseAdminRequest(
-        env,
-        `/rest/v1/rpc/get_login_email_by_matricula`,
-        { method: 'POST', body: { _matricula: matricula || identifier } },
-      ),
-      supabaseAdminRequest(
-        env,
-        `/rest/v1/rpc/is_matricula_login_activated`,
-        { method: 'POST', body: { _matricula: matricula || identifier } },
-      ),
+      resolveSuperAdminMatch(identifier, env),
+      fetchLatestProfileEmailByCpf(digits || identifier, env),
+      fetchMatriculaProfile(identifier, env),
     ]);
 
     return jsonResponse({
       success: true,
       superAdminMatch: superAdminMatch || null,
       cpfEmail: cpfEmail || null,
-      matriculaEmail: matriculaEmail || null,
-      matriculaActivated: matriculaActivated ?? null,
+      matriculaEmail: matriculaEmail?.email || null,
+      matriculaActivated: matriculaEmail ? Boolean(matriculaEmail.user_id) : null,
     });
   },
   'POST /v1/auth/logout': async (request, env) => {
@@ -385,38 +534,253 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const body = await request.json().catch(() => ({}));
-    const payload = await supabaseUserRpc(request, env, 'register_super_admin_login_success', {
-      _email: body?.email,
-      _path: body?.path || '/auth',
-    });
+    const jwtEmail = normalizeIdentifier(user?.email);
+    const requestedEmail = normalizeIdentifier(body?.email);
+    const match = await resolveSuperAdminMatch(requestedEmail || jwtEmail, env);
 
-    return jsonResponse(payload);
-  },
-  'POST /v1/auth/super-admin/failed-attempt': async (request, env) => {
-    const body = await request.json().catch(() => ({}));
-    const payload = await supabaseAdminRequest(
+    if (!match?.matched || !match?.account_id) {
+      return jsonResponse({ success: true, successMatched: false, matched: false });
+    }
+
+    await supabaseAdminRequest(
       env,
-      `/rest/v1/rpc/register_super_admin_failed_attempt`,
+      `/rest/v1/super_admin_accounts?${new URLSearchParams({ id: `eq.${match.account_id}` }).toString()}`,
       {
-        method: 'POST',
+        method: 'PATCH',
         body: {
-          _identifier: body?.identifier,
-          _path: body?.path || '/auth',
-          _context: body?.context || null,
+          auth_user_id: user.id,
+          tentativas_falhas: 0,
+          ultima_tentativa_em: new Date().toISOString(),
+          ultimo_login_em: new Date().toISOString(),
+          ativo: true,
+          bloqueado: false,
+          bloqueado_em: null,
+        },
+        headers: {
+          Prefer: 'return=minimal',
         },
       },
     );
 
-    return jsonResponse(payload);
+    await insertSystemLog(request, env, {
+      user_id: user.id,
+      level: 'info',
+      event: 'super_admin_login_success',
+      message: 'Login de Super Admin realizado com sucesso.',
+      path: String(body?.path || '/auth'),
+      context: {
+        account_id: match.account_id,
+        email: match.email || requestedEmail || jwtEmail || null,
+      },
+    });
+
+    return jsonResponse({ success: true, matched: true, account_id: match.account_id });
+  },
+  'POST /v1/auth/super-admin/failed-attempt': async (request, env) => {
+    const body = await request.json().catch(() => ({}));
+    const identifier = String(body?.identifier || '').trim();
+    const path = String(body?.path || '/auth');
+    const match = await resolveSuperAdminMatch(identifier, env);
+
+    if (!match?.matched || !match?.account_id) {
+      return jsonResponse({ matched: false });
+    }
+
+    const attempts = Number(match.tentativas_falhas || 0) + 1;
+    const blocked = attempts >= 4;
+
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/super_admin_accounts?${new URLSearchParams({ id: `eq.${match.account_id}` }).toString()}`,
+      {
+        method: 'PATCH',
+        body: {
+          tentativas_falhas: attempts,
+          ultima_tentativa_em: new Date().toISOString(),
+          bloqueado: blocked,
+          ativo: blocked ? false : match.ativo !== false,
+          bloqueado_em: blocked ? new Date().toISOString() : null,
+        },
+        headers: {
+          Prefer: 'return=minimal',
+        },
+      },
+    );
+
+    await insertSystemLog(request, env, {
+      level: blocked ? 'error' : 'warn',
+      event: blocked ? 'super_admin_account_locked' : 'super_admin_login_failed',
+      message: blocked
+        ? 'Conta de Super Admin bloqueada apos 4 tentativas falhas.'
+        : 'Tentativa invalida de login em conta de Super Admin.',
+      path,
+      context: {
+        identifier,
+        email: match.email || null,
+        account_id: match.account_id,
+        attempts,
+        blocked,
+        ...(body?.context && typeof body.context === 'object' ? body.context : {}),
+      },
+    });
+
+    return jsonResponse({
+      matched: true,
+      blocked,
+      attempts,
+      remaining: Math.max(0, 4 - attempts),
+    });
   },
   'POST /v1/auth/activate-matricula': async (request, env) => {
     const body = await request.json().catch(() => ({}));
-    const payload = await callSupabaseFunction(request, env, 'ativar-aluno-matricula', {
-      matricula: body?.matricula,
-      senha: body?.senha,
-    });
+    const matriculaInput = String(body?.matricula || '').trim();
+    const senhaInput = String(body?.senha || '');
+    const matriculaCompacta = matriculaInput.replace(/\s+/g, '');
+    const matriculaNormalizada = matriculaInput.replace(/[^A-Za-z0-9]/g, '');
+    const duplicateEmailMarkers = ['already been registered', 'already exists', 'already registered'];
 
-    return jsonResponse(payload);
+    if (!/^[A-Za-z0-9._-]{6,32}$/.test(matriculaCompacta)) {
+      return jsonResponse({ success: false, error: 'Matricula invalida' }, 400);
+    }
+
+    if (senhaInput.length < 6) {
+      return jsonResponse({ success: false, error: 'A senha deve ter pelo menos 6 caracteres' }, 400);
+    }
+
+    const alunoPayload = await supabaseAdminRequest(
+      env,
+      `/rest/v1/usuarios_biblioteca?select=id,nome,matricula,email,user_id,tipo,escola_id&tipo=eq.aluno&or=(${[
+        `matricula.eq.${matriculaCompacta}`,
+        `matricula.eq.${matriculaNormalizada}`,
+      ].join(',')})&order=updated_at.desc.nullslast&limit=1`,
+    );
+
+    const aluno = Array.isArray(alunoPayload) ? (alunoPayload[0] || null) : null;
+    if (!aluno) {
+      return jsonResponse({ success: false, error: 'Matricula nao encontrada' }, 404);
+    }
+
+    if (aluno.user_id) {
+      const activeProfilePayload = await supabaseAdminRequest(
+        env,
+        `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+          select: 'email',
+          user_id: `eq.${aluno.user_id}`,
+          order: 'updated_at.desc.nullslast,created_at.desc',
+          limit: '1',
+        }).toString()}`,
+      );
+
+      const activeProfile = Array.isArray(activeProfilePayload) ? (activeProfilePayload[0] || null) : null;
+      return jsonResponse({
+        success: true,
+        already_active: true,
+        email: activeProfile?.email || aluno.email || null,
+      });
+    }
+
+    const authEmail = `${matriculaCompacta.toLowerCase()}@temp.bibliotecai.com`;
+    let userId = '';
+    let createdNewUser = false;
+
+    try {
+      const authData = await supabaseAdminAuthRequest(env, '/users', {
+        method: 'POST',
+        body: {
+          email: authEmail,
+          password: senhaInput,
+          email_confirm: true,
+          user_metadata: { nome: aluno.nome || 'Aluno' },
+        },
+      });
+
+      if (authData?.user?.id) {
+        userId = String(authData.user.id);
+        createdNewUser = true;
+      }
+    } catch (error) {
+      const authErrorMessage = String(error instanceof Error ? error.message : '').toLowerCase();
+      if (!duplicateEmailMarkers.some((marker) => authErrorMessage.includes(marker))) {
+        return jsonResponse({
+          success: false,
+          error: authErrorMessage || 'Nao foi possivel ativar a conta',
+        }, 400);
+      }
+
+      const existingAuthUser = await findAuthUserByEmail(env, authEmail);
+      if (!existingAuthUser?.id) {
+        return jsonResponse({
+          success: false,
+          error: 'A conta de autenticacao ja existe, mas nao foi possivel reutiliza-la.',
+        }, 409);
+      }
+
+      await supabaseAdminAuthRequest(env, `/users/${existingAuthUser.id}`, {
+        method: 'PUT',
+        body: {
+          password: senhaInput,
+          email_confirm: true,
+          user_metadata: {
+            ...(existingAuthUser.user_metadata || {}),
+            nome: aluno.nome || 'Aluno',
+          },
+        },
+      });
+
+      userId = String(existingAuthUser.id);
+    }
+
+    if (!userId) {
+      return jsonResponse({ success: false, error: 'Nao foi possivel preparar a conta do aluno' }, 400);
+    }
+
+    try {
+      await supabaseAdminRequest(env, '/rest/v1/user_roles', {
+        method: 'POST',
+        body: [{ user_id: userId, role: 'aluno' }],
+        headers: {
+          Prefer: 'resolution=merge-duplicates,return=minimal',
+        },
+      });
+
+      await supabaseAdminRequest(
+        env,
+        `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ id: `eq.${aluno.id}` }).toString()}`,
+        {
+          method: 'PATCH',
+          body: {
+            user_id: userId,
+            email: authEmail,
+          },
+          headers: {
+            Prefer: 'return=minimal',
+          },
+        },
+      );
+
+      await supabaseAdminRequest(
+        env,
+        `/rest/v1/usuarios_biblioteca?user_id=eq.${userId}&id=neq.${aluno.id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Prefer: 'return=minimal',
+          },
+        },
+      );
+    } catch (error) {
+      if (createdNewUser && userId) {
+        await supabaseAdminAuthRequest(env, `/users/${userId}`, { method: 'DELETE' }).catch(() => null);
+      }
+
+      throw error;
+    }
+
+    return jsonResponse({
+      success: true,
+      already_active: false,
+      email: authEmail,
+    });
   },
   'GET /v1/auth/session': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);
