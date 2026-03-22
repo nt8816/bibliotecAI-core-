@@ -40,6 +40,12 @@ function getUserToken(request: Request) {
   return String(manualToken || authHeader.replace(/^Bearer\s+/i, '')).trim();
 }
 
+function getPathParam(request: Request, pattern: RegExp, groupIndex = 1) {
+  const url = new URL(request.url);
+  const match = url.pathname.match(pattern);
+  return match?.[groupIndex] || '';
+}
+
 function getSupabaseConfig(env: Env) {
   const supabaseUrl = String(env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
   const publishableKey = String(env.SUPABASE_PUBLISHABLE_KEY || '').trim();
@@ -152,6 +158,54 @@ async function isSuperAdmin(userId: string, env: Env) {
   return Array.isArray(payload) && payload.length > 0;
 }
 
+async function getLatestUserProfile(userId: string, env: Env) {
+  const params = new URLSearchParams({
+    select: 'id,escola_id,nome,email,tipo',
+    user_id: `eq.${userId}`,
+    order: 'updated_at.desc.nullslast,created_at.desc',
+    limit: '1',
+  });
+
+  const payload = await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${params.toString()}`);
+  return Array.isArray(payload) ? (payload[0] || null) : null;
+}
+
+async function callSupabaseFunction(
+  request: Request,
+  env: Env,
+  functionName: string,
+  body: unknown,
+) {
+  const userToken = getUserToken(request);
+  if (!userToken) {
+    throw new Error('Token do usuario ausente.');
+  }
+
+  const { supabaseUrl, publishableKey } = getSupabaseConfig(env);
+  const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
+    method: 'POST',
+    headers: {
+      apikey: publishableKey,
+      Authorization: `Bearer ${publishableKey}`,
+      'x-user-access-token': userToken,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const payload = await parseResponse(response);
+  if (!response.ok) {
+    throw new Error(
+      (typeof payload === 'string' && payload.trim()) ||
+      payload?.message ||
+      payload?.error ||
+      `Falha ao chamar function ${functionName} (HTTP ${response.status}).`,
+    );
+  }
+
+  return payload;
+}
+
 const routes: Record<string, RouteHandler> = {
   'GET /health': async (_request, env) =>
     jsonResponse({
@@ -186,9 +240,106 @@ const routes: Record<string, RouteHandler> = {
     const items = await supabaseUserRpc(request, env, 'get_reclamacoes_super_admin_feed');
     return jsonResponse({ success: true, items: Array.isArray(items) ? items : [] });
   },
-  'POST /v1/reclamacoes': async () => notImplemented('Criacao de reclamacoes pela API propria'),
-  'PATCH /v1/reclamacoes/:id': async () => notImplemented('Atualizacao de reclamacoes pela API propria'),
-  'POST /v1/reclamacoes/:id/read': async () => notImplemented('Marcacao de leitura pela API propria'),
+  'POST /v1/reclamacoes': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const profile = await getLatestUserProfile(user.id, env);
+    const roleRows = await supabaseAdminRequest(
+      env,
+      `/rest/v1/user_roles?${new URLSearchParams({
+        select: 'role',
+        user_id: `eq.${user.id}`,
+      }).toString()}`,
+    );
+    const roleList = Array.isArray(roleRows) ? roleRows.map((item) => String(item?.role || '')) : [];
+    const senderRole = roleList.includes('super_admin')
+      ? 'super_admin'
+      : profile?.tipo || 'aluno';
+
+    const assunto = String(body?.assunto || '').trim();
+    const mensagem = String(body?.mensagem || '').trim();
+    const imageUrls = Array.isArray(body?.image_urls)
+      ? body.image_urls.filter((item: unknown) => typeof item === 'string')
+      : [];
+
+    if (assunto.length < 3 || mensagem.length < 10) {
+      return jsonResponse({ success: false, error: 'Assunto ou mensagem invalidos.' }, 400);
+    }
+
+    await supabaseAdminRequest(env, '/rest/v1/reclamacoes_super_admin', {
+      method: 'POST',
+      body: {
+        sender_profile_id: profile?.id || null,
+        sender_role: senderRole,
+        sender_nome: profile?.nome || user.user_metadata?.nome || user.email || null,
+        sender_email: profile?.email || user.email || null,
+        escola_id: profile?.escola_id || null,
+        assunto,
+        mensagem,
+        image_urls: imageUrls,
+      },
+      headers: {
+        Prefer: 'return=minimal',
+      },
+    });
+
+    return jsonResponse({ success: true });
+  },
+  'PATCH /v1/reclamacoes/:id': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const allowed = await isSuperAdmin(user.id, env);
+    if (!allowed) {
+      return jsonResponse({ success: false, error: 'Sem permissao para atualizar reclamacoes.' }, 403);
+    }
+
+    const reclamacaoId = getPathParam(request, /^\/v1\/reclamacoes\/([^/]+)$/);
+    if (!reclamacaoId) {
+      return jsonResponse({ success: false, error: 'ID da reclamacao ausente.' }, 400);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/reclamacoes_super_admin?${new URLSearchParams({ id: `eq.${reclamacaoId}` }).toString()}`,
+      {
+        method: 'PATCH',
+        body: {
+          status: body?.status,
+          resposta: body?.resposta ?? null,
+        },
+        headers: {
+          Prefer: 'return=minimal',
+        },
+      },
+    );
+
+    return jsonResponse({ success: true });
+  },
+  'POST /v1/reclamacoes/:id/read': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const reclamacaoId = getPathParam(request, /^\/v1\/reclamacoes\/([^/]+)\/read$/);
+    if (!reclamacaoId) {
+      return jsonResponse({ success: false, error: 'ID da reclamacao ausente.' }, 400);
+    }
+
+    await supabaseUserRpc(request, env, 'mark_reclamacao_super_admin_lida', {
+      _reclamacao_id: reclamacaoId,
+    });
+
+    return jsonResponse({ success: true });
+  },
 
   'GET /v1/admin/super-admins': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);
@@ -224,8 +375,51 @@ const routes: Record<string, RouteHandler> = {
       securityAlert: Array.isArray(alerts) ? (alerts[0] || null) : null,
     });
   },
-  'POST /v1/admin/super-admins': async () => notImplemented('Criacao de Super Admin pela API propria'),
-  'POST /v1/admin/super-admins/:id/unlock': async () => notImplemented('Desbloqueio de Super Admin pela API propria'),
+  'POST /v1/admin/super-admins': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const allowed = await isSuperAdmin(user.id, env);
+    if (!allowed) {
+      return jsonResponse({ success: false, error: 'Sem permissao para criar Super Admin.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const payload = await callSupabaseFunction(request, env, 'gerenciar-super-admins', {
+      operation: 'create',
+      nome: body?.nome,
+      email: body?.email,
+      cpf: body?.cpf,
+      senha: body?.senha,
+    });
+
+    return jsonResponse(payload);
+  },
+  'POST /v1/admin/super-admins/:id/unlock': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const allowed = await isSuperAdmin(user.id, env);
+    if (!allowed) {
+      return jsonResponse({ success: false, error: 'Sem permissao para liberar Super Admin.' }, 403);
+    }
+
+    const accountId = getPathParam(request, /^\/v1\/admin\/super-admins\/([^/]+)\/unlock$/);
+    if (!accountId) {
+      return jsonResponse({ success: false, error: 'ID da conta ausente.' }, 400);
+    }
+
+    const payload = await callSupabaseFunction(request, env, 'gerenciar-super-admins', {
+      operation: 'unlock',
+      account_id: accountId,
+    });
+
+    return jsonResponse(payload);
+  },
 
   'GET /v1/admin/tenants': async () => notImplemented('Tenants pela API propria'),
   'POST /v1/admin/tenants': async () => notImplemented('Provisionamento de tenant pela API propria'),
