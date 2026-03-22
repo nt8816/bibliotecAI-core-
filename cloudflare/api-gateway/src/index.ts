@@ -146,6 +146,42 @@ async function supabaseUserRpc(request: Request, env: Env, functionName: string,
   return payload;
 }
 
+async function supabaseUserRequest(
+  request: Request,
+  env: Env,
+  path: string,
+  { method = 'GET', body, headers }: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
+) {
+  const token = getUserToken(request);
+  if (!token) {
+    throw new Error('Token do usuario ausente.');
+  }
+
+  const { supabaseUrl, publishableKey } = getSupabaseConfig(env);
+  const response = await fetch(`${supabaseUrl}${path}`, {
+    method,
+    headers: {
+      apikey: publishableKey,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...(headers || {}),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  const payload = await parseResponse(response);
+  if (!response.ok) {
+    throw new Error(
+      (typeof payload === 'string' && payload.trim()) ||
+      payload?.message ||
+      payload?.error ||
+      `Falha na requisicao autenticada ao Supabase (HTTP ${response.status}).`,
+    );
+  }
+
+  return payload;
+}
+
 async function isSuperAdmin(userId: string, env: Env) {
   const params = new URLSearchParams({
     select: 'role',
@@ -247,19 +283,6 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const body = await request.json().catch(() => ({}));
-    const profile = await getLatestUserProfile(user.id, env);
-    const roleRows = await supabaseAdminRequest(
-      env,
-      `/rest/v1/user_roles?${new URLSearchParams({
-        select: 'role',
-        user_id: `eq.${user.id}`,
-      }).toString()}`,
-    );
-    const roleList = Array.isArray(roleRows) ? roleRows.map((item) => String(item?.role || '')) : [];
-    const senderRole = roleList.includes('super_admin')
-      ? 'super_admin'
-      : profile?.tipo || 'aluno';
-
     const assunto = String(body?.assunto || '').trim();
     const mensagem = String(body?.mensagem || '').trim();
     const imageUrls = Array.isArray(body?.image_urls)
@@ -270,15 +293,9 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Assunto ou mensagem invalidos.' }, 400);
     }
 
-    await supabaseAdminRequest(env, '/rest/v1/reclamacoes_super_admin', {
+    await supabaseUserRequest(request, env, '/rest/v1/reclamacoes_super_admin', {
       method: 'POST',
       body: {
-        sender_user_id: user.id,
-        sender_profile_id: profile?.id || null,
-        sender_role: senderRole,
-        sender_nome: profile?.nome || user.user_metadata?.nome || user.email || null,
-        sender_email: profile?.email || user.email || null,
-        escola_id: profile?.escola_id || null,
         assunto,
         mensagem,
         image_urls: imageUrls,
