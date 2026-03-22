@@ -11,8 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { createSuperAdminAccount, fetchSuperAdminsDashboard, unlockSuperAdminAccount } from '@/services/superAdminsService';
 
 function formatDate(value) {
   if (!value) return '-';
@@ -69,24 +68,9 @@ export default function SuperAdmins() {
   const fetchItems = useCallback(async () => {
     setLoading(true);
     try {
-      const [accountsRes, alertsRes] = await Promise.all([
-        supabase
-          .from('super_admin_accounts')
-          .select('id, nome, email, cpf, ativo, bloqueado, tentativas_falhas, ultima_tentativa_em, ultimo_login_em, bloqueado_em, created_at')
-          .order('created_at', { ascending: true }),
-        supabase
-          .from('system_logs')
-          .select('id, event, message, ip, created_at, context')
-          .in('event', ['super_admin_login_failed', 'super_admin_account_locked'])
-          .order('created_at', { ascending: false })
-          .limit(1),
-      ]);
-
-      if (accountsRes.error) throw accountsRes.error;
-      if (alertsRes.error) throw alertsRes.error;
-
-      setItems(accountsRes.data || []);
-      setSecurityAlert((alertsRes.data || [])[0] || null);
+      const payload = await fetchSuperAdminsDashboard();
+      setItems(payload.items || []);
+      setSecurityAlert(payload.securityAlert || null);
     } catch (error) {
       toast({
         title: 'Erro ao carregar Super Admins',
@@ -101,16 +85,6 @@ export default function SuperAdmins() {
   useEffect(() => {
     fetchItems();
   }, [fetchItems]);
-
-  const getUserAccessToken = async () => {
-    const { data, error } = await supabase.auth.getSession();
-    if (error) throw error;
-    const accessToken = data?.session?.access_token;
-    if (!accessToken) {
-      throw new Error('Sessao invalida. Faca login novamente.');
-    }
-    return accessToken;
-  };
 
   const handleCreate = async () => {
     const cpf = normalizeCpf(form.cpf);
@@ -135,21 +109,11 @@ export default function SuperAdmins() {
 
     setSaving(true);
     try {
-      const accessToken = await getUserAccessToken();
-      await invokeEdgeFunction('gerenciar-super-admins', {
-        body: {
-          operation: 'create',
-          nome: form.nome.trim(),
-          email: form.email.trim(),
-          cpf,
-          senha: form.senha,
-        },
-        requireAuth: false,
-        headers: {
-          'x-user-access-token': accessToken,
-        },
-        transport: 'http',
-        fallbackErrorMessage: 'Nao foi possivel criar o Super Admin.',
+      await createSuperAdminAccount({
+        nome: form.nome.trim(),
+        email: form.email.trim(),
+        cpf,
+        senha: form.senha,
       });
 
       setForm(emptyForm);
@@ -172,19 +136,7 @@ export default function SuperAdmins() {
   const handleUnlock = async (accountId) => {
     setUnlockingId(accountId);
     try {
-      const accessToken = await getUserAccessToken();
-      await invokeEdgeFunction('gerenciar-super-admins', {
-        body: {
-          operation: 'unlock',
-          account_id: accountId,
-        },
-        requireAuth: false,
-        headers: {
-          'x-user-access-token': accessToken,
-        },
-        transport: 'http',
-        fallbackErrorMessage: 'Nao foi possivel liberar a conta.',
-      });
+      await unlockSuperAdminAccount(accountId);
 
       toast({
         title: 'Conta liberada',

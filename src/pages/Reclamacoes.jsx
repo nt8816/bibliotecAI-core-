@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { uploadFileToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrls } from '@/lib/resolveR2Media';
+import { createReclamacao, fetchReclamacoesFeed, markReclamacaoAsRead, updateReclamacao } from '@/services/reclamacoesService';
 
 function formatDateTime(value) {
   if (!value) return '-';
@@ -91,9 +92,7 @@ export default function Reclamacoes() {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.rpc('get_reclamacoes_super_admin_feed');
-      if (error) throw error;
-
+      const data = await fetchReclamacoesFeed();
       const nextItems = await Promise.all((data || []).map(async (item) => ({
         ...item,
         escola_nome_resolvida: item?.escola_nome || null,
@@ -193,7 +192,7 @@ export default function Reclamacoes() {
         }),
       );
 
-      const { error } = await supabase.from('reclamacoes_super_admin').insert({
+      await createReclamacao({
         sender_profile_id: senderProfileId,
         sender_role: userRole,
         sender_nome: senderNome,
@@ -203,8 +202,6 @@ export default function Reclamacoes() {
         mensagem,
         image_urls: imageUrls,
       });
-
-      if (error) throw error;
 
       pendingImages.forEach((image) => {
         if (image?.previewUrl) URL.revokeObjectURL(image.previewUrl);
@@ -236,12 +233,7 @@ export default function Reclamacoes() {
         resposta: responseDraft.trim() || null,
       };
 
-      const { error } = await supabase
-        .from('reclamacoes_super_admin')
-        .update(payload)
-        .eq('id', selectedItem.id);
-
-      if (error) throw error;
+      await updateReclamacao(selectedItem.id, payload);
 
       toast({
         title: 'Reclamacao atualizada',
@@ -269,11 +261,9 @@ export default function Reclamacoes() {
       entry.id === item.id ? { ...entry, lida_em: new Date().toISOString() } : entry
     )));
 
-    const { error } = await supabase.rpc('mark_reclamacao_super_admin_lida', {
-      _reclamacao_id: item.id,
-    });
-
-    if (error) {
+    try {
+      await markReclamacaoAsRead(item.id);
+    } catch {
       await fetchItems();
     }
   };

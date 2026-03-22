@@ -58,9 +58,12 @@ const routes: Record<string, RouteHandler> = {
 
   'GET /v1/reclamacoes': async () => notImplemented('Reclamacoes pela API propria'),
   'POST /v1/reclamacoes': async () => notImplemented('Criacao de reclamacoes pela API propria'),
+  'PATCH /v1/reclamacoes/:id': async () => notImplemented('Atualizacao de reclamacoes pela API propria'),
+  'POST /v1/reclamacoes/:id/read': async () => notImplemented('Marcacao de leitura pela API propria'),
 
   'GET /v1/admin/super-admins': async () => notImplemented('Gestao de Super Admins pela API propria'),
   'POST /v1/admin/super-admins': async () => notImplemented('Criacao de Super Admin pela API propria'),
+  'POST /v1/admin/super-admins/:id/unlock': async () => notImplemented('Desbloqueio de Super Admin pela API propria'),
 
   'GET /v1/admin/tenants': async () => notImplemented('Tenants pela API propria'),
   'POST /v1/admin/tenants': async () => notImplemented('Provisionamento de tenant pela API propria'),
@@ -69,9 +72,16 @@ const routes: Record<string, RouteHandler> = {
   'POST /v1/media/sign-download': async () => notImplemented('Assinatura de download pela API propria'),
 };
 
+function normalizeDynamicRoute(routeKey: string) {
+  return routeKey
+    .replace(/\/v1\/reclamacoes\/[^/]+\/read$/, '/v1/reclamacoes/:id/read')
+    .replace(/\/v1\/reclamacoes\/[^/]+$/, '/v1/reclamacoes/:id')
+    .replace(/\/v1\/admin\/super-admins\/[^/]+\/unlock$/, '/v1/admin/super-admins/:id/unlock');
+}
+
 function resolveRoute(request: Request) {
   const url = new URL(request.url);
-  return `${request.method.toUpperCase()} ${url.pathname}`;
+  return normalizeDynamicRoute(`${request.method.toUpperCase()} ${url.pathname}`);
 }
 
 export default {
