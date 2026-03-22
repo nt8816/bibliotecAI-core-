@@ -15,6 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { generateAudioWithCloudflare } from '@/lib/cloudflareAiApi';
 import { uploadDataUrlToR2 } from '@/lib/r2Storage';
+import { fetchAdminTenantsDashboard } from '@/services/adminTenantsService';
 
 const DEFAULT_BASE_DOMAIN = import.meta.env.VITE_APP_BASE_DOMAIN || 'bibliotec-ai-core.vercel.app';
 
@@ -111,26 +112,9 @@ export default function AdminTenants() {
   const fetchTenants = useCallback(async () => {
     setLoading(true);
     try {
-      const [tenantsRes, escolasRes] = await Promise.all([
-        supabase
-          .from('tenants')
-          .select('id, escola_id, nome, subdominio, schema_name, plano, ativo, created_at')
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('escolas')
-          .select('id, nome, gestor_id')
-          .order('nome', { ascending: true }),
-      ]);
-
-      if (tenantsRes.error) throw tenantsRes.error;
-      if (escolasRes.error) throw escolasRes.error;
-
-      const tenantsData = tenantsRes.data || [];
-      const escolasData = escolasRes.data || [];
-      const escolaIdsComTenant = new Set(tenantsData.map((tenant) => tenant.escola_id).filter(Boolean));
-
-      setTenants(tenantsData);
-      setEscolasSemTenant(escolasData.filter((escola) => !escolaIdsComTenant.has(escola.id)));
+      const payload = await fetchAdminTenantsDashboard();
+      setTenants(payload.tenants || []);
+      setEscolasSemTenant(payload.schoolsWithoutTenant || []);
     } catch (error) {
       console.error(error);
       toast({

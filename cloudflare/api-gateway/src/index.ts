@@ -256,7 +256,7 @@ const routes: Record<string, RouteHandler> = {
       success: true,
       modules: {
         auth: 'planned',
-        tenants: 'planned',
+        tenants: 'read_ready',
         reclamacoes: 'read_ready',
         super_admins: 'read_ready',
         media: 'planned',
@@ -439,7 +439,44 @@ const routes: Record<string, RouteHandler> = {
     return jsonResponse(payload);
   },
 
-  'GET /v1/admin/tenants': async () => notImplemented('Tenants pela API propria'),
+  'GET /v1/admin/tenants': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const allowed = await isSuperAdmin(user.id, env);
+    if (!allowed) {
+      return jsonResponse({ success: false, error: 'Sem permissao para acessar tenants.' }, 403);
+    }
+
+    const [tenants, schools] = await Promise.all([
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/tenants?${new URLSearchParams({
+          select: 'id,escola_id,nome,subdominio,schema_name,plano,ativo,created_at',
+          order: 'created_at.desc',
+        }).toString()}`,
+      ),
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/escolas?${new URLSearchParams({
+          select: 'id,nome,gestor_id',
+          order: 'nome.asc',
+        }).toString()}`,
+      ),
+    ]);
+
+    const tenantItems = Array.isArray(tenants) ? tenants : [];
+    const schoolItems = Array.isArray(schools) ? schools : [];
+    const schoolIdsWithTenant = new Set(tenantItems.map((tenant) => tenant?.escola_id).filter(Boolean));
+
+    return jsonResponse({
+      success: true,
+      tenants: tenantItems,
+      schoolsWithoutTenant: schoolItems.filter((school) => !schoolIdsWithTenant.has(school.id)),
+    });
+  },
   'POST /v1/admin/tenants': async () => notImplemented('Provisionamento de tenant pela API propria'),
 
   'POST /v1/media/sign-upload': async () => notImplemented('Assinatura de upload pela API propria'),
