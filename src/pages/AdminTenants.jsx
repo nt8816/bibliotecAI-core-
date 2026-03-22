@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { generateAudioWithCloudflare } from '@/lib/cloudflareAiApi';
+import { uploadDataUrlToR2 } from '@/lib/r2Storage';
 
 const DEFAULT_BASE_DOMAIN = import.meta.env.VITE_APP_BASE_DOMAIN || 'bibliotec-ai-core.vercel.app';
 
@@ -625,6 +626,14 @@ export default function AdminTenants() {
             fallbackErrorMessage: `Falha ao gerar áudio do livro "${livro.titulo}".`,
           });
 
+          const uploadedAudio = await uploadDataUrlToR2({
+            dataUrl: audioDataUrl,
+            escolaId: tenant.escola_id,
+            ownerId: autorComunidadeId || 'super-admin',
+            scope: 'audiobooks',
+            fileName: `${livro.titulo || 'audiobook'}.mp3`,
+          });
+
           const { data: audioCriado, error: insertAudioError } = await supabase
             .from('audiobooks_biblioteca')
             .insert({
@@ -632,7 +641,7 @@ export default function AdminTenants() {
               escola_id: tenant.escola_id,
               titulo: `${livro.titulo} (Audiobook IA)`,
               autor: livro.autor || null,
-              audio_url: audioDataUrl,
+              audio_url: uploadedAudio.publicUrl || uploadedAudio.objectKey,
               criado_por: autorComunidadeId,
             })
             .select('id')

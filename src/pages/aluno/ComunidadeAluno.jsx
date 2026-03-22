@@ -15,6 +15,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { uploadDataUrlToR2 } from '@/lib/r2Storage';
+import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 const POSTS_PAGE_SIZE = 20;
@@ -232,6 +234,36 @@ function dataUrlToFile(dataUrl, filename = 'compartilhamento.jpg') {
   return new File([bytes], filename, { type: mime });
 }
 
+async function resolvePostMedia(post) {
+  const safePost = post || {};
+  const imagem_urls = await resolveR2MediaUrls(ensureArray(safePost.imagem_urls), `comunidade-${safePost.id || 'post'}`);
+  const audio_url = await resolveR2MediaUrl(
+    safePost?.audiobooks_biblioteca?.audio_url,
+    `audiobook-${safePost?.audiobooks_biblioteca?.id || safePost.id || 'post'}.mp3`,
+  );
+
+  return {
+    ...safePost,
+    imagem_urls,
+    audiobooks_biblioteca: safePost?.audiobooks_biblioteca
+      ? { ...safePost.audiobooks_biblioteca, audio_url }
+      : safePost?.audiobooks_biblioteca,
+  };
+}
+
+async function fetchCommunityPostById(postId) {
+  if (!postId) return null;
+
+  const { data, error } = await supabase
+    .from('comunidade_posts')
+    .select('*, livros(titulo, autor), audiobooks_biblioteca(titulo, autor, audio_url), usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)')
+    .eq('id', postId)
+    .single();
+
+  if (error) throw error;
+  return resolvePostMedia(data);
+}
+
 export default function ComunidadeAluno() {
   const { user, isProfessor, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
   const { toast } = useToast();
@@ -386,7 +418,11 @@ export default function ComunidadeAluno() {
           .order('created_at', { ascending: false })
           .range(offset, offset + POSTS_PAGE_SIZE - 1);
         if (error) throw error;
-        const items = ensureArray(data).filter((item) => !isExpiredComunicado(item));
+        const items = await Promise.all(
+          ensureArray(data)
+            .filter((item) => !isExpiredComunicado(item))
+            .map(resolvePostMedia),
+        );
         setPosts((prev) => (reset ? items : mergeById(prev, items)));
         setPostsOffset(offset + items.length);
         setPostsHasMore(items.length === POSTS_PAGE_SIZE);
@@ -556,28 +592,30 @@ export default function ComunidadeAluno() {
     loadQuizRankingForPosts(quizPostIds);
   }, [loadQuizRankingForPosts, posts, quizRankingEscopo, quizRankingPeriodo]);
 
-  const onPostInsert = useCallback((payload) => {
+  const onPostInsert = useCallback(async (payload) => {
     const nextPost = payload?.new;
     if (!nextPost?.id || isExpiredComunicado(nextPost)) return;
+    const hydratedPost = await fetchCommunityPostById(nextPost.id).catch(() => nextPost);
 
     setPosts((prev) => {
       const list = ensureArray(prev);
-      const exists = list.some((item) => item.id === nextPost.id);
+      const exists = list.some((item) => item.id === hydratedPost.id);
       if (exists) return list;
-      const nextList = [nextPost, ...list];
+      const nextList = [hydratedPost, ...list];
       syncPostsCache(nextList);
       return nextList;
     });
     setAriaLiveMessage('Novo post adicionado na comunidade.');
   }, []);
 
-  const onPostUpdate = useCallback((payload) => {
+  const onPostUpdate = useCallback(async (payload) => {
     const nextPost = payload?.new;
     if (!nextPost?.id) return;
+    const hydratedPost = await fetchCommunityPostById(nextPost.id).catch(() => nextPost);
 
     setPosts((prev) => {
-      const baseList = ensureArray(prev).filter((item) => item.id !== nextPost.id);
-      const nextList = isExpiredComunicado(nextPost) ? baseList : [nextPost, ...baseList];
+      const baseList = ensureArray(prev).filter((item) => item.id !== hydratedPost.id);
+      const nextList = isExpiredComunicado(hydratedPost) ? baseList : [hydratedPost, ...baseList];
       syncPostsCache(nextList);
       return nextList;
     });
@@ -787,6 +825,16 @@ export default function ComunidadeAluno() {
 
     setSaving(true);
     try {
+      const imagemUrls = await Promise.all(
+        imageDataUrls.map((dataUrl, index) => uploadDataUrlToR2({
+          dataUrl,
+          escolaId,
+          ownerId: alunoId,
+          scope: 'comunidade',
+          fileName: `post-${Date.now()}-${index + 1}.jpg`,
+        }).then((upload) => upload.publicUrl || upload.objectKey)),
+      );
+
       const turmaPublico = requerTurmaDestino
         ? (postTurmaPublico === ALL_TURMAS_OPTION ? null : postTurmaPublico.trim())
         : null;
@@ -801,15 +849,16 @@ export default function ComunidadeAluno() {
         tipo: postTipo,
         titulo: postTitulo.trim() || null,
         conteudo: postConteudo.trim() || (postTipo === 'comunicado' ? 'Novo comunicado da escola.' : 'Compartilhamento de midia criado na comunidade.'),
-        imagem_urls: imageDataUrls,
+        imagem_urls: imagemUrls,
         tags: Array.from(new Set([...(postComIA ? ['ia'] : []), ...(postTipo === 'comunicado' ? [COMUNICADO_AUTO_TAG] : [])])),
       });
 
       if (error) throw error;
 
       if (novoPost?.id) {
+        const normalizedPost = await resolvePostMedia(novoPost);
         setPosts((prev) => {
-          const nextList = [novoPost, ...ensureArray(prev)];
+          const nextList = [normalizedPost, ...ensureArray(prev)];
           syncPostsCache(nextList);
           return nextList;
         });

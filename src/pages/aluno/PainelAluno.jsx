@@ -50,6 +50,7 @@ import {
 } from '@/lib/cloudflareAiApi';
 import { canonicalizeBookArea } from '@/lib/bookAreas';
 import { uploadDataUrlToR2 } from '@/lib/r2Storage';
+import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -687,6 +688,33 @@ async function persistStudioSlidesToR2({ slides, escolaId, alunoId }) {
 
     return upload.publicUrl || upload.objectKey;
   }));
+}
+
+async function resolveAudiobookRecord(record) {
+  if (!record) return record;
+  return {
+    ...record,
+    audio_url: await resolveR2MediaUrl(record.audio_url, `${record.id || 'audiobook'}.mp3`),
+  };
+}
+
+async function resolveAlunoAudiobookRecord(record) {
+  if (!record) return record;
+  return {
+    ...record,
+    audiobooks_biblioteca: record.audiobooks_biblioteca
+      ? await resolveAudiobookRecord(record.audiobooks_biblioteca)
+      : record.audiobooks_biblioteca,
+  };
+}
+
+async function resolveLabCriacaoRecord(record) {
+  if (!record) return record;
+  return {
+    ...record,
+    imagem_urls_r2_keys: ensureArray(record.imagem_urls),
+    imagem_urls: await resolveR2MediaUrls(ensureArray(record.imagem_urls), `laboratorio-${record.id || 'criacao'}`),
+  };
 }
 
 async function generateImageWithIA(prompt) {
@@ -1341,9 +1369,9 @@ export default function PainelAluno() {
         );
         setAtividades(atividadesRes.data || []);
         setEntregas(entregasOpt.data);
-        setAudiobookCatalogo(audioCatalogoOpt.data);
-        setMeusAudiobooks(meusAudiobooksOpt.data);
-        setCriacoesLaboratorio(criacoesLaboratorioOpt.data);
+        setAudiobookCatalogo(await Promise.all((audioCatalogoOpt.data || []).map(resolveAudiobookRecord)));
+        setMeusAudiobooks(await Promise.all((meusAudiobooksOpt.data || []).map(resolveAlunoAudiobookRecord)));
+        setCriacoesLaboratorio(await Promise.all((criacoesLaboratorioOpt.data || []).map(resolveLabCriacaoRecord)));
         setComunicados(
           ensureArray(comunicadosRes.data).filter((item) => {
             if (isExpiredComunicado(item)) return false;
@@ -1571,6 +1599,17 @@ export default function PainelAluno() {
     }
   }, []);
 
+  const fetchResolvedRowById = useCallback(async (table, id, select) => {
+    const data = await fetchRowById(table, id, select);
+    if (!data) return null;
+
+    if (table === 'audiobooks_biblioteca') return resolveAudiobookRecord(data);
+    if (table === 'aluno_audiobooks') return resolveAlunoAudiobookRecord(data);
+    if (table === 'laboratorio_criacoes') return resolveLabCriacaoRecord(data);
+
+    return data;
+  }, [fetchRowById]);
+
   const handleRealtimeStatus = useCallback(
     (status) => {
       if (status !== 'CHANNEL_ERROR') return;
@@ -1751,11 +1790,11 @@ export default function PainelAluno() {
   const handleAudiobookUpsert = useCallback(
     async (payload) => {
       const row = payload?.new;
-      const data = await fetchRowById('audiobooks_biblioteca', row?.id, '*, livros(titulo, autor)');
+      const data = await fetchResolvedRowById('audiobooks_biblioteca', row?.id, '*, livros(titulo, autor)');
       if (!data) return;
       setAudiobookCatalogo((prev) => sortByDateDesc(upsertById(prev, data)));
     },
-    [fetchRowById],
+    [fetchResolvedRowById],
   );
 
   const handleAudiobookDelete = useCallback((payload) => {
@@ -1767,11 +1806,11 @@ export default function PainelAluno() {
   const handleAlunoAudiobookUpsert = useCallback(
     async (payload) => {
       const row = payload?.new;
-      const data = await fetchRowById('aluno_audiobooks', row?.id, '*, audiobooks_biblioteca(*, livros(titulo, autor))');
+      const data = await fetchResolvedRowById('aluno_audiobooks', row?.id, '*, audiobooks_biblioteca(*, livros(titulo, autor))');
       if (!data || data.aluno_id !== alunoId) return;
       setMeusAudiobooks((prev) => sortByDateDesc(upsertById(prev, data)));
     },
-    [alunoId, fetchRowById],
+    [alunoId, fetchResolvedRowById],
   );
 
   const handleAlunoAudiobookDelete = useCallback(
@@ -1786,11 +1825,11 @@ export default function PainelAluno() {
   const handleLabCriacaoUpsert = useCallback(
     async (payload) => {
       const row = payload?.new;
-      const data = await fetchRowById('laboratorio_criacoes', row?.id, '*');
+      const data = await fetchResolvedRowById('laboratorio_criacoes', row?.id, '*');
       if (!data || data.aluno_id !== alunoId) return;
       setCriacoesLaboratorio((prev) => sortByDateDesc(upsertById(prev, data)));
     },
-    [alunoId, fetchRowById],
+    [alunoId, fetchResolvedRowById],
   );
 
   const handleLabCriacaoDelete = useCallback(
@@ -2692,13 +2731,21 @@ export default function PainelAluno() {
 
     setSaving(true);
     try {
+      const uploadedAudio = await uploadDataUrlToR2({
+        dataUrl: audiobookFileDataUrl,
+        escolaId,
+        ownerId: alunoId,
+        scope: 'audiobooks',
+        fileName: audiobookFileNome || `${livro.titulo}.mp3`,
+      });
+
       const payload = {
         livro_id: livro.id,
         escola_id: escolaId,
         titulo: audiobookForm.titulo.trim() || livro.titulo,
         autor: audiobookForm.autor.trim() || livro.autor,
         duracao_minutos: audiobookForm.duracao_minutos ? Number(audiobookForm.duracao_minutos) : null,
-        audio_url: audiobookFileDataUrl,
+        audio_url: uploadedAudio.publicUrl || uploadedAudio.objectKey,
         criado_por: alunoId,
       };
 
@@ -3220,6 +3267,7 @@ export default function PainelAluno() {
 
     setSaving(true);
     try {
+      const criacaoImagemUrls = ensureArray(criacao.imagem_urls_r2_keys || criacao.imagem_urls);
       const tituloBase = String(customizacao.titulo || repairMojibakeText(criacao.titulo) || 'Criação do aluno').trim();
       const descricaoBase = String(customizacao.descricao || repairMojibakeText(criacao.descricao) || '').trim();
       const tipoPersonalizado = String(customizacao.tipo || normalizeCriacaoShareTipo(criacao)).trim();
@@ -3248,7 +3296,7 @@ export default function PainelAluno() {
           conteudo: [`Quiz interativo (${descricaoQuiz})`, resumoQuestoes, serializeQuizParaComunidade(quizPayload)]
             .filter(Boolean)
             .join('\n'),
-          imagem_urls: ensureArray(criacao.imagem_urls),
+          imagem_urls: criacaoImagemUrls,
           tags: Array.from(new Set([...(ensureArray(criacao.tags)), 'quiz'])),
         };
       } else if (criacao.tipo === 'resenha') {
@@ -3259,7 +3307,7 @@ export default function PainelAluno() {
           tipo: 'resenha',
           titulo: tituloBase,
           conteudo: descricaoBase || 'Nova resenha compartilhada pelo aluno.',
-          imagem_urls: ensureArray(criacao.imagem_urls),
+          imagem_urls: criacaoImagemUrls,
           tags: Array.from(new Set(ensureArray(criacao.tags))),
         };
       } else if (criacao.tipo === 'resumo') {
@@ -3270,7 +3318,7 @@ export default function PainelAluno() {
           tipo: ['dica', 'sugestao'].includes(tipoPersonalizado) ? tipoPersonalizado : 'sugestao',
           titulo: tituloBase,
           conteudo: descricaoBase || extractResumoTextoFromCriacao(criacao) || 'Resumo compartilhado pelo aluno.',
-          imagem_urls: ensureArray(criacao.imagem_urls),
+          imagem_urls: criacaoImagemUrls,
           tags: Array.from(new Set([...(ensureArray(criacao.tags)), 'resumo'])),
         };
       } else {
@@ -3282,7 +3330,7 @@ export default function PainelAluno() {
           tipo: ['dica', 'sugestao', 'resenha'].includes(tipoPersonalizado) ? tipoPersonalizado : 'dica',
           titulo: tituloBase,
           conteudo: descricaoBase || 'Projeto criativo compartilhado pelo aluno.',
-          imagem_urls: ensureArray(criacao.imagem_urls),
+          imagem_urls: criacaoImagemUrls,
           tags: Array.from(new Set(ensureArray(criacao.tags))),
         };
       }
