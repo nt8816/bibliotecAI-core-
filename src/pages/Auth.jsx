@@ -4,13 +4,17 @@ import { z } from 'zod';
 import { Library, Loader2, Eye, EyeOff } from 'lucide-react';
 
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import {
+  activateStudentMatricula,
+  registerPlatformSuperAdminFailedAttempt,
+  registerPlatformSuperAdminLoginSuccess,
+  resolvePlatformLoginIdentifier,
+} from '@/services/authService';
 
 const loginSchema = z.object({
   login: z.string().trim().min(2, 'Informe seu CPF ou matrícula'),
@@ -145,7 +149,8 @@ export default function Auth() {
 
   const loginWithIdentifier = async (login, password) => {
     const normalized = login.trim();
-    const { data: superAdminMatch } = await supabase.rpc('resolve_super_admin_login', { _identifier: normalized });
+    const loginResolution = await resolvePlatformLoginIdentifier(normalized);
+    const superAdminMatch = loginResolution?.superAdminMatch;
 
     if (superAdminMatch?.matched) {
       if (superAdminMatch?.bloqueado || superAdminMatch?.ativo === false) {
@@ -170,20 +175,13 @@ export default function Auth() {
       const result = await signIn(superAdminEmail, password);
 
       if (!result.error) {
-        await supabase.rpc('register_super_admin_login_success', {
-          _email: superAdminEmail,
-          _path: '/auth',
-        });
+        await registerPlatformSuperAdminLoginSuccess(superAdminEmail);
         return result;
       }
 
       if (result.error.message === 'Invalid login credentials') {
         const securityContext = await captureSecurityLocationContext();
-        const { data: failedAttemptData } = await supabase.rpc('register_super_admin_failed_attempt', {
-          _identifier: normalized,
-          _path: '/auth',
-          _context: securityContext,
-        });
+        const failedAttemptData = await registerPlatformSuperAdminFailedAttempt(normalized, securityContext);
 
         if (failedAttemptData?.blocked) {
           return {
@@ -216,40 +214,14 @@ export default function Auth() {
     const candidates = [...matriculaCandidates.map((matricula) => `${matricula}@temp.bibliotecai.com`)];
     if (cpfCandidate) candidates.unshift(cpfCandidate);
 
-    const [cpfRes, emailMatriculaRes, activatedRes] = await Promise.all([
-      supabase.rpc('get_login_email_by_cpf', { _cpf: cpfDigits || normalized }),
-      supabase.rpc('get_login_email_by_matricula', { _matricula: matriculaCompacta || normalized }),
-      supabase.rpc('is_matricula_login_activated', { _matricula: matriculaCompacta || normalized }),
-    ]);
-
-    const cpfMissingRpc = cpfRes.error && (cpfRes.error.code === 'PGRST202' || cpfRes.error.status === 404);
-    const matriculaMissingRpc =
-      (emailMatriculaRes.error && (emailMatriculaRes.error.code === 'PGRST202' || emailMatriculaRes.error.status === 404))
-      || (activatedRes.error && (activatedRes.error.code === 'PGRST202' || activatedRes.error.status === 404));
-
-    if (cpfRes.error && !cpfMissingRpc) {
-      return { error: cpfRes.error };
+    if (loginResolution?.cpfEmail) {
+      candidates.unshift(String(loginResolution.cpfEmail).toLowerCase());
     }
 
-    if (activatedRes.error && !matriculaMissingRpc) {
-      return { error: activatedRes.error };
-    }
-
-    if (!cpfRes.error && cpfRes.data) {
-      candidates.unshift(String(cpfRes.data).toLowerCase());
-    }
-
-    if (!matriculaMissingRpc && activatedRes.data === false) {
+    if (loginResolution?.matriculaActivated === false) {
       let activationData;
       try {
-        activationData = await invokeEdgeFunction('ativar-aluno-matricula', {
-          body: {
-            matricula: matriculaCompacta || normalized,
-            senha: password,
-          },
-          requireAuth: false,
-          fallbackErrorMessage: 'Não foi possível ativar sua conta por matrícula.',
-        });
+        activationData = await activateStudentMatricula(matriculaCompacta || normalized, password);
       } catch (activationInvokeError) {
         return {
           error: {
@@ -271,8 +243,8 @@ export default function Auth() {
       }
     }
 
-    if (!emailMatriculaRes.error && emailMatriculaRes.data) {
-      candidates.unshift(String(emailMatriculaRes.data).toLowerCase());
+    if (loginResolution?.matriculaEmail) {
+      candidates.unshift(String(loginResolution.matriculaEmail).toLowerCase());
     }
 
     let lastError = null;

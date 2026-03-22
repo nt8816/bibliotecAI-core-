@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { isPlatformApiConfigured, isPlatformApiUnavailableError, requestPlatformApi } from '@/lib/platformApi';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 async function requestWithFallback(platformCall, fallbackCall) {
   if (isPlatformApiConfigured()) {
@@ -112,5 +113,111 @@ export async function fetchPlatformSessionProfile() {
         roles: [...new Set((roleData || []).map((item) => item.role))],
       };
     },
+  );
+}
+
+export async function fetchPlatformCurrentRoles() {
+  return requestWithFallback(
+    async () => {
+      const payload = await requestPlatformApi('/v1/auth/session');
+      return Array.isArray(payload?.roles) ? payload.roles : [];
+    },
+    async () => {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+
+      const userId = sessionData?.session?.user?.id;
+      if (!userId) return [];
+
+      const { data: roleData, error: roleError } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId);
+
+      if (roleError) throw roleError;
+      return [...new Set((roleData || []).map((item) => item.role))];
+    },
+  );
+}
+
+export async function resolvePlatformLoginIdentifier(identifier) {
+  return requestWithFallback(
+    async () => requestPlatformApi('/v1/auth/resolve-login', {
+      method: 'POST',
+      body: { identifier },
+    }),
+    async () => {
+      const normalized = String(identifier || '').trim();
+      const cpfDigits = normalized.replace(/\D/g, '');
+      const matriculaCompacta = normalized.replace(/\s+/g, '');
+
+      const [superAdminRes, cpfRes, matriculaRes, activatedRes] = await Promise.all([
+        supabase.rpc('resolve_super_admin_login', { _identifier: normalized }),
+        supabase.rpc('get_login_email_by_cpf', { _cpf: cpfDigits || normalized }),
+        supabase.rpc('get_login_email_by_matricula', { _matricula: matriculaCompacta || normalized }),
+        supabase.rpc('is_matricula_login_activated', { _matricula: matriculaCompacta || normalized }),
+      ]);
+
+      if (superAdminRes.error) throw superAdminRes.error;
+      if (cpfRes.error && !(cpfRes.error.code === 'PGRST202' || cpfRes.error.status === 404)) throw cpfRes.error;
+      if (matriculaRes.error && !(matriculaRes.error.code === 'PGRST202' || matriculaRes.error.status === 404)) throw matriculaRes.error;
+      if (activatedRes.error && !(activatedRes.error.code === 'PGRST202' || activatedRes.error.status === 404)) throw activatedRes.error;
+
+      return {
+        superAdminMatch: superAdminRes.data || null,
+        cpfEmail: cpfRes.data || null,
+        matriculaEmail: matriculaRes.data || null,
+        matriculaActivated: activatedRes.data ?? null,
+      };
+    },
+  );
+}
+
+export async function registerPlatformSuperAdminLoginSuccess(email) {
+  return requestWithFallback(
+    async () => requestPlatformApi('/v1/auth/super-admin/login-success', {
+      method: 'POST',
+      body: { email, path: '/auth' },
+    }),
+    async () => {
+      const { data, error } = await supabase.rpc('register_super_admin_login_success', {
+        _email: email,
+        _path: '/auth',
+      });
+      if (error) throw error;
+      return data;
+    },
+  );
+}
+
+export async function registerPlatformSuperAdminFailedAttempt(identifier, context) {
+  return requestWithFallback(
+    async () => requestPlatformApi('/v1/auth/super-admin/failed-attempt', {
+      method: 'POST',
+      body: { identifier, path: '/auth', context },
+    }),
+    async () => {
+      const { data, error } = await supabase.rpc('register_super_admin_failed_attempt', {
+        _identifier: identifier,
+        _path: '/auth',
+        _context: context,
+      });
+      if (error) throw error;
+      return data;
+    },
+  );
+}
+
+export async function activateStudentMatricula(matricula, senha) {
+  return requestWithFallback(
+    async () => requestPlatformApi('/v1/auth/activate-matricula', {
+      method: 'POST',
+      body: { matricula, senha },
+    }),
+    async () => invokeEdgeFunction('ativar-aluno-matricula', {
+      body: { matricula, senha },
+      requireAuth: false,
+      fallbackErrorMessage: 'Não foi possível ativar sua conta por matrícula.',
+    }),
   );
 }

@@ -255,7 +255,7 @@ const routes: Record<string, RouteHandler> = {
     jsonResponse({
       success: true,
       modules: {
-        auth: 'planned',
+        auth: 'write_ready',
         tenants: 'write_ready',
         reclamacoes: 'read_ready',
         super_admins: 'read_ready',
@@ -304,6 +304,47 @@ const routes: Record<string, RouteHandler> = {
       user: authPayload?.user || null,
     });
   },
+  'POST /v1/auth/resolve-login': async (request, env) => {
+    const body = await request.json().catch(() => ({}));
+    const identifier = String(body?.identifier || '').trim();
+    const digits = identifier.replace(/\D/g, '');
+    const matricula = identifier.replace(/\s+/g, '');
+
+    if (!identifier) {
+      return jsonResponse({ success: false, error: 'Identificador nao informado.' }, 400);
+    }
+
+    const [superAdminMatch, cpfEmail, matriculaEmail, matriculaActivated] = await Promise.all([
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/rpc/resolve_super_admin_login`,
+        { method: 'POST', body: { _identifier: identifier } },
+      ),
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/rpc/get_login_email_by_cpf`,
+        { method: 'POST', body: { _cpf: digits || identifier } },
+      ),
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/rpc/get_login_email_by_matricula`,
+        { method: 'POST', body: { _matricula: matricula || identifier } },
+      ),
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/rpc/is_matricula_login_activated`,
+        { method: 'POST', body: { _matricula: matricula || identifier } },
+      ),
+    ]);
+
+    return jsonResponse({
+      success: true,
+      superAdminMatch: superAdminMatch || null,
+      cpfEmail: cpfEmail || null,
+      matriculaEmail: matriculaEmail || null,
+      matriculaActivated: matriculaActivated ?? null,
+    });
+  },
   'POST /v1/auth/logout': async (request, env) => {
     const token = getUserToken(request);
     if (!token) {
@@ -336,6 +377,46 @@ const routes: Record<string, RouteHandler> = {
     }
 
     return jsonResponse({ success: true });
+  },
+  'POST /v1/auth/super-admin/login-success': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const payload = await supabaseUserRpc(request, env, 'register_super_admin_login_success', {
+      _email: body?.email,
+      _path: body?.path || '/auth',
+    });
+
+    return jsonResponse(payload);
+  },
+  'POST /v1/auth/super-admin/failed-attempt': async (request, env) => {
+    const body = await request.json().catch(() => ({}));
+    const payload = await supabaseAdminRequest(
+      env,
+      `/rest/v1/rpc/register_super_admin_failed_attempt`,
+      {
+        method: 'POST',
+        body: {
+          _identifier: body?.identifier,
+          _path: body?.path || '/auth',
+          _context: body?.context || null,
+        },
+      },
+    );
+
+    return jsonResponse(payload);
+  },
+  'POST /v1/auth/activate-matricula': async (request, env) => {
+    const body = await request.json().catch(() => ({}));
+    const payload = await callSupabaseFunction(request, env, 'ativar-aluno-matricula', {
+      matricula: body?.matricula,
+      senha: body?.senha,
+    });
+
+    return jsonResponse(payload);
   },
   'GET /v1/auth/session': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);

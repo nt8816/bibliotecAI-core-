@@ -1,7 +1,7 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { useState, useEffect, createContext, useContext } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { fetchPlatformSessionProfile, signInWithPlatform, signOutWithPlatform, signUpWithPlatform } from '@/services/authService';
+import { fetchPlatformCurrentRoles, fetchPlatformSessionProfile, signInWithPlatform, signOutWithPlatform, signUpWithPlatform } from '@/services/authService';
 const AuthContext = createContext(undefined);
 const rolePriority = ['super_admin', 'gestor', 'bibliotecaria', 'professor', 'aluno'];
 export function AuthProvider({ children }) {
@@ -47,15 +47,7 @@ export function AuthProvider({ children }) {
     }, []);
     const fetchUserRole = async (userId, userEmail) => {
         try {
-            const { data, error } = await supabase
-                .from('user_roles')
-                .select('role')
-                .eq('user_id', userId);
-            if (error) {
-                console.error('Error fetching user role:', error);
-                return;
-            }
-            const userRoles = [...new Set((data || []).map((item) => item.role))];
+            const userRoles = await fetchPlatformCurrentRoles();
             setRoles(userRoles);
             const pickedRole = rolePriority.find((role) => userRoles.includes(role)) || null;
             setUserRole(pickedRole);
