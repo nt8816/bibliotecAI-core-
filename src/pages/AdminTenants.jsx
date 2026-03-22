@@ -15,7 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { generateAudioWithCloudflare } from '@/lib/cloudflareAiApi';
 import { uploadDataUrlToR2 } from '@/lib/r2Storage';
-import { fetchAdminTenantsDashboard } from '@/services/adminTenantsService';
+import { fetchAdminTenantsDashboard, provisionAdminTenant, toggleAdminTenantStatus } from '@/services/adminTenantsService';
 
 const DEFAULT_BASE_DOMAIN = import.meta.env.VITE_APP_BASE_DOMAIN || 'bibliotec-ai-core.vercel.app';
 
@@ -151,28 +151,14 @@ export default function AdminTenants() {
     setCreating(true);
 
     try {
-      let { data, error } = await supabase.rpc('provision_tenant', {
-        _escola_nome: nomeEscola,
-        _subdominio: subdominio,
-        _plano: plano,
-        _base_domain: wildcardEnabled ? baseDomain : null,
-        _invite_cpf: inviteCpf || null,
-        _invite_expires_hours: 72,
+      const data = await provisionAdminTenant({
+        escolaNome: nomeEscola,
+        subdominio,
+        plano,
+        baseDomain: wildcardEnabled ? baseDomain : null,
+        inviteCpf: inviteCpf || null,
+        inviteExpiresHours: 72,
       });
-
-      // Compatibilidade com bancos que ainda têm a assinatura antiga (_invite_email).
-      if (error && isMissingProvisionTenantSignature(error)) {
-        ({ data, error } = await supabase.rpc('provision_tenant', {
-          _escola_nome: nomeEscola,
-          _subdominio: subdominio,
-          _plano: plano,
-          _base_domain: wildcardEnabled ? baseDomain : null,
-          _invite_email: null,
-          _invite_expires_hours: 72,
-        }));
-      }
-
-      if (error) throw error;
 
       setLatestInvite(data);
       setNomeEscola('');
@@ -436,12 +422,7 @@ export default function AdminTenants() {
 
     setTogglingTenantId(tenant.id);
     try {
-      const { error } = await supabase
-        .from('tenants')
-        .update({ ativo: nextStatus })
-        .eq('id', tenant.id);
-
-      if (error) throw error;
+      await toggleAdminTenantStatus(tenant.id, nextStatus);
 
       setTenants((prev) => prev.map((item) => (item.id === tenant.id ? { ...item, ativo: nextStatus } : item)));
       toast({

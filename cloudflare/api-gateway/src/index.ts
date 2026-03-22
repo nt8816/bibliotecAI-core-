@@ -256,7 +256,7 @@ const routes: Record<string, RouteHandler> = {
       success: true,
       modules: {
         auth: 'planned',
-        tenants: 'read_ready',
+        tenants: 'write_ready',
         reclamacoes: 'read_ready',
         super_admins: 'read_ready',
         media: 'planned',
@@ -477,7 +477,96 @@ const routes: Record<string, RouteHandler> = {
       schoolsWithoutTenant: schoolItems.filter((school) => !schoolIdsWithTenant.has(school.id)),
     });
   },
-  'POST /v1/admin/tenants': async () => notImplemented('Provisionamento de tenant pela API propria'),
+  'POST /v1/admin/tenants': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const allowed = await isSuperAdmin(user.id, env);
+    if (!allowed) {
+      return jsonResponse({ success: false, error: 'Sem permissao para provisionar tenant.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const escolaNome = String(body?.escolaNome || '').trim();
+    const subdominio = String(body?.subdominio || '').trim();
+    const plano = String(body?.plano || 'trial').trim() || 'trial';
+    const baseDomain = body?.baseDomain ? String(body.baseDomain).trim() : null;
+    const inviteCpf = body?.inviteCpf ? String(body.inviteCpf).trim() : null;
+    const inviteExpiresHours = Number(body?.inviteExpiresHours || 72);
+
+    if (!escolaNome || !subdominio) {
+      return jsonResponse({ success: false, error: 'Informe nome da escola e subdominio.' }, 400);
+    }
+
+    try {
+      const payload = await supabaseUserRpc(request, env, 'provision_tenant', {
+        _escola_nome: escolaNome,
+        _subdominio: subdominio,
+        _plano: plano,
+        _base_domain: baseDomain,
+        _invite_cpf: inviteCpf,
+        _invite_expires_hours: inviteExpiresHours,
+      });
+
+      return jsonResponse(payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      const normalized = message.toLowerCase();
+
+      if (
+        normalized.includes('could not find the function public.provision_tenant')
+        || normalized.includes('http 404')
+      ) {
+        const payload = await supabaseUserRpc(request, env, 'provision_tenant', {
+          _escola_nome: escolaNome,
+          _subdominio: subdominio,
+          _plano: plano,
+          _base_domain: baseDomain,
+          _invite_email: null,
+          _invite_expires_hours: inviteExpiresHours,
+        });
+
+        return jsonResponse(payload);
+      }
+
+      throw error;
+    }
+  },
+  'PATCH /v1/admin/tenants/:id/status': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const allowed = await isSuperAdmin(user.id, env);
+    if (!allowed) {
+      return jsonResponse({ success: false, error: 'Sem permissao para alterar status do tenant.' }, 403);
+    }
+
+    const tenantId = getPathParam(request, /^\/v1\/admin\/tenants\/([^/]+)\/status$/);
+    if (!tenantId) {
+      return jsonResponse({ success: false, error: 'ID do tenant ausente.' }, 400);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const ativo = Boolean(body?.ativo);
+
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/tenants?${new URLSearchParams({ id: `eq.${tenantId}` }).toString()}`,
+      {
+        method: 'PATCH',
+        body: { ativo },
+        headers: {
+          Prefer: 'return=minimal',
+        },
+      },
+    );
+
+    return jsonResponse({ success: true, tenantId, ativo });
+  },
 
   'POST /v1/media/sign-upload': async () => notImplemented('Assinatura de upload pela API propria'),
   'POST /v1/media/sign-download': async () => notImplemented('Assinatura de download pela API propria'),
@@ -487,6 +576,7 @@ function normalizeDynamicRoute(routeKey: string) {
   return routeKey
     .replace(/\/v1\/reclamacoes\/[^/]+\/read$/, '/v1/reclamacoes/:id/read')
     .replace(/\/v1\/reclamacoes\/[^/]+$/, '/v1/reclamacoes/:id')
+    .replace(/\/v1\/admin\/tenants\/[^/]+\/status$/, '/v1/admin/tenants/:id/status')
     .replace(/\/v1\/admin\/super-admins\/[^/]+\/unlock$/, '/v1/admin/super-admins/:id/unlock');
 }
 
