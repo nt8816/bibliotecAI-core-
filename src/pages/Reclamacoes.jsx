@@ -482,11 +482,8 @@ export default function Reclamacoes() {
                     <div className="space-y-1">
                       <p className="text-sm font-medium">{selectedItem.assunto}</p>
                       <p className="text-xs text-muted-foreground">
-                        {selectedItem.sender_nome || selectedItem.sender_email || '-'} • {selectedItem.sender_role || '-'} • {selectedItem.escolas?.nome || 'Sem escola'}
+                        {[selectedItem.sender_nome || selectedItem.sender_email || '-', selectedItem.sender_role || '-', selectedItem.escola_nome_resolvida].filter(Boolean).join(' � ')}
                       </p>
-                      {selectedItem.escola_nome_resolvida && !selectedItem.escolas?.nome && (
-                        <p className="text-xs text-muted-foreground">Escola: {selectedItem.escola_nome_resolvida}</p>
-                      )}
                       <p className="text-xs text-muted-foreground">Recebida em {formatDateTime(selectedItem.created_at)}</p>
                     </div>
 
@@ -553,3 +550,4 @@ export default function Reclamacoes() {
     </MainLayout>
   );
 }
+
