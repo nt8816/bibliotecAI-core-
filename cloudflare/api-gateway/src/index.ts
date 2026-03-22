@@ -263,9 +263,101 @@ const routes: Record<string, RouteHandler> = {
       },
     }),
 
-  'POST /v1/auth/login': async () => notImplemented('Login pela API propria'),
-  'POST /v1/auth/logout': async () => notImplemented('Logout pela API propria'),
-  'GET /v1/auth/session': async () => notImplemented('Sessao pela API propria'),
+  'POST /v1/auth/login': async (request, env) => {
+    const body = await request.json().catch(() => ({}));
+    const email = String(body?.email || '').trim().toLowerCase();
+    const password = String(body?.password || '');
+
+    if (!email || !password) {
+      return jsonResponse({ success: false, error: 'Email e senha sao obrigatorios.' }, 400);
+    }
+
+    const { supabaseUrl, publishableKey } = getSupabaseConfig(env);
+    const authResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: {
+        apikey: publishableKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const authPayload = await parseResponse(authResponse);
+    if (!authResponse.ok) {
+      return jsonResponse(
+        {
+          success: false,
+          error:
+            (typeof authPayload === 'string' && authPayload.trim()) ||
+            authPayload?.msg ||
+            authPayload?.error_description ||
+            authPayload?.error ||
+            'Falha ao autenticar.',
+        },
+        authResponse.status,
+      );
+    }
+
+    return jsonResponse({
+      success: true,
+      session: authPayload,
+      user: authPayload?.user || null,
+    });
+  },
+  'POST /v1/auth/logout': async (request, env) => {
+    const token = getUserToken(request);
+    if (!token) {
+      return jsonResponse({ success: true });
+    }
+
+    const { supabaseUrl, publishableKey } = getSupabaseConfig(env);
+    const logoutResponse = await fetch(`${supabaseUrl}/auth/v1/logout`, {
+      method: 'POST',
+      headers: {
+        apikey: publishableKey,
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!logoutResponse.ok) {
+      const payload = await parseResponse(logoutResponse);
+      return jsonResponse(
+        {
+          success: false,
+          error:
+            (typeof payload === 'string' && payload.trim()) ||
+            payload?.message ||
+            payload?.error ||
+            'Falha ao encerrar sessao.',
+        },
+        logoutResponse.status,
+      );
+    }
+
+    return jsonResponse({ success: true });
+  },
+  'GET /v1/auth/session': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: true, session: null, user: null, roles: [] });
+    }
+
+    const roleRows = await supabaseAdminRequest(
+      env,
+      `/rest/v1/user_roles?${new URLSearchParams({
+        select: 'role',
+        user_id: `eq.${user.id}`,
+      }).toString()}`,
+    );
+
+    return jsonResponse({
+      success: true,
+      session: { access_token_present: true },
+      user,
+      roles: Array.isArray(roleRows) ? [...new Set(roleRows.map((item) => String(item?.role || '')).filter(Boolean))] : [],
+    });
+  },
 
   'GET /v1/reclamacoes': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);

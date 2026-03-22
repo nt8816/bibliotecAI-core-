@@ -1,6 +1,7 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { useState, useEffect, createContext, useContext } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchPlatformSessionProfile, signInWithPlatform, signOutWithPlatform, signUpWithPlatform } from '@/services/authService';
 const AuthContext = createContext(undefined);
 const rolePriority = ['super_admin', 'gestor', 'bibliotecaria', 'professor', 'aluno'];
 export function AuthProvider({ children }) {
@@ -26,12 +27,20 @@ export function AuthProvider({ children }) {
             }
         });
         // THEN check for existing session
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        fetchPlatformSessionProfile()
+            .then(({ session, user, roles }) => {
             setSession(session);
-            setUser(session?.user ?? null);
-            if (session?.user) {
-                fetchUserRole(session.user.id, session.user.email);
+            setUser(user ?? null);
+            if (user?.id) {
+                const uniqueRoles = [...new Set(roles || [])];
+                setRoles(uniqueRoles);
+                setUserRole(rolePriority.find((role) => uniqueRoles.includes(role)) || null);
+                if (uniqueRoles.length === 0) {
+                    fetchUserRole(user.id, user.email);
+                }
             }
+        })
+            .finally(() => {
             setLoading(false);
         });
         return () => subscription.unsubscribe();
@@ -56,26 +65,15 @@ export function AuthProvider({ children }) {
         }
     };
     const signIn = async (email, password) => {
-        const { error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
+        const { error } = await signInWithPlatform(email, password);
         return { error };
     };
     const signUp = async (email, password, nome) => {
-        const redirectUrl = `${window.location.origin}/`;
-        const { error } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-                emailRedirectTo: redirectUrl,
-                data: { nome }
-            }
-        });
+        const { error } = await signUpWithPlatform(email, password, nome);
         return { error };
     };
     const signOut = async () => {
-        await supabase.auth.signOut();
+        await signOutWithPlatform();
         setUserRole(null);
     };
     const isGestor = userRole === 'gestor';
