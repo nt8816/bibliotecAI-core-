@@ -31,33 +31,11 @@ import {
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/hooks/useAuth';
+import { fetchDashboardData } from '@/services/dashboardService';
 
 const PIE_COLORS = ['hsl(122, 46%, 34%)', 'hsl(43, 96%, 56%)'];
-
-function monthKey(dateValue) {
-  const d = new Date(dateValue);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  return `${y}-${m}`;
-}
-
-function monthLabel(key) {
-  const [y, m] = key.split('-').map(Number);
-  return format(new Date(y, (m || 1) - 1, 1), 'MMM/yy', { locale: ptBR });
-}
-
-function buildLastMonths(size = 6) {
-  const now = new Date();
-  const keys = [];
-  for (let i = size - 1; i >= 0; i -= 1) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-  }
-  return keys;
-}
 
 function formatPercentLabel(percent) {
   const value = percent * 100;
@@ -142,187 +120,15 @@ export default function Dashboard() {
     if (fetchInFlightRef.current) return fetchInFlightRef.current;
 
     const request = (async () => {
-      const baseQueries = [
-        supabase.from('livros').select('*', { count: 'exact', head: true }),
-        supabase.from('livros').select('*', { count: 'exact', head: true }).eq('disponivel', true),
-        supabase.from('usuarios_biblioteca').select('*', { count: 'exact', head: true }),
-        supabase.from('emprestimos').select('*', { count: 'exact', head: true }).eq('status', 'ativo'),
-        supabase
-          .from('emprestimos')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'ativo')
-          .lt('data_devolucao_prevista', new Date().toISOString()),
-        supabase
-          .from('emprestimos')
-          .select('id, data_emprestimo, data_devolucao_real, status, livros(titulo), usuarios_biblioteca(nome)')
-          .order('created_at', { ascending: false })
-          .limit(5),
-        supabase
-          .from('emprestimos')
-          .select('id, livro_id, created_at, data_emprestimo, status, livros(titulo)')
-          .order('created_at', { ascending: false }),
-        supabase.from('tenants').select('id, nome, subdominio, ativo, escola_id').order('nome'),
-        supabase.from('escolas').select('id, nome, gestor_id').order('nome'),
-      ];
+      const payload = await fetchDashboardData(userRole);
+      setStats((prev) => ({ ...prev, ...(payload?.stats || {}) }));
+      setAtividades(Array.isArray(payload?.atividades) ? payload.atividades : []);
+      setEmprestimosPorMes(Array.isArray(payload?.emprestimosPorMes) ? payload.emprestimosPorMes : []);
+      setLivrosMaisEmprestados(Array.isArray(payload?.livrosMaisEmprestados) ? payload.livrosMaisEmprestados : []);
+      setEscolasCadastradas(Array.isArray(payload?.escolasCadastradas) ? payload.escolasCadastradas : []);
 
-      const superAdminQueries = userRole === 'super_admin'
-        ? [
-            supabase.from('super_admin_accounts').select('id, ativo, bloqueado, tentativas_falhas'),
-            supabase.rpc('get_reclamacoes_super_admin_feed'),
-            supabase.from('arquivos_aula_posts').select('arquivos'),
-            supabase.from('reclamacoes_super_admin').select('image_urls'),
-            supabase.from('comunidade_posts').select('imagem_urls'),
-            supabase.from('laboratorio_criacoes').select('imagem_urls'),
-            supabase.from('audiobooks_biblioteca').select('audio_url'),
-          ]
-        : [];
-
-      const results = await Promise.allSettled([...baseQueries, ...superAdminQueries]);
-      const [
-        livrosResult,
-        livrosDisponiveisResult,
-        usuariosResult,
-        emprestimosAtivosResult,
-        atrasadosResult,
-        emprestimosRecentesResult,
-        emprestimosDetalhadosResult,
-        tenantsResult,
-        escolasResult,
-        superAdminsResult,
-        reclamacoesFeedResult,
-        arquivosAulaResult,
-        reclamacoesImagensResult,
-        comunidadeImagensResult,
-        laboratorioImagensResult,
-        audiobooksResult,
-      ] = results;
-
-      setStats({
-        totalLivros: livrosResult.status === 'fulfilled' ? (livrosResult.value.count || 0) : 0,
-        livrosDisponiveis: livrosDisponiveisResult.status === 'fulfilled' ? (livrosDisponiveisResult.value.count || 0) : 0,
-        totalUsuarios: usuariosResult.status === 'fulfilled' ? (usuariosResult.value.count || 0) : 0,
-        emprestimosAtivos: emprestimosAtivosResult.status === 'fulfilled' ? (emprestimosAtivosResult.value.count || 0) : 0,
-        emprestimosAtrasados: atrasadosResult.status === 'fulfilled' ? (atrasadosResult.value.count || 0) : 0,
-      });
-
-      if (emprestimosRecentesResult.status === 'fulfilled' && emprestimosRecentesResult.value.data) {
-        const atividadesFormatadas = emprestimosRecentesResult.value.data.map((emp) => ({
-          id: emp.id,
-          tipo: emp.data_devolucao_real ? 'devolucao' : 'emprestimo',
-          descricao: emp.data_devolucao_real
-            ? `${emp.usuarios_biblioteca?.nome || 'Usuario'} devolveu "${emp.livros?.titulo || 'Livro'}"`
-            : `${emp.usuarios_biblioteca?.nome || 'Usuario'} emprestou "${emp.livros?.titulo || 'Livro'}"`,
-          data: emp.data_devolucao_real || emp.data_emprestimo,
-        }));
-
-        setAtividades(atividadesFormatadas);
-      }
-
-      if (emprestimosDetalhadosResult.status === 'fulfilled' && emprestimosDetalhadosResult.value.data) {
-        const monthlyKeys = buildLastMonths(6);
-        const monthlyMap = new Map(
-          monthlyKeys.map((key) => [key, { key, mes: monthLabel(key), emprestimos: 0 }]),
-        );
-        const livroCountMap = new Map();
-        const livrosEmprestadosAtivos = new Set();
-
-        emprestimosDetalhadosResult.value.data.forEach((emp) => {
-          const loanDate = emp.data_emprestimo || emp.created_at;
-          if (loanDate) {
-            const key = monthKey(loanDate);
-            if (monthlyMap.has(key)) {
-              monthlyMap.get(key).emprestimos += 1;
-            }
-          }
-
-          if (emp?.status === 'ativo' && emp?.livro_id) {
-            livrosEmprestadosAtivos.add(emp.livro_id);
-          }
-
-          const livroNome = emp?.livros?.titulo || 'Livro sem titulo';
-          livroCountMap.set(livroNome, (livroCountMap.get(livroNome) || 0) + 1);
-        });
-
-        setEmprestimosPorMes(Array.from(monthlyMap.values()));
-        setLivrosMaisEmprestados(
-          Array.from(livroCountMap.entries())
-            .map(([titulo, emprestimos]) => ({ titulo, emprestimos }))
-            .sort((a, b) => b.emprestimos - a.emprestimos)
-            .slice(0, 5),
-        );
-        setStats((prev) => ({
-          ...prev,
-          livrosDisponiveis: Math.max(0, Number(prev.totalLivros || 0) - livrosEmprestadosAtivos.size),
-        }));
-      }
-
-      const tenantsData = tenantsResult.status === 'fulfilled' ? (tenantsResult.value.data || []) : [];
-      const escolasData = escolasResult.status === 'fulfilled' ? (escolasResult.value.data || []) : [];
-
-      const tenantByEscolaId = new Map(
-        tenantsData
-          .filter((tenant) => tenant?.escola_id)
-          .map((tenant) => [tenant.escola_id, tenant]),
-      );
-
-      const escolasCompletas = escolasData.map((escola) => {
-        const tenant = tenantByEscolaId.get(escola.id);
-        return {
-          id: tenant?.id || escola.id,
-          escola_id: escola.id,
-          nome: tenant?.nome || escola.nome,
-          subdominio: tenant?.subdominio || null,
-          ativo: tenant?.ativo ?? true,
-          temTenant: Boolean(tenant),
-          gestor_id: escola.gestor_id || null,
-        };
-      });
-
-      const escolasSemBase = tenantsData
-        .filter((tenant) => tenant?.escola_id && !escolasData.some((escola) => escola.id === tenant.escola_id))
-        .map((tenant) => ({
-          id: tenant.id,
-          escola_id: tenant.escola_id,
-          nome: tenant.nome,
-          subdominio: tenant.subdominio || null,
-          ativo: tenant.ativo ?? true,
-          temTenant: true,
-          gestor_id: null,
-        }));
-
-      const escolasOrdenadas = [...escolasCompletas, ...escolasSemBase].sort((a, b) => (
-        String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR')
-      ));
-
-      setEscolasCadastradas(escolasOrdenadas);
-
-      if (userRole === 'super_admin') {
-        const reclamacoesFeed = reclamacoesFeedResult?.status === 'fulfilled' ? (reclamacoesFeedResult.value.data || []) : [];
-        const superAdmins = superAdminsResult?.status === 'fulfilled' ? (superAdminsResult.value.data || []) : [];
-        const arquivosAula = arquivosAulaResult?.status === 'fulfilled' ? (arquivosAulaResult.value.data || []) : [];
-        const reclamacoesImagens = reclamacoesImagensResult?.status === 'fulfilled' ? (reclamacoesImagensResult.value.data || []) : [];
-        const comunidadeImagens = comunidadeImagensResult?.status === 'fulfilled' ? (comunidadeImagensResult.value.data || []) : [];
-        const laboratorioImagens = laboratorioImagensResult?.status === 'fulfilled' ? (laboratorioImagensResult.value.data || []) : [];
-        const audiobooks = audiobooksResult?.status === 'fulfilled' ? (audiobooksResult.value.data || []) : [];
-
-        const armazenamentoConsumidoBytes =
-          arquivosAula.reduce((total, item) => total + estimateArquivosBytes(item?.arquivos), 0) +
-          reclamacoesImagens.reduce((total, item) => total + estimateUrlCollectionBytes(item?.image_urls), 0) +
-          comunidadeImagens.reduce((total, item) => total + estimateUrlCollectionBytes(item?.imagem_urls), 0) +
-          laboratorioImagens.reduce((total, item) => total + estimateUrlCollectionBytes(item?.imagem_urls), 0) +
-          audiobooks.reduce((total, item) => total + estimateDataUrlBytes(item?.audio_url), 0);
-
-        setSuperAdminStats({
-          totalEscolas: escolasOrdenadas.length,
-          tenantsAtivos: tenantsData.filter((tenant) => tenant?.ativo !== false).length,
-          tenantsInativos: tenantsData.filter((tenant) => tenant?.ativo === false).length,
-          escolasSemTenant: escolasOrdenadas.filter((escola) => !escola.temTenant).length,
-          superAdminsAtivos: superAdmins.filter((item) => item?.ativo !== false && item?.bloqueado !== true).length,
-          superAdminsBloqueados: superAdmins.filter((item) => item?.bloqueado === true || item?.ativo === false).length,
-          reclamacoesEmAnalise: reclamacoesFeed.filter((item) => item?.status === 'em_analise').length,
-          reclamacoesAtrasadas: reclamacoesFeed.filter((item) => item?.alerta_prazo).length,
-          armazenamentoConsumidoBytes,
-        });
+      if (userRole === 'super_admin' && payload?.superAdminStats) {
+        setSuperAdminStats(payload.superAdminStats);
       }
 
       setLoading(false);

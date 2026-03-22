@@ -509,6 +509,48 @@ async function fetchMatriculaProfile(identifier: string, env: Env) {
   return Array.isArray(payload) ? (payload[0] || null) : null;
 }
 
+function estimateDataUrlBytes(value: unknown) {
+  if (typeof value !== 'string' || !value || !value.startsWith('data:')) return 0;
+
+  const [, payload = ''] = value.split(',', 2);
+  const cleaned = payload.replace(/\s/g, '');
+  const padding = cleaned.endsWith('==') ? 2 : cleaned.endsWith('=') ? 1 : 0;
+
+  return Math.max(0, Math.floor((cleaned.length * 3) / 4) - padding);
+}
+
+function estimateUrlCollectionBytes(collection: unknown) {
+  if (!Array.isArray(collection)) return 0;
+  return collection.reduce((total, item) => total + estimateDataUrlBytes(item), 0);
+}
+
+function estimateArquivosBytes(arquivos: unknown) {
+  if (!Array.isArray(arquivos)) return 0;
+
+  return arquivos.reduce((total, arquivo) => {
+    const tamanho = Number((arquivo as Record<string, unknown>)?.tamanho);
+    if (Number.isFinite(tamanho) && tamanho > 0) return total + tamanho;
+    return total + estimateDataUrlBytes((arquivo as Record<string, unknown>)?.url);
+  }, 0);
+}
+
+function monthKey(dateValue: unknown) {
+  const d = new Date(String(dateValue || ''));
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
+function buildLastMonths(size = 6) {
+  const now = new Date();
+  const keys: string[] = [];
+  for (let i = size - 1; i >= 0; i -= 1) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+  return keys;
+}
+
 async function callSupabaseFunction(
   request: Request,
   env: Env,
@@ -937,6 +979,157 @@ const routes: Record<string, RouteHandler> = {
       session: { access_token_present: true },
       user,
       roles: Array.isArray(roleRows) ? [...new Set(roleRows.map((item) => String(item?.role || '')).filter(Boolean))] : [],
+    });
+  },
+  'GET /v1/dashboard': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const roleRows = await supabaseAdminRequest(
+      env,
+      `/rest/v1/user_roles?${new URLSearchParams({
+        select: 'role',
+        user_id: `eq.${user.id}`,
+      }).toString()}`,
+    );
+    const roles = Array.isArray(roleRows) ? [...new Set(roleRows.map((item) => String(item?.role || '')).filter(Boolean))] : [];
+    const userRole = roles.includes('super_admin')
+      ? 'super_admin'
+      : roles.includes('gestor')
+        ? 'gestor'
+        : roles.includes('bibliotecaria')
+          ? 'bibliotecaria'
+          : roles[0] || null;
+
+    const baseQueries = await Promise.all([
+      supabaseAdminRequest(env, '/rest/v1/livros?select=id,disponivel'),
+      supabaseAdminRequest(env, '/rest/v1/usuarios_biblioteca?select=id'),
+      supabaseAdminRequest(env, '/rest/v1/emprestimos?select=id,data_emprestimo,data_devolucao_real,status,created_at,livro_id,livros(titulo),usuarios_biblioteca(nome)'),
+      supabaseAdminRequest(env, '/rest/v1/tenants?select=id,nome,subdominio,ativo,escola_id'),
+      supabaseAdminRequest(env, '/rest/v1/escolas?select=id,nome,gestor_id'),
+    ]);
+
+    const [livros, usuarios, emprestimos, tenants, escolas] = baseQueries.map((item) => (Array.isArray(item) ? item : []));
+
+    const emprestimosAtivos = emprestimos.filter((item) => item?.status === 'ativo');
+    const emprestimosAtrasados = emprestimosAtivos.filter((item) => {
+      const prev = item?.data_devolucao_prevista;
+      return prev ? new Date(prev).getTime() < Date.now() : false;
+    });
+
+    const atividades = [...emprestimos]
+      .sort((a, b) => new Date(b?.created_at || 0).getTime() - new Date(a?.created_at || 0).getTime())
+      .slice(0, 5)
+      .map((emp) => ({
+        id: emp.id,
+        tipo: emp.data_devolucao_real ? 'devolucao' : 'emprestimo',
+        descricao: emp.data_devolucao_real
+          ? `${emp.usuarios_biblioteca?.nome || 'Usuario'} devolveu "${emp.livros?.titulo || 'Livro'}"`
+          : `${emp.usuarios_biblioteca?.nome || 'Usuario'} emprestou "${emp.livros?.titulo || 'Livro'}"`,
+        data: emp.data_devolucao_real || emp.data_emprestimo || emp.created_at,
+      }));
+
+    const monthlyKeys = buildLastMonths(6);
+    const monthlyMap = new Map(
+      monthlyKeys.map((key) => [key, { key, mes: key, emprestimos: 0 }]),
+    );
+    const livroCountMap = new Map<string, number>();
+
+    emprestimos.forEach((emp) => {
+      const loanDate = emp?.data_emprestimo || emp?.created_at;
+      if (loanDate) {
+        const key = monthKey(loanDate);
+        if (monthlyMap.has(key)) {
+          monthlyMap.get(key)!.emprestimos += 1;
+        }
+      }
+
+      const livroNome = emp?.livros?.titulo || 'Livro sem titulo';
+      livroCountMap.set(livroNome, (livroCountMap.get(livroNome) || 0) + 1);
+    });
+
+    const tenantByEscolaId = new Map(
+      tenants.filter((tenant) => tenant?.escola_id).map((tenant) => [tenant.escola_id, tenant]),
+    );
+
+    const escolasCompletas = escolas.map((escola) => {
+      const tenant = tenantByEscolaId.get(escola.id);
+      return {
+        id: tenant?.id || escola.id,
+        escola_id: escola.id,
+        nome: tenant?.nome || escola.nome,
+        subdominio: tenant?.subdominio || null,
+        ativo: tenant?.ativo ?? true,
+        temTenant: Boolean(tenant),
+        gestor_id: escola.gestor_id || null,
+      };
+    });
+
+    const escolasSemBase = tenants
+      .filter((tenant) => tenant?.escola_id && !escolas.some((escola) => escola.id === tenant.escola_id))
+      .map((tenant) => ({
+        id: tenant.id,
+        escola_id: tenant.escola_id,
+        nome: tenant.nome,
+        subdominio: tenant.subdominio || null,
+        ativo: tenant.ativo ?? true,
+        temTenant: true,
+        gestor_id: null,
+      }));
+
+    const escolasCadastradas = [...escolasCompletas, ...escolasSemBase].sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR'));
+
+    let superAdminStats = null;
+    if (userRole === 'super_admin') {
+      const [superAdmins, reclamacoesFeed, arquivosAula, reclamacoesImagens, comunidadeImagens, laboratorioImagens, audiobooks] = await Promise.all([
+        supabaseAdminRequest(env, '/rest/v1/super_admin_accounts?select=id,ativo,bloqueado,tentativas_falhas'),
+        supabaseUserRpc(request, env, 'get_reclamacoes_super_admin_feed'),
+        supabaseAdminRequest(env, '/rest/v1/arquivos_aula_posts?select=arquivos'),
+        supabaseAdminRequest(env, '/rest/v1/reclamacoes_super_admin?select=image_urls'),
+        supabaseAdminRequest(env, '/rest/v1/comunidade_posts?select=imagem_urls'),
+        supabaseAdminRequest(env, '/rest/v1/laboratorio_criacoes?select=imagem_urls'),
+        supabaseAdminRequest(env, '/rest/v1/audiobooks_biblioteca?select=audio_url'),
+      ]);
+
+      const armazenamentoConsumidoBytes =
+        (Array.isArray(arquivosAula) ? arquivosAula : []).reduce((total, item) => total + estimateArquivosBytes(item?.arquivos), 0) +
+        (Array.isArray(reclamacoesImagens) ? reclamacoesImagens : []).reduce((total, item) => total + estimateUrlCollectionBytes(item?.image_urls), 0) +
+        (Array.isArray(comunidadeImagens) ? comunidadeImagens : []).reduce((total, item) => total + estimateUrlCollectionBytes(item?.imagem_urls), 0) +
+        (Array.isArray(laboratorioImagens) ? laboratorioImagens : []).reduce((total, item) => total + estimateUrlCollectionBytes(item?.imagem_urls), 0) +
+        (Array.isArray(audiobooks) ? audiobooks : []).reduce((total, item) => total + estimateDataUrlBytes(item?.audio_url), 0);
+
+      superAdminStats = {
+        totalEscolas: escolasCadastradas.length,
+        tenantsAtivos: tenants.filter((tenant) => tenant?.ativo !== false).length,
+        tenantsInativos: tenants.filter((tenant) => tenant?.ativo === false).length,
+        escolasSemTenant: escolasCadastradas.filter((escola) => !escola.temTenant).length,
+        superAdminsAtivos: (Array.isArray(superAdmins) ? superAdmins : []).filter((item) => item?.ativo !== false && item?.bloqueado !== true).length,
+        superAdminsBloqueados: (Array.isArray(superAdmins) ? superAdmins : []).filter((item) => item?.bloqueado === true || item?.ativo === false).length,
+        reclamacoesEmAnalise: (Array.isArray(reclamacoesFeed) ? reclamacoesFeed : []).filter((item) => item?.status === 'em_analise').length,
+        reclamacoesAtrasadas: (Array.isArray(reclamacoesFeed) ? reclamacoesFeed : []).filter((item) => item?.alerta_prazo).length,
+        armazenamentoConsumidoBytes,
+      };
+    }
+
+    return jsonResponse({
+      success: true,
+      stats: {
+        totalLivros: livros.length,
+        livrosDisponiveis: livros.filter((item) => item?.disponivel !== false).length,
+        totalUsuarios: usuarios.length,
+        emprestimosAtivos: emprestimosAtivos.length,
+        emprestimosAtrasados: emprestimosAtrasados.length,
+      },
+      atividades,
+      emprestimosPorMes: Array.from(monthlyMap.values()),
+      livrosMaisEmprestados: Array.from(livroCountMap.entries())
+        .map(([titulo, emprestimos]) => ({ titulo, emprestimos }))
+        .sort((a, b) => b.emprestimos - a.emprestimos)
+        .slice(0, 5),
+      escolasCadastradas,
+      superAdminStats,
     });
   },
 
