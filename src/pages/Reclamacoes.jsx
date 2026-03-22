@@ -101,8 +101,24 @@ export default function Reclamacoes() {
             .map((item) => item.sender_user_id),
         ),
       );
+      const missingSchoolProfileIds = Array.from(
+        new Set(
+          baseItems
+            .filter((item) => !item?.escolas?.nome && item?.sender_profile_id)
+            .map((item) => item.sender_profile_id),
+        ),
+      );
+      const missingEscolaIds = Array.from(
+        new Set(
+          baseItems
+            .filter((item) => !item?.escolas?.nome && item?.escola_id)
+            .map((item) => item.escola_id),
+        ),
+      );
 
       let escolaNameBySenderId = new Map();
+      let escolaNameByProfileId = new Map();
+      let escolaNameByEscolaId = new Map();
 
       if (missingSchoolSenderIds.length > 0) {
         const { data: senderProfiles, error: senderProfilesError } = await supabase
@@ -119,8 +135,42 @@ export default function Reclamacoes() {
         }
       }
 
+      if (missingSchoolProfileIds.length > 0) {
+        const { data: senderProfilesById, error: senderProfilesByIdError } = await supabase
+          .from('usuarios_biblioteca')
+          .select('id, escola_id, escolas!left(nome)')
+          .in('id', missingSchoolProfileIds);
+
+        if (!senderProfilesByIdError) {
+          escolaNameByProfileId = new Map(
+            (senderProfilesById || [])
+              .filter((profile) => profile?.id && profile?.escolas?.nome)
+              .map((profile) => [profile.id, profile.escolas.nome]),
+          );
+        }
+      }
+
+      if (missingEscolaIds.length > 0) {
+        const { data: escolasData, error: escolasError } = await supabase
+          .from('escolas')
+          .select('id, nome')
+          .in('id', missingEscolaIds);
+
+        if (!escolasError) {
+          escolaNameByEscolaId = new Map(
+            (escolasData || [])
+              .filter((escola) => escola?.id && escola?.nome)
+              .map((escola) => [escola.id, escola.nome]),
+          );
+        }
+      }
+
       const nextItems = baseItems.map((item) => {
-        const escolaNomeResolvida = item?.escolas?.nome || escolaNameBySenderId.get(item?.sender_user_id) || null;
+        const escolaNomeResolvida = item?.escolas?.nome
+          || escolaNameByEscolaId.get(item?.escola_id)
+          || escolaNameByProfileId.get(item?.sender_profile_id)
+          || escolaNameBySenderId.get(item?.sender_user_id)
+          || null;
         return {
           ...item,
           escolas: escolaNomeResolvida ? { ...(item.escolas || {}), nome: escolaNomeResolvida } : item.escolas,
