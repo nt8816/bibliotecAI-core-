@@ -162,3 +162,68 @@ export async function deleteAdminOrphanSchool(escolaId) {
     },
   );
 }
+
+export async function listAdminTenantGestores(escolaId) {
+  return requestWithFallback(
+    async () => {
+      const payload = await requestPlatformApi('/v1/admin/gestores/list', {
+        method: 'POST',
+        body: { escola_id: escolaId },
+      });
+      return Array.isArray(payload?.gestores) ? payload.gestores : [];
+    },
+    async () => {
+      const accessToken = await getCurrentAccessToken();
+      const response = await invokeEdgeFunction('redefinir-senha-gestor', {
+        body: { operation: 'list', escola_id: escolaId },
+        requireAuth: false,
+        headers: {
+          'x-user-access-token': accessToken,
+        },
+        fallbackErrorMessage: 'Não foi possível carregar os gestores da escola.',
+      });
+
+      return Array.isArray(response?.gestores) ? response.gestores : [];
+    },
+  );
+}
+
+export async function resetAdminTenantGestorPassword(escolaId, gestorId, novaSenha) {
+  return requestWithFallback(
+    async () => requestPlatformApi('/v1/admin/gestores/reset-password', {
+      method: 'POST',
+      body: { escola_id: escolaId, gestor_id: gestorId, nova_senha: novaSenha },
+    }),
+    async () => {
+      const accessToken = await getCurrentAccessToken();
+      return invokeEdgeFunction('redefinir-senha-gestor', {
+        body: { escola_id: escolaId, gestor_id: gestorId, nova_senha: novaSenha },
+        requireAuth: false,
+        headers: {
+          'x-user-access-token': accessToken,
+        },
+        fallbackErrorMessage: 'Não foi possível redefinir a senha do gestor.',
+      });
+    },
+  );
+}
+
+export async function deleteAdminTenantGestor(payload) {
+  return requestWithFallback(
+    async () => requestPlatformApi('/v1/admin/gestores/delete', {
+      method: 'POST',
+      body: payload,
+    }),
+    async () => {
+      const accessToken = await getCurrentAccessToken();
+      return invokeEdgeFunction('excluir-usuarios-biblioteca', {
+        body: payload,
+        requireAuth: false,
+        headers: {
+          'x-user-access-token': accessToken,
+        },
+        fallbackErrorMessage: 'Não foi possível excluir o gestor.',
+      });
+    },
+  );
+}

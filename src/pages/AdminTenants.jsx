@@ -12,15 +12,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { generateAudioWithCloudflare } from '@/lib/cloudflareAiApi';
 import { uploadDataUrlToR2 } from '@/lib/r2Storage';
 import {
   createAdminTenantInvite,
+  deleteAdminTenantGestor,
   deleteAdminOrphanSchool,
   deleteAdminTenantSchool,
   fetchAdminTenantsDashboard,
+  listAdminTenantGestores,
   provisionAdminTenant,
+  resetAdminTenantGestorPassword,
   toggleAdminTenantStatus,
 } from '@/services/adminTenantsService';
 
@@ -230,24 +232,7 @@ export default function AdminTenants() {
     setLoadingGestoresTenantId(tenant.id);
 
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw sessionError;
-
-      const accessToken = sessionData?.session?.access_token;
-      if (!accessToken) {
-        throw new Error('Sessão inválida. Faça login novamente.');
-      }
-
-      const response = await invokeEdgeFunction('redefinir-senha-gestor', {
-        body: { operation: 'list', escola_id: tenant.escola_id },
-        requireAuth: false,
-        headers: {
-          'x-user-access-token': accessToken,
-        },
-        fallbackErrorMessage: 'Não foi possível carregar os gestores da escola.',
-      });
-
-      const gestoresUnicos = Array.isArray(response?.gestores) ? response.gestores : [];
+      const gestoresUnicos = await listAdminTenantGestores(tenant.escola_id);
 
       setTenantGestores(gestoresUnicos);
       setSelectedGestorId(gestoresUnicos[0]?.id || '');
@@ -298,22 +283,7 @@ export default function AdminTenants() {
 
     setResettingGestorTenantId(tenant.id);
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw sessionError;
-
-      const accessToken = sessionData?.session?.access_token;
-      if (!accessToken) {
-        throw new Error('Sessão inválida. Faça login novamente.');
-      }
-
-      const data = await invokeEdgeFunction('redefinir-senha-gestor', {
-        body: { escola_id: tenant.escola_id, gestor_id: gestorId, nova_senha: senha },
-        requireAuth: false,
-        headers: {
-          'x-user-access-token': accessToken,
-        },
-        fallbackErrorMessage: 'Não foi possível redefinir a senha do gestor.',
-      });
+      const data = await resetAdminTenantGestorPassword(tenant.escola_id, gestorId, senha);
 
       if (!data?.success) throw new Error(data?.error || 'Não foi possível redefinir a senha do gestor.');
 
@@ -372,25 +342,10 @@ export default function AdminTenants() {
 
     setDeletingGestorId(gestor.id);
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw sessionError;
-
-      const accessToken = sessionData?.session?.access_token;
-      if (!accessToken) {
-        throw new Error('Sessão inválida. Faça login novamente.');
-      }
-
-      const data = await invokeEdgeFunction('excluir-usuarios-biblioteca', {
-        body: {
-          id: gestor.id,
-          user_id: gestor.user_id,
-          escola_id: tenant.escola_id,
-        },
-        requireAuth: false,
-        headers: {
-          'x-user-access-token': accessToken,
-        },
-        fallbackErrorMessage: 'Não foi possível excluir o gestor.',
+      const data = await deleteAdminTenantGestor({
+        id: gestor.id,
+        user_id: gestor.user_id,
+        escola_id: tenant.escola_id,
       });
 
       if (!data?.success) {

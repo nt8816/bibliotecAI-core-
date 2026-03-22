@@ -637,6 +637,70 @@ const routes: Record<string, RouteHandler> = {
 
     return jsonResponse(payload);
   },
+  'POST /v1/admin/gestores/list': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const allowed = await isSuperAdmin(user.id, env);
+    if (!allowed) {
+      return jsonResponse({ success: false, error: 'Sem permissao para listar gestores.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const escolaId = String(body?.escola_id || '').trim();
+    if (!escolaId) {
+      return jsonResponse({ success: false, error: 'Escola nao informada.' }, 400);
+    }
+
+    const payload = await callSupabaseFunction(request, env, 'redefinir-senha-gestor', {
+      operation: 'list',
+      escola_id: escolaId,
+    });
+
+    return jsonResponse(payload);
+  },
+  'POST /v1/admin/gestores/reset-password': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const allowed = await isSuperAdmin(user.id, env);
+    if (!allowed) {
+      return jsonResponse({ success: false, error: 'Sem permissao para redefinir senha de gestor.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const payload = await callSupabaseFunction(request, env, 'redefinir-senha-gestor', {
+      escola_id: body?.escola_id,
+      gestor_id: body?.gestor_id,
+      nova_senha: body?.nova_senha,
+    });
+
+    return jsonResponse(payload);
+  },
+  'POST /v1/admin/gestores/delete': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const allowed = await isSuperAdmin(user.id, env);
+    if (!allowed) {
+      return jsonResponse({ success: false, error: 'Sem permissao para excluir gestor.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const payload = await callSupabaseFunction(request, env, 'excluir-usuarios-biblioteca', {
+      id: body?.id,
+      user_id: body?.user_id,
+      escola_id: body?.escola_id,
+    });
+
+    return jsonResponse(payload);
+  },
 
   'POST /v1/media/sign-upload': async () => notImplemented('Assinatura de upload pela API propria'),
   'POST /v1/media/sign-download': async () => notImplemented('Assinatura de download pela API propria'),
