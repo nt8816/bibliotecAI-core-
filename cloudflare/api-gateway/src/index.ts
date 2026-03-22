@@ -1415,11 +1415,41 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'ID do tenant ausente.' }, 400);
     }
 
-    const payload = await callSupabaseFunction(request, env, 'excluir-escola-tenant', {
-      tenant_id: tenantId,
-    });
+    const payload = await supabaseAdminRequest(
+      env,
+      '/rest/v1/rpc/delete_tenant_school',
+      {
+        method: 'POST',
+        body: { _tenant_id: tenantId },
+      },
+    );
 
-    return jsonResponse(payload);
+    const authUserIds = Array.isArray(payload?.auth_user_ids)
+      ? payload.auth_user_ids.map((item: unknown) => String(item || '').trim()).filter(Boolean)
+      : [];
+    const authDeleteFailures: string[] = [];
+
+    for (const authUserId of authUserIds.filter((id) => id !== user.id)) {
+      try {
+        await supabaseAdminAuthRequest(env, `/users/${authUserId}`, { method: 'DELETE' });
+      } catch (error) {
+        const message = String(error instanceof Error ? error.message : '').toLowerCase();
+        if (!message.includes('user not found')) {
+          authDeleteFailures.push(`${authUserId}: ${error instanceof Error ? error.message : 'Falha desconhecida'}`);
+        }
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      tenant_id: payload?.tenant_id || tenantId,
+      escola_id: payload?.escola_id || null,
+      escola_nome: payload?.escola_nome || null,
+      schema_name: payload?.schema_name || null,
+      auth_deleted: authUserIds.filter((id) => id !== user.id).length - authDeleteFailures.length,
+      auth_skipped_current_user: authUserIds.includes(user.id),
+      auth_delete_failures: authDeleteFailures,
+    });
   },
   'POST /v1/admin/schools/:id/delete': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);
@@ -1437,11 +1467,121 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'ID da escola ausente.' }, 400);
     }
 
-    const payload = await callSupabaseFunction(request, env, 'excluir-escola-tenant', {
-      escola_id: escolaId,
-    });
+    const escolaPayload = await supabaseAdminRequest(
+      env,
+      `/rest/v1/escolas?${new URLSearchParams({
+        select: 'id,nome',
+        id: `eq.${escolaId}`,
+        limit: '1',
+      }).toString()}`,
+    );
+    const escola = Array.isArray(escolaPayload) ? (escolaPayload[0] || null) : null;
 
-    return jsonResponse(payload);
+    if (!escola?.id) {
+      return jsonResponse({ success: false, error: 'Escola nao encontrada.' }, 404);
+    }
+
+    const usersPayload = await supabaseAdminRequest(
+      env,
+      `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+        select: 'user_id',
+        escola_id: `eq.${escolaId}`,
+      }).toString()}`,
+    );
+
+    const authUserIds = Array.isArray(usersPayload)
+      ? usersPayload.map((item) => String(item?.user_id || '').trim()).filter(Boolean)
+      : [];
+
+    const tablesByEscolaId = [
+      'atividade_entregas',
+      'atividades_leitura',
+      'audiobooks_biblioteca',
+      'arquivos_aula_posts',
+      'categorias_livros',
+      'comunidade_quiz_tentativas',
+      'comunidade_posts',
+      'emprestimos',
+      'laboratorio_criacoes',
+      'livros',
+      'professor_turmas',
+      'salas_cursos',
+      'solicitacoes_emprestimo',
+      'tenant_admin_invites',
+      'tokens_convite',
+      'usuarios_biblioteca',
+    ];
+
+    for (const tableName of tablesByEscolaId) {
+      try {
+        await supabaseAdminRequest(
+          env,
+          `/rest/v1/${tableName}?escola_id=eq.${escolaId}`,
+          {
+            method: 'DELETE',
+            headers: {
+              Prefer: 'return=minimal',
+            },
+          },
+        );
+      } catch (error) {
+        const message = String(error instanceof Error ? error.message : '').toLowerCase();
+        const isMissingTable =
+          message.includes('relation') ||
+          message.includes('does not exist') ||
+          message.includes('schema cache') ||
+          message.includes('could not find the table');
+
+        if (!isMissingTable) {
+          throw error;
+        }
+      }
+    }
+
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/tenants?escola_id=eq.${escolaId}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Prefer: 'return=minimal',
+        },
+      },
+    );
+
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/escolas?id=eq.${escolaId}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Prefer: 'return=minimal',
+        },
+      },
+    );
+
+    const authDeleteFailures: string[] = [];
+    for (const authUserId of authUserIds.filter((id) => id !== user.id)) {
+      try {
+        await supabaseAdminAuthRequest(env, `/users/${authUserId}`, { method: 'DELETE' });
+      } catch (error) {
+        const message = String(error instanceof Error ? error.message : '').toLowerCase();
+        if (!message.includes('user not found')) {
+          authDeleteFailures.push(`${authUserId}: ${error instanceof Error ? error.message : 'Falha desconhecida'}`);
+        }
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      tenant_id: null,
+      escola_id: escolaId,
+      escola_nome: escola.nome || null,
+      schema_name: null,
+      auth_deleted: authUserIds.filter((id) => id !== user.id).length - authDeleteFailures.length,
+      auth_skipped_current_user: authUserIds.includes(user.id),
+      auth_delete_failures: authDeleteFailures,
+    });
   },
   'POST /v1/admin/gestores/list': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);
