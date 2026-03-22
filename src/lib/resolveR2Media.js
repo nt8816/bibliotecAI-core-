@@ -6,7 +6,11 @@ export function isR2ObjectKey(value) {
 
 export async function resolveR2MediaUrl(value, fileName = 'arquivo') {
   if (!isR2ObjectKey(value)) return value;
-  return getR2DownloadUrl(value, fileName);
+  try {
+    return await getR2DownloadUrl(value, fileName);
+  } catch {
+    return value;
+  }
 }
 
 export async function resolveR2MediaUrls(values, fileNamePrefix = 'arquivo') {

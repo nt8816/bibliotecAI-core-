@@ -313,7 +313,7 @@ export default function Dashboard() {
           audiobooks.reduce((total, item) => total + estimateDataUrlBytes(item?.audio_url), 0);
 
         setSuperAdminStats({
-          totalEscolas: escolasData.length,
+          totalEscolas: escolasOrdenadas.length,
           tenantsAtivos: tenantsData.filter((tenant) => tenant?.ativo !== false).length,
           tenantsInativos: tenantsData.filter((tenant) => tenant?.ativo === false).length,
           escolasSemTenant: escolasOrdenadas.filter((escola) => !escola.temTenant).length,

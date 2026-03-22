@@ -41,6 +41,11 @@ function sanitizeObjectKey(objectKey: string) {
     .trim();
 }
 
+function extractSchoolIdFromObjectKey(objectKey: string) {
+  const match = String(objectKey || '').match(/^escolas\/([^/]+)\//);
+  return match?.[1] || null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -82,16 +87,29 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Sessao invalida.' }, 401);
     }
 
-    const { data: profile, error: profileError } = await adminClient
-      .from('usuarios_biblioteca')
-      .select('id, escola_id, tipo')
-      .eq('user_id', caller.id)
-      .order('updated_at', { ascending: false, nullsFirst: false })
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const { data: callerRoles, error: callerRolesError } = await adminClient
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', caller.id);
 
-    if (profileError || !profile?.escola_id) {
+    if (callerRolesError) {
+      return jsonResponse({ success: false, error: 'Nao foi possivel validar permissoes do usuario.' }, 403);
+    }
+
+    const isSuperAdmin = (callerRoles || []).some((item) => item.role === 'super_admin');
+
+    const { data: profile, error: profileError } = isSuperAdmin
+      ? { data: null, error: null }
+      : await adminClient
+          .from('usuarios_biblioteca')
+          .select('id, escola_id, tipo')
+          .eq('user_id', caller.id)
+          .order('updated_at', { ascending: false, nullsFirst: false })
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+    if (!isSuperAdmin && (profileError || !profile?.escola_id)) {
       return jsonResponse({ success: false, error: 'Nao foi possivel identificar a escola do usuario.' }, 403);
     }
 
@@ -109,9 +127,13 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Operacao ou chave do objeto ausente.' }, 400);
     }
 
-    const schoolPrefix = `escolas/${profile.escola_id}/`;
-    if (!objectKey.startsWith(schoolPrefix)) {
+    const objectSchoolId = extractSchoolIdFromObjectKey(objectKey);
+    const schoolPrefix = profile?.escola_id ? `escolas/${profile.escola_id}/` : null;
+    if (!isSuperAdmin && (!schoolPrefix || !objectKey.startsWith(schoolPrefix))) {
       return jsonResponse({ success: false, error: 'Chave do objeto fora do escopo da escola.' }, 403);
+    }
+    if (isSuperAdmin && !objectSchoolId) {
+      return jsonResponse({ success: false, error: 'Chave do objeto invalida para o R2.' }, 400);
     }
 
     const s3 = new S3Client({

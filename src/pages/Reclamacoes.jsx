@@ -14,7 +14,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { getR2DownloadUrl, uploadFileToR2 } from '@/lib/r2Storage';
+import { uploadFileToR2 } from '@/lib/r2Storage';
+import { resolveR2MediaUrls } from '@/lib/resolveR2Media';
 
 function formatDateTime(value) {
   if (!value) return '-';
@@ -27,10 +28,6 @@ function formatDateTime(value) {
 
 function ensureArray(value) {
   return Array.isArray(value) ? value : [];
-}
-
-function isR2ObjectKey(value) {
-  return typeof value === 'string' && value.startsWith('escolas/');
 }
 
 function createPendingImage(file) {
@@ -100,11 +97,7 @@ export default function Reclamacoes() {
       const nextItems = await Promise.all((data || []).map(async (item) => ({
         ...item,
         escola_nome_resolvida: item?.escola_nome || null,
-        image_urls: await Promise.all(
-          ensureArray(item?.image_urls).map(async (url, index) => (
-            isR2ObjectKey(url) ? getR2DownloadUrl(url, `reclamacao-${item?.id || index + 1}-${index + 1}`) : url
-          )),
-        ),
+        image_urls: await resolveR2MediaUrls(ensureArray(item?.image_urls), `reclamacao-${item?.id || 'item'}`),
       })));
       setItems(nextItems);
 
