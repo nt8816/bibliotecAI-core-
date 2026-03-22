@@ -167,7 +167,7 @@ export default function Dashboard() {
 
       const superAdminQueries = userRole === 'super_admin'
         ? [
-            supabase.from('super_admin_accounts').select('id, status, tentativas_invalidas'),
+            supabase.from('super_admin_accounts').select('id, ativo, bloqueado, tentativas_falhas'),
             supabase.rpc('get_reclamacoes_super_admin_feed'),
             supabase.from('arquivos_aula_posts').select('arquivos'),
             supabase.from('reclamacoes_super_admin').select('image_urls'),
@@ -317,8 +317,8 @@ export default function Dashboard() {
           tenantsAtivos: tenantsData.filter((tenant) => tenant?.ativo !== false).length,
           tenantsInativos: tenantsData.filter((tenant) => tenant?.ativo === false).length,
           escolasSemTenant: escolasOrdenadas.filter((escola) => !escola.temTenant).length,
-          superAdminsAtivos: superAdmins.filter((item) => item?.status !== 'bloqueado').length,
-          superAdminsBloqueados: superAdmins.filter((item) => item?.status === 'bloqueado').length,
+          superAdminsAtivos: superAdmins.filter((item) => item?.ativo !== false && item?.bloqueado !== true).length,
+          superAdminsBloqueados: superAdmins.filter((item) => item?.bloqueado === true || item?.ativo === false).length,
           reclamacoesEmAnalise: reclamacoesFeed.filter((item) => item?.status === 'em_analise').length,
           reclamacoesAtrasadas: reclamacoesFeed.filter((item) => item?.alerta_prazo).length,
           armazenamentoConsumidoBytes,
