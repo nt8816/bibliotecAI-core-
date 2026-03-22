@@ -31,6 +31,7 @@ export async function uploadFileToR2({ file, escolaId, ownerId, scope = 'arquivo
       contentType: file.type || 'application/octet-stream',
       fileName: file.name,
     },
+    transport: 'http',
     fallbackErrorMessage: 'Nao foi possivel iniciar o upload para o Cloudflare R2.',
   });
 
@@ -88,6 +89,7 @@ export async function getR2DownloadUrl(objectKey, fileName) {
       objectKey,
       fileName,
     },
+    transport: 'http',
     fallbackErrorMessage: 'Nao foi possivel preparar o download do arquivo.',
   });
 
@@ -100,6 +102,7 @@ export async function deleteR2Object(objectKey) {
       operation: 'delete_object',
       objectKey,
     },
+    transport: 'http',
     fallbackErrorMessage: 'Nao foi possivel excluir o arquivo do Cloudflare R2.',
   });
 }
