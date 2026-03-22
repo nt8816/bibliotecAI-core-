@@ -30,6 +30,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { generateTextWithCloudflare } from '@/lib/cloudflareAiApi';
+import { resolveR2MediaUrl } from '@/lib/resolveR2Media';
 
 const emptyAtividade = {
   titulo: '',
@@ -144,6 +145,41 @@ function parseEntregaPayload(rawText) {
     imagens: ensureArray(parsed?.imagens).filter((item) => typeof item === 'string'),
     respostas: parsed?.respostas && typeof parsed.respostas === 'object' ? parsed.respostas : {},
   };
+}
+
+function ResolvedMediaImage({ value, alt, className, linkClassName = '' }) {
+  const [src, setSrc] = useState(() => (typeof value === 'string' ? value : ''));
+
+  useEffect(() => {
+    let active = true;
+
+    (async () => {
+      const resolved = await resolveR2MediaUrl(value, alt || 'imagem');
+      if (active) {
+        setSrc(typeof resolved === 'string' ? resolved : '');
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [alt, value]);
+
+  if (!src) {
+    return <div className={`${className} bg-muted`} />;
+  }
+
+  const image = <img src={src} alt={alt} className={className} />;
+
+  if (linkClassName) {
+    return (
+      <a href={src} target="_blank" rel="noreferrer" className={linkClassName}>
+        {image}
+      </a>
+    );
+  }
+
+  return image;
 }
 
 function normalizeFormularioPerguntas(perguntasRaw) {
@@ -1320,9 +1356,13 @@ export default function PainelProfessor() {
                               <p className="text-xs text-muted-foreground mb-2">Imagens enviadas ({entregaPayload.imagens.length})</p>
                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                 {entregaPayload.imagens.map((img, idx) => (
-                                  <a key={`${entrega.id}-img-${idx}`} href={img} target="_blank" rel="noreferrer">
-                                    <img src={img} alt={`Entrega ${idx + 1}`} className="w-full h-24 object-cover rounded-md border" />
-                                  </a>
+                                  <ResolvedMediaImage
+                                    key={`${entrega.id}-img-${idx}`}
+                                    value={img}
+                                    alt={`Entrega ${idx + 1}`}
+                                    className="w-full h-24 object-cover rounded-md border"
+                                    linkClassName="block"
+                                  />
                                 ))}
                               </div>
                             </div>

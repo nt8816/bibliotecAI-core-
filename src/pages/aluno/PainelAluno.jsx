@@ -669,6 +669,45 @@ async function fileToDataUrl(file) {
   });
 }
 
+function isDataUrl(value) {
+  return typeof value === 'string' && value.startsWith('data:');
+}
+
+function ResolvedMediaImage({ value, alt, className, linkClassName = '' }) {
+  const [src, setSrc] = useState(() => (typeof value === 'string' ? value : ''));
+
+  useEffect(() => {
+    let active = true;
+
+    (async () => {
+      const resolved = await resolveR2MediaUrl(value, alt || 'imagem');
+      if (active) {
+        setSrc(typeof resolved === 'string' ? resolved : '');
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [alt, value]);
+
+  if (!src) {
+    return <div className={`${className} bg-muted`} />;
+  }
+
+  const image = <img src={src} alt={alt} className={className} />;
+
+  if (linkClassName) {
+    return (
+      <a href={src} target="_blank" rel="noreferrer" className={linkClassName}>
+        {image}
+      </a>
+    );
+  }
+
+  return image;
+}
+
 async function persistStudioSlidesToR2({ slides, escolaId, alunoId }) {
   const currentSlides = Array.isArray(slides) ? slides : [];
 
@@ -2625,7 +2664,7 @@ export default function PainelAluno() {
   };
 
   const handleEnviarAtividade = async (atividade) => {
-    if (!alunoId) return;
+    if (!alunoId || !escolaId) return;
     if (!optionalFeaturesEnabled) {
       toast({
         variant: 'destructive',
@@ -2658,12 +2697,28 @@ export default function PainelAluno() {
 
     setSaving(true);
     try {
+      const imagensMigradas = await Promise.all(
+        imagens.map(async (imagem, index) => {
+          if (!isDataUrl(imagem)) return imagem;
+
+          const upload = await uploadDataUrlToR2({
+            dataUrl: imagem,
+            escolaId,
+            ownerId: alunoId,
+            scope: 'atividades-entregas',
+            fileName: `atividade-${atividade.id || 'entrega'}-${index + 1}.jpg`,
+          });
+
+          return upload.publicUrl || upload.objectKey;
+        }),
+      );
+
       const payload = {
         atividade_id: atividade.id,
         aluno_id: alunoId,
         texto_entrega: serializeEntregaPayload({
           texto,
-          imagens,
+          imagens: imagensMigradas,
           respostas,
         }),
         status: 'enviada',
@@ -4081,7 +4136,11 @@ export default function PainelAluno() {
                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                 {ensureArray(atividadeImagens[atividade.id]).map((img, imageIndex) => (
                                   <div key={`${atividade.id}-img-${imageIndex}`} className="relative">
-                                    <img src={img} alt={`Atividade ${imageIndex + 1}`} className="w-full h-20 object-cover rounded-md border" />
+                                    <ResolvedMediaImage
+                                      value={img}
+                                      alt={`Atividade ${imageIndex + 1}`}
+                                      className="w-full h-20 object-cover rounded-md border"
+                                    />
                                     <button
                                       type="button"
                                       onClick={() =>
