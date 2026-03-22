@@ -3,7 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2026-03-22"
 
 [vars]
-APP_ENV = "development"
+APP_ENV = "production"
 
 # Ajuste estes bindings quando a API for conectada ao ambiente real.
 # Exemplo:
