@@ -15,7 +15,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { generateAudioWithCloudflare } from '@/lib/cloudflareAiApi';
 import { uploadDataUrlToR2 } from '@/lib/r2Storage';
-import { fetchAdminTenantsDashboard, provisionAdminTenant, toggleAdminTenantStatus } from '@/services/adminTenantsService';
+import {
+  createAdminTenantInvite,
+  deleteAdminOrphanSchool,
+  deleteAdminTenantSchool,
+  fetchAdminTenantsDashboard,
+  provisionAdminTenant,
+  toggleAdminTenantStatus,
+} from '@/services/adminTenantsService';
 
 const DEFAULT_BASE_DOMAIN = import.meta.env.VITE_APP_BASE_DOMAIN || 'bibliotec-ai-core.vercel.app';
 
@@ -186,14 +193,11 @@ export default function AdminTenants() {
 
     setCreatingInviteTenantId(tenant.id);
     try {
-      const { data, error } = await supabase.rpc('create_tenant_admin_invite', {
-        _tenant_id: tenant.id,
-        _invite_cpf: null,
-        _base_domain: wildcardEnabled ? baseDomain : null,
-        _invite_expires_hours: 72,
+      const data = await createAdminTenantInvite(tenant.id, {
+        inviteCpf: null,
+        baseDomain: wildcardEnabled ? baseDomain : null,
+        inviteExpiresHours: 72,
       });
-
-      if (error) throw error;
 
       setLatestInvite(data);
       toast({ title: 'Novo link gerado', description: `Link temporário da escola ${tenant.nome} atualizado.` });
@@ -447,22 +451,7 @@ export default function AdminTenants() {
 
     setDeletingTenantId(tenant.id);
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw sessionError;
-
-      const accessToken = sessionData?.session?.access_token;
-      if (!accessToken) {
-        throw new Error('Sessão inválida. Faça login novamente.');
-      }
-
-      const data = await invokeEdgeFunction('excluir-escola-tenant', {
-        body: { tenant_id: tenant.id },
-        requireAuth: false,
-        headers: {
-          'x-user-access-token': accessToken,
-        },
-        fallbackErrorMessage: 'Não foi possível excluir a escola.',
-      });
+      const data = await deleteAdminTenantSchool(tenant.id);
 
       setTenants((prev) => prev.filter((item) => item.id !== tenant.id));
       setTenantPendingDelete(null);
@@ -494,22 +483,7 @@ export default function AdminTenants() {
 
     setDeletingEscolaId(escola.id);
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw sessionError;
-
-      const accessToken = sessionData?.session?.access_token;
-      if (!accessToken) {
-        throw new Error('Sessão inválida. Faça login novamente.');
-      }
-
-      const data = await invokeEdgeFunction('excluir-escola-tenant', {
-        body: { escola_id: escola.id },
-        requireAuth: false,
-        headers: {
-          'x-user-access-token': accessToken,
-        },
-        fallbackErrorMessage: 'Não foi possível excluir a escola.',
-      });
+      const data = await deleteAdminOrphanSchool(escola.id);
 
       setEscolasSemTenant((prev) => prev.filter((item) => item.id !== escola.id));
       setEscolaSemTenantPendingDelete(null);

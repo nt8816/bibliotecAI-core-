@@ -567,6 +567,76 @@ const routes: Record<string, RouteHandler> = {
 
     return jsonResponse({ success: true, tenantId, ativo });
   },
+  'POST /v1/admin/tenants/:id/invite': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const allowed = await isSuperAdmin(user.id, env);
+    if (!allowed) {
+      return jsonResponse({ success: false, error: 'Sem permissao para gerar convite do tenant.' }, 403);
+    }
+
+    const tenantId = getPathParam(request, /^\/v1\/admin\/tenants\/([^/]+)\/invite$/);
+    if (!tenantId) {
+      return jsonResponse({ success: false, error: 'ID do tenant ausente.' }, 400);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const payload = await supabaseUserRpc(request, env, 'create_tenant_admin_invite', {
+      _tenant_id: tenantId,
+      _invite_cpf: body?.inviteCpf ? String(body.inviteCpf).trim() : null,
+      _base_domain: body?.baseDomain ? String(body.baseDomain).trim() : null,
+      _invite_expires_hours: Number(body?.inviteExpiresHours || 72),
+    });
+
+    return jsonResponse(payload);
+  },
+  'POST /v1/admin/tenants/:id/delete': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const allowed = await isSuperAdmin(user.id, env);
+    if (!allowed) {
+      return jsonResponse({ success: false, error: 'Sem permissao para excluir tenant.' }, 403);
+    }
+
+    const tenantId = getPathParam(request, /^\/v1\/admin\/tenants\/([^/]+)\/delete$/);
+    if (!tenantId) {
+      return jsonResponse({ success: false, error: 'ID do tenant ausente.' }, 400);
+    }
+
+    const payload = await callSupabaseFunction(request, env, 'excluir-escola-tenant', {
+      tenant_id: tenantId,
+    });
+
+    return jsonResponse(payload);
+  },
+  'POST /v1/admin/schools/:id/delete': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const allowed = await isSuperAdmin(user.id, env);
+    if (!allowed) {
+      return jsonResponse({ success: false, error: 'Sem permissao para excluir escola.' }, 403);
+    }
+
+    const escolaId = getPathParam(request, /^\/v1\/admin\/schools\/([^/]+)\/delete$/);
+    if (!escolaId) {
+      return jsonResponse({ success: false, error: 'ID da escola ausente.' }, 400);
+    }
+
+    const payload = await callSupabaseFunction(request, env, 'excluir-escola-tenant', {
+      escola_id: escolaId,
+    });
+
+    return jsonResponse(payload);
+  },
 
   'POST /v1/media/sign-upload': async () => notImplemented('Assinatura de upload pela API propria'),
   'POST /v1/media/sign-download': async () => notImplemented('Assinatura de download pela API propria'),
@@ -576,7 +646,10 @@ function normalizeDynamicRoute(routeKey: string) {
   return routeKey
     .replace(/\/v1\/reclamacoes\/[^/]+\/read$/, '/v1/reclamacoes/:id/read')
     .replace(/\/v1\/reclamacoes\/[^/]+$/, '/v1/reclamacoes/:id')
+    .replace(/\/v1\/admin\/tenants\/[^/]+\/invite$/, '/v1/admin/tenants/:id/invite')
+    .replace(/\/v1\/admin\/tenants\/[^/]+\/delete$/, '/v1/admin/tenants/:id/delete')
     .replace(/\/v1\/admin\/tenants\/[^/]+\/status$/, '/v1/admin/tenants/:id/status')
+    .replace(/\/v1\/admin\/schools\/[^/]+\/delete$/, '/v1/admin/schools/:id/delete')
     .replace(/\/v1\/admin\/super-admins\/[^/]+\/unlock$/, '/v1/admin/super-admins/:id/unlock');
 }
 

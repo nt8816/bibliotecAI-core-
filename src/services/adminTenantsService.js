@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { isPlatformApiConfigured, isPlatformApiUnavailableError, requestPlatformApi } from '@/lib/platformApi';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 async function requestWithFallback(platformCall, supabaseCall) {
   if (isPlatformApiConfigured()) {
@@ -11,6 +12,18 @@ async function requestWithFallback(platformCall, supabaseCall) {
   }
 
   return supabaseCall();
+}
+
+async function getCurrentAccessToken() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+
+  const accessToken = data?.session?.access_token;
+  if (!accessToken) {
+    throw new Error('Sessão inválida. Faça login novamente.');
+  }
+
+  return accessToken;
 }
 
 export async function fetchAdminTenantsDashboard() {
@@ -95,6 +108,57 @@ export async function toggleAdminTenantStatus(tenantId, ativo) {
 
       if (error) throw error;
       return { success: true };
+    },
+  );
+}
+
+export async function createAdminTenantInvite(tenantId, payload = {}) {
+  return requestWithFallback(
+    async () => requestPlatformApi(`/v1/admin/tenants/${tenantId}/invite`, { method: 'POST', body: payload }),
+    async () => {
+      const { data, error } = await supabase.rpc('create_tenant_admin_invite', {
+        _tenant_id: tenantId,
+        _invite_cpf: payload?.inviteCpf || null,
+        _base_domain: payload?.baseDomain || null,
+        _invite_expires_hours: payload?.inviteExpiresHours || 72,
+      });
+
+      if (error) throw error;
+      return data;
+    },
+  );
+}
+
+export async function deleteAdminTenantSchool(tenantId) {
+  return requestWithFallback(
+    async () => requestPlatformApi(`/v1/admin/tenants/${tenantId}/delete`, { method: 'POST' }),
+    async () => {
+      const accessToken = await getCurrentAccessToken();
+      return invokeEdgeFunction('excluir-escola-tenant', {
+        body: { tenant_id: tenantId },
+        requireAuth: false,
+        headers: {
+          'x-user-access-token': accessToken,
+        },
+        fallbackErrorMessage: 'Não foi possível excluir a escola.',
+      });
+    },
+  );
+}
+
+export async function deleteAdminOrphanSchool(escolaId) {
+  return requestWithFallback(
+    async () => requestPlatformApi(`/v1/admin/schools/${escolaId}/delete`, { method: 'POST' }),
+    async () => {
+      const accessToken = await getCurrentAccessToken();
+      return invokeEdgeFunction('excluir-escola-tenant', {
+        body: { escola_id: escolaId },
+        requireAuth: false,
+        headers: {
+          'x-user-access-token': accessToken,
+        },
+        fallbackErrorMessage: 'Não foi possível excluir a escola.',
+      });
     },
   );
 }
