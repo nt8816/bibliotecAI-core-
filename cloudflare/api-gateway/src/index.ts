@@ -1078,15 +1078,103 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const body = await request.json().catch(() => ({}));
-    const payload = await callSupabaseFunction(request, env, 'gerenciar-super-admins', {
-      operation: 'create',
-      nome: body?.nome,
-      email: body?.email,
-      cpf: body?.cpf,
-      senha: body?.senha,
+    const nome = String(body?.nome || '').trim();
+    const email = normalizeEmail(body?.email);
+    const cpf = normalizeCpf(body?.cpf);
+    const senha = String(body?.senha || '').trim();
+
+    if (nome.length < 3) {
+      return jsonResponse({ success: false, error: 'Nome invalido' }, 400);
+    }
+
+    if (!email || !email.includes('@')) {
+      return jsonResponse({ success: false, error: 'Email invalido' }, 400);
+    }
+
+    if (cpf && !isValidCpf(cpf)) {
+      return jsonResponse({ success: false, error: 'CPF invalido' }, 400);
+    }
+
+    if (senha.length < 6) {
+      return jsonResponse({ success: false, error: 'Senha deve ter pelo menos 6 caracteres' }, 400);
+    }
+
+    const existingPayload = await supabaseAdminRequest(
+      env,
+      `/rest/v1/super_admin_accounts?select=id&or=${encodeURIComponent(`email.eq.${email}${cpf ? `,cpf.eq.${cpf}` : ''}`)}&limit=1`,
+    );
+    const existingAccount = Array.isArray(existingPayload) ? (existingPayload[0] || null) : null;
+
+    if (existingAccount?.id) {
+      return jsonResponse({ success: false, error: 'Ja existe uma conta de Super Admin com esse email ou CPF' }, 409);
+    }
+
+    const createdUserData = await supabaseAdminAuthRequest(env, '/users', {
+      method: 'POST',
+      body: {
+        email,
+        password: senha,
+        email_confirm: true,
+        user_metadata: { nome },
+      },
     });
 
-    return jsonResponse(payload);
+    const userId = String(createdUserData?.user?.id || '').trim();
+    if (!userId) {
+      return jsonResponse({ success: false, error: 'Nao foi possivel criar o usuario' }, 500);
+    }
+
+    try {
+      await supabaseAdminRequest(env, '/rest/v1/user_roles', {
+        method: 'POST',
+        body: [{ user_id: userId, role: 'super_admin' }],
+        headers: {
+          Prefer: 'resolution=merge-duplicates,return=minimal',
+        },
+      });
+
+      await supabaseAdminRequest(env, '/rest/v1/super_admin_accounts', {
+        method: 'POST',
+        body: [{
+          auth_user_id: userId,
+          nome,
+          email,
+          cpf: cpf || null,
+          ativo: true,
+          bloqueado: false,
+          tentativas_falhas: 0,
+          created_by: user.id,
+        }],
+        headers: {
+          Prefer: 'return=minimal',
+        },
+      });
+    } catch (error) {
+      await supabaseAdminAuthRequest(env, `/users/${userId}`, { method: 'DELETE' }).catch(() => null);
+      throw error;
+    }
+
+    await insertSystemLog(request, env, {
+      user_id: user.id,
+      level: 'info',
+      event: 'super_admin_account_created',
+      message: 'Novo Super Admin criado.',
+      path: '/admin/super-admins',
+      context: {
+        created_super_admin_email: email,
+        created_super_admin_nome: nome,
+      },
+    });
+
+    return jsonResponse({
+      success: true,
+      super_admin: {
+        user_id: userId,
+        nome,
+        email,
+        cpf: cpf || null,
+      },
+    });
   },
   'POST /v1/admin/super-admins/:id/unlock': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);
@@ -1104,12 +1192,57 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'ID da conta ausente.' }, 400);
     }
 
-    const payload = await callSupabaseFunction(request, env, 'gerenciar-super-admins', {
-      operation: 'unlock',
-      account_id: accountId,
+    const accountsPayload = await supabaseAdminRequest(
+      env,
+      `/rest/v1/super_admin_accounts?${new URLSearchParams({
+        select: 'id,email,auth_user_id',
+        id: `eq.${accountId}`,
+        limit: '1',
+      }).toString()}`,
+    );
+    const account = Array.isArray(accountsPayload) ? (accountsPayload[0] || null) : null;
+
+    if (!account?.id) {
+      return jsonResponse({ success: false, error: 'Conta de Super Admin nao encontrada' }, 404);
+    }
+
+    if (String(account.auth_user_id || '').trim() === user.id) {
+      return jsonResponse({ success: false, error: 'Outro Super Admin deve realizar a liberacao desta conta' }, 400);
+    }
+
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/super_admin_accounts?${new URLSearchParams({ id: `eq.${accountId}` }).toString()}`,
+      {
+        method: 'PATCH',
+        body: {
+          tentativas_falhas: 0,
+          bloqueado: false,
+          ativo: true,
+          bloqueado_em: null,
+          desbloqueado_em: new Date().toISOString(),
+          desbloqueado_por: user.id,
+        },
+        headers: {
+          Prefer: 'return=minimal',
+        },
+      },
+    );
+
+    await insertSystemLog(request, env, {
+      user_id: user.id,
+      level: 'info',
+      event: 'super_admin_account_unlocked',
+      message: 'Conta de Super Admin liberada por outro administrador.',
+      path: '/admin/super-admins',
+      context: {
+        account_id: account.id,
+        email: account.email || null,
+        unlocked_by: user.id,
+      },
     });
 
-    return jsonResponse(payload);
+    return jsonResponse({ success: true, account_id: account.id });
   },
 
   'GET /v1/admin/tenants': async (request, env) => {
@@ -1327,12 +1460,8 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Escola nao informada.' }, 400);
     }
 
-    const payload = await callSupabaseFunction(request, env, 'redefinir-senha-gestor', {
-      operation: 'list',
-      escola_id: escolaId,
-    });
-
-    return jsonResponse(payload);
+    const { gestores } = await buildGestoresForEscola(escolaId, env);
+    return jsonResponse({ success: true, gestores });
   },
   'POST /v1/admin/gestores/reset-password': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);
@@ -1346,13 +1475,43 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const body = await request.json().catch(() => ({}));
-    const payload = await callSupabaseFunction(request, env, 'redefinir-senha-gestor', {
-      escola_id: body?.escola_id,
-      gestor_id: body?.gestor_id,
-      nova_senha: body?.nova_senha,
+    const escolaId = String(body?.escola_id || '').trim();
+    const gestorId = String(body?.gestor_id || '').trim();
+    const novaSenha = String(body?.nova_senha || '').trim();
+
+    if (!escolaId) {
+      return jsonResponse({ success: false, error: 'Escola nao informada' }, 400);
+    }
+
+    if (!/^[A-Za-z0-9!@#$%^&*()_+\-=.?]{6,64}$/.test(novaSenha)) {
+      return jsonResponse(
+        { success: false, error: 'Senha invalida. Use 6-64 caracteres (letras, numeros e simbolos comuns).' },
+        400,
+      );
+    }
+
+    const { gestores } = await buildGestoresForEscola(escolaId, env);
+    const gestorSelecionado =
+      gestores.find((item) => item.id === gestorId || item.user_id === gestorId) ||
+      gestores[0] ||
+      null;
+
+    if (!gestorSelecionado?.user_id) {
+      return jsonResponse({ success: false, error: 'Gestor nao encontrado para esta escola' }, 404);
+    }
+
+    await supabaseAdminAuthRequest(env, `/users/${gestorSelecionado.user_id}`, {
+      method: 'PUT',
+      body: { password: novaSenha },
     });
 
-    return jsonResponse(payload);
+    return jsonResponse({
+      success: true,
+      gestor_id: gestorSelecionado.id,
+      gestor_nome: gestorSelecionado.nome || 'Gestor',
+      gestor_email: gestorSelecionado.email || '',
+      senha_temporaria: novaSenha,
+    });
   },
   'POST /v1/admin/gestores/delete': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);
@@ -1366,13 +1525,144 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const body = await request.json().catch(() => ({}));
-    const payload = await callSupabaseFunction(request, env, 'excluir-usuarios-biblioteca', {
-      id: body?.id,
-      user_id: body?.user_id,
-      escola_id: body?.escola_id,
-    });
+    const requestedSchoolId = String(body?.escola_id || '').trim();
+    const ids = body?.id ? [String(body.id).trim()] : [];
+    const explicitUserIds = body?.user_id ? [String(body.user_id).trim()] : [];
+    const requestedUserIds = [...new Set([...explicitUserIds, ...ids].filter(Boolean))];
 
-    return jsonResponse(payload);
+    if (!requestedSchoolId) {
+      return jsonResponse({ success: false, error: 'Escola nao informada' }, 400);
+    }
+
+    if (ids.length === 0 && requestedUserIds.length === 0) {
+      return jsonResponse({ success: false, error: 'Nenhum usuario informado para exclusao' }, 400);
+    }
+
+    const foundProfilesByKey = new Map<string, { id: string; user_id: string | null; escola_id: string | null }>();
+
+    if (ids.length > 0) {
+      const profilesById = await supabaseAdminRequest(
+        env,
+        `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+          select: 'id,user_id,escola_id',
+          id: `in.(${ids.join(',')})`,
+        }).toString()}`,
+      );
+
+      (Array.isArray(profilesById) ? profilesById : []).forEach((profile) => {
+        foundProfilesByKey.set(String(profile.id), profile);
+      });
+    }
+
+    if (requestedUserIds.length > 0) {
+      const profilesByUserId = await supabaseAdminRequest(
+        env,
+        `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+          select: 'id,user_id,escola_id',
+          user_id: `in.(${requestedUserIds.join(',')})`,
+        }).toString()}`,
+      );
+
+      (Array.isArray(profilesByUserId) ? profilesByUserId : []).forEach((profile) => {
+        foundProfilesByKey.set(String(profile.id), profile);
+      });
+    }
+
+    const foundProfiles = Array.from(foundProfilesByKey.values());
+    const forbiddenProfile = foundProfiles.find((profile) => profile.escola_id !== requestedSchoolId);
+    if (forbiddenProfile) {
+      return jsonResponse({ success: false, error: 'Voce nao pode excluir usuarios de outra escola' }, 403);
+    }
+
+    const selfProfile = foundProfiles.find((profile) => profile.user_id === user.id);
+    if (selfProfile) {
+      return jsonResponse({ success: false, error: 'Voce nao pode excluir o proprio usuario por esta tela' }, 400);
+    }
+
+    const userIdsToDelete = foundProfiles
+      .map((profile) => String(profile.user_id || '').trim())
+      .filter(Boolean);
+
+    const authOnlyUserIds = requestedUserIds.filter((userId) => !foundProfiles.some((profile) => String(profile.user_id || '').trim() === userId));
+    if (requestedSchoolId && authOnlyUserIds.length > 0) {
+      const schoolsWithTargetGestor = await supabaseAdminRequest(
+        env,
+        `/rest/v1/escolas?${new URLSearchParams({
+          select: 'id,gestor_id',
+          id: `eq.${requestedSchoolId}`,
+          gestor_id: `in.(${authOnlyUserIds.join(',')})`,
+        }).toString()}`,
+      );
+
+      (Array.isArray(schoolsWithTargetGestor) ? schoolsWithTargetGestor : []).forEach((school) => {
+        const matchedUserId = String(school?.gestor_id || '').trim();
+        if (matchedUserId && !userIdsToDelete.includes(matchedUserId)) {
+          userIdsToDelete.push(matchedUserId);
+        }
+      });
+    }
+
+    if (foundProfiles.length === 0 && userIdsToDelete.length === 0) {
+      return jsonResponse({ success: false, error: 'Nenhum usuario encontrado para exclusao' }, 404);
+    }
+
+    if (userIdsToDelete.length > 0) {
+      await supabaseAdminRequest(
+        env,
+        `/rest/v1/escolas?gestor_id=in.(${userIdsToDelete.join(',')})`,
+        {
+          method: 'PATCH',
+          body: { gestor_id: null },
+          headers: {
+            Prefer: 'return=minimal',
+          },
+        },
+      );
+    }
+
+    const authDeleteFailures: string[] = [];
+    for (const authUserId of [...new Set(userIdsToDelete)]) {
+      const normalizedUserId = String(authUserId || '').trim();
+      if (!normalizedUserId) continue;
+
+      try {
+        await supabaseAdminAuthRequest(env, `/users/${normalizedUserId}`, { method: 'DELETE' });
+      } catch (error) {
+        const message = String(error instanceof Error ? error.message : '').toLowerCase();
+        if (!message.includes('user not found')) {
+          authDeleteFailures.push(`${normalizedUserId}: ${error instanceof Error ? error.message : 'Falha desconhecida'}`);
+        }
+      }
+    }
+
+    if (authDeleteFailures.length > 0) {
+      return jsonResponse({ success: false, error: `Falha ao excluir contas de autenticacao: ${authDeleteFailures.join(' | ')}` }, 500);
+    }
+
+    const profileIdsToDelete = foundProfiles
+      .map((profile) => String(profile.id || '').trim())
+      .filter(Boolean);
+
+    if (profileIdsToDelete.length > 0) {
+      await supabaseAdminRequest(
+        env,
+        `/rest/v1/usuarios_biblioteca?id=in.(${profileIdsToDelete.join(',')})`,
+        {
+          method: 'DELETE',
+          headers: {
+            Prefer: 'return=minimal',
+          },
+        },
+      );
+    }
+
+    return jsonResponse({
+      success: true,
+      deleted_count: foundProfiles.length,
+      deleted_auth_only_count: Math.max(userIdsToDelete.length - foundProfiles.filter((profile) => profile.user_id).length, 0),
+      deleted_ids: foundProfiles.map((profile) => profile.id),
+      deleted_user_ids: [...new Set(userIdsToDelete)],
+    });
   },
 
   'POST /v1/media/sign-upload': async () => notImplemented('Assinatura de upload pela API propria'),
