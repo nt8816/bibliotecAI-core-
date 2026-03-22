@@ -108,6 +108,14 @@ export default function Reclamacoes() {
             .map((item) => item.sender_profile_id),
         ),
       );
+      const missingSchoolEmails = Array.from(
+        new Set(
+          baseItems
+            .filter((item) => !item?.escolas?.nome && item?.sender_email)
+            .map((item) => String(item.sender_email).trim().toLowerCase())
+            .filter(Boolean),
+        ),
+      );
       const missingEscolaIds = Array.from(
         new Set(
           baseItems
@@ -118,6 +126,7 @@ export default function Reclamacoes() {
 
       let escolaNameBySenderId = new Map();
       let escolaNameByProfileId = new Map();
+      let escolaNameByEmail = new Map();
       let escolaNameByEscolaId = new Map();
 
       if (missingSchoolSenderIds.length > 0) {
@@ -150,6 +159,21 @@ export default function Reclamacoes() {
         }
       }
 
+      if (missingSchoolEmails.length > 0) {
+        const { data: senderProfilesByEmail, error: senderProfilesByEmailError } = await supabase
+          .from('usuarios_biblioteca')
+          .select('email, escola_id, escolas!left(nome)')
+          .in('email', missingSchoolEmails);
+
+        if (!senderProfilesByEmailError) {
+          escolaNameByEmail = new Map(
+            (senderProfilesByEmail || [])
+              .filter((profile) => profile?.email && profile?.escolas?.nome)
+              .map((profile) => [String(profile.email).trim().toLowerCase(), profile.escolas.nome]),
+          );
+        }
+      }
+
       if (missingEscolaIds.length > 0) {
         const { data: escolasData, error: escolasError } = await supabase
           .from('escolas')
@@ -170,6 +194,7 @@ export default function Reclamacoes() {
           || escolaNameByEscolaId.get(item?.escola_id)
           || escolaNameByProfileId.get(item?.sender_profile_id)
           || escolaNameBySenderId.get(item?.sender_user_id)
+          || escolaNameByEmail.get(String(item?.sender_email || '').trim().toLowerCase())
           || null;
         return {
           ...item,
@@ -229,8 +254,32 @@ export default function Reclamacoes() {
 
     setSaving(true);
     try {
+      let senderProfileId = null;
+      let escolaId = null;
+      let senderNome = user?.user_metadata?.nome || user?.email || null;
+      let senderEmail = user?.email || null;
+
+      if (user?.id) {
+        const { data: currentProfile } = await supabase
+          .from('usuarios_biblioteca')
+          .select('id, escola_id, nome, email')
+          .eq('user_id', user.id)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        senderProfileId = currentProfile?.id || null;
+        escolaId = currentProfile?.escola_id || null;
+        senderNome = currentProfile?.nome || senderNome;
+        senderEmail = currentProfile?.email || senderEmail;
+      }
+
       const { error } = await supabase.from('reclamacoes_super_admin').insert({
+        sender_profile_id: senderProfileId,
         sender_role: userRole,
+        sender_nome: senderNome,
+        sender_email: senderEmail,
+        escola_id: escolaId,
         assunto,
         mensagem,
         image_urls: imageUrls,
