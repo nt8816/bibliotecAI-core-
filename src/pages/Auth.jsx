@@ -17,6 +17,8 @@ const loginSchema = z.object({
   password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
 });
 
+const EXACT_LOCATION_MAX_ACCURACY_METERS = 100;
+
 function getCurrentPosition() {
   if (!navigator?.geolocation?.getCurrentPosition) {
     return Promise.reject(new Error('Geolocalizacao nao suportada'));
@@ -108,6 +110,14 @@ async function captureSecurityLocationContext() {
   }
 }
 
+function hasExactLocation(context) {
+  const accuracy = Number(context?.coordinates?.accuracy_meters);
+  return context?.geolocation_status === 'captured'
+    && Number.isFinite(accuracy)
+    && accuracy > 0
+    && accuracy <= EXACT_LOCATION_MAX_ACCURACY_METERS;
+}
+
 export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -137,6 +147,16 @@ export default function Auth() {
         return {
           error: {
             message: 'Conta de Super Admin bloqueada. Outro Super Admin precisa fazer a liberacao.',
+          },
+        };
+      }
+
+      const locationContext = await captureSecurityLocationContext();
+      if (!hasExactLocation(locationContext)) {
+        return {
+          error: {
+            message: 'A localizacao exata e obrigatoria para seguranca da plataforma. Compartilhe a localizacao precisa para entrar como Super Admin.',
+            exactLocationRequired: true,
           },
         };
       }
@@ -300,6 +320,11 @@ export default function Auth() {
           setAuthAlert({
             title: 'USUARIO BLOQUEADO',
             description: 'Fale com seu parceiro ou superior para solicitar a liberacao da conta.',
+          });
+        } else if (error.exactLocationRequired) {
+          setAuthAlert({
+            title: 'LOCALIZACAO EXATA OBRIGATORIA',
+            description: 'Para proteger a plataforma, o acesso de Super Admin exige localizacao precisa do dispositivo.',
           });
         }
 

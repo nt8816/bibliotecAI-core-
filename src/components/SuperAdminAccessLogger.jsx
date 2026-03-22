@@ -1,10 +1,13 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { MapPinned, ShieldAlert } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 
+import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { logSystemEvent } from '@/lib/systemLogger';
 
 const LOG_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const EXACT_LOCATION_MAX_ACCURACY_METERS = 100;
 const STORAGE_PREFIX = 'super-admin-access-log:v1';
 
 function getStorageKey(userId) {
@@ -77,17 +80,28 @@ async function reverseGeocodeCity(latitude, longitude) {
   };
 }
 
+function isExactLocation(accuracy) {
+  return Number.isFinite(accuracy) && accuracy > 0 && accuracy <= EXACT_LOCATION_MAX_ACCURACY_METERS;
+}
+
 export function SuperAdminAccessLogger() {
   const location = useLocation();
   const { user, loading, isSuperAdmin } = useAuth();
   const inFlightRef = useRef(false);
+  const [blockedReason, setBlockedReason] = useState('');
 
   useEffect(() => {
-    if (loading || !user?.id || !isSuperAdmin) return;
+    if (loading || !user?.id || !isSuperAdmin) {
+      setBlockedReason('');
+      return;
+    }
     if (inFlightRef.current) return;
 
     const lastSnapshotAt = readLastSnapshotAt(user.id);
-    if (lastSnapshotAt && Date.now() - lastSnapshotAt < LOG_INTERVAL_MS) return;
+    if (lastSnapshotAt && Date.now() - lastSnapshotAt < LOG_INTERVAL_MS) {
+      setBlockedReason('');
+      return;
+    }
 
     inFlightRef.current = true;
 
@@ -108,6 +122,28 @@ export function SuperAdminAccessLogger() {
         const longitude = Number(position.coords?.longitude);
         const accuracy = Number(position.coords?.accuracy);
 
+        if (!isExactLocation(accuracy)) {
+          setBlockedReason('A plataforma exige localizacao exata para acesso de Super Admin. Ative a localizacao precisa do dispositivo e permita o compartilhamento para continuar.');
+          logSystemEvent({
+            level: 'warn',
+            event: 'super_admin_login_snapshot',
+            message: 'Login de super admin bloqueado por localizacao imprecisa.',
+            path: location.pathname,
+            context: {
+              ...baseContext,
+              geolocation_status: 'imprecise',
+              coordinates: {
+                latitude: Number.isFinite(latitude) ? latitude : null,
+                longitude: Number.isFinite(longitude) ? longitude : null,
+                accuracy_meters: Number.isFinite(accuracy) ? accuracy : null,
+              },
+              exact_location_required: true,
+              exact_location_max_accuracy_meters: EXACT_LOCATION_MAX_ACCURACY_METERS,
+            },
+          });
+          return;
+        }
+
         let cityData = {
           city: null,
           principalSubdivision: null,
@@ -124,6 +160,7 @@ export function SuperAdminAccessLogger() {
           };
         }
 
+        setBlockedReason('');
         logSystemEvent({
           level: 'info',
           event: 'super_admin_login_snapshot',
@@ -136,6 +173,8 @@ export function SuperAdminAccessLogger() {
             locality: cityData.locality,
             state: cityData.principalSubdivision,
             country: cityData.countryName,
+            exact_location_required: true,
+            exact_location_max_accuracy_meters: EXACT_LOCATION_MAX_ACCURACY_METERS,
             coordinates: {
               latitude: Number.isFinite(latitude) ? latitude : null,
               longitude: Number.isFinite(longitude) ? longitude : null,
@@ -144,20 +183,23 @@ export function SuperAdminAccessLogger() {
             reverse_geocode_error: cityData.error || null,
           },
         });
+        writeLastSnapshotAt(user.id, location.pathname);
       } catch (error) {
+        setBlockedReason('A localizacao exata e obrigatoria para seguranca da plataforma. Compartilhe a localizacao precisa para liberar o uso do painel de Super Admin.');
         logSystemEvent({
           level: 'warn',
           event: 'super_admin_login_snapshot',
-          message: 'Login de super admin registrado sem localizacao precisa.',
+          message: 'Login de super admin bloqueado sem localizacao exata.',
           path: location.pathname,
           context: {
             ...baseContext,
             geolocation_status: 'unavailable',
             geolocation_error: error?.message || 'Falha ao capturar localizacao',
+            exact_location_required: true,
+            exact_location_max_accuracy_meters: EXACT_LOCATION_MAX_ACCURACY_METERS,
           },
         });
       } finally {
-        writeLastSnapshotAt(user.id, location.pathname);
         inFlightRef.current = false;
       }
     };
@@ -165,5 +207,36 @@ export function SuperAdminAccessLogger() {
     void captureAccess();
   }, [isSuperAdmin, loading, location.pathname, user?.id]);
 
-  return null;
+  if (!isSuperAdmin || !blockedReason) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[120] bg-background/96 backdrop-blur-sm">
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <div className="w-full max-w-2xl rounded-2xl border border-destructive/30 bg-card p-6 shadow-2xl">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+              <ShieldAlert className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-xl font-bold">Localizacao exata obrigatoria</p>
+              <p className="text-sm text-muted-foreground">Acesso protegido do Super Admin</p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-muted/40 p-4 text-sm leading-6 text-foreground/85">
+            {blockedReason}
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Button type="button" onClick={() => window.location.reload()}>
+              <MapPinned className="mr-2 h-4 w-4" />
+              Tentar novamente com localizacao exata
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
