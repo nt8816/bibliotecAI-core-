@@ -18,11 +18,18 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { generateTextWithCloudflare } from '@/lib/cloudflareAiApi';
 import { ExportPeriodDialog } from '@/components/export/ExportPeriodDialog';
 import { canonicalizeBookArea } from '@/lib/bookAreas';
+import {
+  createLivroCategoria,
+  deleteLivro,
+  deleteLivroCategoria,
+  fetchLivrosCatalogo,
+  importLivrosBatch,
+  saveLivro,
+} from '@/services/livrosService';
 
 const emptyLivro = {
   area: '',
@@ -121,94 +128,38 @@ export default function Livros() {
   const canManageBooks = isGestor || isBibliotecaria;
 
   const fetchLivros = useCallback(async () => {
+    if (!user?.id) {
+      setLivros([]);
+      setPreCategorias(DEFAULT_PRE_CATEGORIES);
+      setEscolaId(null);
+      setLoading(false);
+      return;
+    }
     try {
-      let livrosData = [];
-
-      if (escolaId) {
-        const [{ data: escolaLivros, error: escolaError }, { data: legacyLivros, error: legacyError }] = await Promise.all([
-          supabase.from('livros').select('*').eq('escola_id', escolaId).order('titulo'),
-          supabase.from('livros').select('*').is('escola_id', null).order('titulo'),
-        ]);
-
-        if (escolaError) throw escolaError;
-        if (legacyError) throw legacyError;
-
-        const byId = new Map();
-        [...(escolaLivros || []), ...(legacyLivros || [])].forEach((livro) => {
-          if (livro?.id) byId.set(livro.id, livro);
-        });
-        livrosData = Array.from(byId.values()).sort((a, b) => String(a?.titulo || '').localeCompare(String(b?.titulo || ''), 'pt-BR'));
-      } else {
-        const { data, error } = await supabase.from('livros').select('*').order('titulo');
-        if (error) throw error;
-        livrosData = data || [];
-      }
-
-      setLivros(
-        livrosData.map((livro) => ({
-          ...livro,
-          area: canonicalizeBookArea(livro.area, preCategorias),
-        })),
-      );
+      const data = await fetchLivrosCatalogo({
+        userId: user.id,
+        preCategorias,
+        canonicalizeBookArea,
+        defaultPreCategories: DEFAULT_PRE_CATEGORIES,
+      });
+      setEscolaId(data?.escolaId || null);
+      setPreCategorias((data?.preCategorias || DEFAULT_PRE_CATEGORIES).map((nome) => canonicalizeBookArea(nome)));
+      setLivros(data?.livros || []);
     } catch (error) {
       console.error('Error fetching books:', error);
-      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível carregar os livros.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'N??o foi poss??vel carregar os livros.' });
     } finally {
       setLoading(false);
     }
-  }, [escolaId, preCategorias, toast]);
-
+  }, [user?.id, preCategorias, toast]);
   useEffect(() => {
     fetchLivros();
   }, [fetchLivros]);
-
-  const fetchPreCategorias = useCallback(async () => {
-    if (!user?.id) return;
-
-    try {
-      const { data: profile, error: profileError } = await supabase
-        .from('usuarios_biblioteca')
-        .select('escola_id')
-        .eq('user_id', user.id)
-        .order('updated_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (profileError) throw profileError;
-      if (!profile?.escola_id) {
-        setEscolaId(null);
-        setPreCategorias(DEFAULT_PRE_CATEGORIES);
-        return;
-      }
-
-      setEscolaId(profile.escola_id);
-      const { data: categorias, error: categoriasError } = await supabase
-        .from('categorias_livros')
-        .select('nome')
-        .eq('escola_id', profile.escola_id)
-        .order('nome');
-
-      if (categoriasError) throw categoriasError;
-
-      const nomes = [...new Set((categorias || []).map((c) => String(c.nome || '').trim()).filter(Boolean))];
-      setPreCategorias((nomes.length > 0 ? nomes : DEFAULT_PRE_CATEGORIES).map((nome) => canonicalizeBookArea(nome)));
-    } catch (error) {
-      console.error('Error fetching categorias_livros:', error);
-      setPreCategorias(DEFAULT_PRE_CATEGORIES);
-    }
-  }, [user?.id]);
-
-  useEffect(() => {
-    fetchPreCategorias();
-  }, [fetchPreCategorias]);
-
   const handleRealtimeChange = useCallback(() => {
     fetchLivros();
   }, [fetchLivros]);
-
   useRealtimeSubscription({ table: 'livros', onChange: handleRealtimeChange });
-  useRealtimeSubscription({ table: 'categorias_livros', onChange: fetchPreCategorias });
+  useRealtimeSubscription({ table: 'categorias_livros', onChange: fetchLivros });
 
   const handleOpenDialog = (livro) => {
     if (livro) {
@@ -234,7 +185,7 @@ export default function Livros() {
     setIsDialogOpen(true);
   };
 
-  const handleAdicionarPreCategoria = () => {
+  const handleAdicionarPreCategoria = async () => {
     const categoria = canonicalizeBookArea(novaPreCategoria, preCategorias);
     if (!categoria) return;
     const exists = preCategorias.some((item) => item.toLowerCase() === categoria.toLowerCase());
@@ -244,49 +195,38 @@ export default function Livros() {
     }
     setPreCategorias((prev) => [...prev, categoria]);
     setNovaPreCategoria('');
-
     if (!escolaId) return;
-    supabase
-      .from('categorias_livros')
-      .upsert(
-        {
-          escola_id: escolaId,
-          nome: categoria,
-          created_by: user?.id || null,
-        },
-        { onConflict: 'escola_id,nome' },
-      )
-      .then(({ error }) => {
-        if (error) {
-          toast({
-            variant: 'destructive',
-            title: 'Erro',
-            description: 'Não foi possível salvar a pré-categoria.',
-          });
-          fetchPreCategorias();
-        }
+    try {
+      await createLivroCategoria({
+        escola_id: escolaId,
+        nome: categoria,
+        created_by: user?.id || null,
       });
+      fetchLivros();
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'N??o foi poss??vel salvar a pr??-categoria.',
+      });
+      fetchLivros();
+    }
   };
 
-  const handleRemoverPreCategoria = (categoria) => {
+  const handleRemoverPreCategoria = async (categoria) => {
     setPreCategorias((prev) => prev.filter((item) => item !== categoria));
     if (!escolaId) return;
-
-    supabase
-      .from('categorias_livros')
-      .delete()
-      .eq('escola_id', escolaId)
-      .eq('nome', categoria)
-      .then(({ error }) => {
-        if (error) {
-          toast({
-            variant: 'destructive',
-            title: 'Erro',
-            description: 'Não foi possível remover a pré-categoria.',
-          });
-          fetchPreCategorias();
-        }
+    try {
+      await deleteLivroCategoria(escolaId, categoria);
+      fetchLivros();
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'N??o foi poss??vel remover a pr??-categoria.',
       });
+      fetchLivros();
+    }
   };
 
   const handleBuscarSinopse = async () => {
@@ -374,19 +314,17 @@ export default function Livros() {
       };
 
       if (editingLivro) {
-        const { error } = await supabase.from('livros').update(normalizedFormData).eq('id', editingLivro.id);
-        if (error) throw error;
+        await saveLivro(normalizedFormData, editingLivro.id);
         toast({ title: 'Sucesso', description: 'Livro atualizado com sucesso.' });
       } else {
         if (!escolaId) {
           throw new Error('Seu usuário não está vinculado a uma escola.');
         }
 
-        const { error } = await supabase.from('livros').insert({
+        await saveLivro({
           ...normalizedFormData,
           escola_id: escolaId,
         });
-        if (error) throw error;
         toast({ title: 'Sucesso', description: 'Livro cadastrado com sucesso.' });
       }
 
@@ -401,8 +339,7 @@ export default function Livros() {
 
   const handleDelete = async (id) => {
     try {
-      const { error } = await supabase.from('livros').delete().eq('id', id);
-      if (error) throw error;
+      await deleteLivro(id);
       toast({ title: 'Sucesso', description: 'Livro excluído com sucesso.' });
       setDeleteConfirmId(null);
       fetchLivros();
@@ -703,51 +640,22 @@ export default function Livros() {
   const importarLivros = async () => {
     if (importLivros.length === 0) return;
     if (!escolaId) {
-      toast({ variant: 'destructive', title: 'Escola não vinculada', description: 'Não foi possível identificar a escola para importação.' });
+      toast({ variant: 'destructive', title: 'Escola n??o vinculada', description: 'N??o foi poss??vel identificar a escola para importa????o.' });
       return;
     }
-
     setImporting(true);
     try {
-      const updated = [...importLivros];
-
-      for (let i = 0; i < updated.length; i += 1) {
-        const l = updated[i];
-        try {
-          const payload = {
-            area: canonicalizeBookArea(l.area || '', preCategorias),
-            tombo: l.tombo || null,
-            autor: l.autor || '',
-            titulo: l.titulo,
-            vol: l.vol || '',
-            edicao: l.edicao || '',
-            local: l.local || '',
-            editora: l.editora || '',
-            ano: l.ano || '',
-            disponivel: true,
-            sinopse: l.sinopse || '',
-            escola_id: escolaId,
-          };
-
-          const { error } = await supabase.from('livros').insert(payload);
-          if (error) {
-            updated[i] = { ...l, status: 'erro', mensagem: error.code === '23505' ? 'Tombo já cadastrado' : error.message };
-          } else {
-            updated[i] = { ...l, status: 'sucesso' };
-          }
-        } catch (err) {
-          updated[i] = { ...l, status: 'erro', mensagem: err.message };
-        }
-        setImportLivros([...updated]);
-      }
-
+      const response = await importLivrosBatch(importLivros, escolaId, preCategorias, canonicalizeBookArea);
+      const updated = response?.livros || [];
+      setImportLivros(updated);
       const successCount = updated.filter((l) => l.status === 'sucesso').length;
-      toast({ title: 'Importação concluída', description: `${successCount} de ${updated.length} livros importados.` });
+      toast({ title: 'Importa????o conclu??da', description: `${successCount} de ${updated.length} livros importados.` });
       fetchLivros();
     } finally {
       setImporting(false);
     }
   };
+
 
   const baixarModeloImportacaoLivros = () => {
     loadXlsx().then((XLSX) => {
@@ -1270,3 +1178,6 @@ export default function Livros() {
     </MainLayout>
   );
 }
+
+
+

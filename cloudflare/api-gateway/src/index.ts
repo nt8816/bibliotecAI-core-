@@ -263,6 +263,29 @@ async function getLoanModuleContext(request: Request, env: Env) {
   };
 }
 
+const DEFAULT_BOOK_CATEGORIES = ['Literatura', 'Ciencias', 'Matematica', 'Historia', 'Geografia', 'Infantil'];
+
+async function getBooksModuleContext(request: Request, env: Env) {
+  const caller = await fetchSupabaseUser(request, env);
+  if (!caller?.id) {
+    throw new Error('Nao autenticado.');
+  }
+
+  const profile = await getLatestUserProfile(caller.id, env);
+  if (!profile?.id) {
+    throw new Error('Perfil do usuario nao encontrado.');
+  }
+
+  const tipo = String(profile.tipo || '').trim().toLowerCase();
+  const canManageBooks = tipo === 'bibliotecaria' || tipo === 'gestor';
+
+  return {
+    caller,
+    profile,
+    canManageBooks,
+  };
+}
+
 function normalizeIdentifier(value: unknown) {
   return String(value || '').trim().toLowerCase();
 }
@@ -645,6 +668,7 @@ const routes: Record<string, RouteHandler> = {
         reclamacoes: 'read_ready',
         super_admins: 'read_ready',
         emprestimos: 'write_ready',
+        livros: 'write_ready',
         media: 'planned',
       },
     }),
@@ -2629,6 +2653,262 @@ const routes: Record<string, RouteHandler> = {
     return jsonResponse({ success: true });
   },
 
+  'GET /v1/livros': async (request, env) => {
+    const { profile } = await getBooksModuleContext(request, env);
+    const escolaId = String(profile.escola_id || '').trim();
+
+    const [escolaLivros, legacyLivros, categorias] = await Promise.all([
+      escolaId
+        ? supabaseAdminRequest(
+            env,
+            `/rest/v1/livros?${new URLSearchParams({
+              select: '*',
+              escola_id: `eq.${escolaId}`,
+              order: 'titulo.asc',
+            }).toString()}`,
+          )
+        : Promise.resolve([]),
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/livros?${new URLSearchParams({
+          select: '*',
+          escola_id: 'is.null',
+          order: 'titulo.asc',
+        }).toString()}`,
+      ),
+      escolaId
+        ? supabaseAdminRequest(
+            env,
+            `/rest/v1/categorias_livros?${new URLSearchParams({
+              select: 'nome',
+              escola_id: `eq.${escolaId}`,
+              order: 'nome.asc',
+            }).toString()}`,
+          )
+        : Promise.resolve([]),
+    ]);
+
+    const byId = new Map<string, Record<string, unknown>>();
+    [...(Array.isArray(escolaLivros) ? escolaLivros : []), ...(Array.isArray(legacyLivros) ? legacyLivros : [])].forEach((livro) => {
+      const id = String(livro?.id || '').trim();
+      if (id) byId.set(id, livro);
+    });
+
+    const preCategorias = Array.isArray(categorias) && categorias.length > 0
+      ? Array.from(new Set(categorias.map((item) => String(item?.nome || '').trim()).filter(Boolean)))
+      : DEFAULT_BOOK_CATEGORIES;
+
+    return jsonResponse({
+      success: true,
+      escolaId: escolaId || null,
+      livros: Array.from(byId.values()).sort((a, b) => String(a?.titulo || '').localeCompare(String(b?.titulo || ''), 'pt-BR')),
+      preCategorias,
+    });
+  },
+
+  'POST /v1/livros': async (request, env) => {
+    const { profile, canManageBooks } = await getBooksModuleContext(request, env);
+    if (!canManageBooks) {
+      return jsonResponse({ success: false, error: 'Sem permissao para cadastrar livros.' }, 403);
+    }
+
+    const escolaId = String(profile.escola_id || '').trim();
+    if (!escolaId) {
+      return jsonResponse({ success: false, error: 'Nao foi possivel identificar a escola do usuario.' }, 400);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const payload = {
+      ...body,
+      escola_id: escolaId,
+    };
+
+    await supabaseAdminRequest(env, '/rest/v1/livros', {
+      method: 'POST',
+      body: payload,
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    return jsonResponse({ success: true });
+  },
+
+  'PATCH /v1/livros/:id': async (request, env) => {
+    const { profile, canManageBooks } = await getBooksModuleContext(request, env);
+    if (!canManageBooks) {
+      return jsonResponse({ success: false, error: 'Sem permissao para atualizar livros.' }, 403);
+    }
+
+    const livroId = getPathParam(request, /^\/v1\/livros\/([^/]+)$/i);
+    const escolaId = String(profile.escola_id || '').trim();
+    const [livro] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/livros?${new URLSearchParams({
+        select: 'id,escola_id',
+        id: `eq.${livroId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    const livroEscolaId = String(livro?.escola_id || '').trim();
+    if (!livro?.id || (livroEscolaId && livroEscolaId !== escolaId)) {
+      return jsonResponse({ success: false, error: 'Livro nao encontrado para esta escola.' }, 404);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const payload = { ...body };
+    delete (payload as Record<string, unknown>).escola_id;
+
+    await supabaseAdminRequest(env, `/rest/v1/livros?${new URLSearchParams({ id: `eq.${livroId}` }).toString()}`, {
+      method: 'PATCH',
+      body: payload,
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/livros/:id/delete': async (request, env) => {
+    const { profile, canManageBooks } = await getBooksModuleContext(request, env);
+    if (!canManageBooks) {
+      return jsonResponse({ success: false, error: 'Sem permissao para excluir livros.' }, 403);
+    }
+
+    const livroId = getPathParam(request, /^\/v1\/livros\/([^/]+)\/delete$/i);
+    const escolaId = String(profile.escola_id || '').trim();
+    const [livro] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/livros?${new URLSearchParams({
+        select: 'id,escola_id',
+        id: `eq.${livroId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    const livroEscolaId = String(livro?.escola_id || '').trim();
+    if (!livro?.id || (livroEscolaId && livroEscolaId !== escolaId)) {
+      return jsonResponse({ success: false, error: 'Livro nao encontrado para esta escola.' }, 404);
+    }
+
+    await supabaseAdminRequest(env, `/rest/v1/livros?${new URLSearchParams({ id: `eq.${livroId}` }).toString()}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/livros/categorias': async (request, env) => {
+    const { profile, canManageBooks } = await getBooksModuleContext(request, env);
+    if (!canManageBooks) {
+      return jsonResponse({ success: false, error: 'Sem permissao para gerenciar categorias.' }, 403);
+    }
+
+    const escolaId = String(profile.escola_id || '').trim();
+    if (!escolaId) {
+      return jsonResponse({ success: false, error: 'Nao foi possivel identificar a escola do usuario.' }, 400);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const payload = {
+      escola_id: escolaId,
+      nome: String(body?.nome || '').trim(),
+      created_by: body?.created_by || profile.id || null,
+    };
+
+    if (!payload.nome) {
+      return jsonResponse({ success: false, error: 'Nome da categoria obrigatorio.' }, 400);
+    }
+
+    await supabaseAdminRequest(env, '/rest/v1/categorias_livros', {
+      method: 'POST',
+      body: payload,
+      headers: {
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+    });
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/livros/categorias/delete': async (request, env) => {
+    const { profile, canManageBooks } = await getBooksModuleContext(request, env);
+    if (!canManageBooks) {
+      return jsonResponse({ success: false, error: 'Sem permissao para gerenciar categorias.' }, 403);
+    }
+
+    const escolaId = String(profile.escola_id || '').trim();
+    const body = await request.json().catch(() => ({}));
+    const nome = String(body?.nome || '').trim();
+    if (!nome) {
+      return jsonResponse({ success: false, error: 'Nome da categoria obrigatorio.' }, 400);
+    }
+
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/categorias_livros?${new URLSearchParams({
+        escola_id: `eq.${escolaId}`,
+        nome: `eq.${nome}`,
+      }).toString()}`,
+      {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+      },
+    );
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/livros/import': async (request, env) => {
+    const { profile, canManageBooks } = await getBooksModuleContext(request, env);
+    if (!canManageBooks) {
+      return jsonResponse({ success: false, error: 'Sem permissao para importar livros.' }, 403);
+    }
+
+    const escolaId = String(profile.escola_id || '').trim();
+    if (!escolaId) {
+      return jsonResponse({ success: false, error: 'Nao foi possivel identificar a escola do usuario.' }, 400);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const livros = Array.isArray(body?.livros) ? body.livros : [];
+    const resultados = [];
+
+    for (const livro of livros) {
+      const payload = {
+        area: livro?.area || '',
+        tombo: livro?.tombo || null,
+        autor: livro?.autor || '',
+        titulo: livro?.titulo || '',
+        vol: livro?.vol || '',
+        edicao: livro?.edicao || '',
+        local: livro?.local || '',
+        editora: livro?.editora || '',
+        ano: livro?.ano || '',
+        disponivel: true,
+        sinopse: livro?.sinopse || '',
+        escola_id: escolaId,
+      };
+
+      try {
+        await supabaseAdminRequest(env, '/rest/v1/livros', {
+          method: 'POST',
+          body: payload,
+          headers: { Prefer: 'return=minimal' },
+        });
+        resultados.push({ ...livro, status: 'sucesso' });
+      } catch (error) {
+        const message = String(error instanceof Error ? error.message : error || '');
+        resultados.push({
+          ...livro,
+          status: 'erro',
+          mensagem: message.includes('23505') || /duplicate key/i.test(message) ? 'Tombo ja cadastrado' : message,
+        });
+      }
+    }
+
+    return jsonResponse({ success: true, livros: resultados });
+  },
+
   'POST /v1/media/sign-upload': async () => notImplemented('Assinatura de upload pela API propria'),
   'POST /v1/media/sign-download': async () => notImplemented('Assinatura de download pela API propria'),
 };
@@ -2645,7 +2925,9 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/emprestimos\/[^/]+\/devolucao$/, '/v1/emprestimos/:id/devolucao')
     .replace(/\/v1\/emprestimos\/[^/]+\/delete$/, '/v1/emprestimos/:id/delete')
     .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/aprovar$/, '/v1/solicitacoes-emprestimo/:id/aprovar')
-    .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/recusar$/, '/v1/solicitacoes-emprestimo/:id/recusar');
+    .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/recusar$/, '/v1/solicitacoes-emprestimo/:id/recusar')
+    .replace(/\/v1\/livros\/[^/]+\/delete$/, '/v1/livros/:id/delete')
+    .replace(/\/v1\/livros\/[^/]+$/, '/v1/livros/:id');
 }
 
 function resolveRoute(request: Request) {
