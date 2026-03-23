@@ -11,10 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import {
   createComunidadePost,
   deleteComunidadePost,
@@ -340,54 +338,19 @@ export default function ComunidadeAluno() {
         setTurmasPublicacao([]);
         return;
       }
+      const response = await fetchComunidadeAlunoData();
+      const perfil = response?.perfil;
 
-      if (isProfessor) {
-        const { data: turmasData, error: turmasError } = await supabase
-          .from('professor_turmas')
-          .select('turma')
-          .eq('professor_id', perfilId || alunoId);
-
-        if (turmasError && !isMissingTableError(turmasError)) throw turmasError;
-
-        const turmasProfessor = [
-          ...new Set(ensureArray(turmasData).map((item) => safeText(item?.turma, '').trim()).filter(Boolean)),
-        ].sort();
-
-        setProfessorTurmas(turmasProfessor);
-        setTurmasPublicacao(turmasProfessor);
+      if (String(perfil?.escola_id || '') !== String(escolaIdAtual || '')) {
+        setProfessorTurmas([]);
+        setTurmasPublicacao([]);
         return;
       }
 
-      const [
-        { data: salasData, error: salasError },
-        { data: usuariosSalaData, error: usuariosSalaError },
-        { data: professorTurmasData, error: professorTurmasError },
-      ] = await Promise.all([
-        supabase.from('salas_cursos').select('nome').eq('escola_id', escolaIdAtual).order('nome'),
-        supabase.from('usuarios_biblioteca').select('turma').eq('escola_id', escolaIdAtual),
-        supabase.from('professor_turmas').select('turma').eq('escola_id', escolaIdAtual),
-      ]);
-
-      if (salasError && !isMissingTableError(salasError)) throw salasError;
-      if (usuariosSalaError && !isMissingTableError(usuariosSalaError)) throw usuariosSalaError;
-      if (professorTurmasError && !isMissingTableError(professorTurmasError)) throw professorTurmasError;
-
-      const oficiais = ensureArray(salasData).map((item) => safeText(item?.nome, '').trim()).filter(Boolean);
-      const oficiaisMap = new Map(oficiais.map((nome) => [normalizeTurmaKey(nome), nome]));
-      const extras = new Map();
-
-      [...ensureArray(usuariosSalaData), ...ensureArray(professorTurmasData)].forEach((item) => {
-        const nome = safeText(item?.turma, '').trim();
-        const key = normalizeTurmaKey(nome);
-        if (!key || oficiaisMap.has(key) || extras.has(key)) return;
-        extras.set(key, nome);
-      });
-
-      const turmas = [...oficiais, ...Array.from(extras.values())].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-      setProfessorTurmas([]);
-      setTurmasPublicacao(turmas);
+      setProfessorTurmas(ensureArray(response?.professorTurmas));
+      setTurmasPublicacao(ensureArray(response?.turmasPublicacao));
     },
-    [alunoId, canPublicarComunicado, isProfessor],
+    [canPublicarComunicado],
   );
 
   const quizRankingFromDate = useMemo(() => {
@@ -560,17 +523,30 @@ export default function ComunidadeAluno() {
     }
   }, [canPublicarComunicado, enabled, loadQuizRankingForPosts, loadTurmasPublicacao, toast, user]);
 
-  const handleRealtimeStatus = useCallback(
-    (status) => {
-      if (status !== 'CHANNEL_ERROR') return;
-    },
-    [],
-  );
-
-
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!user?.id || !enabled) return undefined;
+
+    const interval = window.setInterval(() => {
+      fetchData();
+    }, 30000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [enabled, fetchData, user?.id]);
 
   useEffect(() => {
     if (!canPublicarComunicado || !alunoId || !escolaId) return;
@@ -583,115 +559,6 @@ export default function ComunidadeAluno() {
       .map((post) => post.id);
     loadQuizRankingForPosts(quizPostIds);
   }, [loadQuizRankingForPosts, posts, quizRankingEscopo, quizRankingPeriodo]);
-
-  const onPostInsert = useCallback(async (payload) => {
-    const nextPost = payload?.new;
-    if (!nextPost?.id || isExpiredComunicado(nextPost)) return;
-    const hydratedPost = await fetchCommunityPostById(nextPost.id).catch(() => nextPost);
-
-    setPosts((prev) => {
-      const list = ensureArray(prev);
-      const exists = list.some((item) => item.id === hydratedPost.id);
-      if (exists) return list;
-      const nextList = [hydratedPost, ...list];
-      syncPostsCache(nextList);
-      return nextList;
-    });
-    setAriaLiveMessage('Novo post adicionado na comunidade.');
-  }, []);
-
-  const onPostUpdate = useCallback(async (payload) => {
-    const nextPost = payload?.new;
-    if (!nextPost?.id) return;
-    const hydratedPost = await fetchCommunityPostById(nextPost.id).catch(() => nextPost);
-
-    setPosts((prev) => {
-      const baseList = ensureArray(prev).filter((item) => item.id !== hydratedPost.id);
-      const nextList = isExpiredComunicado(hydratedPost) ? baseList : [hydratedPost, ...baseList];
-      syncPostsCache(nextList);
-      return nextList;
-    });
-  }, []);
-
-  const onPostDelete = useCallback((payload) => {
-    const removedPost = payload?.old;
-    if (!removedPost?.id) return;
-
-    setPosts((prev) => {
-      const nextList = ensureArray(prev).filter((item) => item.id !== removedPost.id);
-      syncPostsCache(nextList);
-      return nextList;
-    });
-    setLikes((prev) => ensureArray(prev).filter((item) => item.post_id !== removedPost.id));
-  }, []);
-
-  const onLikeInsert = useCallback((payload) => {
-    const nextLike = payload?.new;
-    if (!nextLike?.post_id || !nextLike?.usuario_id) return;
-
-    setLikes((prev) => {
-      const list = ensureArray(prev);
-      const exists = list.some((item) => item.post_id === nextLike.post_id && item.usuario_id === nextLike.usuario_id);
-      if (exists) return list;
-      return [...list, { post_id: nextLike.post_id, usuario_id: nextLike.usuario_id }];
-    });
-  }, []);
-
-  const onLikeDelete = useCallback((payload) => {
-    const removedLike = payload?.old;
-    if (!removedLike?.post_id || !removedLike?.usuario_id) return;
-
-    setLikes((prev) =>
-      ensureArray(prev).filter(
-        (item) => !(item.post_id === removedLike.post_id && item.usuario_id === removedLike.usuario_id),
-      ),
-    );
-  }, []);
-
-  const onQuizTentativaChange = useCallback(
-    (payload) => {
-      const postId = payload?.new?.post_id || payload?.old?.post_id;
-      if (!postId) return;
-      loadQuizRankingForPosts([postId]);
-    },
-    [loadQuizRankingForPosts],
-  );
-
-  useRealtimeSubscription({
-    table: enabled ? 'comunidade_posts' : null,
-    onInsert: onPostInsert,
-    onUpdate: onPostUpdate,
-    onDelete: onPostDelete,
-    onStatus: handleRealtimeStatus,
-  });
-  useRealtimeSubscription({
-    table: enabled ? 'comunidade_curtidas' : null,
-    onInsert: onLikeInsert,
-    onDelete: onLikeDelete,
-    onStatus: handleRealtimeStatus,
-  });
-  useRealtimeSubscription({
-    table: enabled ? 'comunidade_quiz_tentativas' : null,
-    onInsert: onQuizTentativaChange,
-    onUpdate: onQuizTentativaChange,
-    onDelete: onQuizTentativaChange,
-    onStatus: handleRealtimeStatus,
-  });
-  useRealtimeSubscription({
-    table: canPublicarComunicado ? 'salas_cursos' : null,
-    onChange: () => loadTurmasPublicacao({ perfilId: alunoId, escolaIdAtual: escolaId }),
-    onStatus: handleRealtimeStatus,
-  });
-  useRealtimeSubscription({
-    table: canPublicarComunicado ? 'professor_turmas' : null,
-    onChange: () => loadTurmasPublicacao({ perfilId: alunoId, escolaIdAtual: escolaId }),
-    onStatus: handleRealtimeStatus,
-  });
-  useRealtimeSubscription({
-    table: canPublicarComunicado ? 'usuarios_biblioteca' : null,
-    onChange: () => loadTurmasPublicacao({ perfilId: alunoId, escolaIdAtual: escolaId }),
-    onStatus: handleRealtimeStatus,
-  });
 
   const likedPostIds = useMemo(() => {
     if (!alunoId) return new Set();
