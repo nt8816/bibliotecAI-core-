@@ -15,6 +15,16 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import {
+  createComunidadePost,
+  deleteComunidadePost,
+  fetchComunidadeAlunoData,
+  fetchComunidadeAlunoPostsPage,
+  fetchComunidadePostById as fetchComunidadePostByIdService,
+  submitComunidadeQuizTentativa,
+  toggleComunidadeLike,
+  updateComunidadePost,
+} from '@/services/comunidadeAlunoService';
 import { uploadDataUrlToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
 
@@ -173,28 +183,33 @@ function isMissingColumnError(error, columnName, tableName) {
 }
 
 async function insertCommunityPostCompat(payload) {
-  const selectFields =
-    '*, livros(titulo, autor), audiobooks_biblioteca(titulo, autor, audio_url), usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)';
-
   const fetchInsertedPost = async (postId) => {
     if (!postId) return { data: null, error: null };
-    return await supabase.from('comunidade_posts').select(selectFields).eq('id', postId).single();
+    try {
+      const response = await fetchCommunityPostById(postId);
+      return { data: response || null, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
   };
 
   const runInsert = async (insertPayload) => {
-    const insertResult = await supabase.from('comunidade_posts').insert(insertPayload).select('id').single();
-    if (insertResult.error) return insertResult;
-    const fetched = await fetchInsertedPost(insertResult.data?.id);
-    return fetched.error
-      ? {
-          data: {
-            ...insertPayload,
-            ...insertResult.data,
-            usuarios_biblioteca: { nome: user?.email || 'Usuario' },
-          },
-          error: null,
-        }
-      : fetched;
+    try {
+      const insertResult = await createComunidadePost(insertPayload);
+      const fetched = await fetchInsertedPost(insertResult?.postId);
+      return fetched.error
+        ? {
+            data: {
+              ...insertPayload,
+              id: insertResult?.postId || null,
+              usuarios_biblioteca: { nome: 'Usuario' },
+            },
+            error: null,
+          }
+        : fetched;
+    } catch (error) {
+      return { data: null, error };
+    }
   };
 
   let { data, error } = await runInsert(payload);
@@ -253,15 +268,8 @@ async function resolvePostMedia(post) {
 
 async function fetchCommunityPostById(postId) {
   if (!postId) return null;
-
-  const { data, error } = await supabase
-    .from('comunidade_posts')
-    .select('*, livros(titulo, autor), audiobooks_biblioteca(titulo, autor, audio_url), usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)')
-    .eq('id', postId)
-    .single();
-
-  if (error) throw error;
-  return resolvePostMedia(data);
+  const response = await fetchComunidadePostByIdService(postId);
+  return resolvePostMedia(response?.post);
 }
 
 export default function ComunidadeAluno() {
@@ -412,14 +420,9 @@ export default function ComunidadeAluno() {
       }
       setPostsLoadingMore(true);
       try {
-        const { data, error } = await supabase
-          .from('comunidade_posts')
-          .select('*, livros(titulo, autor), audiobooks_biblioteca(titulo, autor, audio_url), usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)')
-          .order('created_at', { ascending: false })
-          .range(offset, offset + POSTS_PAGE_SIZE - 1);
-        if (error) throw error;
+        const response = await fetchComunidadeAlunoPostsPage({ offset, limit: POSTS_PAGE_SIZE });
         const items = await Promise.all(
-          ensureArray(data)
+          ensureArray(response?.posts)
             .filter((item) => !isExpiredComunicado(item))
             .map(resolvePostMedia),
         );
@@ -499,26 +502,17 @@ export default function ComunidadeAluno() {
 
     setLoading(true);
     try {
-      await supabase.rpc('cleanup_expired_comunicados');
+      const response = await fetchComunidadeAlunoData();
+      const perfil = response?.perfil;
 
-      const { data: perfil, error: perfilError } = await supabase
-        .from('usuarios_biblioteca')
-        .select('id, escola_id, turma, tipo')
-        .eq('user_id', user.id)
-        .order('updated_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      if (!perfil?.id) throw new Error('Perfil do aluno nao encontrado.');
 
-      if (perfilError || !perfil) throw perfilError || new Error('Perfil do aluno nao encontrado.');
       setAlunoId(perfil.id);
       setEscolaId(perfil.escola_id || null);
       setAlunoTurma(perfil.turma || null);
-      await loadTurmasPublicacao({ perfilId: perfil.id, escolaIdAtual: perfil.escola_id || null });
-
-      const { data: livrosData, error: livrosError } = await supabase.from('livros').select('id, titulo').order('titulo');
-      if (livrosError) throw livrosError;
-      setLivros(livrosData || []);
+      setLivros(ensureArray(response?.livros));
+      setLikes(ensureArray(response?.likes));
+      setAudiobooks(ensureArray(response?.audiobooks));
 
       if (!enabled) {
         setPosts([]);
@@ -527,37 +521,35 @@ export default function ComunidadeAluno() {
         return;
       }
 
-      const probeRes = await supabase.from('comunidade_posts').select('id').limit(1);
-      if (probeRes.error) {
-        if (isMissingTableError(probeRes.error)) {
-          setEnabled(false);
-          setPosts([]);
-          setLikes([]);
-          setAudiobooks([]);
-          return;
-        }
-        throw probeRes.error;
+      const hydratedPosts = await Promise.all(
+        ensureArray(response?.posts)
+          .filter((item) => !isExpiredComunicado(item))
+          .map(resolvePostMedia),
+      );
+      setPosts(hydratedPosts);
+      setPostsOffset(hydratedPosts.length);
+      setPostsHasMore(hydratedPosts.length === POSTS_PAGE_SIZE);
+      syncPostsCache(hydratedPosts);
+
+      if (canPublicarComunicado) {
+        setProfessorTurmas(ensureArray(response?.professorTurmas));
+        setTurmasPublicacao(ensureArray(response?.turmasPublicacao));
+      } else {
+        await loadTurmasPublicacao({ perfilId: perfil.id, escolaIdAtual: perfil.escola_id || null });
       }
 
-      const postsPromise = fetchPostsPage({ reset: true });
-      const [likesRes, audioRes] = await Promise.all([
-        supabase.from('comunidade_curtidas').select('post_id, usuario_id'),
-        supabase.from('audiobooks_biblioteca').select('id, titulo, autor').order('titulo'),
-      ]);
-
-      const maybeError = [likesRes.error].find(Boolean);
-      if (maybeError) throw maybeError;
-      if (audioRes.error && !isMissingTableError(audioRes.error)) throw audioRes.error;
-
-      const postsData = (await postsPromise) || [];
-      setLikes(likesRes.data || []);
-      setAudiobooks(audioRes.error ? [] : audioRes.data || []);
-
-      const quizPostIds = postsData
+      const quizPostIds = hydratedPosts
         .filter((post) => Boolean(extractQuizFromConteudo(post?.conteudo)))
         .map((post) => post.id);
       await loadQuizRankingForPosts(quizPostIds);
     } catch (error) {
+      if (isMissingTableError(error)) {
+        setEnabled(false);
+        setPosts([]);
+        setLikes([]);
+        setAudiobooks([]);
+        return;
+      }
       toast({
         variant: 'destructive',
         title: 'Erro na comunidade',
@@ -566,7 +558,7 @@ export default function ComunidadeAluno() {
     } finally {
       setLoading(false);
     }
-  }, [enabled, fetchPostsPage, loadQuizRankingForPosts, loadTurmasPublicacao, toast, user]);
+  }, [canPublicarComunicado, enabled, loadQuizRankingForPosts, loadTurmasPublicacao, toast, user]);
 
   const handleRealtimeStatus = useCallback(
     (status) => {
@@ -798,47 +790,49 @@ export default function ComunidadeAluno() {
     if (!postConteudo.trim() && imageDataUrls.length === 0 && !postAudiobookId) {
       toast({
         variant: 'destructive',
-        title: 'Preencha o conteudo',
-        description: 'Adicione texto, imagem ou audiobook para publicar.',
+        title: 'Conteudo obrigatorio',
+        description: 'Escreva algo ou anexe uma imagem/audiobook.',
       });
       return;
     }
-    const requerTurmaDestino = isProfessor || (canPublicarComunicado && postTipo === 'comunicado');
-    if (requerTurmaDestino && !postTurmaPublico.trim()) {
+    if ((isProfessor || (canPublicarComunicado && postTipo === 'comunicado')) && !postTurmaPublico) {
       toast({
         variant: 'destructive',
-        title: 'Selecione a turma',
+        title: postTipo === 'comunicado' ? 'Defina o publico do comunicado' : 'Selecione a turma',
         description: postTipo === 'comunicado'
-          ? 'Escolha para qual turma o comunicado sera enviado.'
-          : 'Escolha para qual turma essa publicacao sera exibida.',
+          ? 'Escolha a turma que deve receber este comunicado.'
+          : 'Escolha a turma da publicacao.',
       });
       return;
     }
-    if (postTipo === 'comunicado' && postExpiraEm && postExpiraEm < minComunicadoDate) {
+    if (canPublicarComunicado && postTipo === 'comunicado' && postExpiraEm && postExpiraEm < minComunicadoDate) {
       toast({
         variant: 'destructive',
         title: 'Data invalida',
-        description: 'A data de remocao do comunicado nao pode ser anterior a hoje.',
+        description: 'A data final do comunicado deve ser hoje ou uma data futura.',
       });
       return;
     }
 
     setSaving(true);
     try {
-      const imagemUrls = await Promise.all(
-        imageDataUrls.map((dataUrl, index) => uploadDataUrlToR2({
-          dataUrl,
-          escolaId,
-          ownerId: alunoId,
-          scope: 'comunidade',
-          fileName: `post-${Date.now()}-${index + 1}.jpg`,
-        }).then((upload) => upload.publicUrl || upload.objectKey)),
-      );
-
-      const turmaPublico = requerTurmaDestino
-        ? (postTurmaPublico === ALL_TURMAS_OPTION ? null : postTurmaPublico.trim())
+      const turmaPublico = (isProfessor || (canPublicarComunicado && postTipo === 'comunicado'))
+        ? (postTurmaPublico === ALL_TURMAS_OPTION ? null : postTurmaPublico || null)
         : null;
-      const expiresAt = postTipo === 'comunicado' && postExpiraEm ? toEndOfDayIso(postExpiraEm) : null;
+      const expiresAt = canPublicarComunicado && postTipo === 'comunicado' ? toEndOfDayIso(postExpiraEm) : null;
+
+      const imagemUrls = imageDataUrls.length > 0
+        ? await Promise.all(
+            imageDataUrls.map((dataUrl, index) =>
+              uploadDataUrlToR2(dataUrl, {
+                folder: 'comunidade/posts',
+                fileName: `${Date.now()}-${index + 1}.jpg`,
+                contentType: dataUrl.match(/^data:(.*?);/)?.[1] || 'image/jpeg',
+              }),
+            ),
+          )
+        : [];
+
       const { data: novoPost, error } = await insertCommunityPostCompat({
         autor_id: alunoId,
         escola_id: escolaId,
@@ -881,15 +875,13 @@ export default function ComunidadeAluno() {
   };
 
   const openShareDialog = (post) => {
-    if (!post?.id) return;
     setSharePost(post);
-    setShareTitulo(safeText(post?.titulo, 'Post da comunidade'));
+    setShareTitulo(post?.titulo || '');
     setShareImageDataUrl(ensureArray(post?.imagem_urls)[0] || '');
     setShareDialogOpen(true);
   };
 
   const abrirPreviewPost = (post) => {
-    if (!post?.id) return;
     setPostPreviewItem(post);
     setPostPreviewOpen(true);
   };
@@ -898,46 +890,69 @@ export default function ComunidadeAluno() {
     const file = files?.[0];
     if (!file) return;
     try {
-      const dataUrl = await fileToDataUrl(file);
-      setShareImageDataUrl(dataUrl);
+      const converted = await fileToDataUrl(file);
+      setShareImageDataUrl(converted);
     } catch {
       toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel processar a imagem.' });
     }
   };
 
   const handleCompartilharPost = async () => {
-    if (!sharePost?.id) return;
-
-    const titulo = shareTitulo.trim() || safeText(sharePost?.titulo, 'Post da comunidade');
-    const conteudo = safeText(sharePost?.conteudo, '');
-    const textoCompartilhamento = `${titulo}${conteudo ? ` - ${conteudo}` : ''}`;
-    const imageUrl = shareImageDataUrl || ensureArray(sharePost?.imagem_urls)[0] || '';
+    if (!sharePost || !alunoId || !escolaId) return;
 
     setSharing(true);
     try {
-      if (navigator.share) {
-        const payload = {
-          title: titulo || 'Comunidade de leitura',
-          text: textoCompartilhamento,
-        };
-        if (imageUrl && navigator.canShare) {
-          const shareFile = dataUrlToFile(imageUrl, 'compartilhamento-comunidade.jpg');
-          if (navigator.canShare({ files: [shareFile] })) {
-            payload.files = [shareFile];
-          }
-        }
-        await navigator.share(payload);
-      } else if (navigator.clipboard) {
-        await navigator.clipboard.writeText(textoCompartilhamento);
-        toast({ title: 'Conteudo copiado', description: 'Texto copiado para compartilhar.' });
-      } else {
-        throw new Error('Compartilhamento indisponivel neste dispositivo.');
+      const imagemUrls = [];
+      if (shareImageDataUrl) {
+        const sharedUrl = await uploadDataUrlToR2(shareImageDataUrl, {
+          folder: 'comunidade/shared',
+          fileName: `${Date.now()}-share.jpg`,
+          contentType: shareImageDataUrl.match(/^data:(.*?);/)?.[1] || 'image/jpeg',
+        });
+        imagemUrls.push(sharedUrl);
       }
+
+      const sourceLabel = sharePost?.tipo === 'quiz' || extractQuizFromConteudo(sharePost?.conteudo) ? 'quiz' : sharePost?.tipo || 'post';
+      const tituloCompartilhado = shareTitulo.trim() || `Compartilhamento de ${sourceLabel}`;
+      const conteudoBase = safeText(sharePost?.conteudo, '').trim();
+      const conteudoCompartilhado = [`Compartilhado da comunidade: ${safeText(sharePost?.titulo, 'Publicacao')}`, conteudoBase]
+        .filter(Boolean)
+        .join('\n\n');
+
+      const { data: novoPost, error } = await insertCommunityPostCompat({
+        autor_id: alunoId,
+        escola_id: escolaId,
+        livro_id: sharePost?.livro_id || null,
+        audiobook_id: sharePost?.audiobook_id || null,
+        tipo: sharePost?.tipo || 'resenha',
+        titulo: tituloCompartilhado,
+        conteudo: conteudoCompartilhado,
+        imagem_urls: imagemUrls,
+        tags: Array.from(new Set([...(ensureArray(sharePost?.tags)), 'compartilhado'])),
+      });
+
+      if (error) throw error;
+
+      if (novoPost?.id) {
+        const normalizedPost = await resolvePostMedia(novoPost);
+        setPosts((prev) => {
+          const nextList = [normalizedPost, ...ensureArray(prev)];
+          syncPostsCache(nextList);
+          return nextList;
+        });
+      }
+
       setShareDialogOpen(false);
+      setSharePost(null);
+      setShareTitulo('');
+      setShareImageDataUrl('');
+      toast({ title: 'Post compartilhado com sucesso!' });
     } catch (error) {
-      if (error?.name !== 'AbortError') {
-        toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel compartilhar este conteudo.' });
-      }
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao compartilhar',
+        description: error?.message || 'Nao foi possivel compartilhar este post.',
+      });
     } finally {
       setSharing(false);
     }
@@ -954,60 +969,53 @@ export default function ComunidadeAluno() {
   };
 
   const corrigirQuizPost = async (postId, quizData) => {
-    if (!quizData) return;
     const respostas = quizRespostasPorPost[postId] || {};
-    const acertos = quizData.perguntas.reduce(
-      (acc, pergunta, idx) => (Number(respostas[idx]) === Number(pergunta.correta) ? acc + 1 : acc),
-      0,
-    );
-    setQuizResultadoPorPost((prev) => ({
-      ...prev,
-      [postId]: { acertos, total: quizData.perguntas.length },
-    }));
-    setAriaLiveMessage(`Quiz corrigido: ${acertos} de ${quizData.perguntas.length} acertos.`);
+    const total = ensureArray(quizData?.perguntas).length;
+    if (total === 0) return;
+
+    let acertos = 0;
+    quizData.perguntas.forEach((pergunta, index) => {
+      if (Number(respostas[index]) === Number(pergunta.correta)) {
+        acertos += 1;
+      }
+    });
+
+    const resultado = { acertos, total };
+    setQuizResultadoPorPost((prev) => ({ ...prev, [postId]: resultado }));
 
     if (!alunoId || !escolaId) return;
+
     try {
-      const { error } = await supabase.from('comunidade_quiz_tentativas').insert({
+      await submitComunidadeQuizTentativa({
         post_id: postId,
         aluno_id: alunoId,
         escola_id: escolaId,
         acertos,
-        total: quizData.perguntas.length,
+        total,
       });
-      if (error) {
-        if (isMissingTableError(error)) return;
-        throw error;
-      }
-      loadQuizRankingForPosts([postId]);
-      setQuizHistoricoByPost((prev) => {
-        const current = prev[postId];
-        if (!current || acertos > current.acertos) {
-          return { ...prev, [postId]: { acertos, total: quizData.perguntas.length } };
-        }
-        return prev;
+      await loadQuizRankingForPosts([postId]);
+      toast({
+        title: 'Quiz corrigido!',
+        description: `Voce acertou ${acertos} de ${total} perguntas.`,
       });
     } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Erro ao registrar quiz',
-        description: error?.message || 'Nao foi possivel registrar sua tentativa.',
-      });
+      if (!isMissingTableError(error)) {
+        toast({
+          variant: 'destructive',
+          title: 'Nao foi possivel registrar sua tentativa',
+          description: error?.message || 'Tente novamente em instantes.',
+        });
+      }
     }
   };
 
   const resetarQuizPost = (postId) => {
-    setQuizRespostasPorPost((prev) => {
-      const next = { ...prev };
-      delete next[postId];
-      return next;
-    });
+    setQuizRespostasPorPost((prev) => ({ ...prev, [postId]: {} }));
     setQuizResultadoPorPost((prev) => {
       const next = { ...prev };
       delete next[postId];
       return next;
     });
-    setAriaLiveMessage('Quiz reiniciado.');
   };
 
   const toggleLikePost = async (postId) => {
@@ -1030,30 +1038,26 @@ export default function ComunidadeAluno() {
     try {
       if (likedPostIds.has(postId)) {
         setLikes((prev) => ensureArray(prev).filter((item) => !(item.post_id === postId && item.usuario_id === alunoId)));
-        const { error } = await supabase.from('comunidade_curtidas').delete().eq('post_id', postId).eq('usuario_id', alunoId);
-        if (error) {
-          setLikes((prev) => [...ensureArray(prev), { post_id: postId, usuario_id: alunoId }]);
-          throw error;
-        }
+        await toggleComunidadeLike({ postId, usuarioId: alunoId, liked: true });
       } else {
         const hadLike = ensureArray(likes).some((item) => item.post_id === postId && item.usuario_id === alunoId);
         if (!hadLike) {
           setLikes((prev) => [...ensureArray(prev), { post_id: postId, usuario_id: alunoId }]);
         }
 
-        const { error } = await supabase.from('comunidade_curtidas').insert({ post_id: postId, usuario_id: alunoId });
-        if (error) {
-          setLikes((prev) => ensureArray(prev).filter((item) => !(item.post_id === postId && item.usuario_id === alunoId)));
-          throw error;
-        }
+        await toggleComunidadeLike({ postId, usuarioId: alunoId, liked: false });
       }
     } catch (error) {
+      const liked = likedPostIds.has(postId);
+      if (liked) {
+        setLikes((prev) => [...ensureArray(prev), { post_id: postId, usuario_id: alunoId }]);
+      } else {
+        setLikes((prev) => ensureArray(prev).filter((item) => !(item.post_id === postId && item.usuario_id === alunoId)));
+      }
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: isMissingTableError(error)
-          ? 'Comunidade indisponivel: aplique a migration do banco.'
-          : error?.message || 'Falha ao curtir/descurtir.',
+        description: error?.message || 'Nao foi possivel atualizar a curtida.',
       });
     } finally {
       setLikingPostIds((prev) => {
@@ -1064,15 +1068,21 @@ export default function ComunidadeAluno() {
     }
   };
 
-  const podeGerenciarPost = useCallback((post) => post?.autor_id === alunoId, [alunoId]);
+  const podeGerenciarPost = (post) => {
+    if (!post?.id) return false;
+    if (isGestor || isBibliotecaria || isSuperAdmin) return true;
+    return post?.autor_id === alunoId;
+  };
 
-  const podeEditarPost = useCallback((post) => post?.autor_id === alunoId, [alunoId]);
+  const podeEditarPost = (post) => {
+    if (!post?.id) return false;
+    return post?.autor_id === alunoId;
+  };
 
   const abrirEdicao = (post) => {
-    if (!podeEditarPost(post)) return;
     setPostEmEdicao(post);
-    setEditTitulo(safeText(post?.titulo, ''));
-    setEditConteudo(safeText(post?.conteudo, ''));
+    setEditTitulo(post?.titulo || '');
+    setEditConteudo(post?.conteudo || '');
     setEditDialogOpen(true);
   };
 
@@ -1093,15 +1103,10 @@ export default function ComunidadeAluno() {
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('comunidade_posts')
-        .update({
-          titulo: tituloLimpo || null,
-          conteudo: conteudoLimpo,
-        })
-        .eq('id', postEmEdicao.id);
-
-      if (error) throw error;
+      await updateComunidadePost(postEmEdicao.id, {
+        titulo: tituloLimpo || null,
+        conteudo: conteudoLimpo,
+      });
 
       setPosts((prev) => {
         const nextList = ensureArray(prev).map((item) =>
@@ -1119,8 +1124,8 @@ export default function ComunidadeAluno() {
     } catch (error) {
       toast({
         variant: 'destructive',
-        title: 'Erro ao editar',
-        description: error?.message || 'Nao foi possivel editar o post.',
+        title: 'Erro ao salvar',
+        description: error?.message || 'Nao foi possivel atualizar o post.',
       });
     } finally {
       setSaving(false);
@@ -1132,46 +1137,16 @@ export default function ComunidadeAluno() {
 
     setSaving(true);
     try {
-      const { data, error } = await supabase
-        .from('comunidade_posts')
-        .delete()
-        .eq('id', post.id)
-        .eq('autor_id', alunoId)
-        .select('id')
-        .maybeSingle();
-
-      if (error) throw error;
-      if (!data?.id) {
-        const { data: restante, error: restanteError } = await supabase
-          .from('comunidade_posts')
-          .select('id')
-          .eq('id', post.id)
-          .maybeSingle();
-
-        if (restanteError) throw restanteError;
-
-        if (!restante?.id) {
-          setPosts((prev) => {
-            const nextList = ensureArray(prev).filter((item) => item.id !== post.id);
-            syncPostsCache(nextList);
-            return nextList;
-          });
-          setLikes((prev) => ensureArray(prev).filter((item) => item?.post_id !== post.id));
-          toast({ title: 'Post removido com sucesso.' });
-          setDeleteConfirmPost(null);
-          return;
-        }
-
+      const response = await deleteComunidadePost(post.id, alunoId);
+      if (response?.deleted === false) {
         throw new Error('Voce so pode apagar publicacoes feitas por voce.');
       }
-
       setPosts((prev) => {
         const nextList = ensureArray(prev).filter((item) => item.id !== post.id);
         syncPostsCache(nextList);
         return nextList;
       });
       setLikes((prev) => ensureArray(prev).filter((item) => item?.post_id !== post.id));
-
       toast({ title: 'Post apagado com sucesso.' });
       setDeleteConfirmPost(null);
     } catch (error) {
@@ -1861,6 +1836,8 @@ export default function ComunidadeAluno() {
     </MainLayout>
   );
 }
+
+
 
 
 

@@ -325,6 +325,28 @@ async function getUsersModuleContext(request: Request, env: Env) {
   };
 }
 
+async function getCommunityModuleContext(request: Request, env: Env) {
+  const caller = await fetchSupabaseUser(request, env);
+  if (!caller?.id) throw new Error('Nao autenticado.');
+
+  const profile = await getLatestUserProfile(caller.id, env);
+  if (!profile?.id) throw new Error('Perfil do usuario nao encontrado.');
+
+  const tipo = String(profile.tipo || '').trim().toLowerCase();
+  return {
+    caller,
+    profile,
+    escolaId: String(profile.escola_id || '').trim() || null,
+    alunoId: String(profile.id || '').trim() || null,
+    alunoTurma: String(profile.turma || '').trim() || null,
+    canPublicarComunicado: ['professor', 'gestor', 'bibliotecaria', 'super_admin'].includes(tipo),
+    isProfessor: tipo === 'professor',
+    isGestor: tipo === 'gestor',
+    isBibliotecaria: tipo === 'bibliotecaria',
+    isSuperAdmin: tipo === 'super_admin',
+  };
+}
+
 function normalizeIdentifier(value: unknown) {
   return String(value || '').trim().toLowerCase();
 }
@@ -709,6 +731,7 @@ const routes: Record<string, RouteHandler> = {
         emprestimos: 'write_ready',
         livros: 'write_ready',
         usuarios: 'write_ready',
+        comunidade_aluno: 'write_ready',
         media: 'planned',
       },
     }),
@@ -3173,6 +3196,177 @@ const routes: Record<string, RouteHandler> = {
     return jsonResponse(payload);
   },
 
+  'GET /v1/aluno/comunidade': async (request, env) => {
+    const { profile, escolaId, alunoId, isProfessor, canPublicarComunicado } = await getCommunityModuleContext(request, env);
+
+    const [
+      livros,
+      likes,
+      audiobooks,
+      posts,
+      professorTurmas,
+      salas,
+      usuariosSala,
+      professorTurmasEscola,
+    ] = await Promise.all([
+      supabaseAdminRequest(env, '/rest/v1/livros?select=id,titulo&order=titulo.asc'),
+      supabaseAdminRequest(env, '/rest/v1/comunidade_curtidas?select=post_id,usuario_id'),
+      supabaseAdminRequest(env, '/rest/v1/audiobooks_biblioteca?select=id,titulo,autor&order=titulo.asc').catch(() => []),
+      supabaseAdminRequest(env, '/rest/v1/comunidade_posts?select=*,livros(titulo,autor),audiobooks_biblioteca(titulo,autor,audio_url),usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)&order=created_at.desc').catch(() => []),
+      isProfessor && alunoId
+        ? supabaseAdminRequest(env, `/rest/v1/professor_turmas?${new URLSearchParams({ select: 'turma', professor_id: `eq.${alunoId}` }).toString()}`).catch(() => [])
+        : Promise.resolve([]),
+      canPublicarComunicado && escolaId
+        ? supabaseAdminRequest(env, `/rest/v1/salas_cursos?${new URLSearchParams({ select: 'nome', escola_id: `eq.${escolaId}`, order: 'nome.asc' }).toString()}`).catch(() => [])
+        : Promise.resolve([]),
+      canPublicarComunicado && escolaId
+        ? supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ select: 'turma', escola_id: `eq.${escolaId}` }).toString()}`).catch(() => [])
+        : Promise.resolve([]),
+      canPublicarComunicado && escolaId
+        ? supabaseAdminRequest(env, `/rest/v1/professor_turmas?${new URLSearchParams({ select: 'turma', escola_id: `eq.${escolaId}` }).toString()}`).catch(() => [])
+        : Promise.resolve([]),
+    ]);
+
+    const oficiais = (Array.isArray(salas) ? salas : []).map((item) => String(item?.nome || '').trim()).filter(Boolean);
+    const extras = new Map<string, string>();
+    [...(Array.isArray(usuariosSala) ? usuariosSala : []), ...(Array.isArray(professorTurmasEscola) ? professorTurmasEscola : [])].forEach((item) => {
+      const nome = String(item?.turma || '').trim();
+      if (!nome) return;
+      const key = normalizeTurmaKey(nome);
+      const oficiaisKeys = new Set(oficiais.map((value) => normalizeTurmaKey(value)));
+      if (oficiaisKeys.has(key) || extras.has(key)) return;
+      extras.set(key, nome);
+    });
+
+    return jsonResponse({
+      success: true,
+      perfil: profile,
+      livros: Array.isArray(livros) ? livros : [],
+      likes: Array.isArray(likes) ? likes : [],
+      audiobooks: Array.isArray(audiobooks) ? audiobooks : [],
+      posts: Array.isArray(posts) ? posts : [],
+      professorTurmas: [...new Set((Array.isArray(professorTurmas) ? professorTurmas : []).map((item) => String(item?.turma || '').trim()).filter(Boolean))].sort(),
+      turmasPublicacao: [...oficiais, ...Array.from(extras.values())].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    });
+  },
+
+  'GET /v1/aluno/comunidade/feed': async (request, env) => {
+    await getCommunityModuleContext(request, env);
+    const url = new URL(request.url);
+    const offset = Math.max(0, Number.parseInt(url.searchParams.get('offset') || '0', 10) || 0);
+    const limit = Math.min(50, Math.max(1, Number.parseInt(url.searchParams.get('limit') || '20', 10) || 20));
+    const posts = await supabaseAdminRequest(
+      env,
+      `/rest/v1/comunidade_posts?${new URLSearchParams({
+        select: '*,livros(titulo,autor),audiobooks_biblioteca(titulo,autor,audio_url),usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)',
+        order: 'created_at.desc',
+        offset: String(offset),
+        limit: String(limit),
+      }).toString()}`,
+    ).catch(() => []);
+
+    return jsonResponse({ success: true, posts: Array.isArray(posts) ? posts : [] });
+  },
+
+  'GET /v1/aluno/comunidade/posts/:id': async (request, env) => {
+    await getCommunityModuleContext(request, env);
+    const postId = getPathParam(request, /^\/v1\/aluno\/comunidade\/posts\/([^/]+)$/i);
+    const [post] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/comunidade_posts?${new URLSearchParams({
+        select: '*,livros(titulo,autor),audiobooks_biblioteca(titulo,autor,audio_url),usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)',
+        id: `eq.${postId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+    return jsonResponse({ success: true, post: post || null });
+  },
+
+  'POST /v1/aluno/comunidade/posts': async (request, env) => {
+    const { alunoId, escolaId } = await getCommunityModuleContext(request, env);
+    if (!alunoId || !escolaId) {
+      return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const created = await supabaseAdminRequest(env, '/rest/v1/comunidade_posts?select=id', {
+      method: 'POST',
+      body: { ...body, autor_id: alunoId, escola_id: escolaId },
+      headers: { Prefer: 'return=representation' },
+    }) as Array<Record<string, unknown>>;
+
+    return jsonResponse({ success: true, postId: created?.[0]?.id || null });
+  },
+
+  'POST /v1/aluno/comunidade/posts/:id/like': async (request, env) => {
+    const { alunoId } = await getCommunityModuleContext(request, env);
+    const postId = getPathParam(request, /^\/v1\/aluno\/comunidade\/posts\/([^/]+)\/like$/i);
+    const body = await request.json().catch(() => ({}));
+    const liked = Boolean(body?.liked);
+
+    if (liked) {
+      await supabaseAdminRequest(env, `/rest/v1/comunidade_curtidas?${new URLSearchParams({ post_id: `eq.${postId}`, usuario_id: `eq.${alunoId}` }).toString()}`, {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+      });
+    } else {
+      await supabaseAdminRequest(env, '/rest/v1/comunidade_curtidas', {
+        method: 'POST',
+        body: { post_id: postId, usuario_id: alunoId },
+        headers: { Prefer: 'return=minimal' },
+      });
+    }
+
+    return jsonResponse({ success: true });
+  },
+
+  'PATCH /v1/aluno/comunidade/posts/:id': async (request, env) => {
+    const { alunoId } = await getCommunityModuleContext(request, env);
+    const postId = getPathParam(request, /^\/v1\/aluno\/comunidade\/posts\/([^/]+)$/i);
+    const [post] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/comunidade_posts?${new URLSearchParams({ select: 'id,autor_id', id: `eq.${postId}`, limit: '1' }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+    if (!post?.id || String(post?.autor_id || '') !== String(alunoId || '')) {
+      return jsonResponse({ success: false, error: 'Voce so pode editar publicacoes feitas por voce.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    await supabaseAdminRequest(env, `/rest/v1/comunidade_posts?${new URLSearchParams({ id: `eq.${postId}` }).toString()}`, {
+      method: 'PATCH',
+      body,
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/aluno/comunidade/posts/:id/delete': async (request, env) => {
+    const { alunoId } = await getCommunityModuleContext(request, env);
+    const postId = getPathParam(request, /^\/v1\/aluno\/comunidade\/posts\/([^/]+)\/delete$/i);
+    const [deleted] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/comunidade_posts?${new URLSearchParams({ select: 'id', id: `eq.${postId}`, autor_id: `eq.${alunoId}` }).toString()}`,
+      {
+        method: 'DELETE',
+        headers: { Prefer: 'return=representation' },
+      },
+    ) as Array<Record<string, unknown>>;
+
+    return jsonResponse({ success: true, deleted: Boolean(deleted?.id) });
+  },
+
+  'POST /v1/aluno/comunidade/quiz-tentativas': async (request, env) => {
+    await getCommunityModuleContext(request, env);
+    const body = await request.json().catch(() => ({}));
+    await supabaseAdminRequest(env, '/rest/v1/comunidade_quiz_tentativas', {
+      method: 'POST',
+      body,
+      headers: { Prefer: 'return=minimal' },
+    });
+    return jsonResponse({ success: true });
+  },
+
   'POST /v1/media/sign-upload': async () => notImplemented('Assinatura de upload pela API propria'),
   'POST /v1/media/sign-download': async () => notImplemented('Assinatura de download pela API propria'),
 };
@@ -3190,6 +3384,9 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/emprestimos\/[^/]+\/delete$/, '/v1/emprestimos/:id/delete')
     .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/aprovar$/, '/v1/solicitacoes-emprestimo/:id/aprovar')
     .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/recusar$/, '/v1/solicitacoes-emprestimo/:id/recusar')
+    .replace(/\/v1\/aluno\/comunidade\/posts\/[^/]+\/like$/, '/v1/aluno/comunidade/posts/:id/like')
+    .replace(/\/v1\/aluno\/comunidade\/posts\/[^/]+\/delete$/, '/v1/aluno/comunidade/posts/:id/delete')
+    .replace(/\/v1\/aluno\/comunidade\/posts\/[^/]+$/, '/v1/aluno/comunidade/posts/:id')
     .replace(/\/v1\/livros\/[^/]+\/delete$/, '/v1/livros/:id/delete')
     .replace(/\/v1\/livros\/[^/]+$/, '/v1/livros/:id')
     .replace(/\/v1\/usuarios\/[^/]+$/, '/v1/usuarios/:id');
