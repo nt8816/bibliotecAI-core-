@@ -732,6 +732,7 @@ const routes: Record<string, RouteHandler> = {
         livros: 'write_ready',
         usuarios: 'write_ready',
         comunidade_aluno: 'write_ready',
+        painel_aluno: 'write_ready',
         media: 'planned',
       },
     }),
@@ -3248,6 +3249,134 @@ const routes: Record<string, RouteHandler> = {
       professorTurmas: [...new Set((Array.isArray(professorTurmas) ? professorTurmas : []).map((item) => String(item?.turma || '').trim()).filter(Boolean))].sort(),
       turmasPublicacao: [...oficiais, ...Array.from(extras.values())].sort((a, b) => a.localeCompare(b, 'pt-BR')),
     });
+  },
+
+  'GET /v1/aluno/painel': async (request, env) => {
+    const { profile, escolaId, alunoId, alunoTurma } = await getCommunityModuleContext(request, env);
+    if (!profile?.id) {
+      return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
+    }
+
+    await supabaseAdminRequest(env, '/rest/v1/rpc/cleanup_expired_comunicados', {
+      method: 'POST',
+      body: {},
+    }).catch(() => null);
+
+    const comunicados = escolaId
+      ? await supabaseAdminRequest(
+          env,
+          `/rest/v1/comunidade_posts?${new URLSearchParams({
+            select: 'id,titulo,conteudo,turma_publico,created_at,tipo,expires_at',
+            escola_id: `eq.${escolaId}`,
+            tipo: 'eq.comunicado',
+            order: 'created_at.desc',
+            limit: '20',
+          }).toString()}`,
+        ).catch(() => [])
+      : [];
+
+    const [
+      emprestimos,
+      avaliacoes,
+      wishlist,
+      sugestoes,
+      solicitacoes,
+      atividades,
+      entregas,
+      audiobookCatalogo,
+      meusAudiobooks,
+      criacoesLaboratorio,
+      notificacoesLidas,
+      preferenciasAluno,
+    ] = await Promise.all([
+      supabaseAdminRequest(env, `/rest/v1/emprestimos?${new URLSearchParams({ select: '*,livros(titulo,autor)', usuario_id: `eq.${profile.id}`, order: 'data_emprestimo.desc' }).toString()}`),
+      supabaseAdminRequest(env, `/rest/v1/avaliacoes_livros?${new URLSearchParams({ select: '*,livros(titulo,autor)', usuario_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
+      supabaseAdminRequest(env, `/rest/v1/lista_desejos?${new URLSearchParams({ select: 'livro_id', usuario_id: `eq.${profile.id}` }).toString()}`),
+      supabaseAdminRequest(env, `/rest/v1/sugestoes_livros?${new URLSearchParams({ select: '*,livros(titulo,autor)', aluno_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
+      supabaseAdminRequest(env, `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({ select: '*,livros(titulo,autor)', usuario_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
+      supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: '*,livros(titulo,autor),professor:usuarios_biblioteca!atividades_leitura_professor_id_fkey(nome)', aluno_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
+      supabaseAdminRequest(env, `/rest/v1/atividades_entregas?${new URLSearchParams({ select: '*', aluno_id: `eq.${profile.id}`, order: 'updated_at.desc' }).toString()}`).catch(() => []),
+      supabaseAdminRequest(env, '/rest/v1/audiobooks_biblioteca?select=*,livros(titulo,autor)&order=created_at.desc').catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/aluno_audiobooks?${new URLSearchParams({ select: '*,audiobooks_biblioteca(*,livros(titulo,autor))', aluno_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`).catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/laboratorio_criacoes?${new URLSearchParams({ select: '*', aluno_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`).catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/notificacoes_lidas?${new URLSearchParams({ select: 'notification_id', usuario_id: `eq.${profile.id}` }).toString()}`).catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/preferencias_aluno?${new URLSearchParams({ select: 'desafio_ia_ativo,desafio_ia_concluido_em,desafio_ia_gerado_em,desafio_ia_xp_bonus', usuario_id: `eq.${profile.id}`, limit: '1' }).toString()}`).then((rows) => Array.isArray(rows) ? (rows[0] || null) : null).catch(() => null),
+    ]);
+
+    const comunicadosFiltrados = (Array.isArray(comunicados) ? comunicados : []).filter((item) => {
+      if (!item || isExpiredComunicado(item)) return false;
+      const turmaDestino = normalizeTurmaKey(item?.turma_publico);
+      return !turmaDestino || turmaDestino === normalizeTurmaKey(alunoTurma);
+    });
+
+    return jsonResponse({
+      success: true,
+      perfil: profile,
+      emprestimos: Array.isArray(emprestimos) ? emprestimos : [],
+      avaliacoes: Array.isArray(avaliacoes) ? avaliacoes : [],
+      wishlist: Array.isArray(wishlist) ? wishlist : [],
+      sugestoes: Array.isArray(sugestoes) ? sugestoes : [],
+      solicitacoes: Array.isArray(solicitacoes) ? solicitacoes : [],
+      atividades: Array.isArray(atividades) ? atividades : [],
+      comunicados: comunicadosFiltrados,
+      entregas: Array.isArray(entregas) ? entregas : [],
+      audiobookCatalogo: Array.isArray(audiobookCatalogo) ? audiobookCatalogo : [],
+      meusAudiobooks: Array.isArray(meusAudiobooks) ? meusAudiobooks : [],
+      criacoesLaboratorio: Array.isArray(criacoesLaboratorio) ? criacoesLaboratorio : [],
+      notificacoesLidas: Array.isArray(notificacoesLidas) ? notificacoesLidas : [],
+      preferenciasAluno,
+    });
+  },
+
+  'POST /v1/aluno/wishlist/toggle': async (request, env) => {
+    const { alunoId } = await getCommunityModuleContext(request, env);
+    if (!alunoId) {
+      return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
+    }
+    const body = await request.json().catch(() => ({}));
+    const livroId = String(body?.livroId || '').trim();
+    const enabled = body?.enabled === true;
+
+    if (!livroId) {
+      return jsonResponse({ success: false, error: 'Livro invalido.' }, 400);
+    }
+
+    if (enabled) {
+      await supabaseAdminRequest(env, '/rest/v1/lista_desejos', {
+        method: 'POST',
+        body: { livro_id: livroId, usuario_id: alunoId },
+        headers: { Prefer: 'return=minimal,resolution=merge-duplicates' },
+      });
+    } else {
+      await supabaseAdminRequest(env, `/rest/v1/lista_desejos?${new URLSearchParams({ livro_id: `eq.${livroId}`, usuario_id: `eq.${alunoId}` }).toString()}`, {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+      });
+    }
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/aluno/solicitacoes-emprestimo': async (request, env) => {
+    const { alunoId } = await getCommunityModuleContext(request, env);
+    if (!alunoId) {
+      return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
+    }
+    const body = await request.json().catch(() => ({}));
+    const livroId = String(body?.livroId || '').trim();
+    const mensagem = String(body?.mensagem || '').trim() || null;
+
+    if (!livroId) {
+      return jsonResponse({ success: false, error: 'Livro invalido.' }, 400);
+    }
+
+    await supabaseAdminRequest(env, '/rest/v1/solicitacoes_emprestimo', {
+      method: 'POST',
+      body: { livro_id: livroId, usuario_id: alunoId, mensagem },
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    return jsonResponse({ success: true });
   },
 
   'GET /v1/aluno/comunidade/feed': async (request, env) => {

@@ -44,6 +44,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import {
+  createPainelAlunoLoanRequest,
+  fetchPainelAlunoData,
+  togglePainelAlunoWishlist,
+} from '@/services/painelAlunoService';
+import {
   generateAudioWithCloudflare,
   generateImageWithCloudflare,
   generateTextWithCloudflare,
@@ -1246,202 +1251,64 @@ export default function PainelAluno() {
     const request = (async () => {
       setLoading(true);
       try {
-        await supabase.rpc('cleanup_expired_comunicados');
+        const painelData = await fetchPainelAlunoData();
+        const perfil = painelData?.perfil;
 
-        const { data: perfil, error: perfilError } = await supabase
-          .from('usuarios_biblioteca')
-          .select('id, escola_id, turma')
-          .eq('user_id', user.id)
-          .order('updated_at', { ascending: false, nullsFirst: false })
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (perfilError || !perfil) throw perfilError || new Error('Perfil do aluno nÃ£o encontrado.');
+        if (!perfil?.id) throw new Error('Perfil do aluno nÃ£o encontrado.');
         setAlunoId(perfil.id);
         setEscolaId(perfil.escola_id || null);
         setAlunoTurma(perfil.turma || null);
 
         const livrosPromise = fetchLivrosPage({ reset: true });
-        const comunicadosPromise = perfil.escola_id
-          ? supabase
-              .from('comunidade_posts')
-              .select('id, titulo, conteudo, turma_publico, created_at, tipo, expires_at')
-              .eq('escola_id', perfil.escola_id)
-              .eq('tipo', 'comunicado')
-              .order('created_at', { ascending: false })
-              .limit(20)
-          : Promise.resolve({ data: [], error: null });
-        const [
-          emprestimosRes,
-          avaliacoesRes,
-          wishlistRes,
-          sugestoesRes,
-          solicitacoesRes,
-          atividadesRes,
-          comunicadosRes,
-        ] = await Promise.all([
-          supabase
-            .from('emprestimos')
-            .select('*, livros(titulo, autor)')
-            .eq('usuario_id', perfil.id)
-            .order('data_emprestimo', { ascending: false }),
-          supabase
-            .from('avaliacoes_livros')
-            .select('*, livros(titulo, autor)')
-            .eq('usuario_id', perfil.id)
-            .order('created_at', { ascending: false }),
-          supabase.from('lista_desejos').select('livro_id').eq('usuario_id', perfil.id),
-          supabase
-            .from('sugestoes_livros')
-            .select('*, livros(titulo, autor)')
-            .eq('aluno_id', perfil.id)
-            .order('created_at', { ascending: false }),
-          supabase
-            .from('solicitacoes_emprestimo')
-            .select('*, livros(titulo, autor)')
-            .eq('usuario_id', perfil.id)
-            .order('created_at', { ascending: false }),
-          supabase
-            .from('atividades_leitura')
-            .select('*, livros(titulo, autor), professor:usuarios_biblioteca!atividades_leitura_professor_id_fkey(nome)')
-            .eq('aluno_id', perfil.id)
-            .order('created_at', { ascending: false }),
-          comunicadosPromise,
-        ]);
-
-        const optionalQuery = async (queryBuilder, fallback = []) => {
-          const { data, error } = await queryBuilder;
-          if (error) {
-            if (isMissingTableError(error)) return { data: fallback, missing: true };
-            throw error;
-          }
-          return { data: data || fallback, missing: false };
-        };
-        let entregasOpt = { data: [], missing: false };
-        let audioCatalogoOpt = { data: [], missing: false };
-        let meusAudiobooksOpt = { data: [], missing: false };
-        let criacoesLaboratorioOpt = { data: [], missing: false };
-        let notificacoesLidasOpt = { data: [], missing: false };
-        let preferenciasAlunoOpt = { data: null, missing: false };
-
-        if (optionalFeaturesEnabled) {
-          // Probe only one new table first to avoid multiple 404 calls when migration is missing.
-          entregasOpt = await optionalQuery(
-            supabase.from('atividades_entregas').select('*').eq('aluno_id', perfil.id).order('updated_at', { ascending: false }),
-          );
-
-          if (!entregasOpt.missing) {
-            [audioCatalogoOpt, meusAudiobooksOpt, criacoesLaboratorioOpt] = await Promise.all([
-              optionalQuery(
-                supabase
-                  .from('audiobooks_biblioteca')
-                  .select('*, livros(titulo, autor)')
-                  .order('created_at', { ascending: false }),
-              ),
-              optionalQuery(
-                supabase
-                  .from('aluno_audiobooks')
-                  .select('*, audiobooks_biblioteca(*, livros(titulo, autor))')
-                  .eq('aluno_id', perfil.id)
-                  .order('created_at', { ascending: false }),
-              ),
-              optionalQuery(
-                supabase
-                  .from('laboratorio_criacoes')
-                  .select('*')
-                  .eq('aluno_id', perfil.id)
-                  .order('created_at', { ascending: false }),
-              ),
-            ]);
-          }
-        }
-
-        notificacoesLidasOpt = await optionalQuery(
-          supabase.from('notificacoes_lidas').select('notification_id').eq('usuario_id', perfil.id),
-          [],
-        );
-        preferenciasAlunoOpt = await optionalQuery(
-          supabase
-            .from('preferencias_aluno')
-            .select('desafio_ia_ativo, desafio_ia_concluido_em, desafio_ia_gerado_em, desafio_ia_xp_bonus')
-            .eq('usuario_id', perfil.id)
-            .maybeSingle(),
-          null,
-        );
-
-        const missingAnyNewTable =
-          entregasOpt.missing || audioCatalogoOpt.missing || meusAudiobooksOpt.missing || criacoesLaboratorioOpt.missing;
-
-        if (missingAnyNewTable && !warnedMissingFeaturesRef.current) {
-          warnedMissingFeaturesRef.current = true;
-          toast({
-            variant: 'destructive',
-            title: 'Recursos do laboratÃ³rio incompletos',
-            description: 'Algumas tabelas novas nÃ£o existem no banco. Aplique as migrations mais recentes do Supabase.',
-          });
-        }
-        setLabCriacoesMissingTable(criacoesLaboratorioOpt.missing);
 
         await livrosPromise;
 
-        const maybeError = [
-          emprestimosRes.error,
-          avaliacoesRes.error,
-          wishlistRes.error,
-          sugestoesRes.error,
-          solicitacoesRes.error,
-          atividadesRes.error,
-          comunicadosRes.error,
-        ].find(Boolean);
-
-        if (maybeError) throw maybeError;
-
-        setEmprestimos(emprestimosRes.data || []);
-        setAvaliacoes(avaliacoesRes.data || []);
-        setWishlist((wishlistRes.data || []).map((item) => item.livro_id));
-        setSugestoes(sugestoesRes.data || []);
-        const solicitacoesData = solicitacoesRes.data || [];
+        setEmprestimos(painelData?.emprestimos || []);
+        setAvaliacoes(painelData?.avaliacoes || []);
+        setWishlist((painelData?.wishlist || []).map((item) => item.livro_id));
+        setSugestoes(painelData?.sugestoes || []);
+        const solicitacoesData = painelData?.solicitacoes || [];
         setSolicitacoes(solicitacoesData);
         solicitacoesStatusRef.current = new Map(
           solicitacoesData.map((item) => [item.id, String(item.status || '').toLowerCase()]),
         );
-        setAtividades(atividadesRes.data || []);
-        setEntregas(entregasOpt.data);
-        setAudiobookCatalogo(await Promise.all((audioCatalogoOpt.data || []).map(resolveAudiobookRecord)));
-        setMeusAudiobooks(await Promise.all((meusAudiobooksOpt.data || []).map(resolveAlunoAudiobookRecord)));
-        setCriacoesLaboratorio(await Promise.all((criacoesLaboratorioOpt.data || []).map(resolveLabCriacaoRecord)));
+        setAtividades(painelData?.atividades || []);
+        setEntregas(painelData?.entregas || []);
+        setAudiobookCatalogo(await Promise.all((painelData?.audiobookCatalogo || []).map(resolveAudiobookRecord)));
+        setMeusAudiobooks(await Promise.all((painelData?.meusAudiobooks || []).map(resolveAlunoAudiobookRecord)));
+        setCriacoesLaboratorio(await Promise.all((painelData?.criacoesLaboratorio || []).map(resolveLabCriacaoRecord)));
+        setLabCriacoesMissingTable(false);
         setComunicados(
-          ensureArray(comunicadosRes.data).filter((item) => {
+          ensureArray(painelData?.comunicados).filter((item) => {
             if (isExpiredComunicado(item)) return false;
             const turmaDestino = normalizeTurmaKey(item?.turma_publico);
             return !turmaDestino || turmaDestino === normalizeTurmaKey(perfil.turma);
           }),
         );
-        setNotificacoesLidas(new Set((notificacoesLidasOpt.data || []).map((item) => item.notification_id)));
-        setDesafioXpBonus(Math.max(0, Number(preferenciasAlunoOpt.data?.desafio_ia_xp_bonus || 0)));
+        setNotificacoesLidas(new Set((painelData?.notificacoesLidas || []).map((item) => item.notification_id)));
+        setDesafioXpBonus(Math.max(0, Number(painelData?.preferenciasAluno?.desafio_ia_xp_bonus || 0)));
 
         const metricasCarregadas = buildDesafioMetricas({
           livrosLidos: new Set(
-            (emprestimosRes.data || [])
+            (painelData?.emprestimos || [])
               .filter((item) => item.status === 'devolvido')
               .map((item) => item.livro_id)
               .filter(Boolean),
           ).size,
-          avaliacoesCount: (avaliacoesRes.data || []).length,
-          atividadesAprovadas: (entregasOpt.data || []).filter((item) => item.status === 'aprovada').length,
+          avaliacoesCount: (painelData?.avaliacoes || []).length,
+          atividadesAprovadas: (painelData?.entregas || []).filter((item) => item.status === 'aprovada').length,
         });
-        const pontosAprovadosCarregados = (entregasOpt.data || [])
+        const pontosAprovadosCarregados = (painelData?.entregas || [])
           .filter((item) => item.status === 'aprovada')
           .reduce((acc, item) => acc + Number(item.pontos_ganhos || 0), 0);
-        const xpBonusCarregado = Math.max(0, Number(preferenciasAlunoOpt.data?.desafio_ia_xp_bonus || 0));
+        const xpBonusCarregado = Math.max(0, Number(painelData?.preferenciasAluno?.desafio_ia_xp_bonus || 0));
         const livrosCatalogoCarregados = readCache(livrosCacheKey) || [];
         const livrosCatalogoMap = new Map(
           livrosCatalogoCarregados.map((item) => [item.id, item]),
         );
         const xpLeiturasCarregado = Array.from(
           new Set(
-            (emprestimosRes.data || [])
+            (painelData?.emprestimos || [])
               .filter((item) => item.status === 'devolvido')
               .map((item) => item.livro_id)
               .filter(Boolean),
@@ -1459,9 +1326,9 @@ export default function PainelAluno() {
         const nivelAtualCarregado = Math.max(1, Math.floor(pontosExperienciaCarregados / 150) + 1);
 
         const desafioPersistido = normalizeDesafioIA({
-          ...(preferenciasAlunoOpt.data?.desafio_ia_ativo || {}),
-          gerado_em: preferenciasAlunoOpt.data?.desafio_ia_gerado_em || preferenciasAlunoOpt.data?.desafio_ia_ativo?.gerado_em,
-          concluido_em: preferenciasAlunoOpt.data?.desafio_ia_concluido_em || preferenciasAlunoOpt.data?.desafio_ia_ativo?.concluido_em,
+          ...(painelData?.preferenciasAluno?.desafio_ia_ativo || {}),
+          gerado_em: painelData?.preferenciasAluno?.desafio_ia_gerado_em || painelData?.preferenciasAluno?.desafio_ia_ativo?.gerado_em,
+          concluido_em: painelData?.preferenciasAluno?.desafio_ia_concluido_em || painelData?.preferenciasAluno?.desafio_ia_ativo?.concluido_em,
         });
         if (desafioPersistido) {
           const desafioNormalizado = {
@@ -1478,7 +1345,7 @@ export default function PainelAluno() {
         const entregaInicial = {};
         const entregaImagensInicial = {};
         const entregaRespostasInicial = {};
-        entregasOpt.data.forEach((entrega) => {
+        (painelData?.entregas || []).forEach((entrega) => {
           const payload = parseEntregaPayload(entrega.texto_entrega);
           entregaInicial[entrega.atividade_id] = payload.texto;
           entregaImagensInicial[entrega.atividade_id] = payload.imagens;
@@ -1507,7 +1374,7 @@ export default function PainelAluno() {
       }
     });
     return request;
-  }, [desafioCacheKey, fetchLivrosPage, livrosCacheKey, optionalFeaturesEnabled, toast, user]);
+  }, [desafioCacheKey, fetchLivrosPage, livrosCacheKey, toast, user]);
 
   useEffect(() => {
     fetchData();
@@ -2516,17 +2383,10 @@ export default function PainelAluno() {
 
     try {
       if (wishlist.includes(livroId)) {
-        const { error } = await supabase
-          .from('lista_desejos')
-          .delete()
-          .eq('livro_id', livroId)
-          .eq('usuario_id', alunoId);
-
-        if (error) throw error;
+        await togglePainelAlunoWishlist({ livroId, alunoId, enabled: false });
         setWishlist((prev) => prev.filter((id) => id !== livroId));
       } else {
-        const { error } = await supabase.from('lista_desejos').insert({ livro_id: livroId, usuario_id: alunoId });
-        if (error) throw error;
+        await togglePainelAlunoWishlist({ livroId, alunoId, enabled: true });
         setWishlist((prev) => [...prev, livroId]);
       }
     } catch (error) {
@@ -2645,12 +2505,10 @@ export default function PainelAluno() {
 
     setSaving(true);
     try {
-      const { error } = await supabase.from('solicitacoes_emprestimo').insert({
-        livro_id: requestLivro.id,
-        usuario_id: alunoId,
+      await createPainelAlunoLoanRequest({
+        livroId: requestLivro.id,
         mensagem: requestMsg || null,
       });
-      if (error) throw error;
 
       toast({ title: 'SolicitaÃ§Ã£o enviada!' });
       setRequestDialog(false);
