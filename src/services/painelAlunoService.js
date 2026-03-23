@@ -157,3 +157,109 @@ export async function createPainelAlunoLoanRequest({ livroId, mensagem }) {
     },
   );
 }
+
+export async function markPainelAlunoNotificationRead(notificationId) {
+  return requestWithFallback(
+    async () => requestPlatformApi('/v1/notifications/read', {
+      method: 'POST',
+      body: { notification_id: notificationId },
+    }),
+    async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData?.user;
+      if (!user?.id) throw new Error('Usuario nao autenticado.');
+
+      const { data: perfil, error: perfilError } = await supabase
+        .from('usuarios_biblioteca')
+        .select('id')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (perfilError || !perfil?.id) throw perfilError || new Error('Perfil do aluno nao encontrado.');
+
+      const { error } = await supabase
+        .from('notificacoes_lidas')
+        .upsert({ usuario_id: perfil.id, notification_id: notificationId }, { onConflict: 'usuario_id,notification_id' });
+      if (error) throw error;
+      return { success: true };
+    },
+  );
+}
+
+export async function markPainelAlunoNotificationsReadBatch(notificationIds) {
+  return requestWithFallback(
+    async () => requestPlatformApi('/v1/aluno/notificacoes/read-batch', {
+      method: 'POST',
+      body: { notification_ids: notificationIds },
+    }),
+    async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData?.user;
+      if (!user?.id) throw new Error('Usuario nao autenticado.');
+
+      const { data: perfil, error: perfilError } = await supabase
+        .from('usuarios_biblioteca')
+        .select('id')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (perfilError || !perfil?.id) throw perfilError || new Error('Perfil do aluno nao encontrado.');
+
+      const payload = (Array.isArray(notificationIds) ? notificationIds : [])
+        .filter(Boolean)
+        .map((notificationId) => ({ usuario_id: perfil.id, notification_id: notificationId }));
+
+      if (payload.length === 0) return { success: true };
+
+      const { error } = await supabase
+        .from('notificacoes_lidas')
+        .upsert(payload, { onConflict: 'usuario_id,notification_id' });
+      if (error) throw error;
+      return { success: true };
+    },
+  );
+}
+
+export async function savePainelAlunoChallenge({ desafio, xpBonus }) {
+  return requestWithFallback(
+    async () => requestPlatformApi('/v1/aluno/preferencias/desafio', {
+      method: 'POST',
+      body: { desafio, xpBonus },
+    }),
+    async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData?.user;
+      if (!user?.id) throw new Error('Usuario nao autenticado.');
+
+      const { data: perfil, error: perfilError } = await supabase
+        .from('usuarios_biblioteca')
+        .select('id')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (perfilError || !perfil?.id) throw perfilError || new Error('Perfil do aluno nao encontrado.');
+
+      const { error } = await supabase.from('preferencias_aluno').upsert(
+        {
+          usuario_id: perfil.id,
+          desafio_ia_ativo: desafio,
+          desafio_ia_gerado_em: desafio?.gerado_em || null,
+          desafio_ia_concluido_em: desafio?.concluido_em || null,
+          desafio_ia_xp_bonus: Math.max(0, Number(xpBonus || 0)),
+        },
+        { onConflict: 'usuario_id' },
+      );
+      if (error) throw error;
+      return { success: true };
+    },
+  );
+}

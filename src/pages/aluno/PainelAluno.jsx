@@ -46,6 +46,9 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import {
   createPainelAlunoLoanRequest,
   fetchPainelAlunoData,
+  markPainelAlunoNotificationRead,
+  markPainelAlunoNotificationsReadBatch,
+  savePainelAlunoChallenge,
   togglePainelAlunoWishlist,
 } from '@/services/painelAlunoService';
 import {
@@ -1227,19 +1230,7 @@ export default function PainelAluno() {
       if (!alunoId) {
         throw new Error('Aluno nÃ£o identificado para salvar o desafio.');
       }
-
-      const { error } = await supabase.from('preferencias_aluno').upsert(
-        {
-          usuario_id: alunoId,
-          desafio_ia_ativo: desafio,
-          desafio_ia_gerado_em: desafio?.gerado_em || null,
-          desafio_ia_concluido_em: desafio?.concluido_em || null,
-          desafio_ia_xp_bonus: Math.max(0, Number(xpBonus || 0)),
-        },
-        { onConflict: 'usuario_id' },
-      );
-
-      if (error) throw error;
+      await savePainelAlunoChallenge({ desafio, xpBonus });
     },
     [alunoId],
   );
@@ -2230,10 +2221,7 @@ export default function PainelAluno() {
       setNotificacoesLidas((prev) => new Set([...prev, notificationId]));
       setAriaLiveMessage('NotificaÃ§Ã£o marcada como lida.');
       try {
-        const { error } = await supabase
-          .from('notificacoes_lidas')
-          .upsert({ usuario_id: alunoId, notification_id: notificationId }, { onConflict: 'usuario_id,notification_id' });
-        if (error && !isMissingTableError(error)) throw error;
+        await markPainelAlunoNotificationRead(notificationId);
       } catch {
         // fallback silencioso: mantÃ©m estado local
       }
@@ -2251,10 +2239,7 @@ export default function PainelAluno() {
     });
     setAriaLiveMessage('Todas as notificaÃ§Ãµes foram marcadas como lidas.');
     try {
-      const { error } = await supabase
-        .from('notificacoes_lidas')
-        .upsert(payload, { onConflict: 'usuario_id,notification_id' });
-      if (error && !isMissingTableError(error)) throw error;
+      await markPainelAlunoNotificationsReadBatch(payload.map((item) => item.notification_id));
     } catch {
       // fallback silencioso
     }

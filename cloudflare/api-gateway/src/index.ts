@@ -3379,6 +3379,59 @@ const routes: Record<string, RouteHandler> = {
     return jsonResponse({ success: true });
   },
 
+  'POST /v1/aluno/notificacoes/read-batch': async (request, env) => {
+    const { profile } = await getCommunityModuleContext(request, env);
+    if (!profile?.id) {
+      return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const notificationIds = Array.isArray(body?.notification_ids)
+      ? body.notification_ids.map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+
+    if (notificationIds.length === 0) {
+      return jsonResponse({ success: true });
+    }
+
+    await supabaseAdminRequest(env, '/rest/v1/notificacoes_lidas', {
+      method: 'POST',
+      body: notificationIds.map((notificationId) => ({ usuario_id: profile.id, notification_id: notificationId })),
+      headers: {
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+    });
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/aluno/preferencias/desafio': async (request, env) => {
+    const { profile } = await getCommunityModuleContext(request, env);
+    if (!profile?.id) {
+      return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const desafio = body?.desafio && typeof body.desafio === 'object' ? body.desafio : null;
+    const xpBonus = Math.max(0, Number(body?.xpBonus || 0));
+
+    await supabaseAdminRequest(env, '/rest/v1/preferencias_aluno?on_conflict=usuario_id', {
+      method: 'POST',
+      body: [{
+        usuario_id: profile.id,
+        desafio_ia_ativo: desafio,
+        desafio_ia_gerado_em: desafio?.gerado_em || null,
+        desafio_ia_concluido_em: desafio?.concluido_em || null,
+        desafio_ia_xp_bonus: xpBonus,
+      }],
+      headers: {
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+    });
+
+    return jsonResponse({ success: true });
+  },
+
   'GET /v1/aluno/comunidade/feed': async (request, env) => {
     await getCommunityModuleContext(request, env);
     const url = new URL(request.url);
