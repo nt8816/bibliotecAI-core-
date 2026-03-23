@@ -39,10 +39,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import {
   createPainelAlunoAudiobook,
   createPainelAlunoLabCreation,
@@ -60,6 +58,7 @@ import {
   updatePainelAlunoPassword,
   updatePainelAlunoLabCreation,
 } from '@/services/painelAlunoService';
+import { createComunidadePost } from '@/services/comunidadeAlunoService';
 import {
   generateAudioWithCloudflare,
   generateImageWithCloudflare,
@@ -116,23 +115,6 @@ function isExpiredComunicado(item) {
   if (!item?.expires_at) return false;
   const expiresAt = new Date(item.expires_at);
   return !Number.isNaN(expiresAt.getTime()) && expiresAt <= new Date();
-}
-
-function upsertById(list, item, idKey = 'id') {
-  const entries = ensureArray(list);
-  const id = item?.[idKey];
-  if (!id) return entries;
-  const index = entries.findIndex((entry) => entry?.[idKey] === id);
-  if (index >= 0) {
-    const next = [...entries];
-    next[index] = { ...entries[index], ...item };
-    return next;
-  }
-  return [item, ...entries];
-}
-
-function removeById(list, id, idKey = 'id') {
-  return ensureArray(list).filter((entry) => entry?.[idKey] !== id);
 }
 
 function sortByDateDesc(list, field = 'created_at') {
@@ -568,50 +550,16 @@ function isMissingTableError(error) {
   );
 }
 
-function isMissingColumnError(error, columnName, tableName) {
-  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
-  const column = String(columnName || '').toLowerCase();
-  const table = String(tableName || '').toLowerCase();
-  return (
-    message.includes(`could not find the '${column}' column`) &&
-    (!table || message.includes(`'${table}'`) || message.includes(`"${table}"`))
-  );
-}
-
 async function insertCommunityPostCompat(payload, options = {}) {
-  const expectSingleId = options.expectSingleId === true;
-
-  const runInsert = async (insertPayload) => {
-    let query = supabase.from('comunidade_posts').insert(insertPayload);
-    if (expectSingleId) {
-      query = query.select('id').single();
+  try {
+    const result = await createComunidadePost(payload);
+    if (options.expectSingleId) {
+      return { data: { id: result?.postId || null }, error: null };
     }
-    return await query;
-  };
-
-  let result = await runInsert(payload);
-  if (!result.error) return result;
-
-  const missingColumns = ['escola_id', 'imagem_urls', 'audiobook_id'];
-  for (const column of missingColumns) {
-    if (Object.hasOwn(payload, column) && isMissingColumnError(result.error, column, 'comunidade_posts')) {
-      const { [column]: _ignored, ...fallbackPayload } = payload;
-      result = await runInsert(fallbackPayload);
-      if (!result.error) return result;
-    }
+    return { data: result || null, error: null };
+  } catch (error) {
+    return { data: null, error };
   }
-
-  const message = `${result.error?.message || ''} ${result.error?.details || ''}`.toLowerCase();
-  if (message.includes('comunidade_posts_tipo_check') && payload?.tipo === 'quiz') {
-    const fallbackPayload = {
-      ...payload,
-      tipo: 'dica',
-      tags: Array.from(new Set([...(payload.tags || []), 'quiz'])),
-    };
-    result = await runInsert(fallbackPayload);
-  }
-
-  return result;
 }
 
 function encodeJsonBase64(value) {
@@ -1138,7 +1086,6 @@ export default function PainelAluno() {
   const audioPlayerRef = useRef(null);
   const speechRequestRef = useRef(0);
   const speakingLivroIdRef = useRef(null);
-  const solicitacoesStatusRef = useRef(new Map());
   const desafioCacheKey = useMemo(
     () => (user?.id ? `aluno:desafio-ia:${user.id}` : ''),
     [user?.id],
@@ -1235,11 +1182,7 @@ export default function PainelAluno() {
         setAvaliacoes(painelData?.avaliacoes || []);
         setWishlist((painelData?.wishlist || []).map((item) => item.livro_id));
         setSugestoes(painelData?.sugestoes || []);
-        const solicitacoesData = painelData?.solicitacoes || [];
-        setSolicitacoes(solicitacoesData);
-        solicitacoesStatusRef.current = new Map(
-          solicitacoesData.map((item) => [item.id, String(item.status || '').toLowerCase()]),
-        );
+        setSolicitacoes(painelData?.solicitacoes || []);
         setAtividades(painelData?.atividades || []);
         setEntregas(painelData?.entregas || []);
         setAudiobookCatalogo(await Promise.all((painelData?.audiobookCatalogo || []).map(resolveAudiobookRecord)));
@@ -1458,351 +1401,26 @@ export default function PainelAluno() {
     }
   }, [bibliotecaView, catalogoSearchTerm, fetchLivrosPage]);
 
-  const fetchRowById = useCallback(async (table, id, select) => {
-    if (!id) return null;
-    try {
-      const { data, error } = await supabase.from(table).select(select).eq('id', id).maybeSingle();
-      if (error) {
-        if (isMissingTableError(error)) return null;
-        throw error;
+  useEffect(() => {
+    if (!user?.id) return undefined;
+
+    const interval = window.setInterval(() => {
+      fetchData();
+    }, 30000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchData();
       }
-      return data || null;
-    } catch {
-      return null;
-    }
-  }, []);
+    };
 
-  const fetchResolvedRowById = useCallback(async (table, id, select) => {
-    const data = await fetchRowById(table, id, select);
-    if (!data) return null;
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    if (table === 'audiobooks_biblioteca') return resolveAudiobookRecord(data);
-    if (table === 'aluno_audiobooks') return resolveAlunoAudiobookRecord(data);
-    if (table === 'laboratorio_criacoes') return resolveLabCriacaoRecord(data);
-
-    return data;
-  }, [fetchRowById]);
-
-  const handleRealtimeStatus = useCallback(
-    (status) => {
-      if (status !== 'CHANNEL_ERROR') return;
-    },
-    [],
-  );
-
-
-  const updateEntregaState = useCallback((entrega) => {
-    if (!entrega?.atividade_id) return;
-    const payload = parseEntregaPayload(entrega.texto_entrega);
-    setAtividadeTexto((prev) => ({ ...prev, [entrega.atividade_id]: payload.texto }));
-    setAtividadeImagens((prev) => ({ ...prev, [entrega.atividade_id]: payload.imagens }));
-    setAtividadeRespostas((prev) => ({ ...prev, [entrega.atividade_id]: payload.respostas }));
-  }, []);
-
-  const handleEmprestimoUpsert = useCallback(
-    async (payload) => {
-      const row = payload?.new;
-      const data = await fetchRowById('emprestimos', row?.id, '*, livros(titulo, autor)');
-      if (!data || data.usuario_id !== alunoId) return;
-      setEmprestimos((prev) => sortByDateDesc(upsertById(prev, data), 'data_emprestimo'));
-    },
-    [alunoId, fetchRowById],
-  );
-
-  const handleEmprestimoDelete = useCallback(
-    (payload) => {
-      const row = payload?.old;
-      if (!row?.id || row?.usuario_id !== alunoId) return;
-      setEmprestimos((prev) => removeById(prev, row.id));
-    },
-    [alunoId],
-  );
-
-  const handleAvaliacaoUpsert = useCallback(
-    async (payload) => {
-      const row = payload?.new;
-      const data = await fetchRowById('avaliacoes_livros', row?.id, '*, livros(titulo, autor)');
-      if (!data || data.usuario_id !== alunoId) return;
-      setAvaliacoes((prev) => sortByDateDesc(upsertById(prev, data)));
-    },
-    [alunoId, fetchRowById],
-  );
-
-  const handleAvaliacaoDelete = useCallback(
-    (payload) => {
-      const row = payload?.old;
-      if (!row?.id || row?.usuario_id !== alunoId) return;
-      setAvaliacoes((prev) => removeById(prev, row.id));
-    },
-    [alunoId],
-  );
-
-  const handleWishlistInsert = useCallback(
-    (payload) => {
-      const row = payload?.new;
-      if (!row?.livro_id || row?.usuario_id !== alunoId) return;
-      setWishlist((prev) => Array.from(new Set([...ensureArray(prev), row.livro_id])));
-    },
-    [alunoId],
-  );
-
-  const handleWishlistDelete = useCallback(
-    (payload) => {
-      const row = payload?.old;
-      if (!row?.livro_id || row?.usuario_id !== alunoId) return;
-      setWishlist((prev) => ensureArray(prev).filter((id) => id !== row.livro_id));
-    },
-    [alunoId],
-  );
-
-  const handleSugestaoUpsert = useCallback(
-    async (payload) => {
-      const row = payload?.new;
-      const data = await fetchRowById('sugestoes_livros', row?.id, '*, livros(titulo, autor)');
-      if (!data || data.aluno_id !== alunoId) return;
-      setSugestoes((prev) => sortByDateDesc(upsertById(prev, data)));
-    },
-    [alunoId, fetchRowById],
-  );
-
-  const handleSugestaoDelete = useCallback(
-    (payload) => {
-      const row = payload?.old;
-      if (!row?.id || row?.aluno_id !== alunoId) return;
-      setSugestoes((prev) => removeById(prev, row.id));
-    },
-    [alunoId],
-  );
-
-  const handleSolicitacaoUpsert = useCallback(
-    async (payload) => {
-      const row = payload?.new;
-      const data = await fetchRowById('solicitacoes_emprestimo', row?.id, '*, livros(titulo, autor)');
-      if (!data || data.usuario_id !== alunoId) return;
-      const prevStatus = solicitacoesStatusRef.current.get(data.id);
-      const nextStatus = String(data.status || '').toLowerCase();
-      if (prevStatus && prevStatus !== nextStatus) {
-        toast({
-          title: 'Status da solicitaÃ§Ã£o atualizado',
-          description: `${data.livros?.titulo || 'Livro'}: ${nextStatus}.`,
-        });
-      }
-      solicitacoesStatusRef.current.set(data.id, nextStatus);
-      setSolicitacoes((prev) => sortByDateDesc(upsertById(prev, data)));
-    },
-    [alunoId, fetchRowById, toast],
-  );
-
-  const handleSolicitacaoDelete = useCallback(
-    (payload) => {
-      const row = payload?.old;
-      if (!row?.id || row?.usuario_id !== alunoId) return;
-      setSolicitacoes((prev) => removeById(prev, row.id));
-    },
-    [alunoId],
-  );
-
-  const handleAtividadeUpsert = useCallback(
-    async (payload) => {
-      const row = payload?.new;
-      const data = await fetchRowById(
-        'atividades_leitura',
-        row?.id,
-        '*, livros(titulo, autor), professor:usuarios_biblioteca!atividades_leitura_professor_id_fkey(nome)',
-      );
-      if (!data || data.aluno_id !== alunoId) return;
-      setAtividades((prev) => sortByDateDesc(upsertById(prev, data)));
-    },
-    [alunoId, fetchRowById],
-  );
-
-  const handleAtividadeDelete = useCallback(
-    (payload) => {
-      const row = payload?.old;
-      if (!row?.id || row?.aluno_id !== alunoId) return;
-      setAtividades((prev) => removeById(prev, row.id));
-    },
-    [alunoId],
-  );
-
-  const handleEntregaUpsert = useCallback(
-    async (payload) => {
-      const row = payload?.new;
-      const data = await fetchRowById('atividades_entregas', row?.id, '*');
-      if (!data || data.aluno_id !== alunoId) return;
-      setEntregas((prev) => sortByDateDesc(upsertById(prev, data), 'updated_at'));
-      updateEntregaState(data);
-    },
-    [alunoId, fetchRowById, updateEntregaState],
-  );
-
-  const handleEntregaDelete = useCallback(
-    (payload) => {
-      const row = payload?.old;
-      if (!row?.id || row?.aluno_id !== alunoId) return;
-      setEntregas((prev) => removeById(prev, row.id));
-      setAtividadeTexto((prev) => {
-        const next = { ...prev };
-        delete next[row.atividade_id];
-        return next;
-      });
-      setAtividadeImagens((prev) => {
-        const next = { ...prev };
-        delete next[row.atividade_id];
-        return next;
-      });
-      setAtividadeRespostas((prev) => {
-        const next = { ...prev };
-        delete next[row.atividade_id];
-        return next;
-      });
-    },
-    [alunoId],
-  );
-
-  const handleAudiobookUpsert = useCallback(
-    async (payload) => {
-      const row = payload?.new;
-      const data = await fetchResolvedRowById('audiobooks_biblioteca', row?.id, '*, livros(titulo, autor)');
-      if (!data) return;
-      setAudiobookCatalogo((prev) => sortByDateDesc(upsertById(prev, data)));
-    },
-    [fetchResolvedRowById],
-  );
-
-  const handleAudiobookDelete = useCallback((payload) => {
-    const row = payload?.old;
-    if (!row?.id) return;
-    setAudiobookCatalogo((prev) => removeById(prev, row.id));
-  }, []);
-
-  const handleAlunoAudiobookUpsert = useCallback(
-    async (payload) => {
-      const row = payload?.new;
-      const data = await fetchResolvedRowById('aluno_audiobooks', row?.id, '*, audiobooks_biblioteca(*, livros(titulo, autor))');
-      if (!data || data.aluno_id !== alunoId) return;
-      setMeusAudiobooks((prev) => sortByDateDesc(upsertById(prev, data)));
-    },
-    [alunoId, fetchResolvedRowById],
-  );
-
-  const handleAlunoAudiobookDelete = useCallback(
-    (payload) => {
-      const row = payload?.old;
-      if (!row?.id || row?.aluno_id !== alunoId) return;
-      setMeusAudiobooks((prev) => removeById(prev, row.id));
-    },
-    [alunoId],
-  );
-
-  const handleLabCriacaoUpsert = useCallback(
-    async (payload) => {
-      const row = payload?.new;
-      const data = await fetchResolvedRowById('laboratorio_criacoes', row?.id, '*');
-      if (!data || data.aluno_id !== alunoId) return;
-      setCriacoesLaboratorio((prev) => sortByDateDesc(upsertById(prev, data)));
-    },
-    [alunoId, fetchResolvedRowById],
-  );
-
-  const handleLabCriacaoDelete = useCallback(
-    (payload) => {
-      const row = payload?.old;
-      if (!row?.id || row?.aluno_id !== alunoId) return;
-      setCriacoesLaboratorio((prev) => removeById(prev, row.id));
-    },
-    [alunoId],
-  );
-
-  const handleLivroUpsert = useCallback((payload) => {
-    const row = payload?.new;
-    if (!row?.id) return;
-
-    removeCache(livrosCacheKey);
-
-    const pertenceAoCatalogo =
-      !row.escola_id ||
-      !escolaId ||
-      row.escola_id === escolaId;
-
-    if (!pertenceAoCatalogo) {
-      setLivros((prev) => removeById(prev, row.id));
-      return;
-    }
-
-    setLivros((prev) => sortByTitulo(upsertById(prev, row)));
-  }, [escolaId, livrosCacheKey]);
-
-  const handleLivroDelete = useCallback((payload) => {
-    const row = payload?.old;
-    if (!row?.id) return;
-    removeCache(livrosCacheKey);
-    setLivros((prev) => removeById(prev, row.id));
-  }, [livrosCacheKey]);
-
-  const handleNotificacaoLidaInsert = useCallback(
-    (payload) => {
-      const row = payload?.new;
-      if (!row?.notification_id || row?.usuario_id !== alunoId) return;
-      setNotificacoesLidas((prev) => new Set([...prev, row.notification_id]));
-    },
-    [alunoId],
-  );
-
-  const handleNotificacaoLidaDelete = useCallback(
-    (payload) => {
-      const row = payload?.old;
-      if (!row?.notification_id || row?.usuario_id !== alunoId) return;
-      setNotificacoesLidas((prev) => {
-        const next = new Set(prev);
-        next.delete(row.notification_id);
-        return next;
-      });
-    },
-    [alunoId],
-  );
-
-  const handleComunicadoUpsert = useCallback(
-    (payload) => {
-      const row = payload?.new ?? payload;
-      if (!row?.id || row?.tipo !== 'comunicado') return;
-      if (isExpiredComunicado(row)) {
-        setComunicados((prev) => removeById(prev, row.id));
-        return;
-      }
-      if (escolaId && row?.escola_id && row.escola_id !== escolaId) return;
-
-      const turmaDestino = normalizeTurmaKey(row?.turma_publico);
-      const turmaAtual = normalizeTurmaKey(alunoTurma);
-      const visivelParaAluno = !turmaDestino || turmaDestino === turmaAtual;
-
-      setComunicados((prev) => {
-        if (!visivelParaAluno) return removeById(prev, row.id);
-        return sortByDateDesc(upsertById(prev, row));
-      });
-    },
-    [alunoTurma, escolaId],
-  );
-
-  const handleComunicadoDelete = useCallback((payload) => {
-    const row = payload?.old ?? payload;
-    if (!row?.id) return;
-    setComunicados((prev) => removeById(prev, row.id));
-  }, []);
-
-  useRealtimeSubscription({ table: 'emprestimos', onInsert: handleEmprestimoUpsert, onUpdate: handleEmprestimoUpsert, onDelete: handleEmprestimoDelete, onStatus: handleRealtimeStatus });
-  useRealtimeSubscription({ table: 'avaliacoes_livros', onInsert: handleAvaliacaoUpsert, onUpdate: handleAvaliacaoUpsert, onDelete: handleAvaliacaoDelete, onStatus: handleRealtimeStatus });
-  useRealtimeSubscription({ table: 'lista_desejos', onInsert: handleWishlistInsert, onDelete: handleWishlistDelete, onStatus: handleRealtimeStatus });
-  useRealtimeSubscription({ table: 'sugestoes_livros', onInsert: handleSugestaoUpsert, onUpdate: handleSugestaoUpsert, onDelete: handleSugestaoDelete, onStatus: handleRealtimeStatus });
-  useRealtimeSubscription({ table: 'solicitacoes_emprestimo', onInsert: handleSolicitacaoUpsert, onUpdate: handleSolicitacaoUpsert, onDelete: handleSolicitacaoDelete, onStatus: handleRealtimeStatus });
-  useRealtimeSubscription({ table: 'comunidade_posts', onInsert: handleComunicadoUpsert, onUpdate: handleComunicadoUpsert, onDelete: handleComunicadoDelete, onStatus: handleRealtimeStatus });
-  useRealtimeSubscription({ table: 'atividades_leitura', onInsert: handleAtividadeUpsert, onUpdate: handleAtividadeUpsert, onDelete: handleAtividadeDelete, onStatus: handleRealtimeStatus });
-  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'atividades_entregas' : null, onInsert: handleEntregaUpsert, onUpdate: handleEntregaUpsert, onDelete: handleEntregaDelete, onStatus: handleRealtimeStatus });
-  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'audiobooks_biblioteca' : null, onInsert: handleAudiobookUpsert, onUpdate: handleAudiobookUpsert, onDelete: handleAudiobookDelete, onStatus: handleRealtimeStatus });
-  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'aluno_audiobooks' : null, onInsert: handleAlunoAudiobookUpsert, onUpdate: handleAlunoAudiobookUpsert, onDelete: handleAlunoAudiobookDelete, onStatus: handleRealtimeStatus });
-  useRealtimeSubscription({ table: optionalFeaturesEnabled ? 'laboratorio_criacoes' : null, onInsert: handleLabCriacaoUpsert, onUpdate: handleLabCriacaoUpsert, onDelete: handleLabCriacaoDelete, onStatus: handleRealtimeStatus });
-  useRealtimeSubscription({ table: 'livros', onInsert: handleLivroUpsert, onUpdate: handleLivroUpsert, onDelete: handleLivroDelete, onStatus: handleRealtimeStatus });
-  useRealtimeSubscription({ table: 'notificacoes_lidas', onInsert: handleNotificacaoLidaInsert, onDelete: handleNotificacaoLidaDelete, onStatus: handleRealtimeStatus });
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchData, user?.id]);
 
   const atividadesComEntrega = useMemo(() => {
     const entregaByAtividade = new Map(entregas.map((e) => [e.atividade_id, e]));
