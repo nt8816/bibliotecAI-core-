@@ -263,3 +263,154 @@ export async function savePainelAlunoChallenge({ desafio, xpBonus }) {
     },
   );
 }
+
+export async function savePainelAlunoReview({ livroId, nota, resenha }) {
+  return requestWithFallback(
+    async () => requestPlatformApi('/v1/aluno/avaliacoes', {
+      method: 'POST',
+      body: { livroId, nota, resenha },
+    }),
+    async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData?.user;
+      if (!user?.id) throw new Error('Usuario nao autenticado.');
+      const { data: perfil, error: perfilError } = await supabase
+        .from('usuarios_biblioteca')
+        .select('id')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (perfilError || !perfil?.id) throw perfilError || new Error('Perfil do aluno nao encontrado.');
+      const { error } = await supabase
+        .from('avaliacoes_livros')
+        .upsert({ livro_id: livroId, usuario_id: perfil.id, nota, resenha: resenha || null }, { onConflict: 'livro_id,usuario_id' });
+      if (error) throw error;
+      return { success: true };
+    },
+  );
+}
+
+export async function submitPainelAlunoActivity({ atividadeId, textoEntrega, status, enviadoEm }) {
+  return requestWithFallback(
+    async () => requestPlatformApi('/v1/aluno/atividades/entregas', {
+      method: 'POST',
+      body: { atividadeId, textoEntrega, status, enviadoEm },
+    }),
+    async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData?.user;
+      if (!user?.id) throw new Error('Usuario nao autenticado.');
+      const { data: perfil, error: perfilError } = await supabase
+        .from('usuarios_biblioteca')
+        .select('id')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (perfilError || !perfil?.id) throw perfilError || new Error('Perfil do aluno nao encontrado.');
+      const { error } = await supabase.from('atividades_entregas').upsert({
+        atividade_id: atividadeId,
+        aluno_id: perfil.id,
+        texto_entrega: textoEntrega,
+        status,
+        enviado_em: enviadoEm,
+      }, { onConflict: 'atividade_id,aluno_id' });
+      if (error) throw error;
+      return { success: true };
+    },
+  );
+}
+
+export async function createPainelAlunoAudiobook(payload) {
+  return requestWithFallback(
+    async () => requestPlatformApi('/v1/aluno/audiobooks', {
+      method: 'POST',
+      body: payload,
+    }),
+    async () => {
+      const { error } = await supabase.from('audiobooks_biblioteca').insert(payload);
+      if (error) throw error;
+      return { success: true };
+    },
+  );
+}
+
+export async function togglePainelAlunoAudiobook({ audiobookId, enabled }) {
+  return requestWithFallback(
+    async () => requestPlatformApi('/v1/aluno/meus-audiobooks/toggle', {
+      method: 'POST',
+      body: { audiobookId, enabled },
+    }),
+    async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData?.user;
+      if (!user?.id) throw new Error('Usuario nao autenticado.');
+      const { data: perfil, error: perfilError } = await supabase
+        .from('usuarios_biblioteca')
+        .select('id')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (perfilError || !perfil?.id) throw perfilError || new Error('Perfil do aluno nao encontrado.');
+      if (enabled) {
+        const { error } = await supabase.from('aluno_audiobooks').insert({ aluno_id: perfil.id, audiobook_id: audiobookId, progresso_segundos: 0 });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('aluno_audiobooks').delete().eq('aluno_id', perfil.id).eq('audiobook_id', audiobookId);
+        if (error) throw error;
+      }
+      return { success: true };
+    },
+  );
+}
+
+export async function createPainelAlunoLabCreation(payload) {
+  return requestWithFallback(
+    async () => requestPlatformApi('/v1/aluno/laboratorio/criacoes', {
+      method: 'POST',
+      body: payload,
+    }),
+    async () => {
+      const { error } = await supabase.from('laboratorio_criacoes').insert(payload);
+      if (error) throw error;
+      return { success: true };
+    },
+  );
+}
+
+export async function updatePainelAlunoLabCreation(id, payload) {
+  return requestWithFallback(
+    async () => requestPlatformApi(`/v1/aluno/laboratorio/criacoes/${id}`, {
+      method: 'PATCH',
+      body: payload,
+    }),
+    async () => {
+      const { error } = await supabase.from('laboratorio_criacoes').update(payload).eq('id', id);
+      if (error) throw error;
+      return { success: true };
+    },
+  );
+}
+
+export async function deletePainelAlunoLabCreation({ id, comunidadePostId }) {
+  return requestWithFallback(
+    async () => requestPlatformApi(`/v1/aluno/laboratorio/criacoes/${id}/delete`, {
+      method: 'POST',
+      body: { comunidadePostId },
+    }),
+    async () => {
+      if (comunidadePostId) {
+        const { error: communityError } = await supabase.from('comunidade_posts').delete().eq('id', comunidadePostId);
+        if (communityError) throw communityError;
+      }
+      const { error } = await supabase.from('laboratorio_criacoes').delete().eq('id', id);
+      if (error) throw error;
+      return { success: true };
+    },
+  );
+}

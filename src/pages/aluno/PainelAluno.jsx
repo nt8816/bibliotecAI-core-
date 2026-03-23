@@ -44,12 +44,19 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import {
+  createPainelAlunoAudiobook,
+  createPainelAlunoLabCreation,
   createPainelAlunoLoanRequest,
+  deletePainelAlunoLabCreation,
   fetchPainelAlunoData,
   markPainelAlunoNotificationRead,
   markPainelAlunoNotificationsReadBatch,
+  savePainelAlunoReview,
   savePainelAlunoChallenge,
+  submitPainelAlunoActivity,
   togglePainelAlunoWishlist,
+  togglePainelAlunoAudiobook,
+  updatePainelAlunoLabCreation,
 } from '@/services/painelAlunoService';
 import {
   generateAudioWithCloudflare,
@@ -2384,15 +2391,17 @@ export default function PainelAluno() {
       throw new Error('Tabela laboratorio_criacoes nÃ£o encontrada. Aplique as migrations do Supabase.');
     }
 
-    const { error } = await supabase.from('laboratorio_criacoes').insert(payload);
-    if (!error) return;
+    try {
+      await createPainelAlunoLabCreation(payload);
+      return;
+    } catch (error) {
+      if (isMissingTableError(error)) {
+        setLabCriacoesMissingTable(true);
+        throw new Error('Tabela laboratorio_criacoes nÃ£o encontrada. Aplique as migrations do Supabase.');
+      }
 
-    if (isMissingTableError(error)) {
-      setLabCriacoesMissingTable(true);
-      throw new Error('Tabela laboratorio_criacoes nÃ£o encontrada. Aplique as migrations do Supabase.');
+      throw error;
     }
-
-    throw error;
   };
 
   const handleSaveReview = async () => {
@@ -2407,19 +2416,11 @@ export default function PainelAluno() {
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('avaliacoes_livros')
-        .upsert(
-          {
-            livro_id: reviewLivro.id,
-            usuario_id: alunoId,
-            nota: reviewNota,
-            resenha: reviewTexto || null,
-          },
-          { onConflict: 'livro_id,usuario_id' },
-        );
-
-      if (error) throw error;
+      await savePainelAlunoReview({
+        livroId: reviewLivro.id,
+        nota: reviewNota,
+        resenha: reviewTexto || null,
+      });
 
       let comunidadePostId = null;
       if (shareReviewToCommunity && reviewTexto.trim()) {
@@ -2568,8 +2569,12 @@ export default function PainelAluno() {
         enviado_em: new Date().toISOString(),
       };
 
-      const { error } = await supabase.from('atividades_entregas').upsert(payload, { onConflict: 'atividade_id,aluno_id' });
-      if (error) throw error;
+      await submitPainelAlunoActivity({
+        atividadeId: atividade.id,
+        textoEntrega: payload.texto_entrega,
+        status: payload.status,
+        enviadoEm: payload.enviado_em,
+      });
 
       toast({ title: 'Entrega enviada', description: 'Seu professor jÃ¡ pode avaliar e liberar pontos.' });
     } catch (error) {
@@ -2647,8 +2652,7 @@ export default function PainelAluno() {
         criado_por: alunoId,
       };
 
-      const { error } = await supabase.from('audiobooks_biblioteca').insert(payload);
-      if (error) throw error;
+      await createPainelAlunoAudiobook(payload);
 
       toast({ title: 'Audiobook adicionado ao catÃ¡logo!' });
       setAudiobookForm({ livro_id: '', titulo: '', autor: '', duracao_minutos: '' });
@@ -2681,15 +2685,10 @@ export default function PainelAluno() {
     const existente = meusAudiobooks.find((item) => item.audiobook_id === audiobookId);
 
     try {
-      if (existente) {
-        const { error } = await supabase.from('aluno_audiobooks').delete().eq('id', existente.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('aluno_audiobooks')
-          .insert({ aluno_id: alunoId, audiobook_id: audiobookId, progresso_segundos: 0 });
-        if (error) throw error;
-      }
+      await togglePainelAlunoAudiobook({
+        audiobookId,
+        enabled: !existente,
+      });
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -3236,15 +3235,10 @@ export default function PainelAluno() {
       const { data: postCriado, error } = await insertCommunityPostCompat(payload, { expectSingleId: true });
       if (error) throw error;
 
-      const { error: updateError } = await supabase
-        .from('laboratorio_criacoes')
-        .update({
-          publicado_comunidade: true,
-          comunidade_post_id: postCriado?.id || null,
-        })
-        .eq('id', criacao.id);
-
-      if (updateError) throw updateError;
+      await updatePainelAlunoLabCreation(criacao.id, {
+        publicado_comunidade: true,
+        comunidade_post_id: postCriado?.id || null,
+      });
 
       setCriacoesLaboratorio((prev) =>
         ensureArray(prev).map((item) =>
@@ -3279,15 +3273,16 @@ export default function PainelAluno() {
 
     setSaving(true);
     try {
-      if (criacao.comunidade_post_id) {
-        await supabase.from('comunidade_posts').delete().eq('id', criacao.comunidade_post_id);
-      }
       if (labCriacoesMissingTable) {
         throw new Error('Tabela laboratorio_criacoes nÃ£o encontrada. Aplique as migrations do Supabase.');
       }
 
-      const { error } = await supabase.from('laboratorio_criacoes').delete().eq('id', criacao.id);
-      if (error) {
+      try {
+        await deletePainelAlunoLabCreation({
+          id: criacao.id,
+          comunidadePostId: criacao.comunidade_post_id || null,
+        });
+      } catch (error) {
         if (isMissingTableError(error)) {
           setLabCriacoesMissingTable(true);
           throw new Error('Tabela laboratorio_criacoes nÃ£o encontrada. Aplique as migrations do Supabase.');

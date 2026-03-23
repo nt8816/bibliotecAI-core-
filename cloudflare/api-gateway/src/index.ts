@@ -3432,6 +3432,156 @@ const routes: Record<string, RouteHandler> = {
     return jsonResponse({ success: true });
   },
 
+  'POST /v1/aluno/avaliacoes': async (request, env) => {
+    const { profile } = await getCommunityModuleContext(request, env);
+    if (!profile?.id) {
+      return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
+    }
+    const body = await request.json().catch(() => ({}));
+    const livroId = String(body?.livroId || '').trim();
+    const nota = Number(body?.nota || 0);
+    const resenha = String(body?.resenha || '').trim() || null;
+    if (!livroId) {
+      return jsonResponse({ success: false, error: 'Livro invalido.' }, 400);
+    }
+    await supabaseAdminRequest(env, '/rest/v1/avaliacoes_livros?on_conflict=livro_id,usuario_id', {
+      method: 'POST',
+      body: [{ livro_id: livroId, usuario_id: profile.id, nota, resenha }],
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    });
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/aluno/atividades/entregas': async (request, env) => {
+    const { profile } = await getCommunityModuleContext(request, env);
+    if (!profile?.id) {
+      return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
+    }
+    const body = await request.json().catch(() => ({}));
+    const atividadeId = String(body?.atividadeId || '').trim();
+    if (!atividadeId) {
+      return jsonResponse({ success: false, error: 'Atividade invalida.' }, 400);
+    }
+    await supabaseAdminRequest(env, '/rest/v1/atividades_entregas?on_conflict=atividade_id,aluno_id', {
+      method: 'POST',
+      body: [{
+        atividade_id: atividadeId,
+        aluno_id: profile.id,
+        texto_entrega: String(body?.textoEntrega || ''),
+        status: String(body?.status || 'enviada'),
+        enviado_em: body?.enviadoEm || new Date().toISOString(),
+      }],
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    });
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/aluno/audiobooks': async (request, env) => {
+    const { profile, escolaId } = await getCommunityModuleContext(request, env);
+    if (!profile?.id || !escolaId) {
+      return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
+    }
+    const body = await request.json().catch(() => ({}));
+    await supabaseAdminRequest(env, '/rest/v1/audiobooks_biblioteca', {
+      method: 'POST',
+      body: {
+        ...body,
+        escola_id: escolaId,
+        criado_por: profile.id,
+      },
+      headers: { Prefer: 'return=minimal' },
+    });
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/aluno/meus-audiobooks/toggle': async (request, env) => {
+    const { profile } = await getCommunityModuleContext(request, env);
+    if (!profile?.id) {
+      return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
+    }
+    const body = await request.json().catch(() => ({}));
+    const audiobookId = String(body?.audiobookId || '').trim();
+    const enabled = body?.enabled === true;
+    if (!audiobookId) {
+      return jsonResponse({ success: false, error: 'Audiobook invalido.' }, 400);
+    }
+    if (enabled) {
+      await supabaseAdminRequest(env, '/rest/v1/aluno_audiobooks', {
+        method: 'POST',
+        body: { aluno_id: profile.id, audiobook_id: audiobookId, progresso_segundos: 0 },
+        headers: { Prefer: 'return=minimal,resolution=merge-duplicates' },
+      });
+    } else {
+      await supabaseAdminRequest(env, `/rest/v1/aluno_audiobooks?${new URLSearchParams({
+        aluno_id: `eq.${profile.id}`,
+        audiobook_id: `eq.${audiobookId}`,
+      }).toString()}`, {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+      });
+    }
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/aluno/laboratorio/criacoes': async (request, env) => {
+    const { profile, escolaId } = await getCommunityModuleContext(request, env);
+    if (!profile?.id || !escolaId) {
+      return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
+    }
+    const body = await request.json().catch(() => ({}));
+    await supabaseAdminRequest(env, '/rest/v1/laboratorio_criacoes', {
+      method: 'POST',
+      body: { ...body, aluno_id: profile.id, escola_id: escolaId },
+      headers: { Prefer: 'return=minimal' },
+    });
+    return jsonResponse({ success: true });
+  },
+
+  'PATCH /v1/aluno/laboratorio/criacoes/:id': async (request, env) => {
+    const { profile } = await getCommunityModuleContext(request, env);
+    const criacaoId = getPathParam(request, /^\/v1\/aluno\/laboratorio\/criacoes\/([^/]+)$/i);
+    const [criacao] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/laboratorio_criacoes?${new URLSearchParams({ select: 'id,aluno_id', id: `eq.${criacaoId}`, limit: '1' }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+    if (!criacao?.id || String(criacao?.aluno_id || '') !== String(profile?.id || '')) {
+      return jsonResponse({ success: false, error: 'Criacao nao encontrada para este aluno.' }, 404);
+    }
+    const body = await request.json().catch(() => ({}));
+    await supabaseAdminRequest(env, `/rest/v1/laboratorio_criacoes?${new URLSearchParams({ id: `eq.${criacaoId}` }).toString()}`, {
+      method: 'PATCH',
+      body,
+      headers: { Prefer: 'return=minimal' },
+    });
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/aluno/laboratorio/criacoes/:id/delete': async (request, env) => {
+    const { profile } = await getCommunityModuleContext(request, env);
+    const criacaoId = getPathParam(request, /^\/v1\/aluno\/laboratorio\/criacoes\/([^/]+)\/delete$/i);
+    const body = await request.json().catch(() => ({}));
+    const comunidadePostId = String(body?.comunidadePostId || '').trim();
+    const [criacao] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/laboratorio_criacoes?${new URLSearchParams({ select: 'id,aluno_id,comunidade_post_id', id: `eq.${criacaoId}`, limit: '1' }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+    if (!criacao?.id || String(criacao?.aluno_id || '') !== String(profile?.id || '')) {
+      return jsonResponse({ success: false, error: 'Criacao nao encontrada para este aluno.' }, 404);
+    }
+    const postIdToDelete = comunidadePostId || String(criacao?.comunidade_post_id || '').trim();
+    if (postIdToDelete) {
+      await supabaseAdminRequest(env, `/rest/v1/comunidade_posts?${new URLSearchParams({ id: `eq.${postIdToDelete}` }).toString()}`, {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+      }).catch(() => null);
+    }
+    await supabaseAdminRequest(env, `/rest/v1/laboratorio_criacoes?${new URLSearchParams({ id: `eq.${criacaoId}` }).toString()}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' },
+    });
+    return jsonResponse({ success: true });
+  },
+
   'GET /v1/aluno/comunidade/feed': async (request, env) => {
     await getCommunityModuleContext(request, env);
     const url = new URL(request.url);
@@ -3569,6 +3719,8 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/aluno\/comunidade\/posts\/[^/]+\/like$/, '/v1/aluno/comunidade/posts/:id/like')
     .replace(/\/v1\/aluno\/comunidade\/posts\/[^/]+\/delete$/, '/v1/aluno/comunidade/posts/:id/delete')
     .replace(/\/v1\/aluno\/comunidade\/posts\/[^/]+$/, '/v1/aluno/comunidade/posts/:id')
+    .replace(/\/v1\/aluno\/laboratorio\/criacoes\/[^/]+\/delete$/, '/v1/aluno/laboratorio/criacoes/:id/delete')
+    .replace(/\/v1\/aluno\/laboratorio\/criacoes\/[^/]+$/, '/v1/aluno/laboratorio/criacoes/:id')
     .replace(/\/v1\/livros\/[^/]+\/delete$/, '/v1/livros/:id/delete')
     .replace(/\/v1\/livros\/[^/]+$/, '/v1/livros/:id')
     .replace(/\/v1\/usuarios\/[^/]+$/, '/v1/usuarios/:id');
