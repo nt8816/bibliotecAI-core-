@@ -48,6 +48,7 @@ import {
   createPainelAlunoLabCreation,
   createPainelAlunoLoanRequest,
   deletePainelAlunoLabCreation,
+  fetchPainelAlunoBooks,
   fetchPainelAlunoData,
   markPainelAlunoNotificationRead,
   markPainelAlunoNotificationsReadBatch,
@@ -56,6 +57,7 @@ import {
   submitPainelAlunoActivity,
   togglePainelAlunoWishlist,
   togglePainelAlunoAudiobook,
+  updatePainelAlunoPassword,
   updatePainelAlunoLabCreation,
 } from '@/services/painelAlunoService';
 import {
@@ -1169,22 +1171,6 @@ export default function PainelAluno() {
     setDesafioIA(null);
   }, [desafioCacheKey]);
 
-  const buildLivrosQuery = useCallback(() => {
-      let query = supabase
-        .from('livros')
-        .select('id, titulo, autor, area, vol, ano, disponivel, sinopse, created_at, escola_id')
-        .order('titulo');
-      if (escolaId) {
-        query = query.eq('escola_id', escolaId);
-      }
-      const term = catalogoSearchTerm.trim();
-      if (term) {
-        const escaped = term.replace(/%/g, '\\%').replace(/_/g, '\\_');
-        query = query.or(`titulo.ilike.%${escaped}%,autor.ilike.%${escaped}%,area.ilike.%${escaped}%`);
-      }
-      return query;
-    }, [catalogoSearchTerm, escolaId]);
-
   const fetchLivrosPage = useCallback(
     async ({ reset = false, useCache = true } = {}) => {
       if (reset && useCache) {
@@ -1199,27 +1185,11 @@ export default function PainelAluno() {
 
       setLivrosLoadingMore(true);
       try {
-        const { data, error } = await buildLivrosQuery();
-        if (error) throw error;
-        let items = data || [];
-
-        if (reset && escolaId) {
-          let legacyQuery = supabase
-            .from('livros')
-            .select('id, titulo, autor, area, vol, ano, disponivel, sinopse, created_at, escola_id')
-            .is('escola_id', null)
-            .order('titulo');
-
-          const term = catalogoSearchTerm.trim();
-          if (term) {
-            const escaped = term.replace(/%/g, '\\%').replace(/_/g, '\\_');
-            legacyQuery = legacyQuery.or(`titulo.ilike.%${escaped}%,autor.ilike.%${escaped}%,area.ilike.%${escaped}%`);
-          }
-
-          const { data: legacyData, error: legacyError } = await legacyQuery;
-          if (legacyError) throw legacyError;
-          items = mergeById(items, legacyData || []);
-        }
+        const payload = await fetchPainelAlunoBooks({
+          escolaId,
+          searchTerm: catalogoSearchTerm,
+        });
+        const items = Array.isArray(payload?.livros) ? payload.livros : [];
 
         setLivros((prev) => (reset ? sortByTitulo(items) : sortByTitulo(mergeById(prev, items))));
         setLivrosOffset(items.length);
@@ -1229,7 +1199,7 @@ export default function PainelAluno() {
         setLivrosLoadingMore(false);
       }
     },
-    [buildLivrosQuery, catalogoSearchTerm, escolaId, livrosCacheKey],
+    [catalogoSearchTerm, escolaId, livrosCacheKey],
   );
 
   const persistirDesafioIA = useCallback(
@@ -1443,15 +1413,14 @@ export default function PainelAluno() {
 
     setUpdatingPrimeiroAcessoPassword(true);
     try {
-      const { error } = await supabase.auth.updateUser({
+      await updatePainelAlunoPassword({
         password: novaSenha,
-        data: {
+        metadata: {
           ...(user?.user_metadata || {}),
           senha_definida: true,
           senha_alterada_em: new Date().toISOString(),
         },
       });
-      if (error) throw error;
 
       if (alunoSenhaDefinidaKey) {
         localStorage.setItem(alunoSenhaDefinidaKey, 'true');

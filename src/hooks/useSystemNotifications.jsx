@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '@/hooks/useAuth';
-import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { fetchSystemNotificationsData, markSystemNotificationAsRead } from '@/services/notificationsService';
 
 const EMPTY_COUNTS = {
@@ -116,12 +115,17 @@ export function useSystemNotifications() {
     fetchCounts();
   }, [fetchCounts]);
 
-  useRealtimeSubscription({ table: 'emprestimos', onChange: fetchCounts });
-  useRealtimeSubscription({ table: 'solicitacoes_emprestimo', onChange: fetchCounts });
-  useRealtimeSubscription({ table: 'comunidade_posts', onChange: fetchCounts });
-  useRealtimeSubscription({ table: 'notificacoes_lidas', onChange: fetchCounts });
-  useRealtimeSubscription({ table: 'reclamacoes_super_admin', onChange: fetchCounts });
-  useRealtimeSubscription({ table: 'system_logs', onChange: fetchCounts });
+  useEffect(() => {
+    if (!canView || !user?.id) return undefined;
+
+    const interval = window.setInterval(() => {
+      fetchCounts();
+    }, 30000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [canView, fetchCounts, user?.id]);
 
   const markNotificationRead = useCallback(async (notificationId) => {
     if (!notificationId) return;

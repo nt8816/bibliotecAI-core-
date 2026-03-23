@@ -1110,6 +1110,58 @@ const routes: Record<string, RouteHandler> = {
       roles: Array.isArray(roleRows) ? [...new Set(roleRows.map((item) => String(item?.role || '')).filter(Boolean))] : [],
     });
   },
+  'POST /v1/auth/password': async (request, env) => {
+    const token = getUserToken(request);
+    if (!token) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const body = await request.json().catch(() => ({} as Record<string, unknown>));
+    const password = String(body?.password || '').trim();
+    const metadata = body?.metadata && typeof body.metadata === 'object' ? body.metadata : {};
+
+    if (password.length < 6) {
+      return jsonResponse({ success: false, error: 'Senha deve ter pelo menos 6 caracteres.' }, 400);
+    }
+
+    const { supabaseUrl, publishableKey } = getSupabaseConfig(env);
+    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      method: 'PUT',
+      headers: {
+        apikey: publishableKey,
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        password,
+        data: metadata,
+      }),
+    });
+
+    const payload = await parseResponse(response);
+    if (!response.ok) {
+      return jsonResponse(
+        {
+          success: false,
+          error:
+            (typeof payload === 'string' && payload.trim()) ||
+            payload?.msg ||
+            payload?.message ||
+            payload?.error_description ||
+            payload?.error ||
+            'Nao foi possivel atualizar a senha.',
+        },
+        response.status,
+      );
+    }
+
+    return jsonResponse({ success: true, user: payload || null });
+  },
   'GET /v1/dashboard': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);
     if (!user?.id) {

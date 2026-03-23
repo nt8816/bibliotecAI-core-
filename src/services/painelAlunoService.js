@@ -106,6 +106,101 @@ export async function fetchPainelAlunoData() {
   );
 }
 
+export async function fetchPainelAlunoBooks({ escolaId, searchTerm }) {
+  return requestWithFallback(
+    async () => {
+      const payload = await requestPlatformApi('/v1/livros');
+      const normalizedTerm = String(searchTerm || '').trim().toLowerCase();
+      let items = Array.isArray(payload?.livros) ? payload.livros : [];
+
+      if (escolaId) {
+        items = items.filter((item) => !item?.escola_id || String(item.escola_id) === String(escolaId));
+      }
+
+      if (normalizedTerm) {
+        items = items.filter((item) =>
+          [item?.titulo, item?.autor, item?.area].some((value) =>
+            String(value || '').toLowerCase().includes(normalizedTerm),
+          ),
+        );
+      }
+
+      return {
+        success: true,
+        livros: items,
+      };
+    },
+    async () => {
+      let query = supabase
+        .from('livros')
+        .select('id, titulo, autor, area, vol, ano, disponivel, sinopse, created_at, escola_id')
+        .order('titulo');
+
+      if (escolaId) {
+        query = query.eq('escola_id', escolaId);
+      }
+
+      const term = String(searchTerm || '').trim();
+      if (term) {
+        const escaped = term.replace(/%/g, '\\%').replace(/_/g, '\\_');
+        query = query.or(`titulo.ilike.%${escaped}%,autor.ilike.%${escaped}%,area.ilike.%${escaped}%`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      let items = data || [];
+
+      if (escolaId) {
+        let legacyQuery = supabase
+          .from('livros')
+          .select('id, titulo, autor, area, vol, ano, disponivel, sinopse, created_at, escola_id')
+          .is('escola_id', null)
+          .order('titulo');
+
+        if (term) {
+          const escaped = term.replace(/%/g, '\\%').replace(/_/g, '\\_');
+          legacyQuery = legacyQuery.or(`titulo.ilike.%${escaped}%,autor.ilike.%${escaped}%,area.ilike.%${escaped}%`);
+        }
+
+        const { data: legacyData, error: legacyError } = await legacyQuery;
+        if (legacyError) throw legacyError;
+
+        const byId = new Map();
+        [...items, ...(legacyData || [])].forEach((item) => {
+          if (item?.id) byId.set(item.id, item);
+        });
+        items = Array.from(byId.values());
+      }
+
+      return {
+        success: true,
+        livros: items,
+      };
+    },
+  );
+}
+
+export async function updatePainelAlunoPassword({ password, metadata }) {
+  return requestWithFallback(
+    async () => requestPlatformApi('/v1/auth/password', {
+      method: 'POST',
+      body: {
+        password,
+        metadata,
+      },
+    }),
+    async () => {
+      const { error } = await supabase.auth.updateUser({
+        password,
+        data: metadata,
+      });
+      if (error) throw error;
+      return { success: true };
+    },
+  );
+}
+
 export async function togglePainelAlunoWishlist({ livroId, alunoId, enabled }) {
   return requestWithFallback(
     async () => requestPlatformApi('/v1/aluno/wishlist/toggle', {
