@@ -13,7 +13,6 @@ import { Calendar } from '@/components/ui/calendar';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { usePrivateTelemetry } from '@/hooks/usePrivateTelemetry';
@@ -37,6 +36,15 @@ import { ptBR } from 'date-fns/locale';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { cn } from '@/lib/utils';
 import { ExportPeriodDialog } from '@/components/export/ExportPeriodDialog';
+import {
+  approveSolicitacaoEmprestimo,
+  createEmprestimo,
+  createHistoricEmprestimo,
+  deleteHistoricEmprestimo,
+  fetchEmprestimosData,
+  registerEmprestimoDevolucao,
+  rejectSolicitacaoEmprestimo,
+} from '@/services/emprestimosService';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -111,45 +119,15 @@ export default function Emprestimos() {
 
   const fetchData = useCallback(async () => {
     try {
-      const { data: escolaId, error: escolaError } = await supabase.rpc('get_user_escola_id', { _user_id: user.id });
-      if (escolaError) throw escolaError;
-
-      const [emprestimosRes, livrosRes, usuariosRes, solicitacoesRes] = await Promise.all([
-        supabase
-          .from('emprestimos')
-          .select('*, livros(titulo, autor, escola_id), usuarios_biblioteca(nome, email, escola_id)')
-          .order('data_emprestimo', { ascending: false }),
-        supabase.from('livros').select('id, titulo, autor, disponivel, escola_id').order('titulo'),
-        supabase.from('usuarios_biblioteca').select('id, nome, email, escola_id').order('nome'),
-        canManageLoans
-          ? supabase
-              .from('solicitacoes_emprestimo')
-              .select('*, livros(id, titulo, autor, disponivel, escola_id), usuarios_biblioteca(nome, email, escola_id)')
-              .order('created_at', { ascending: false })
-          : Promise.resolve({ data: [], error: null }),
-      ]);
-
-      const maybeError = [emprestimosRes.error, livrosRes.error, usuariosRes.error, solicitacoesRes.error].find(Boolean);
-      if (maybeError) throw maybeError;
-
-      const isSameSchool = (candidateEscolaId) => !escolaId || candidateEscolaId === escolaId;
-
-      setEscolaAtualId(escolaId || null);
-      setEmprestimos(
-        (emprestimosRes.data || []).filter(
-          (item) => isSameSchool(item?.usuarios_biblioteca?.escola_id) || isSameSchool(item?.livros?.escola_id),
-        ),
-      );
-      setLivrosCatalogo((livrosRes.data || []).filter((item) => isSameSchool(item?.escola_id)));
-      setLivrosDisponiveis((livrosRes.data || []).filter((item) => isSameSchool(item?.escola_id) && item?.disponivel));
-      setUsuarios((usuariosRes.data || []).filter((item) => isSameSchool(item?.escola_id)));
-      setSolicitacoes(
-        (solicitacoesRes.data || []).filter(
-          (item) => isSameSchool(item?.usuarios_biblioteca?.escola_id) || isSameSchool(item?.livros?.escola_id),
-        ),
-      );
+      const payload = await fetchEmprestimosData({ userId: user.id, canManageLoans });
+      setEscolaAtualId(payload?.escolaId || null);
+      setEmprestimos(Array.isArray(payload?.emprestimos) ? payload.emprestimos : []);
+      setLivrosCatalogo(Array.isArray(payload?.livrosCatalogo) ? payload.livrosCatalogo : []);
+      setLivrosDisponiveis(Array.isArray(payload?.livrosDisponiveis) ? payload.livrosDisponiveis : []);
+      setUsuarios(Array.isArray(payload?.usuarios) ? payload.usuarios : []);
+      setSolicitacoes(Array.isArray(payload?.solicitacoes) ? payload.solicitacoes : []);
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível carregar os dados.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N??o foi poss??vel carregar os dados.' });
     } finally {
       setLoading(false);
     }
@@ -170,28 +148,20 @@ export default function Emprestimos() {
 
   const handleCreateEmprestimo = async () => {
     if (!selectedLivro || !selectedUsuario) {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Selecione um livro e um usuário.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Selecione um livro e um usu??rio.' });
       return;
     }
-
     setSaving(true);
     try {
       const insertData = {
         livro_id: selectedLivro,
         usuario_id: selectedUsuario,
       };
-
       if (dataDevolucao) {
         insertData.data_devolucao_prevista = dataDevolucao.toISOString();
       }
-
-      const { error: empError } = await supabase.from('emprestimos').insert(insertData);
-      if (empError) throw empError;
-
-      const { error: livroError } = await supabase.from('livros').update({ disponivel: false }).eq('id', selectedLivro);
-      if (livroError) throw livroError;
-
-      toast({ title: 'Sucesso', description: 'Empréstimo registrado com sucesso.' });
+      await createEmprestimo(insertData);
+      toast({ title: 'Sucesso', description: 'Empr??stimo registrado com sucesso.' });
       trackEvent('emprestimo_criado', { livroId: selectedLivro, usuarioId: selectedUsuario });
       setIsDialogOpen(false);
       setSelectedLivro('');
@@ -201,7 +171,7 @@ export default function Emprestimos() {
       setSearchLivro('');
       fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível registrar o empréstimo.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N??o foi poss??vel registrar o empr??stimo.' });
     } finally {
       setSaving(false);
     }
@@ -210,20 +180,12 @@ export default function Emprestimos() {
   const handleDevolucao = async (emprestimo) => {
     setActionLoading({ devolucaoId: emprestimo.id, solicitacaoId: null, tipo: 'devolucao' });
     try {
-      const { error: empError } = await supabase
-        .from('emprestimos')
-        .update({ data_devolucao_real: new Date().toISOString(), status: 'devolvido' })
-        .eq('id', emprestimo.id);
-      if (empError) throw empError;
-
-      const { error: livroError } = await supabase.from('livros').update({ disponivel: true }).eq('id', emprestimo.livro_id);
-      if (livroError) throw livroError;
-
-      toast({ title: 'Sucesso', description: 'Devolução registrada com sucesso.' });
+      await registerEmprestimoDevolucao(emprestimo.id);
+      toast({ title: 'Sucesso', description: 'Devolu????o registrada com sucesso.' });
       trackEvent('emprestimo_devolvido', { id: emprestimo.id });
       fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível registrar a devolução.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N??o foi poss??vel registrar a devolu????o.' });
     } finally {
       setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
     }
@@ -231,44 +193,20 @@ export default function Emprestimos() {
 
   const handleAprovarSolicitacao = async (solicitacao) => {
     if (!canManageLoans || solicitacao.status !== 'pendente') return;
-
     setSaving(true);
     setActionLoading({ devolucaoId: null, solicitacaoId: solicitacao.id, tipo: 'aprovar' });
-    let emprestimoCriadoId = null;
     try {
       if (!solicitacao?.livros?.disponivel) {
-        throw new Error('Este livro não está disponível para empréstimo no momento.');
+        throw new Error('Este livro n??o est?? dispon??vel para empr??stimo no momento.');
       }
-
-      const { data: novoEmprestimo, error: empError } = await supabase
-        .from('emprestimos')
-        .insert({ livro_id: solicitacao.livro_id, usuario_id: solicitacao.usuario_id })
-        .select('id')
-        .single();
-
-      if (empError) throw empError;
-      emprestimoCriadoId = novoEmprestimo?.id || null;
-
-      const { error: livroError } = await supabase.from('livros').update({ disponivel: false }).eq('id', solicitacao.livro_id);
-      if (livroError) throw livroError;
-
-      const resposta = (respostaPorSolicitacao[solicitacao.id] || '').trim() || 'Solicitação aprovada pela biblioteca.';
-
-      const { error: solicitacaoError } = await supabase
-        .from('solicitacoes_emprestimo')
-        .update({ status: 'aprovada', resposta })
-        .eq('id', solicitacao.id);
-      if (solicitacaoError) throw solicitacaoError;
-
-      toast({ title: 'Solicitação aprovada', description: 'Empréstimo criado e aluno notificado.' });
+      const resposta = (respostaPorSolicitacao[solicitacao.id] || '').trim() || 'Solicita????o aprovada pela biblioteca.';
+      await approveSolicitacaoEmprestimo(solicitacao.id, resposta);
+      toast({ title: 'Solicita????o aprovada', description: 'Empr??stimo criado e aluno notificado.' });
       trackEvent('solicitacao_aprovada', { id: solicitacao.id });
       setRespostaPorSolicitacao((prev) => ({ ...prev, [solicitacao.id]: '' }));
       fetchData();
     } catch (error) {
-      if (emprestimoCriadoId) {
-        await supabase.from('emprestimos').delete().eq('id', emprestimoCriadoId);
-      }
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível aprovar a solicitação.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N??o foi poss??vel aprovar a solicita????o.' });
     } finally {
       setSaving(false);
       setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
@@ -277,24 +215,17 @@ export default function Emprestimos() {
 
   const handleRecusarSolicitacao = async (solicitacao) => {
     if (!canManageLoans || solicitacao.status !== 'pendente') return;
-
     setSaving(true);
     setActionLoading({ devolucaoId: null, solicitacaoId: solicitacao.id, tipo: 'recusar' });
     try {
-      const resposta = (respostaPorSolicitacao[solicitacao.id] || '').trim() || 'Solicitação recusada pela biblioteca.';
-
-      const { error } = await supabase
-        .from('solicitacoes_emprestimo')
-        .update({ status: 'recusada', resposta })
-        .eq('id', solicitacao.id);
-      if (error) throw error;
-
-      toast({ title: 'Solicitação recusada' });
+      const resposta = (respostaPorSolicitacao[solicitacao.id] || '').trim() || 'Solicita????o recusada pela biblioteca.';
+      await rejectSolicitacaoEmprestimo(solicitacao.id, resposta);
+      toast({ title: 'Solicita????o recusada' });
       trackEvent('solicitacao_recusada', { id: solicitacao.id });
       setRespostaPorSolicitacao((prev) => ({ ...prev, [solicitacao.id]: '' }));
       fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível recusar a solicitação.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N??o foi poss??vel recusar a solicita????o.' });
     } finally {
       setSaving(false);
       setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
@@ -316,23 +247,21 @@ export default function Emprestimos() {
     if (!oldLoanLivro || !oldLoanUsuario || !oldLoanDataEmprestimo) {
       toast({
         variant: 'destructive',
-        title: 'Campos obrigatórios',
-        description: 'Selecione o aluno, o livro e a data do empréstimo.',
+        title: 'Campos obrigat??rios',
+        description: 'Selecione o aluno, o livro e a data do empr??stimo.',
       });
       return;
     }
-
     if (oldLoanStatus === 'devolvido' && !oldLoanDataDevolucao) {
       toast({
         variant: 'destructive',
-        title: 'Data obrigatória',
-        description: 'Informe a data de devolução para registrar um empréstimo já devolvido.',
+        title: 'Data obrigat??ria',
+        description: 'Informe a data de devolu????o para registrar um empr??stimo j?? devolvido.',
       });
       return;
     }
     const defaultOldLoanDataPrevista = addOneMonthToDateInput(oldLoanDataEmprestimo);
     const effectiveOldLoanDataPrevista = oldLoanDataPrevista || defaultOldLoanDataPrevista;
-
     if (effectiveOldLoanDataPrevista && effectiveOldLoanDataPrevista < oldLoanDataEmprestimo) {
       toast({
         variant: 'destructive',
@@ -341,35 +270,31 @@ export default function Emprestimos() {
       });
       return;
     }
-
     if (effectiveOldLoanDataPrevista && effectiveOldLoanDataPrevista > defaultOldLoanDataPrevista) {
       toast({
         variant: 'destructive',
         title: 'Prazo inv??lido',
-        description: 'A devolução prevista pode ser de no máximo 1 mês após a data do empréstimo.',
+        description: 'A devolu????o prevista pode ser de no m??ximo 1 m??s ap??s a data do empr??stimo.',
       });
       return;
     }
-
     if (oldLoanDataDevolucao && oldLoanDataDevolucao < oldLoanDataEmprestimo) {
       toast({
         variant: 'destructive',
-        title: 'Período inválido',
-        description: 'A devolução real não pode ser anterior à data do empréstimo.',
+        title: 'Per??odo inv??lido',
+        description: 'A devolu????o real n??o pode ser anterior ?? data do empr??stimo.',
       });
       return;
     }
-
     const livroSelecionado = livrosCatalogo.find((livro) => livro.id === oldLoanLivro);
     if (oldLoanStatus === 'ativo' && livroSelecionado && !livroSelecionado.disponivel) {
       toast({
         variant: 'destructive',
-        title: 'Livro indisponível',
-        description: 'Esse livro já está marcado como indisponível no acervo atual.',
+        title: 'Livro indispon??vel',
+        description: 'Esse livro j?? est?? marcado como indispon??vel no acervo atual.',
       });
       return;
     }
-
     setSaving(true);
     try {
       const insertData = {
@@ -380,21 +305,10 @@ export default function Emprestimos() {
         data_devolucao_prevista: toIsoDateTime(effectiveOldLoanDataPrevista),
         data_devolucao_real: oldLoanStatus === 'devolvido' ? toIsoDateTime(oldLoanDataDevolucao) : null,
       };
-
-      const { error: insertError } = await supabase.from('emprestimos').insert(insertData);
-      if (insertError) throw insertError;
-
-      if (oldLoanStatus === 'ativo') {
-        const { error: livroError } = await supabase
-          .from('livros')
-          .update({ disponivel: false })
-          .eq('id', oldLoanLivro);
-        if (livroError) throw livroError;
-      }
-
+      await createHistoricEmprestimo(insertData);
       toast({
-        title: 'Empréstimo antigo registrado',
-        description: 'O histórico foi salvo com sucesso.',
+        title: 'Empr??stimo antigo registrado',
+        description: 'O hist??rico foi salvo com sucesso.',
       });
       setIsOldLoanDialogOpen(false);
       resetOldLoanForm();
@@ -403,7 +317,7 @@ export default function Emprestimos() {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: error?.message || 'Não foi possível registrar este empréstimo antigo.',
+        description: error?.message || 'N??o foi poss??vel registrar este empr??stimo antigo.',
       });
     } finally {
       setSaving(false);
@@ -412,17 +326,14 @@ export default function Emprestimos() {
 
   const handleExcluirHistorico = async (emprestimo) => {
     if (!canManageLoans || !emprestimo?.id || emprestimo?.status !== 'devolvido') return;
-
     setActionLoading({ devolucaoId: null, solicitacaoId: emprestimo.id, tipo: 'excluir_historico' });
     try {
-      const { error } = await supabase.from('emprestimos').delete().eq('id', emprestimo.id);
-      if (error) throw error;
-
-      toast({ title: 'Histórico excluído', description: 'O registro foi removido com sucesso.' });
+      await deleteHistoricEmprestimo(emprestimo.id);
+      toast({ title: 'Hist??rico exclu??do', description: 'O registro foi removido com sucesso.' });
       setDeleteConfirmEmprestimo(null);
       fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível excluir este empréstimo.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N??o foi poss??vel excluir este empr??stimo.' });
     } finally {
       setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
     }
@@ -1354,3 +1265,4 @@ export default function Emprestimos() {
     </MainLayout>
   );
 }
+

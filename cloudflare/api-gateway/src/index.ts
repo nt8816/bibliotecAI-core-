@@ -238,6 +238,31 @@ async function getLatestUserProfile(userId: string, env: Env) {
   return Array.isArray(payload) ? (payload[0] || null) : null;
 }
 
+async function getLoanModuleContext(request: Request, env: Env) {
+  const caller = await fetchSupabaseUser(request, env);
+  if (!caller?.id) {
+    throw new Error('Nao autenticado.');
+  }
+
+  const profile = await getLatestUserProfile(caller.id, env);
+  if (!profile?.id) {
+    throw new Error('Perfil do usuario nao encontrado.');
+  }
+
+  if (!profile?.escola_id) {
+    throw new Error('Nao foi possivel identificar a escola do usuario.');
+  }
+
+  const tipo = String(profile.tipo || '').trim().toLowerCase();
+  const canManageLoans = tipo === 'bibliotecaria' || tipo === 'gestor';
+
+  return {
+    caller,
+    profile,
+    canManageLoans,
+  };
+}
+
 function normalizeIdentifier(value: unknown) {
   return String(value || '').trim().toLowerCase();
 }
@@ -551,6 +576,21 @@ function buildLastMonths(size = 6) {
   return keys;
 }
 
+function normalizeTurmaKey(value: unknown) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isExpiredComunicado(item: Record<string, unknown> | null | undefined) {
+  if (!item?.expires_at) return false;
+  const expiresAt = new Date(String(item.expires_at));
+  return !Number.isNaN(expiresAt.getTime()) && expiresAt <= new Date();
+}
+
 async function callSupabaseFunction(
   request: Request,
   env: Env,
@@ -604,6 +644,7 @@ const routes: Record<string, RouteHandler> = {
         tenants: 'write_ready',
         reclamacoes: 'read_ready',
         super_admins: 'read_ready',
+        emprestimos: 'write_ready',
         media: 'planned',
       },
     }),
@@ -1131,6 +1172,243 @@ const routes: Record<string, RouteHandler> = {
       escolasCadastradas,
       superAdminStats,
     });
+  },
+  'GET /v1/notifications/system': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const roleRows = await supabaseAdminRequest(
+      env,
+      `/rest/v1/user_roles?${new URLSearchParams({
+        select: 'role',
+        user_id: `eq.${user.id}`,
+      }).toString()}`,
+    );
+    const roles = Array.isArray(roleRows) ? [...new Set(roleRows.map((item) => String(item?.role || '')).filter(Boolean))] : [];
+    const isSuperAdmin = roles.includes('super_admin');
+    const isAluno = roles.includes('aluno');
+    const isGestor = roles.includes('gestor');
+    const isBibliotecaria = roles.includes('bibliotecaria');
+
+    if (!(isSuperAdmin || isAluno || isGestor || isBibliotecaria)) {
+      return jsonResponse({
+        success: true,
+        counts: { atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0, reclamacoesAtrasadas: 0, seguranca: 0 },
+        notifications: [],
+        profileId: null,
+      });
+    }
+
+    if (isSuperAdmin) {
+      const [complaintsRes, securityRes] = await Promise.all([
+        supabaseUserRpc(request, env, 'get_reclamacoes_super_admin_feed'),
+        supabaseAdminRequest(
+          env,
+          `/rest/v1/system_logs?${new URLSearchParams({
+            select: 'id,event,message,created_at',
+            event: 'in.(super_admin_login_failed,super_admin_account_locked)',
+            order: 'created_at.desc',
+            limit: '20',
+          }).toString()}`,
+        ),
+      ]);
+
+      const reclamacoesEmAnalise = (Array.isArray(complaintsRes) ? complaintsRes : [])
+        .filter((item) => item?.status === 'em_analise')
+        .map((item) => ({
+          id: `reclamacao-${item.id}`,
+          tipo: 'reclamacao',
+          titulo: item?.assunto || 'Reclamacao',
+          descricao: `${item?.escola_nome || 'Escola nao identificada'} • ${item?.sender_nome || 'Usuario'}${String(item?.sender_role || '').trim().toLowerCase() === 'aluno' && item?.sender_turma ? ` • Turma ${item.sender_turma}` : ''}`,
+          created_at: item?.created_at || null,
+          path: '/reclamacoes',
+          status: item?.status || 'em_analise',
+          lida_em: item?.lida_em || null,
+          alerta_prazo: Boolean(item?.alerta_prazo),
+        }))
+        .filter((item) => !item.lida_em);
+
+      const reclamacoesAtrasadas = reclamacoesEmAnalise
+        .filter((item) => item.alerta_prazo)
+        .map((item) => ({
+          id: `reclamacao-alerta-${item.id.replace(/^reclamacao-/, '')}`,
+          tipo: 'reclamacao_alerta',
+          titulo: 'Reclamacao parada ha mais de 4 dias',
+          descricao: item.descricao,
+          created_at: item.created_at,
+          path: '/reclamacoes',
+        }));
+
+      const alertasSeguranca = (Array.isArray(securityRes) ? securityRes : []).map((item) => ({
+        id: `seguranca-${item.id}`,
+        tipo: 'seguranca',
+        titulo: item?.event === 'super_admin_account_locked' ? 'Conta bloqueada' : 'Tentativa de invasao',
+        descricao: item?.message || 'Alerta de seguranca para Super Admin.',
+        created_at: item?.created_at || null,
+        path: '/admin/logs',
+      }));
+
+      return jsonResponse({
+        success: true,
+        counts: {
+          atrasados: 0,
+          solicitacoesPendentes: 0,
+          comunicados: 0,
+          reclamacoes: reclamacoesEmAnalise.length + reclamacoesAtrasadas.length,
+          reclamacoesAtrasadas: reclamacoesAtrasadas.length,
+          seguranca: alertasSeguranca.length,
+        },
+        notifications: [...alertasSeguranca, ...reclamacoesAtrasadas, ...reclamacoesEmAnalise]
+          .sort((a, b) => new Date(String(b.created_at || 0)).getTime() - new Date(String(a.created_at || 0)).getTime()),
+        profileId: null,
+      });
+    }
+
+    const profile = await getLatestUserProfile(user.id, env);
+    if (!profile?.id) {
+      return jsonResponse({
+        success: true,
+        counts: { atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0, reclamacoesAtrasadas: 0, seguranca: 0 },
+        notifications: [],
+        profileId: null,
+      });
+    }
+
+    if (isAluno) {
+      const [atrasados, solicitacoes, comunicadosRes, notificacoesLidas] = await Promise.all([
+        supabaseAdminRequest(
+          env,
+          `/rest/v1/emprestimos?${new URLSearchParams({
+            select: 'id',
+            usuario_id: `eq.${profile.id}`,
+            status: 'eq.ativo',
+            data_devolucao_prevista: `lt.${new Date().toISOString()}`,
+          }).toString()}`,
+        ),
+        supabaseAdminRequest(
+          env,
+          `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
+            select: 'id',
+            usuario_id: `eq.${profile.id}`,
+            status: 'in.(pendente,em_andamento)',
+          }).toString()}`,
+        ),
+        profile.escola_id
+          ? supabaseAdminRequest(
+            env,
+            `/rest/v1/comunidade_posts?${new URLSearchParams({
+              select: 'id,titulo,conteudo,turma_publico,created_at,expires_at',
+              escola_id: `eq.${profile.escola_id}`,
+              tipo: 'eq.comunicado',
+              order: 'created_at.desc',
+              limit: '20',
+            }).toString()}`,
+          )
+          : [],
+        supabaseAdminRequest(
+          env,
+          `/rest/v1/notificacoes_lidas?${new URLSearchParams({
+            select: 'notification_id',
+            usuario_id: `eq.${profile.id}`,
+          }).toString()}`,
+        ),
+      ]);
+
+      const lidas = new Set((Array.isArray(notificacoesLidas) ? notificacoesLidas : []).map((item) => item.notification_id));
+      const turmaAluno = normalizeTurmaKey(profile.turma);
+      const comunicados = (Array.isArray(comunicadosRes) ? comunicadosRes : [])
+        .filter((item) => {
+          if (isExpiredComunicado(item)) return false;
+          const turmaComunicado = normalizeTurmaKey(item?.turma_publico);
+          return !turmaComunicado || turmaComunicado === turmaAluno;
+        })
+        .map((item) => ({
+          id: `comunicado-${item.id}`,
+          tipo: 'comunicado',
+          titulo: item?.titulo || 'Novo comunicado',
+          descricao: item?.conteudo || 'Confira o comunicado da sua turma na comunidade.',
+          created_at: item?.created_at || null,
+          path: '/aluno/comunidade',
+        }))
+        .filter((item) => !lidas.has(item.id));
+
+      return jsonResponse({
+        success: true,
+        counts: {
+          atrasados: Array.isArray(atrasados) ? atrasados.length : 0,
+          solicitacoesPendentes: Array.isArray(solicitacoes) ? solicitacoes.length : 0,
+          comunicados: comunicados.length,
+          reclamacoes: 0,
+          reclamacoesAtrasadas: 0,
+          seguranca: 0,
+        },
+        notifications: comunicados,
+        profileId: profile.id,
+      });
+    }
+
+    if (!profile.escola_id) {
+      return jsonResponse({
+        success: true,
+        counts: { atrasados: 0, solicitacoesPendentes: 0, comunicados: 0, reclamacoes: 0, reclamacoesAtrasadas: 0, seguranca: 0 },
+        notifications: [],
+        profileId: profile.id,
+      });
+    }
+
+    const [atrasados, solicitacoes] = await Promise.all([
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/emprestimos?select=id,usuarios_biblioteca!inner(escola_id)&status=eq.ativo&data_devolucao_prevista=lt.${encodeURIComponent(new Date().toISOString())}&usuarios_biblioteca.escola_id=eq.${profile.escola_id}`,
+      ),
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/solicitacoes_emprestimo?select=id,usuarios_biblioteca!inner(escola_id)&status=in.(pendente,em_andamento)&usuarios_biblioteca.escola_id=eq.${profile.escola_id}`,
+      ),
+    ]);
+
+    return jsonResponse({
+      success: true,
+      counts: {
+        atrasados: Array.isArray(atrasados) ? atrasados.length : 0,
+        solicitacoesPendentes: Array.isArray(solicitacoes) ? solicitacoes.length : 0,
+        comunicados: 0,
+        reclamacoes: 0,
+        reclamacoesAtrasadas: 0,
+        seguranca: 0,
+      },
+      notifications: [],
+      profileId: profile.id,
+    });
+  },
+  'POST /v1/notifications/read': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const profile = await getLatestUserProfile(user.id, env);
+    if (!profile?.id) {
+      return jsonResponse({ success: false, error: 'Perfil nao encontrado.' }, 404);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const notificationId = String(body?.notification_id || '').trim();
+    if (!notificationId) {
+      return jsonResponse({ success: false, error: 'Notificacao nao informada.' }, 400);
+    }
+
+    await supabaseAdminRequest(env, '/rest/v1/notificacoes_lidas', {
+      method: 'POST',
+      body: [{ usuario_id: profile.id, notification_id: notificationId }],
+      headers: {
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+    });
+
+    return jsonResponse({ success: true });
   },
 
   'GET /v1/reclamacoes': async (request, env) => {
@@ -1998,6 +2276,359 @@ const routes: Record<string, RouteHandler> = {
     });
   },
 
+  'GET /v1/emprestimos': async (request, env) => {
+    const { profile, canManageLoans } = await getLoanModuleContext(request, env);
+
+    const [emprestimos, livros, usuarios, solicitacoes] = await Promise.all([
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/emprestimos?${new URLSearchParams({
+          select: 'id,livro_id,usuario_id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livros(titulo,autor,escola_id),usuarios_biblioteca(nome,email,escola_id)',
+          order: 'data_emprestimo.desc',
+        }).toString()}`,
+      ),
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/livros?${new URLSearchParams({
+          select: 'id,titulo,autor,disponivel,escola_id',
+          escola_id: `eq.${profile.escola_id}`,
+          order: 'titulo.asc',
+        }).toString()}`,
+      ),
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+          select: 'id,nome,email,escola_id',
+          escola_id: `eq.${profile.escola_id}`,
+          order: 'nome.asc',
+        }).toString()}`,
+      ),
+      canManageLoans
+        ? supabaseAdminRequest(
+            env,
+            `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
+              select: 'id,livro_id,usuario_id,mensagem,resposta,status,created_at,livros(id,titulo,autor,disponivel,escola_id),usuarios_biblioteca(nome,email,escola_id)',
+              order: 'created_at.desc',
+            }).toString()}`,
+          )
+        : Promise.resolve([]),
+    ]);
+
+    const sameSchool = (candidateEscolaId: unknown) => String(candidateEscolaId || '') === String(profile.escola_id || '');
+
+    const emprestimosFiltrados = Array.isArray(emprestimos)
+      ? emprestimos.filter((item) => sameSchool(item?.livros?.escola_id) || sameSchool(item?.usuarios_biblioteca?.escola_id))
+      : [];
+    const solicitacoesFiltradas = Array.isArray(solicitacoes)
+      ? solicitacoes.filter((item) => sameSchool(item?.livros?.escola_id) || sameSchool(item?.usuarios_biblioteca?.escola_id))
+      : [];
+    const livrosCatalogo = Array.isArray(livros) ? livros : [];
+    const usuariosFiltrados = Array.isArray(usuarios) ? usuarios : [];
+
+    return jsonResponse({
+      success: true,
+      escolaId: profile.escola_id,
+      canManageLoans,
+      emprestimos: emprestimosFiltrados,
+      solicitacoes: solicitacoesFiltradas,
+      livrosCatalogo,
+      livrosDisponiveis: livrosCatalogo.filter((item) => item?.disponivel),
+      usuarios: usuariosFiltrados,
+    });
+  },
+
+  'POST /v1/emprestimos': async (request, env) => {
+    const { profile, canManageLoans } = await getLoanModuleContext(request, env);
+    if (!canManageLoans) {
+      return jsonResponse({ success: false, error: 'Sem permissao para gerenciar emprestimos.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({} as Record<string, unknown>));
+    const livroId = String(body?.livro_id || '').trim();
+    const usuarioId = String(body?.usuario_id || '').trim();
+    const dataDevolucaoPrevista = body?.data_devolucao_prevista ? String(body.data_devolucao_prevista) : null;
+
+    if (!livroId || !usuarioId) {
+      return jsonResponse({ success: false, error: 'Livro e usuario sao obrigatorios.' }, 400);
+    }
+
+    const [livro] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/livros?${new URLSearchParams({
+        select: 'id,disponivel,escola_id',
+        id: `eq.${livroId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+    const [usuario] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+        select: 'id,escola_id',
+        id: `eq.${usuarioId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    if (!livro?.id || String(livro.escola_id || '') !== String(profile.escola_id || '')) {
+      return jsonResponse({ success: false, error: 'Livro fora da escola do usuario.' }, 403);
+    }
+    if (!usuario?.id || String(usuario.escola_id || '') !== String(profile.escola_id || '')) {
+      return jsonResponse({ success: false, error: 'Usuario fora da escola do usuario.' }, 403);
+    }
+    if (livro.disponivel === false) {
+      return jsonResponse({ success: false, error: 'Este livro nao esta disponivel para emprestimo no momento.' }, 400);
+    }
+
+    await supabaseAdminRequest(env, '/rest/v1/emprestimos', {
+      method: 'POST',
+      body: [{
+        livro_id: livroId,
+        usuario_id: usuarioId,
+        ...(dataDevolucaoPrevista ? { data_devolucao_prevista: dataDevolucaoPrevista } : {}),
+      }],
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    await supabaseAdminRequest(env, `/rest/v1/livros?${new URLSearchParams({ id: `eq.${livroId}` }).toString()}`, {
+      method: 'PATCH',
+      body: { disponivel: false },
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/emprestimos/:id/devolucao': async (request, env) => {
+    const { profile, canManageLoans } = await getLoanModuleContext(request, env);
+    if (!canManageLoans) {
+      return jsonResponse({ success: false, error: 'Sem permissao para registrar devolucoes.' }, 403);
+    }
+
+    const emprestimoId = getPathParam(request, /^\/v1\/emprestimos\/([^/]+)\/devolucao$/i);
+    const [emprestimo] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/emprestimos?${new URLSearchParams({
+        select: 'id,livro_id,usuarios_biblioteca(escola_id),livros(escola_id)',
+        id: `eq.${emprestimoId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    const sameSchool =
+      String(emprestimo?.usuarios_biblioteca?.escola_id || '') === String(profile.escola_id || '') ||
+      String(emprestimo?.livros?.escola_id || '') === String(profile.escola_id || '');
+    if (!emprestimo?.id || !sameSchool) {
+      return jsonResponse({ success: false, error: 'Emprestimo nao encontrado para esta escola.' }, 404);
+    }
+
+    await supabaseAdminRequest(env, `/rest/v1/emprestimos?${new URLSearchParams({ id: `eq.${emprestimoId}` }).toString()}`, {
+      method: 'PATCH',
+      body: { data_devolucao_real: new Date().toISOString(), status: 'devolvido' },
+      headers: { Prefer: 'return=minimal' },
+    });
+    await supabaseAdminRequest(env, `/rest/v1/livros?${new URLSearchParams({ id: `eq.${String(emprestimo.livro_id || '')}` }).toString()}`, {
+      method: 'PATCH',
+      body: { disponivel: true },
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/solicitacoes-emprestimo/:id/aprovar': async (request, env) => {
+    const { profile, canManageLoans } = await getLoanModuleContext(request, env);
+    if (!canManageLoans) {
+      return jsonResponse({ success: false, error: 'Sem permissao para aprovar solicitacoes.' }, 403);
+    }
+
+    const solicitacaoId = getPathParam(request, /^\/v1\/solicitacoes-emprestimo\/([^/]+)\/aprovar$/i);
+    const body = await request.json().catch(() => ({} as Record<string, unknown>));
+    const resposta = String(body?.resposta || 'Solicitacao aprovada pela biblioteca.').trim();
+
+    const [solicitacao] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
+        select: 'id,livro_id,usuario_id,status,livros(disponivel,escola_id),usuarios_biblioteca(escola_id)',
+        id: `eq.${solicitacaoId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    const sameSchool =
+      String(solicitacao?.usuarios_biblioteca?.escola_id || '') === String(profile.escola_id || '') ||
+      String(solicitacao?.livros?.escola_id || '') === String(profile.escola_id || '');
+    if (!solicitacao?.id || !sameSchool) {
+      return jsonResponse({ success: false, error: 'Solicitacao nao encontrada para esta escola.' }, 404);
+    }
+    if (String(solicitacao.status || '') !== 'pendente') {
+      return jsonResponse({ success: false, error: 'A solicitacao ja foi processada.' }, 400);
+    }
+    if (solicitacao?.livros?.disponivel === false) {
+      return jsonResponse({ success: false, error: 'Este livro nao esta disponivel para emprestimo no momento.' }, 400);
+    }
+
+    const emprestimoCriado = await supabaseAdminRequest(env, '/rest/v1/emprestimos', {
+      method: 'POST',
+      body: [{ livro_id: solicitacao.livro_id, usuario_id: solicitacao.usuario_id }],
+      headers: { Prefer: 'return=representation' },
+    }) as Array<Record<string, unknown>>;
+
+    const emprestimoCriadoId = String(emprestimoCriado?.[0]?.id || '').trim();
+    try {
+      await supabaseAdminRequest(env, `/rest/v1/livros?${new URLSearchParams({ id: `eq.${String(solicitacao.livro_id || '')}` }).toString()}`, {
+        method: 'PATCH',
+        body: { disponivel: false },
+        headers: { Prefer: 'return=minimal' },
+      });
+      await supabaseAdminRequest(env, `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({ id: `eq.${solicitacaoId}` }).toString()}`, {
+        method: 'PATCH',
+        body: { status: 'aprovada', resposta },
+        headers: { Prefer: 'return=minimal' },
+      });
+    } catch (error) {
+      if (emprestimoCriadoId) {
+        await supabaseAdminRequest(env, `/rest/v1/emprestimos?${new URLSearchParams({ id: `eq.${emprestimoCriadoId}` }).toString()}`, {
+          method: 'DELETE',
+          headers: { Prefer: 'return=minimal' },
+        });
+      }
+      throw error;
+    }
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/solicitacoes-emprestimo/:id/recusar': async (request, env) => {
+    const { profile, canManageLoans } = await getLoanModuleContext(request, env);
+    if (!canManageLoans) {
+      return jsonResponse({ success: false, error: 'Sem permissao para recusar solicitacoes.' }, 403);
+    }
+
+    const solicitacaoId = getPathParam(request, /^\/v1\/solicitacoes-emprestimo\/([^/]+)\/recusar$/i);
+    const body = await request.json().catch(() => ({} as Record<string, unknown>));
+    const resposta = String(body?.resposta || 'Solicitacao recusada pela biblioteca.').trim();
+
+    const [solicitacao] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
+        select: 'id,status,livros(escola_id),usuarios_biblioteca(escola_id)',
+        id: `eq.${solicitacaoId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    const sameSchool =
+      String(solicitacao?.usuarios_biblioteca?.escola_id || '') === String(profile.escola_id || '') ||
+      String(solicitacao?.livros?.escola_id || '') === String(profile.escola_id || '');
+    if (!solicitacao?.id || !sameSchool) {
+      return jsonResponse({ success: false, error: 'Solicitacao nao encontrada para esta escola.' }, 404);
+    }
+
+    await supabaseAdminRequest(env, `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({ id: `eq.${solicitacaoId}` }).toString()}`, {
+      method: 'PATCH',
+      body: { status: 'recusada', resposta },
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/emprestimos/historico': async (request, env) => {
+    const { profile, canManageLoans } = await getLoanModuleContext(request, env);
+    if (!canManageLoans) {
+      return jsonResponse({ success: false, error: 'Sem permissao para registrar historico.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({} as Record<string, unknown>));
+    const livroId = String(body?.livro_id || '').trim();
+    const usuarioId = String(body?.usuario_id || '').trim();
+    const status = String(body?.status || 'devolvido').trim();
+
+    const [livro] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/livros?${new URLSearchParams({
+        select: 'id,disponivel,escola_id',
+        id: `eq.${livroId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+    const [usuario] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+        select: 'id,escola_id',
+        id: `eq.${usuarioId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    if (!livro?.id || String(livro.escola_id || '') !== String(profile.escola_id || '')) {
+      return jsonResponse({ success: false, error: 'Livro fora da escola do usuario.' }, 403);
+    }
+    if (!usuario?.id || String(usuario.escola_id || '') !== String(profile.escola_id || '')) {
+      return jsonResponse({ success: false, error: 'Usuario fora da escola do usuario.' }, 403);
+    }
+    if (status === 'ativo' && livro.disponivel === false) {
+      return jsonResponse({ success: false, error: 'Esse livro ja esta marcado como indisponivel no acervo atual.' }, 400);
+    }
+
+    await supabaseAdminRequest(env, '/rest/v1/emprestimos', {
+      method: 'POST',
+      body: [{
+        livro_id: livroId,
+        usuario_id: usuarioId,
+        status,
+        data_emprestimo: body?.data_emprestimo || null,
+        data_devolucao_prevista: body?.data_devolucao_prevista || null,
+        data_devolucao_real: body?.data_devolucao_real || null,
+      }],
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    if (status === 'ativo') {
+      await supabaseAdminRequest(env, `/rest/v1/livros?${new URLSearchParams({ id: `eq.${livroId}` }).toString()}`, {
+        method: 'PATCH',
+        body: { disponivel: false },
+        headers: { Prefer: 'return=minimal' },
+      });
+    }
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/emprestimos/:id/delete': async (request, env) => {
+    const { profile, canManageLoans } = await getLoanModuleContext(request, env);
+    if (!canManageLoans) {
+      return jsonResponse({ success: false, error: 'Sem permissao para excluir historico.' }, 403);
+    }
+
+    const emprestimoId = getPathParam(request, /^\/v1\/emprestimos\/([^/]+)\/delete$/i);
+    const [emprestimo] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/emprestimos?${new URLSearchParams({
+        select: 'id,status,usuarios_biblioteca(escola_id),livros(escola_id)',
+        id: `eq.${emprestimoId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    const sameSchool =
+      String(emprestimo?.usuarios_biblioteca?.escola_id || '') === String(profile.escola_id || '') ||
+      String(emprestimo?.livros?.escola_id || '') === String(profile.escola_id || '');
+    if (!emprestimo?.id || !sameSchool) {
+      return jsonResponse({ success: false, error: 'Emprestimo nao encontrado para esta escola.' }, 404);
+    }
+    if (String(emprestimo.status || '') !== 'devolvido') {
+      return jsonResponse({ success: false, error: 'Apenas registros devolvidos podem ser excluidos.' }, 400);
+    }
+
+    await supabaseAdminRequest(env, `/rest/v1/emprestimos?${new URLSearchParams({ id: `eq.${emprestimoId}` }).toString()}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    return jsonResponse({ success: true });
+  },
+
   'POST /v1/media/sign-upload': async () => notImplemented('Assinatura de upload pela API propria'),
   'POST /v1/media/sign-download': async () => notImplemented('Assinatura de download pela API propria'),
 };
@@ -2010,7 +2641,11 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/admin\/tenants\/[^/]+\/delete$/, '/v1/admin/tenants/:id/delete')
     .replace(/\/v1\/admin\/tenants\/[^/]+\/status$/, '/v1/admin/tenants/:id/status')
     .replace(/\/v1\/admin\/schools\/[^/]+\/delete$/, '/v1/admin/schools/:id/delete')
-    .replace(/\/v1\/admin\/super-admins\/[^/]+\/unlock$/, '/v1/admin/super-admins/:id/unlock');
+    .replace(/\/v1\/admin\/super-admins\/[^/]+\/unlock$/, '/v1/admin/super-admins/:id/unlock')
+    .replace(/\/v1\/emprestimos\/[^/]+\/devolucao$/, '/v1/emprestimos/:id/devolucao')
+    .replace(/\/v1\/emprestimos\/[^/]+\/delete$/, '/v1/emprestimos/:id/delete')
+    .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/aprovar$/, '/v1/solicitacoes-emprestimo/:id/aprovar')
+    .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/recusar$/, '/v1/solicitacoes-emprestimo/:id/recusar');
 }
 
 function resolveRoute(request: Request) {
