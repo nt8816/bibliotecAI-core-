@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Plus,
   Pencil,
@@ -34,10 +34,17 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { usePrivateTelemetry } from '@/hooks/usePrivateTelemetry';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { ExportPeriodDialog } from '@/components/export/ExportPeriodDialog';
+import {
+  excluirUsuarios,
+  fetchUsuariosModuleData,
+  importUsuariosBatch,
+  provisionarAlunoComMatricula,
+  resetAlunoPassword,
+  saveProfessorTurmas as saveProfessorTurmasService,
+  saveUsuario,
+} from '@/services/usuariosService';
 
 const emptyUsuario = {
   nome: '',
@@ -153,127 +160,39 @@ export default function Usuarios() {
       ];
 
   const fetchUsuarios = useCallback(async () => {
+    if (!user?.id) {
+      setUsuarios([]);
+      setTurmasDisponiveis([]);
+      setProfessorTurmasMap({});
+      setCurrentEscolaId(null);
+      setLoading(false);
+      return;
+    }
     try {
-      let query = supabase.from('usuarios_biblioteca').select('*').order('nome');
-      if (currentEscolaId) {
-        query = query.eq('escola_id', currentEscolaId);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      setUsuarios(data || []);
+      const data = await fetchUsuariosModuleData({
+        userId: user.id,
+        tenantEscolaId: tenant?.escola_id || null,
+      });
+      setCurrentEscolaId(data?.currentEscolaId || null);
+      setUsuarios(data?.usuarios || []);
+      setTurmasDisponiveis(data?.turmasDisponiveis || []);
+      setProfessorTurmasMap(data?.professorTurmasMap || {});
     } catch (error) {
       console.error('Error fetching users:', error);
       toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel carregar os usuarios.' });
     } finally {
       setLoading(false);
     }
-  }, [currentEscolaId, toast]);
-
-  const fetchCurrentEscola = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      const { data, error } = await supabase
-        .from('usuarios_biblioteca')
-        .select('escola_id')
-        .eq('user_id', user.id)
-        .order('updated_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
-
-      const { data: rpcEscolaId } = await supabase.rpc('get_user_escola_id', { _user_id: user.id });
-      let resolvedEscolaId = data?.escola_id || tenant?.escola_id || rpcEscolaId || null;
-
-      if (!resolvedEscolaId) {
-        const { data: escolaByGestor, error: escolaByGestorError } = await supabase
-          .from('escolas')
-          .select('id')
-          .eq('gestor_id', user.id)
-          .maybeSingle();
-
-        if (escolaByGestorError) throw escolaByGestorError;
-        resolvedEscolaId = escolaByGestor?.id || null;
-      }
-
-      setCurrentEscolaId(resolvedEscolaId);
-    } catch (error) {
-      console.error('Error fetching current escola:', error);
-    }
-  }, [tenant?.escola_id, user?.id]);
-
-  const fetchTurmas = useCallback(async () => {
-    try {
-      let query = supabase.from('salas_cursos').select('nome, tipo, escola_id').order('nome');
-      if (currentEscolaId) {
-        query = query.eq('escola_id', currentEscolaId);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const turmas = [...new Set((data || [])
-        .map((item) => String(item?.nome || '').trim())
-        .filter(Boolean))];
-
-      setTurmasDisponiveis(turmas);
-    } catch (error) {
-      console.error('Error fetching turmas:', error);
-    }
-  }, [currentEscolaId]);
-
-  const fetchProfessorTurmas = useCallback(async () => {
-    try {
-      let query = supabase
-        .from('professor_turmas')
-        .select('professor_id, turma')
-        .order('turma');
-
-      if (currentEscolaId) {
-        query = query.eq('escola_id', currentEscolaId);
-      }
-
-      const { data, error } = await query;
-      if (error) {
-        if (isMissingTableError(error)) {
-          setProfessorTurmasMap({});
-          return;
-        }
-        throw error;
-      }
-
-      const nextMap = {};
-      (data || []).forEach((item) => {
-        const professorId = String(item?.professor_id || '');
-        const turma = String(item?.turma || '').trim();
-        if (!professorId || !turma) return;
-        if (!nextMap[professorId]) nextMap[professorId] = [];
-        if (!nextMap[professorId].includes(turma)) nextMap[professorId].push(turma);
-      });
-      setProfessorTurmasMap(nextMap);
-    } catch (error) {
-      console.error('Error fetching professor_turmas:', error);
-    }
-  }, [currentEscolaId]);
-
+  }, [tenant?.escola_id, toast, user?.id]);
   useEffect(() => {
     fetchUsuarios();
-    fetchProfessorTurmas();
-    fetchCurrentEscola();
-  }, [fetchCurrentEscola, fetchProfessorTurmas, fetchUsuarios]);
-
-  useEffect(() => {
-    fetchTurmas();
-  }, [fetchTurmas]);
-
+  }, [fetchUsuarios]);
   const handleRealtimeChange = useCallback(() => {
     fetchUsuarios();
   }, [fetchUsuarios]);
-
   useRealtimeSubscription({ table: 'usuarios_biblioteca', onChange: handleRealtimeChange });
-  useRealtimeSubscription({ table: 'salas_cursos', onChange: fetchTurmas });
-  useRealtimeSubscription({ table: 'professor_turmas', onChange: fetchProfessorTurmas });
+  useRealtimeSubscription({ table: 'salas_cursos', onChange: fetchUsuarios });
+  useRealtimeSubscription({ table: 'professor_turmas', onChange: fetchUsuarios });
 
   const handleToggleProfessorTurma = (turma, checked) => {
     if (!turma) return;
@@ -294,40 +213,12 @@ export default function Usuarios() {
         .filter(Boolean),
     )];
 
-    let professorIds = [professorId];
-    if (professorUserId) {
-      const { data: siblingProfiles, error: siblingProfilesError } = await supabase
-        .from('usuarios_biblioteca')
-        .select('id')
-        .eq('user_id', professorUserId)
-        .eq('tipo', 'professor')
-        .eq('escola_id', currentEscolaId);
-
-      if (siblingProfilesError) throw siblingProfilesError;
-
-      professorIds = [...new Set(
-        [professorId, ...(siblingProfiles || []).map((item) => item?.id).filter(Boolean)],
-      )];
-    }
-
-    const { error: deleteError } = await supabase
-      .from('professor_turmas')
-      .delete()
-      .eq('escola_id', currentEscolaId)
-      .in('professor_id', professorIds);
-    if (deleteError) throw deleteError;
-
-    if (turmasNormalizadas.length === 0) return;
-
-    const payload = professorIds.flatMap((currentProfessorId) =>
-      turmasNormalizadas.map((turma) => ({
-        professor_id: currentProfessorId,
-        escola_id: currentEscolaId,
-        turma,
-      })),
-    );
-    const { error: insertError } = await supabase.from('professor_turmas').insert(payload);
-    if (insertError) throw insertError;
+    await saveProfessorTurmasService({
+      professorId,
+      professorUserId,
+      currentEscolaId,
+      turmas: turmasNormalizadas,
+    });
   };
 
   const handleOpenDialog = (usuario) => {
@@ -365,60 +256,9 @@ export default function Usuarios() {
     setIsDialogOpen(true);
   };
 
-  const provisionarAlunoComMatricula = async (payload) => {
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) throw sessionError;
+  const provisionarAlunoViaServico = async (payload) => provisionarAlunoComMatricula(payload);
 
-    const accessToken = sessionData?.session?.access_token;
-    if (!accessToken) {
-      throw new Error('Sessao invalida. Faca login novamente.');
-    }
-
-    const data = await invokeEdgeFunction('provisionar-aluno-matricula', {
-      body: payload,
-      headers: {
-        'x-user-access-token': accessToken,
-      },
-      requireAuth: false,
-      signOutOnAuthFailure: false,
-      fallbackErrorMessage: 'Nao foi possivel provisionar login por matricula.',
-    });
-
-    if (!data?.success) {
-      throw new Error(data?.error || 'Nao foi possivel provisionar login por matricula.');
-    }
-
-    return data;
-  };
-
-  const excluirUsuariosDoBanco = async (ids) => {
-    const normalizedIds = [...new Set((ids || []).map((item) => String(item || '').trim()).filter(Boolean))];
-    if (normalizedIds.length === 0) return { deleted_count: 0 };
-
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) throw sessionError;
-
-    const accessToken = sessionData?.session?.access_token;
-    if (!accessToken) {
-      throw new Error('Sessao invalida. Faca login novamente.');
-    }
-
-    const data = await invokeEdgeFunction('excluir-usuarios-biblioteca', {
-      body: { ids: normalizedIds },
-      headers: {
-        'x-user-access-token': accessToken,
-      },
-      requireAuth: false,
-      signOutOnAuthFailure: false,
-      fallbackErrorMessage: 'Nao foi possivel excluir os usuarios.',
-    });
-
-    if (!data?.success) {
-      throw new Error(data?.error || 'Nao foi possivel excluir os usuarios.');
-    }
-
-    return data;
-  };
+  const excluirUsuariosDoBanco = async (ids) => excluirUsuarios(ids);
 
   const handleSave = async () => {
     if (!formData.nome.trim()) {
@@ -466,8 +306,7 @@ export default function Usuarios() {
     setSaving(true);
     try {
       if (editingUsuario) {
-        const { error } = await supabase.from('usuarios_biblioteca').update(formData).eq('id', editingUsuario.id);
-        if (error) throw error;
+        await saveUsuario(formData, editingUsuario.id);
 
         if (isGestor && formData.tipo === 'professor') {
           await salvarTurmasProfessor(editingUsuario, professorTurmasSelecionadas);
@@ -479,7 +318,7 @@ export default function Usuarios() {
         trackEvent('usuario_atualizado', { id: editingUsuario.id });
       } else {
         if (formData.tipo === 'aluno') {
-          await provisionarAlunoComMatricula({
+          await provisionarAlunoViaServico({
             nome: formData.nome,
             matricula: normalizeMatricula(formData.matricula),
             turma: formData.turma,
@@ -495,12 +334,7 @@ export default function Usuarios() {
             ...formData,
             escola_id: currentEscolaId,
           };
-          const { data, error } = await supabase
-            .from('usuarios_biblioteca')
-            .insert(payload)
-            .select('id')
-            .single();
-          if (error) throw error;
+          const data = await saveUsuario(payload);
 
           if (isGestor && formData.tipo === 'professor' && data?.id) {
             await salvarTurmasProfessor(data, professorTurmasSelecionadas);
@@ -736,66 +570,16 @@ export default function Usuarios() {
 
   const importarUsuarios = async () => {
     if (!user || importUsuarios.length === 0) return;
-
     setImporting(true);
-
     try {
-      let escolaId = currentEscolaId;
-      if (tipoUsuarioImport !== 'aluno' && !escolaId) {
-        const { data: escola, error: escolaError } = await supabase.from('escolas').select('id').eq('gestor_id', user.id).maybeSingle();
-        if (escolaError) throw escolaError;
-        escolaId = escola?.id || null;
-      }
-
-      const updated = [...importUsuarios];
-
-      for (let i = 0; i < updated.length; i += 1) {
-        const u = updated[i];
-
-        try {
-          let error = null;
-
-          if (tipoUsuarioImport === 'aluno') {
-            if (!isValidMatricula(u.matricula)) {
-              updated[i] = { ...u, status: 'erro', mensagem: 'Matricula invalida (minimo 6 caracteres).' };
-              setImportUsuarios([...updated]);
-              continue;
-            }
-
-            const result = await provisionarAlunoComMatricula({
-              nome: u.nome,
-              matricula: u.matricula,
-              turma: u.turma,
-            });
-
-            if (!result?.success) {
-              error = { message: result?.error || 'Nao foi possivel provisionar o aluno.' };
-            }
-          } else {
-            const email = u.email || `${u.matricula}@temp.bibliotecai.com`;
-            const response = await supabase.from('usuarios_biblioteca').insert({
-              nome: u.nome,
-              matricula: u.matricula,
-              email,
-              turma: u.turma,
-              tipo: tipoUsuarioImport,
-              escola_id: escolaId,
-            });
-            error = response.error;
-          }
-
-          if (error) {
-            updated[i] = { ...u, status: 'erro', mensagem: error.code === '23505' ? 'Ja existe' : error.message };
-          } else {
-            updated[i] = { ...u, status: 'sucesso' };
-          }
-        } catch (err) {
-          updated[i] = { ...u, status: 'erro', mensagem: err.message };
-        }
-
-        setImportUsuarios([...updated]);
-      }
-
+      const response = await importUsuariosBatch({
+        usuarios: importUsuarios,
+        tipoUsuarioImport,
+        currentEscolaId,
+        userId: user.id,
+      });
+      const updated = response?.usuarios || [];
+      setImportUsuarios(updated);
       const successCount = updated.filter((u) => u.status === 'sucesso').length;
       toast({ title: 'Importacao concluida', description: `${successCount} de ${updated.length} importados.` });
       fetchUsuarios();
@@ -813,12 +597,12 @@ export default function Usuarios() {
         ? [
             ['Nome', 'Matricula/RA', 'Turma'],
             ['Joao Silva', '2024001', '3o Ano A'],
-            ['Maria Santos', '2024002', '3Âº Ano B'],
+            ['Maria Santos', '2024002', '3º Ano B'],
           ]
         : [
             ['Nome', 'Email', 'Matricula', 'Turma'],
-            ['Ana Souza', 'ana@escola.com', 'PROF001', '3Âº Ano A'],
-            ['Carlos Lima', 'carlos@escola.com', 'PROF002', '3Âº Ano B'],
+            ['Ana Souza', 'ana@escola.com', 'PROF001', '3º Ano A'],
+            ['Carlos Lima', 'carlos@escola.com', 'PROF002', '3º Ano B'],
           ]);
 
       const wb = XLSX.utils.book_new();
@@ -955,7 +739,6 @@ export default function Usuarios() {
 
   const handleResetAlunoPassword = async () => {
     if (!selectedAlunoForPassword?.id) return;
-
     const senha = novaSenhaAluno.trim();
     if (senha.length < 6) {
       toast({
@@ -965,36 +748,9 @@ export default function Usuarios() {
       });
       return;
     }
-
     setResettingPassword(true);
     try {
-      const { data: sessionData, error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError) {
-        throw new Error(refreshError.message || 'Nao foi possivel renovar a sessao.');
-      }
-      const accessToken = sessionData?.session?.access_token || '';
-      if (!accessToken) {
-        throw new Error('Sessao invalida. Faca login novamente.');
-      }
-
-      const data = await invokeEdgeFunction('redefinir-senha-aluno', {
-        body: {
-          aluno_id: selectedAlunoForPassword.id,
-          nova_senha: senha,
-        },
-        requireAuth: false,
-        signOutOnAuthFailure: false,
-        transport: 'http',
-        headers: {
-          'x-supabase-auth': accessToken,
-        },
-        fallbackErrorMessage: 'Nao foi possivel redefinir a senha.',
-      });
-
-      if (!data?.success) {
-        throw new Error(data?.error || 'Nao foi possivel redefinir a senha.');
-      }
-
+      const data = await resetAlunoPassword(selectedAlunoForPassword.id, senha);
       setSenhaTemporariaGerada(data.senha_temporaria || senha);
       toast({
         title: 'Senha redefinida',
@@ -1004,7 +760,7 @@ export default function Usuarios() {
     } catch (error) {
       toast({
         variant: 'destructive',
-        title: 'Erro ao redefinir senha',
+        title: 'Erro',
         description: error.message || 'Nao foi possivel redefinir a senha.',
       });
     } finally {
@@ -1125,7 +881,7 @@ export default function Usuarios() {
                             <Alert className="border-primary bg-primary/10">
                               <CheckCircle className="w-4 h-4 text-primary" />
                               <AlertDescription className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
-                                <span className="font-medium">{importUsuarios.length} usuÃ¡rios encontrados.</span>
+                                <span className="font-medium">{importUsuarios.length} usuários encontrados.</span>
                                 <Button onClick={importarUsuarios} disabled={importing} size="sm" className="w-full sm:ml-4 sm:w-auto">
                                   {importing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importando...</> : <><Download className="w-4 h-4 mr-2" />Importar Todos</>}
                                 </Button>
@@ -1570,3 +1326,4 @@ export default function Usuarios() {
     </MainLayout>
   );
 }
+

@@ -286,6 +286,45 @@ async function getBooksModuleContext(request: Request, env: Env) {
   };
 }
 
+async function getUsersModuleContext(request: Request, env: Env) {
+  const caller = await fetchSupabaseUser(request, env);
+  if (!caller?.id) {
+    throw new Error('Nao autenticado.');
+  }
+
+  const profile = await getLatestUserProfile(caller.id, env);
+  if (!profile?.id) {
+    throw new Error('Perfil do usuario nao encontrado.');
+  }
+
+  const tipo = String(profile.tipo || '').trim().toLowerCase();
+  const canManageUsers = tipo === 'bibliotecaria' || tipo === 'gestor';
+  const canCreateGestor = tipo === 'gestor';
+
+  let currentEscolaId = String(profile.escola_id || '').trim();
+  if (!currentEscolaId) {
+    const [escola] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/escolas?${new URLSearchParams({
+        select: 'id',
+        gestor_id: `eq.${caller.id}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+    currentEscolaId = String(escola?.id || '').trim();
+  }
+
+  return {
+    caller,
+    profile,
+    currentEscolaId: currentEscolaId || null,
+    canManageUsers,
+    canCreateGestor,
+    isGestor: tipo === 'gestor',
+    isBibliotecaria: tipo === 'bibliotecaria',
+  };
+}
+
 function normalizeIdentifier(value: unknown) {
   return String(value || '').trim().toLowerCase();
 }
@@ -669,6 +708,7 @@ const routes: Record<string, RouteHandler> = {
         super_admins: 'read_ready',
         emprestimos: 'write_ready',
         livros: 'write_ready',
+        usuarios: 'write_ready',
         media: 'planned',
       },
     }),
@@ -2909,6 +2949,230 @@ const routes: Record<string, RouteHandler> = {
     return jsonResponse({ success: true, livros: resultados });
   },
 
+  'GET /v1/usuarios': async (request, env) => {
+    const { currentEscolaId } = await getUsersModuleContext(request, env);
+
+    let usuariosPath = '/rest/v1/usuarios_biblioteca?select=*&order=nome.asc';
+    let turmasPath = '/rest/v1/salas_cursos?select=nome,tipo,escola_id&order=nome.asc';
+    let professorTurmasPath = '/rest/v1/professor_turmas?select=professor_id,turma&order=turma.asc';
+    if (currentEscolaId) {
+      usuariosPath = `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ select: '*', escola_id: `eq.${currentEscolaId}`, order: 'nome.asc' }).toString()}`;
+      turmasPath = `/rest/v1/salas_cursos?${new URLSearchParams({ select: 'nome,tipo,escola_id', escola_id: `eq.${currentEscolaId}`, order: 'nome.asc' }).toString()}`;
+      professorTurmasPath = `/rest/v1/professor_turmas?${new URLSearchParams({ select: 'professor_id,turma', escola_id: `eq.${currentEscolaId}`, order: 'turma.asc' }).toString()}`;
+    }
+
+    const [usuarios, turmas, professorTurmas] = await Promise.all([
+      supabaseAdminRequest(env, usuariosPath),
+      supabaseAdminRequest(env, turmasPath),
+      supabaseAdminRequest(env, professorTurmasPath).catch((error) => {
+        const message = String(error instanceof Error ? error.message : error || '').toLowerCase();
+        if (message.includes('does not exist') || message.includes('could not find the table')) return [];
+        throw error;
+      }),
+    ]);
+
+    const professorTurmasMap: Record<string, string[]> = {};
+    (Array.isArray(professorTurmas) ? professorTurmas : []).forEach((item) => {
+      const professorId = String(item?.professor_id || '').trim();
+      const turma = String(item?.turma || '').trim();
+      if (!professorId || !turma) return;
+      if (!professorTurmasMap[professorId]) professorTurmasMap[professorId] = [];
+      if (!professorTurmasMap[professorId].includes(turma)) professorTurmasMap[professorId].push(turma);
+    });
+
+    return jsonResponse({
+      success: true,
+      currentEscolaId,
+      usuarios: Array.isArray(usuarios) ? usuarios : [],
+      turmasDisponiveis: [...new Set((Array.isArray(turmas) ? turmas : []).map((item) => String(item?.nome || '').trim()).filter(Boolean))],
+      professorTurmasMap,
+    });
+  },
+
+  'POST /v1/usuarios/professor-turmas': async (request, env) => {
+    const { isGestor, currentEscolaId } = await getUsersModuleContext(request, env);
+    if (!isGestor || !currentEscolaId) {
+      return jsonResponse({ success: false, error: 'Sem permissao para gerenciar turmas de professor.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const professorId = String(body?.professorId || '').trim();
+    const professorUserId = String(body?.professorUserId || '').trim();
+    const turmasNormalizadas = [...new Set((Array.isArray(body?.turmas) ? body.turmas : []).map((turma) => String(turma || '').trim()).filter(Boolean))];
+
+    let professorIds = [professorId];
+    if (professorUserId) {
+      const siblingProfiles = await supabaseAdminRequest(
+        env,
+        `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+          select: 'id',
+          user_id: `eq.${professorUserId}`,
+          tipo: 'eq.professor',
+          escola_id: `eq.${currentEscolaId}`,
+        }).toString()}`,
+      ) as Array<Record<string, unknown>>;
+      professorIds = [...new Set([professorId, ...siblingProfiles.map((item) => String(item?.id || '').trim()).filter(Boolean)])];
+    }
+
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/professor_turmas?${new URLSearchParams({
+        escola_id: `eq.${currentEscolaId}`,
+        professor_id: `in.(${professorIds.join(',')})`,
+      }).toString()}`,
+      {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+      },
+    );
+
+    if (turmasNormalizadas.length > 0) {
+      const payload = professorIds.flatMap((currentProfessorId) =>
+        turmasNormalizadas.map((turma) => ({
+          professor_id: currentProfessorId,
+          escola_id: currentEscolaId,
+          turma,
+        })),
+      );
+      await supabaseAdminRequest(env, '/rest/v1/professor_turmas', {
+        method: 'POST',
+        body: payload,
+        headers: { Prefer: 'return=minimal' },
+      });
+    }
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/usuarios/provisionar-aluno': async (request, env) => {
+    const { canManageUsers } = await getUsersModuleContext(request, env);
+    if (!canManageUsers) {
+      return jsonResponse({ success: false, error: 'Sem permissao para cadastrar alunos.' }, 403);
+    }
+    const body = await request.json().catch(() => ({}));
+    const payload = await callSupabaseFunction(request, env, 'provisionar-aluno-matricula', body);
+    return jsonResponse(payload);
+  },
+
+  'POST /v1/usuarios': async (request, env) => {
+    const { canManageUsers, canCreateGestor, currentEscolaId } = await getUsersModuleContext(request, env);
+    if (!canManageUsers || !currentEscolaId) {
+      return jsonResponse({ success: false, error: 'Sem permissao para cadastrar usuarios.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const tipo = String(body?.tipo || '').trim().toLowerCase();
+    if (tipo === 'gestor' && !canCreateGestor) {
+      return jsonResponse({ success: false, error: 'A bibliotecaria nao pode cadastrar novos gestores.' }, 403);
+    }
+
+    const created = await supabaseAdminRequest(env, '/rest/v1/usuarios_biblioteca?select=id', {
+      method: 'POST',
+      body: { ...body, escola_id: currentEscolaId },
+      headers: { Prefer: 'return=representation' },
+    }) as Array<Record<string, unknown>>;
+
+    return jsonResponse({ success: true, id: created?.[0]?.id || null });
+  },
+
+  'PATCH /v1/usuarios/:id': async (request, env) => {
+    const { canManageUsers, currentEscolaId } = await getUsersModuleContext(request, env);
+    if (!canManageUsers || !currentEscolaId) {
+      return jsonResponse({ success: false, error: 'Sem permissao para atualizar usuarios.' }, 403);
+    }
+
+    const usuarioId = getPathParam(request, /^\/v1\/usuarios\/([^/]+)$/i);
+    const [usuario] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ select: 'id,escola_id', id: `eq.${usuarioId}`, limit: '1' }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+    if (!usuario?.id || String(usuario?.escola_id || '') !== String(currentEscolaId)) {
+      return jsonResponse({ success: false, error: 'Usuario nao encontrado para esta escola.' }, 404);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ id: `eq.${usuarioId}` }).toString()}`,
+      {
+        method: 'PATCH',
+        body,
+        headers: { Prefer: 'return=minimal' },
+      },
+    );
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/usuarios/delete-batch': async (request, env) => {
+    const { canManageUsers } = await getUsersModuleContext(request, env);
+    if (!canManageUsers) {
+      return jsonResponse({ success: false, error: 'Sem permissao para excluir usuarios.' }, 403);
+    }
+    const body = await request.json().catch(() => ({}));
+    const payload = await callSupabaseFunction(request, env, 'excluir-usuarios-biblioteca', { ids: body?.ids || [] });
+    return jsonResponse(payload);
+  },
+
+  'POST /v1/usuarios/import': async (request, env) => {
+    const { canManageUsers, currentEscolaId } = await getUsersModuleContext(request, env);
+    if (!canManageUsers) {
+      return jsonResponse({ success: false, error: 'Sem permissao para importar usuarios.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const usuarios = Array.isArray(body?.usuarios) ? body.usuarios : [];
+    const tipoUsuarioImport = String(body?.tipoUsuarioImport || 'aluno').trim().toLowerCase();
+    const results = [];
+
+    for (const usuario of usuarios) {
+      try {
+        if (tipoUsuarioImport === 'aluno') {
+          const payload = await callSupabaseFunction(request, env, 'provisionar-aluno-matricula', {
+            nome: usuario?.nome,
+            matricula: usuario?.matricula,
+            turma: usuario?.turma,
+          });
+          if (!payload?.success) {
+            results.push({ ...usuario, status: 'erro', mensagem: payload?.error || 'Nao foi possivel provisionar o aluno.' });
+          } else {
+            results.push({ ...usuario, status: 'sucesso' });
+          }
+          continue;
+        }
+
+        await supabaseAdminRequest(env, '/rest/v1/usuarios_biblioteca', {
+          method: 'POST',
+          body: {
+            nome: usuario?.nome,
+            matricula: usuario?.matricula,
+            email: usuario?.email || `${usuario?.matricula}@temp.bibliotecai.com`,
+            turma: usuario?.turma,
+            tipo: tipoUsuarioImport,
+            escola_id: currentEscolaId,
+          },
+          headers: { Prefer: 'return=minimal' },
+        });
+        results.push({ ...usuario, status: 'sucesso' });
+      } catch (error) {
+        const message = String(error instanceof Error ? error.message : error || '');
+        results.push({ ...usuario, status: 'erro', mensagem: /23505|duplicate/i.test(message) ? 'Ja existe' : message });
+      }
+    }
+
+    return jsonResponse({ success: true, usuarios: results });
+  },
+
+  'POST /v1/usuarios/reset-aluno-password': async (request, env) => {
+    const { isGestor } = await getUsersModuleContext(request, env);
+    if (!isGestor) {
+      return jsonResponse({ success: false, error: 'Apenas gestores podem redefinir senha de alunos.' }, 403);
+    }
+    const body = await request.json().catch(() => ({}));
+    const payload = await callSupabaseFunction(request, env, 'redefinir-senha-aluno', body);
+    return jsonResponse(payload);
+  },
+
   'POST /v1/media/sign-upload': async () => notImplemented('Assinatura de upload pela API propria'),
   'POST /v1/media/sign-download': async () => notImplemented('Assinatura de download pela API propria'),
 };
@@ -2927,7 +3191,8 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/aprovar$/, '/v1/solicitacoes-emprestimo/:id/aprovar')
     .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/recusar$/, '/v1/solicitacoes-emprestimo/:id/recusar')
     .replace(/\/v1\/livros\/[^/]+\/delete$/, '/v1/livros/:id/delete')
-    .replace(/\/v1\/livros\/[^/]+$/, '/v1/livros/:id');
+    .replace(/\/v1\/livros\/[^/]+$/, '/v1/livros/:id')
+    .replace(/\/v1\/usuarios\/[^/]+$/, '/v1/usuarios/:id');
 }
 
 function resolveRoute(request: Request) {
