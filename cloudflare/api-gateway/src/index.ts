@@ -2394,6 +2394,34 @@ const routes: Record<string, RouteHandler> = {
         return jsonResponse({ success: false, error: 'Esta conta ja esta cadastrada. Verifique seus dados ou faca login.' }, 409);
       }
 
+      const linkedProfilesPayload = await supabaseAdminRequest(
+        env,
+        `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+          select: 'id,user_id,escola_id,tipo,cpf',
+          user_id: `eq.${existingAuthUser.id}`,
+          limit: '5',
+        }).toString()}`,
+      ).catch(() => []);
+      const linkedProfiles = Array.isArray(linkedProfilesPayload) ? linkedProfilesPayload : [];
+      const linkedRolesPayload = await supabaseAdminRequest(
+        env,
+        `/rest/v1/user_roles?${new URLSearchParams({
+          select: 'role',
+          user_id: `eq.${existingAuthUser.id}`,
+        }).toString()}`,
+      ).catch(() => []);
+      const linkedRoles = Array.isArray(linkedRolesPayload) ? linkedRolesPayload : [];
+      const hasProtectedRole = linkedRoles.some((item) => String(item?.role || '').trim() === 'super_admin');
+
+      if (hasProtectedRole) {
+        await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
+          method: 'PATCH',
+          body: { usado_em: null, usado_por: null },
+          headers: { Prefer: 'return=minimal' },
+        }).catch(() => null);
+        return jsonResponse({ success: false, error: 'Esta conta esta protegida e nao pode ser reaproveitada pelo onboarding.' }, 409);
+      }
+
       if (existingProfile?.user_id && String(existingProfile.user_id) !== String(existingAuthUser.id)) {
         await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
           method: 'PATCH',
@@ -2403,7 +2431,7 @@ const routes: Record<string, RouteHandler> = {
         return jsonResponse({ success: false, error: 'Este cadastro ja esta vinculado a outra conta. Faca login ou solicite suporte.' }, 409);
       }
 
-      if (!existingProfile?.id) {
+      if (!existingProfile?.id && linkedProfiles.length > 0) {
         await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
           method: 'PATCH',
           body: { usado_em: null, usado_por: null },
