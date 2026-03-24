@@ -4891,7 +4891,7 @@ const routes: Record<string, RouteHandler> = {
     const { profile } = await getBooksModuleContext(request, env);
     const escolaId = String(profile.escola_id || '').trim();
 
-    const [escolaLivros, legacyLivros, categorias, emprestimosAtivos] = await Promise.all([
+    const [escolaLivros, legacyLivros, categorias, emprestimosAtivos, solicitacoesReservando] = await Promise.all([
       escolaId
         ? supabaseAdminRequest(
             env,
@@ -4932,6 +4932,17 @@ const routes: Record<string, RouteHandler> = {
             }).toString()}`,
           ).catch(() => [])
         : Promise.resolve([]),
+      escolaId
+        ? supabaseAdminRequest(
+            env,
+            `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
+              select: 'id,livro_id,livros!inner(escola_id)',
+              status: 'eq.indisponivel_em_analise',
+              'livros.escola_id': `eq.${escolaId}`,
+              limit: '5000',
+            }).toString()}`,
+          ).catch(() => [])
+        : Promise.resolve([]),
     ]);
 
     const byId = new Map<string, Record<string, unknown>>();
@@ -4946,6 +4957,43 @@ const routes: Record<string, RouteHandler> = {
           .filter(Boolean),
       ),
     );
+    const reservedBookIds = Array.from(
+      new Set(
+        (Array.isArray(solicitacoesReservando) ? solicitacoesReservando : [])
+          .map((item) => String(item?.livro_id || '').trim())
+          .filter(Boolean),
+      ),
+    );
+    const activeLoanBookIdSet = new Set(activeLoanBookIds);
+    const reservedBookIdSet = new Set(reservedBookIds);
+    const strandedUnavailableBookIds = Array.from(byId.values())
+      .filter((livro) => livro?.disponivel === false)
+      .map((livro) => String(livro?.id || '').trim())
+      .filter((id) => id && !activeLoanBookIdSet.has(id) && !reservedBookIdSet.has(id));
+
+    if (strandedUnavailableBookIds.length > 0) {
+      await Promise.all(
+        strandedUnavailableBookIds.map((livroId) =>
+          supabaseAdminRequest(
+            env,
+            `/rest/v1/livros?${new URLSearchParams({ id: `eq.${livroId}` }).toString()}`,
+            {
+              method: 'PATCH',
+              body: { disponivel: true },
+              headers: { Prefer: 'return=minimal' },
+            },
+          ).catch(() => null),
+        ),
+      );
+
+      strandedUnavailableBookIds.forEach((livroId) => {
+        const livro = byId.get(livroId);
+        if (livro) {
+          livro.disponivel = true;
+          byId.set(livroId, livro);
+        }
+      });
+    }
 
     const preCategorias = Array.isArray(categorias) && categorias.length > 0
       ? Array.from(new Set(categorias.map((item) => String(item?.nome || '').trim()).filter(Boolean)))
