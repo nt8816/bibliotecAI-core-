@@ -895,10 +895,18 @@ export default function AdminTenants() {
                   </TableHeader>
                   <TableBody>
                     {ghostAccounts.map((ghost) => (
-                      <TableRow key={ghost.ghost_key}>
+                      <TableRow
+                        key={ghost.ghost_key}
+                        className={ghost.is_admin ? 'bg-amber-50/70 border-l-4 border-l-amber-500' : undefined}
+                      >
                         <TableCell>
-                          <div>
-                            <p className="font-medium">{ghost.nome || 'Conta sem nome'}</p>
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-medium">{ghost.nome || 'Conta sem nome'}</p>
+                              {ghost.is_admin ? (
+                                <Badge className="bg-amber-600 text-white hover:bg-amber-600">Conta administrativa</Badge>
+                              ) : null}
+                            </div>
                             <p className="text-xs text-muted-foreground">
                               {ghost.source === 'auth'
                                 ? 'Origem: Auth'

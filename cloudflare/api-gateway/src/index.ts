@@ -620,7 +620,7 @@ async function buildGhostAccounts(env: Env) {
   const describeGhostType = (roleList: string[], fallbackType: unknown, adminAccount: Record<string, unknown> | null) => {
     if (adminAccount || roleList.includes('super_admin')) return 'SuperAdmin';
     if (roleList.includes('gestor') || String(fallbackType || '').trim() === 'gestor') return 'Gestor';
-    if (roleList.includes('bibliotecaria') || String(fallbackType || '').trim() === 'bibliotecaria') return 'Bibliotecária';
+    if (roleList.includes('bibliotecaria') || String(fallbackType || '').trim() === 'bibliotecaria') return 'Bibliotecaria';
     if (roleList.includes('professor') || String(fallbackType || '').trim() === 'professor') return 'Professor';
     if (roleList.includes('aluno') || String(fallbackType || '').trim() === 'aluno') return 'Aluno';
     return String(fallbackType || roleList[0] || '').trim() || null;
@@ -628,10 +628,17 @@ async function buildGhostAccounts(env: Env) {
 
   const ghostByCanonicalKey = new Map<string, Record<string, unknown>>();
   const queueGhost = (ghost: Record<string, unknown>) => {
+    const adminAccountId = String(ghost.admin_account_id || '').trim();
+    const normalizedLogin = normalizeIdentifier(String(ghost.login || ''));
+    const normalizedCpf = normalizeDigits(String(ghost.cpf || ''));
     const canonicalKey = [
+      adminAccountId ? `super-admin:${adminAccountId}` : '',
+      ghost.tipo === 'SuperAdmin' && normalizedLogin ? `super-admin-login:${normalizedLogin}` : '',
+      ghost.tipo === 'SuperAdmin' && normalizedCpf ? `super-admin-cpf:${normalizedCpf}` : '',
       String(ghost.user_id || '').trim(),
+      normalizedLogin,
+      normalizedCpf,
       String(ghost.profile_id || '').trim(),
-      normalizeIdentifier(String(ghost.login || '')),
     ].find(Boolean) || String(ghost.ghost_key || '').trim();
 
     const existing = ghostByCanonicalKey.get(canonicalKey);
@@ -669,6 +676,8 @@ async function buildGhostAccounts(env: Env) {
       matricula: existing.matricula || ghost.matricula || null,
       escola_id: existing.escola_id || ghost.escola_id || null,
       escola_nome: existing.escola_nome || ghost.escola_nome || null,
+      admin_account_id: existing.admin_account_id || ghost.admin_account_id || null,
+      is_admin: existing.is_admin === true || ghost.is_admin === true,
       issues: [...new Set(mergedIssues)],
       roles: [...new Set(mergedRoles)],
       can_delete: existing.can_delete !== false && ghost.can_delete !== false,
@@ -719,6 +728,8 @@ async function buildGhostAccounts(env: Env) {
       matricula: String(primaryProfile?.matricula || '').trim() || null,
       escola_id: schoolId || null,
       escola_nome: schoolId ? schoolNameById.get(schoolId) || null : null,
+      admin_account_id: String(adminAccount?.id || '').trim() || null,
+      is_admin: isProtectedAdmin,
       roles: normalizedRoles,
       can_delete: !isProtectedAdmin,
       protected_reason: isProtectedAdmin ? 'Conta administrativa deve ser removida por um fluxo dedicado.' : null,
@@ -770,6 +781,8 @@ async function buildGhostAccounts(env: Env) {
       matricula: String(profile?.matricula || '').trim() || null,
       escola_id: String(profile?.escola_id || '').trim() || null,
       escola_nome: schoolNameById.get(String(profile?.escola_id || '').trim()) || null,
+      admin_account_id: String(adminAccount?.id || '').trim() || null,
+      is_admin: isProtectedAdmin,
       roles: normalizedRoles,
       can_delete: !isProtectedAdmin,
       protected_reason: isProtectedAdmin ? 'Conta administrativa deve ser removida por um fluxo dedicado.' : null,
@@ -781,6 +794,10 @@ async function buildGhostAccounts(env: Env) {
   const ghosts = Array.from(ghostByCanonicalKey.values());
 
   ghosts.sort((left, right) => {
+    const leftAdmin = left?.is_admin === true ? 1 : 0;
+    const rightAdmin = right?.is_admin === true ? 1 : 0;
+    if (rightAdmin !== leftAdmin) return rightAdmin - leftAdmin;
+
     const leftScore = Array.isArray(left?.issues) ? left.issues.length : 0;
     const rightScore = Array.isArray(right?.issues) ? right.issues.length : 0;
     if (rightScore !== leftScore) return rightScore - leftScore;
