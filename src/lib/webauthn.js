@@ -66,23 +66,42 @@ export async function createPlatformPasskey(publicKeyOptions) {
   }
 
   try {
-    const credential = await navigator.credentials.create({
-      publicKey: {
-        ...publicKeyOptions,
-        challenge: base64UrlToArrayBuffer(publicKeyOptions.challenge),
-        user: {
-          ...publicKeyOptions.user,
-          id: base64UrlToArrayBuffer(publicKeyOptions.user.id),
-        },
-        excludeCredentials: Array.isArray(publicKeyOptions.excludeCredentials)
-          ? publicKeyOptions.excludeCredentials.map((item) => ({
-            ...item,
-            id: base64UrlToArrayBuffer(item.id),
-            transports: ['internal'],
-          }))
-          : [],
+    const basePublicKey = {
+      ...publicKeyOptions,
+      challenge: base64UrlToArrayBuffer(publicKeyOptions.challenge),
+      user: {
+        ...publicKeyOptions.user,
+        id: base64UrlToArrayBuffer(publicKeyOptions.user.id),
       },
-    });
+    };
+
+    let credential;
+    try {
+      credential = await navigator.credentials.create({
+        publicKey: {
+          ...basePublicKey,
+          excludeCredentials: Array.isArray(publicKeyOptions.excludeCredentials)
+            ? publicKeyOptions.excludeCredentials.map((item) => ({
+              ...item,
+              id: base64UrlToArrayBuffer(item.id),
+              transports: ['internal'],
+            }))
+            : [],
+        },
+      });
+    } catch (strictError) {
+      credential = await navigator.credentials.create({
+        publicKey: {
+          ...basePublicKey,
+          excludeCredentials: Array.isArray(publicKeyOptions.excludeCredentials)
+            ? publicKeyOptions.excludeCredentials.map((item) => ({
+              ...item,
+              id: base64UrlToArrayBuffer(item.id),
+            }))
+            : [],
+        },
+      });
+    }
 
     return normalizeCredential(credential);
   } catch (error) {
@@ -96,19 +115,38 @@ export async function getPlatformPasskeyAssertion(publicKeyOptions) {
   }
 
   try {
-    const credential = await navigator.credentials.get({
-      publicKey: {
-        ...publicKeyOptions,
-        challenge: base64UrlToArrayBuffer(publicKeyOptions.challenge),
-        allowCredentials: Array.isArray(publicKeyOptions.allowCredentials)
-          ? publicKeyOptions.allowCredentials.map((item) => ({
-            ...item,
-            id: base64UrlToArrayBuffer(item.id),
-            transports: ['internal'],
-          }))
-          : [],
-      },
-    });
+    const basePublicKey = {
+      ...publicKeyOptions,
+      challenge: base64UrlToArrayBuffer(publicKeyOptions.challenge),
+    };
+
+    let credential;
+    try {
+      credential = await navigator.credentials.get({
+        publicKey: {
+          ...basePublicKey,
+          allowCredentials: Array.isArray(publicKeyOptions.allowCredentials)
+            ? publicKeyOptions.allowCredentials.map((item) => ({
+              ...item,
+              id: base64UrlToArrayBuffer(item.id),
+              transports: ['internal'],
+            }))
+            : [],
+        },
+      });
+    } catch (strictError) {
+      credential = await navigator.credentials.get({
+        publicKey: {
+          ...basePublicKey,
+          allowCredentials: Array.isArray(publicKeyOptions.allowCredentials)
+            ? publicKeyOptions.allowCredentials.map((item) => ({
+              ...item,
+              id: base64UrlToArrayBuffer(item.id),
+            }))
+            : [],
+        },
+      });
+    }
 
     return normalizeCredential(credential);
   } catch (error) {
