@@ -2504,6 +2504,7 @@ const routes: Record<string, RouteHandler> = {
 
     const risk = buildRiskContext(request, securityContext);
     const nowIso = new Date().toISOString();
+    const resolvedDeviceType = formatSuperAdminDeviceType(risk.deviceType, Boolean(desktopChallengeToken));
 
     await supabaseAdminRequest(
       env,
