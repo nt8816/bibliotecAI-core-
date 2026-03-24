@@ -2018,7 +2018,6 @@ const routes: Record<string, RouteHandler> = {
         excludeCredentials: existingPasskeys.map((item) => ({
           id: item.credential_id,
           type: 'public-key',
-          transports: Array.isArray(item.transports) ? item.transports : [],
         })),
       },
     });
@@ -2151,7 +2150,6 @@ const routes: Record<string, RouteHandler> = {
         allowCredentials: passkeys.map((item) => ({
           id: item.credential_id,
           type: 'public-key',
-          transports: ['internal'],
         })),
       },
     });

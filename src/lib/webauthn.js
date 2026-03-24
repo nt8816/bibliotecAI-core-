@@ -43,6 +43,80 @@ export function isPlatformPasskeySupported() {
   return Boolean(window.PublicKeyCredential && navigator?.credentials);
 }
 
+function buildCreateOptions(publicKeyOptions, mode = 'strict') {
+  const excludeCredentials = Array.isArray(publicKeyOptions.excludeCredentials)
+    ? publicKeyOptions.excludeCredentials.map((item) => {
+      const normalized = {
+        ...item,
+        id: base64UrlToArrayBuffer(item.id),
+      };
+      if (mode === 'strict') {
+        return { ...normalized, transports: ['internal'] };
+      }
+      if (mode === 'compat') {
+        const { transports, ...rest } = normalized;
+        return rest;
+      }
+      return normalized;
+    })
+    : [];
+
+  const authenticatorSelection = {
+    ...(publicKeyOptions.authenticatorSelection || {}),
+  };
+  if (mode === 'loose') {
+    delete authenticatorSelection.authenticatorAttachment;
+  }
+
+  const next = {
+    ...publicKeyOptions,
+    challenge: base64UrlToArrayBuffer(publicKeyOptions.challenge),
+    user: {
+      ...publicKeyOptions.user,
+      id: base64UrlToArrayBuffer(publicKeyOptions.user.id),
+    },
+    excludeCredentials,
+    authenticatorSelection,
+  };
+
+  if (mode !== 'strict') {
+    delete next.hints;
+  }
+
+  return next;
+}
+
+function buildGetOptions(publicKeyOptions, mode = 'strict') {
+  const allowCredentials = Array.isArray(publicKeyOptions.allowCredentials)
+    ? publicKeyOptions.allowCredentials.map((item) => {
+      const normalized = {
+        ...item,
+        id: base64UrlToArrayBuffer(item.id),
+      };
+      if (mode === 'strict') {
+        return { ...normalized, transports: ['internal'] };
+      }
+      if (mode === 'compat') {
+        const { transports, ...rest } = normalized;
+        return rest;
+      }
+      return normalized;
+    })
+    : [];
+
+  const next = {
+    ...publicKeyOptions,
+    challenge: base64UrlToArrayBuffer(publicKeyOptions.challenge),
+    allowCredentials,
+  };
+
+  if (mode !== 'strict') {
+    delete next.hints;
+  }
+
+  return next;
+}
+
 function normalizePasskeyError(error, actionLabel) {
   const rawMessage = String(error?.message || '').trim();
   const normalized = rawMessage.toLowerCase();
@@ -66,41 +140,21 @@ export async function createPlatformPasskey(publicKeyOptions) {
   }
 
   try {
-    const basePublicKey = {
-      ...publicKeyOptions,
-      challenge: base64UrlToArrayBuffer(publicKeyOptions.challenge),
-      user: {
-        ...publicKeyOptions.user,
-        id: base64UrlToArrayBuffer(publicKeyOptions.user.id),
-      },
-    };
-
     let credential;
     try {
       credential = await navigator.credentials.create({
-        publicKey: {
-          ...basePublicKey,
-          excludeCredentials: Array.isArray(publicKeyOptions.excludeCredentials)
-            ? publicKeyOptions.excludeCredentials.map((item) => ({
-              ...item,
-              id: base64UrlToArrayBuffer(item.id),
-              transports: ['internal'],
-            }))
-            : [],
-        },
+        publicKey: buildCreateOptions(publicKeyOptions, 'strict'),
       });
     } catch (strictError) {
-      credential = await navigator.credentials.create({
-        publicKey: {
-          ...basePublicKey,
-          excludeCredentials: Array.isArray(publicKeyOptions.excludeCredentials)
-            ? publicKeyOptions.excludeCredentials.map((item) => ({
-              ...item,
-              id: base64UrlToArrayBuffer(item.id),
-            }))
-            : [],
-        },
-      });
+      try {
+        credential = await navigator.credentials.create({
+          publicKey: buildCreateOptions(publicKeyOptions, 'compat'),
+        });
+      } catch (compatError) {
+        credential = await navigator.credentials.create({
+          publicKey: buildCreateOptions(publicKeyOptions, 'loose'),
+        });
+      }
     }
 
     return normalizeCredential(credential);
@@ -115,37 +169,21 @@ export async function getPlatformPasskeyAssertion(publicKeyOptions) {
   }
 
   try {
-    const basePublicKey = {
-      ...publicKeyOptions,
-      challenge: base64UrlToArrayBuffer(publicKeyOptions.challenge),
-    };
-
     let credential;
     try {
       credential = await navigator.credentials.get({
-        publicKey: {
-          ...basePublicKey,
-          allowCredentials: Array.isArray(publicKeyOptions.allowCredentials)
-            ? publicKeyOptions.allowCredentials.map((item) => ({
-              ...item,
-              id: base64UrlToArrayBuffer(item.id),
-              transports: ['internal'],
-            }))
-            : [],
-        },
+        publicKey: buildGetOptions(publicKeyOptions, 'strict'),
       });
     } catch (strictError) {
-      credential = await navigator.credentials.get({
-        publicKey: {
-          ...basePublicKey,
-          allowCredentials: Array.isArray(publicKeyOptions.allowCredentials)
-            ? publicKeyOptions.allowCredentials.map((item) => ({
-              ...item,
-              id: base64UrlToArrayBuffer(item.id),
-            }))
-            : [],
-        },
-      });
+      try {
+        credential = await navigator.credentials.get({
+          publicKey: buildGetOptions(publicKeyOptions, 'compat'),
+        });
+      } catch (compatError) {
+        credential = await navigator.credentials.get({
+          publicKey: buildGetOptions(publicKeyOptions, 'loose'),
+        });
+      }
     }
 
     return normalizeCredential(credential);
