@@ -5180,15 +5180,15 @@ const routes: Record<string, RouteHandler> = {
       const profiles = await supabaseAdminRequest(
         env,
         `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
-          select: 'id,nome,tipo',
-          id: `in.(${profileIds.join(',')})`,
+          select: 'id,user_id,nome,tipo',
+          user_id: `in.(${profileIds.join(',')})`,
         }).toString()}`,
       ) as Array<Record<string, unknown>>;
 
       profilesById = (Array.isArray(profiles) ? profiles : []).reduce((acc, item) => {
-        const id = String(item?.id || '').trim();
-        if (!id) return acc;
-        acc[id] = {
+        const userId = String(item?.user_id || '').trim();
+        if (!userId) return acc;
+        acc[userId] = {
           nome: String(item?.nome || '').trim() || 'Usuario',
           role: String(item?.tipo || '').trim() || '',
         };
@@ -5207,8 +5207,8 @@ const routes: Record<string, RouteHandler> = {
   },
 
   'POST /v1/tokens-convite': async (request, env) => {
-    const { canManageUsers, currentEscolaId, profile } = await getUsersModuleContext(request, env);
-    if (!canManageUsers || !currentEscolaId || !profile?.id) {
+    const { canManageUsers, currentEscolaId, profile, caller } = await getUsersModuleContext(request, env);
+    if (!canManageUsers || !currentEscolaId || !caller?.id) {
       return jsonResponse({ success: false, error: 'Sem permissao para gerar token de convite.' }, 403);
     }
 
@@ -5224,7 +5224,7 @@ const routes: Record<string, RouteHandler> = {
       method: 'POST',
       body: [{
         role_destino: roleDestino,
-        criado_por: profile.id,
+        criado_por: caller.id,
         escola_id: currentEscolaId,
         ativo: true,
         expira_em: expiresAt,
@@ -5235,7 +5235,7 @@ const routes: Record<string, RouteHandler> = {
     return jsonResponse({
       success: true,
       token: created?.[0] || null,
-      criadoresInfo: profile?.id ? { [String(profile.id)]: { nome: String(profile.nome || 'Usuario') } } : {},
+      criadoresInfo: caller?.id ? { [String(caller.id)]: { nome: String(profile?.nome || 'Usuario') } } : {},
     });
   },
 
