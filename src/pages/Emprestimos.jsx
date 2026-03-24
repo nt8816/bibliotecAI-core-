@@ -41,6 +41,7 @@ import {
   createHistoricEmprestimo,
   deleteHistoricEmprestimo,
   fetchEmprestimosData,
+  markSolicitacaoLivroIndisponivel,
   registerEmprestimoDevolucao,
   rejectSolicitacaoEmprestimo,
 } from '@/services/emprestimosService';
@@ -234,6 +235,30 @@ export default function Emprestimos() {
       fetchData();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N??o foi poss??vel recusar a solicita????o.' });
+    } finally {
+      setSaving(false);
+      setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
+    }
+  };
+
+  const handleMarcarSolicitacaoIndisponivel = async (solicitacao) => {
+    if (!canManageLoans || solicitacao.status !== 'pendente') return;
+    setSaving(true);
+    setActionLoading({ devolucaoId: null, solicitacaoId: solicitacao.id, tipo: 'indisponivel' });
+    try {
+      await markSolicitacaoLivroIndisponivel(solicitacao.id);
+      toast({
+        title: 'Livro marcado como indisponÃ­vel',
+        description: 'O livro foi reservado no acervo para anÃ¡lise da biblioteca.',
+      });
+      trackEvent('solicitacao_livro_indisponivel', { id: solicitacao.id });
+      fetchData();
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: error?.message || 'NÃ£o foi possÃ­vel marcar o livro como indisponÃ­vel.',
+      });
     } finally {
       setSaving(false);
       setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
@@ -453,8 +478,9 @@ export default function Emprestimos() {
   };
 
   const renderSolicitacaoCard = (solicitacao, { readOnly = false } = {}) => {
-    const isPendente = solicitacao.status === 'pendente';
-    const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
+      const isPendente = solicitacao.status === 'pendente';
+      const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
+      const livroDisponivel = solicitacao?.livros?.disponivel !== false;
 
     return (
       <div
@@ -515,12 +541,25 @@ export default function Emprestimos() {
           </div>
         </div>
 
-        {!readOnly && isPendente ? (
-          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:justify-end gap-2">
-            <Button
-              variant="outline"
-              className="w-full sm:w-auto"
-              disabled={saving || (actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'aprovar')}
+          {!readOnly && isPendente ? (
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:justify-end gap-2">
+              <Button
+                variant="secondary"
+                className="w-full sm:w-auto"
+                disabled={saving || !livroDisponivel || (actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo !== 'indisponivel')}
+                onClick={() => handleMarcarSolicitacaoIndisponivel(solicitacao)}
+              >
+                {actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'indisponivel' ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 mr-2" />
+                )}
+                {livroDisponivel ? 'Marcar indisponÃ­vel' : 'JÃ¡ indisponÃ­vel'}
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto"
+                disabled={saving || (actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'aprovar')}
               onClick={() => handleRecusarSolicitacao(solicitacao)}
             >
               {actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'recusar' ? (

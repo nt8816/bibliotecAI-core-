@@ -4623,6 +4623,49 @@ const routes: Record<string, RouteHandler> = {
     return jsonResponse({ success: true });
   },
 
+  'POST /v1/solicitacoes-emprestimo/:id/indisponivel': async (request, env) => {
+    const { profile, canManageLoans } = await getLoanModuleContext(request, env);
+    if (!canManageLoans) {
+      return jsonResponse({ success: false, error: 'Sem permissao para atualizar a disponibilidade.' }, 403);
+    }
+
+    const solicitacaoId = getPathParam(request, /^\/v1\/solicitacoes-emprestimo\/([^/]+)\/indisponivel$/i);
+    const [solicitacao] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
+        select: 'id,status,livro_id,livros(disponivel,escola_id),usuarios_biblioteca(escola_id)',
+        id: `eq.${solicitacaoId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    const sameSchool =
+      String(solicitacao?.usuarios_biblioteca?.escola_id || '') === String(profile.escola_id || '') ||
+      String(solicitacao?.livros?.escola_id || '') === String(profile.escola_id || '');
+
+    if (!solicitacao?.id || !sameSchool) {
+      return jsonResponse({ success: false, error: 'Solicitacao nao encontrada para esta escola.' }, 404);
+    }
+    if (String(solicitacao.status || '') !== 'pendente') {
+      return jsonResponse({ success: false, error: 'Apenas solicitacoes pendentes podem reservar o livro.' }, 400);
+    }
+    if (solicitacao?.livros?.disponivel === false) {
+      return jsonResponse({ success: false, error: 'Este livro ja esta indisponivel.' }, 400);
+    }
+
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/livros?${new URLSearchParams({ id: `eq.${String(solicitacao.livro_id || '')}` }).toString()}`,
+      {
+        method: 'PATCH',
+        body: { disponivel: false },
+        headers: { Prefer: 'return=minimal' },
+      },
+    );
+
+    return jsonResponse({ success: true });
+  },
+
   'POST /v1/emprestimos/historico': async (request, env) => {
     const { profile, canManageLoans } = await getLoanModuleContext(request, env);
     if (!canManageLoans) {
@@ -5922,6 +5965,7 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/emprestimos\/[^/]+\/delete$/, '/v1/emprestimos/:id/delete')
     .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/aprovar$/, '/v1/solicitacoes-emprestimo/:id/aprovar')
     .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/recusar$/, '/v1/solicitacoes-emprestimo/:id/recusar')
+    .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/indisponivel$/, '/v1/solicitacoes-emprestimo/:id/indisponivel')
     .replace(/\/v1\/aluno\/comunidade\/posts\/[^/]+\/like$/, '/v1/aluno/comunidade/posts/:id/like')
     .replace(/\/v1\/aluno\/comunidade\/posts\/[^/]+\/delete$/, '/v1/aluno/comunidade/posts/:id/delete')
     .replace(/\/v1\/aluno\/comunidade\/posts\/[^/]+$/, '/v1/aluno/comunidade/posts/:id')
