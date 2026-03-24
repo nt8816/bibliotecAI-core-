@@ -482,7 +482,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro na comunidade',
-        description: error?.message || 'Nï¿½o foi possï¿½vel carregar a comunidade.',
+        description: error?.message || 'Não foi possível carregar a comunidade.',
       });
     } finally {
       setLoading(false);
@@ -595,7 +595,7 @@ export default function ComunidadeAluno() {
       const converted = await Promise.all(selected.map(fileToDataUrl));
       setImageDataUrls((prev) => [...prev, ...converted].slice(0, 4));
     } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Nï¿½o foi possï¿½vel processar as imagens.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível processar as imagens.' });
     }
   };
 
@@ -617,7 +617,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Comunidade indisponivel',
-        description: 'Nï¿½o foi possï¿½vel publicar agora. Verifique se as tabelas/migrations estï¿½o atualizadas.',
+        description: 'Não foi possível publicar agora. Verifique se as tabelas/migrations estão atualizadas.',
       });
       return;
     }
@@ -681,7 +681,7 @@ export default function ComunidadeAluno() {
           : conteudoBase;
       const tituloBase = postTitulo.trim();
       const tituloComLivroManual =
-        tituloBase || (!postLivroId && livroManual ? `${postTipo === 'resenha' ? 'Resenha' : 'Publicaï¿½ï¿½o'} sobre ${livroManual}` : null);
+        tituloBase || (!postLivroId && livroManual ? `${postTipo === 'resenha' ? 'Resenha' : 'Publicação'} sobre ${livroManual}` : null);
 
       const { data: novoPost, error } = await insertCommunityPostCompat({
         autor_id: alunoId,
@@ -747,7 +747,7 @@ export default function ComunidadeAluno() {
       const converted = await fileToDataUrl(file);
       setShareImageDataUrl(converted);
     } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Nï¿½o foi possï¿½vel processar a imagem.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível processar a imagem.' });
     }
   };
 
@@ -807,7 +807,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro ao compartilhar',
-        description: error?.message || 'Nï¿½o foi possï¿½vel compartilhar este post.',
+        description: error?.message || 'Não foi possível compartilhar este post.',
       });
     } finally {
       setSharing(false);
@@ -852,13 +852,13 @@ export default function ComunidadeAluno() {
       await loadQuizRankingForPosts([postId]);
       toast({
         title: 'Quiz corrigido!',
-        description: `Vocï¿½ acertou ${acertos} de ${total} perguntas.`,
+        description: `Você acertou ${acertos} de ${total} perguntas.`,
       });
     } catch (error) {
       if (!isMissingTableError(error)) {
         toast({
           variant: 'destructive',
-          title: 'Nï¿½o foi possï¿½vel registrar sua tentativa',
+          title: 'Não foi possível registrar sua tentativa',
           description: error?.message || 'Tente novamente em instantes.',
         });
       }
@@ -879,7 +879,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Comunidade indisponivel',
-        description: 'Nï¿½o foi possï¿½vel curtir agora.',
+        description: 'Não foi possível curtir agora.',
       });
       return;
     }
@@ -913,7 +913,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: error?.message || 'Nï¿½o foi possï¿½vel atualizar a curtida.',
+        description: error?.message || 'Não foi possível atualizar a curtida.',
       });
     } finally {
       setLikingPostIds((prev) => {
@@ -981,7 +981,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro ao salvar',
-        description: error?.message || 'Nï¿½o foi possï¿½vel atualizar o post.',
+        description: error?.message || 'Não foi possível atualizar o post.',
       });
     } finally {
       setSaving(false);
@@ -995,7 +995,7 @@ export default function ComunidadeAluno() {
     try {
       const response = await deleteComunidadePost(post.id, alunoId);
       if (response?.deleted === false) {
-        throw new Error('Vocï¿½ so pode apagar publicacoes feitas por vocï¿½.');
+        throw new Error('Você so pode apagar publicacoes feitas por você.');
       }
       setPosts((prev) => {
         const nextList = ensureArray(prev).filter((item) => item.id !== post.id);
@@ -1009,7 +1009,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro ao apagar',
-        description: error?.message || 'Nï¿½o foi possï¿½vel apagar o post.',
+        description: error?.message || 'Não foi possível apagar o post.',
       });
     } finally {
       setSaving(false);
@@ -1098,7 +1098,7 @@ export default function ComunidadeAluno() {
           <Button size="sm" variant={filtroTipo === 'dica' ? 'default' : 'outline'} onClick={() => setFiltroTipo('dica')}>
             Dicas
           </Button>
-          <Button size="sm" variant={filtroTipo === 'sugestï¿½o' ? 'default' : 'outline'} onClick={() => setFiltroTipo('sugestï¿½o')}>
+          <Button size="sm" variant={filtroTipo === 'sugestão' ? 'default' : 'outline'} onClick={() => setFiltroTipo('sugestão')}>
             Sugestoes
           </Button>
           <Button size="sm" variant={filtroTipo === 'comunicado' ? 'default' : 'outline'} onClick={() => setFiltroTipo('comunicado')}>
@@ -1145,7 +1145,7 @@ export default function ComunidadeAluno() {
                             {post?.tipo === 'comunicado' && !post?.turma_publico && <Badge variant="outline">Todas as turmas</Badge>}
                           </div>
                           <p className="text-xs text-muted-foreground break-words">
-                            {safeNestedName(post?.usuarios_biblioteca, 'Usuario')} ï¿½ {quizData ? 'quiz' : safeText(post?.tipo, 'resenha')} ï¿½ {formatDateBR(post?.created_at)}
+                            {safeNestedName(post?.usuarios_biblioteca, 'Usuario')} • {quizData ? 'quiz' : safeText(post?.tipo, 'resenha')} • {formatDateBR(post?.created_at)}
                           </p>
                         </div>
                         <Badge variant="secondary" className="max-w-[38vw] sm:max-w-[220px] truncate shrink-0">
@@ -1347,7 +1347,7 @@ export default function ComunidadeAluno() {
             <DialogDescription>
               {canPublicarComunicado
                 ? 'Compartilhe resenhas, dicas, sugestoes ou comunicados com a comunidade.'
-                : 'Compartilhe uma resenha, dica ou sugestï¿½o com a comunidade.'}
+                : 'Compartilhe uma resenha, dica ou sugestão com a comunidade.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -1362,7 +1362,7 @@ export default function ComunidadeAluno() {
                 >
                   <option value="resenha">Resenha</option>
                   <option value="dica">Dica</option>
-                  <option value="sugestï¿½o">Sugestï¿½o</option>
+                  <option value="sugestão">Sugestão</option>
                   {canPublicarComunicado && <option value="comunicado">Comunicado</option>}
                 </select>
               </div>
@@ -1383,10 +1383,10 @@ export default function ComunidadeAluno() {
                 <Input
                   value={postLivroNomeManual}
                   onChange={(e) => setPostLivroNomeManual(e.target.value)}
-                  placeholder="Ou digite o nome do livro que vocï¿½ quer citar"
+                  placeholder="Ou digite o nome do livro que você quer citar"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Vocï¿½ pode selecionar um livro da biblioteca ou escrever o nome manualmente.
+                  Você pode selecionar um livro da biblioteca ou escrever o nome manualmente.
                 </p>
               </div>
               {(isProfessor || (canPublicarComunicado && postTipo === 'comunicado')) && (
@@ -1419,7 +1419,7 @@ export default function ComunidadeAluno() {
                     onChange={(e) => setPostExpiraEm(e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Se vocï¿½ definir uma data, o comunicado serï¿½ apagado da comunidade e das notificaï¿½ï¿½es quando ela vencer.
+                    Se você definir uma data, o comunicado será apagado da comunidade e das notificações quando ela vencer.
                     Sem data, ele continuara visivel ate ser apagado manualmente.
                   </p>
                 </div>
@@ -1433,7 +1433,7 @@ export default function ComunidadeAluno() {
                 onChange={(e) => setPostAudiobookId(e.target.value === 'none' ? '' : e.target.value)}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               >
-                <option value="none">Nï¿½o indicar audiobook</option>
+                <option value="none">Não indicar audiobook</option>
                 {audiobooks.map((audio) => (
                   <option key={audio.id} value={audio.id}>
                     {audio.titulo} {audio.autor ? `- ${audio.autor}` : ''}
@@ -1587,7 +1587,7 @@ export default function ComunidadeAluno() {
             </p>
             {deleteConfirmPost?.tipo === 'comunicado' && (
               <p className="text-xs text-muted-foreground">
-                O comunicado tambï¿½m deixarï¿½ de aparecer nas notificaï¿½ï¿½es e na remoï¿½ï¿½o programada.
+                O comunicado também deixará de aparecer nas notificações e na remoção programada.
               </p>
             )}
           </div>
@@ -1677,7 +1677,7 @@ export default function ComunidadeAluno() {
           <DialogHeader>
             <DialogTitle>{safeText(postPreviewItem?.titulo, 'Publicacao')}</DialogTitle>
             <DialogDescription>
-              {safeNestedName(postPreviewItem?.usuarios_biblioteca, 'Usuario')} ï¿½ {formatDateBR(postPreviewItem?.created_at)}
+              {safeNestedName(postPreviewItem?.usuarios_biblioteca, 'Usuario')} • {formatDateBR(postPreviewItem?.created_at)}
             </DialogDescription>
           </DialogHeader>
           <div className="whitespace-pre-wrap text-sm text-muted-foreground">
@@ -1700,6 +1700,7 @@ export default function ComunidadeAluno() {
     </MainLayout>
   );
 }
+
 
 
 
