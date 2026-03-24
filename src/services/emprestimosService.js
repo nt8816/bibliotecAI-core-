@@ -41,6 +41,13 @@ export async function markSolicitacaoLivroIndisponivel(solicitacaoId, resposta) 
   });
 }
 
+export async function sendSolicitacaoEmprestimoChatMessage(solicitacaoId, mensagem) {
+  return requestPlatformApi(`/v1/solicitacoes-emprestimo/${solicitacaoId}/chat`, {
+    method: 'POST',
+    body: { mensagem },
+  });
+}
+
 export async function createHistoricEmprestimo(payload) {
   return requestPlatformApi('/v1/emprestimos/historico', { method: 'POST', body: payload });
 }

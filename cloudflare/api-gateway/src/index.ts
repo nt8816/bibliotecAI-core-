@@ -4397,7 +4397,7 @@ const routes: Record<string, RouteHandler> = {
         ? supabaseAdminRequest(
             env,
             `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
-              select: 'id,livro_id,usuario_id,mensagem,resposta,status,created_at,livros(id,titulo,autor,disponivel,escola_id),usuarios_biblioteca(nome,email,escola_id)',
+              select: 'id,livro_id,usuario_id,mensagem,resposta,status,created_at,livros(id,titulo,autor,disponivel,escola_id),usuarios_biblioteca(nome,email,escola_id),solicitacoes_emprestimo_mensagens(id,mensagem,autor_tipo,created_at)',
               order: 'created_at.desc',
             }).toString()}`,
           )
@@ -4672,6 +4672,73 @@ const routes: Record<string, RouteHandler> = {
     await supabaseAdminRequest(env, `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({ id: `eq.${solicitacaoId}` }).toString()}`, {
       method: 'PATCH',
       body: { status: 'indisponivel_em_analise', resposta },
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/solicitacoes-emprestimo/:id/chat': async (request, env) => {
+    const { profile, canManageLoans } = await getLoanModuleContext(request, env);
+    if (!canManageLoans) {
+      return jsonResponse({ success: false, error: 'Sem permissao para responder solicitacoes.' }, 403);
+    }
+
+    const solicitacaoId = getPathParam(request, /^\/v1\/solicitacoes-emprestimo\/([^/]+)\/chat$/i);
+    const body = await request.json().catch(() => ({} as Record<string, unknown>));
+    const mensagem = String(body?.mensagem || '').trim();
+    if (!mensagem) {
+      return jsonResponse({ success: false, error: 'Mensagem obrigatoria.' }, 400);
+    }
+
+    const [solicitacao] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
+        select: 'id,status,livro_id,livros(disponivel,escola_id),usuarios_biblioteca(escola_id)',
+        id: `eq.${solicitacaoId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    const sameSchool =
+      String(solicitacao?.usuarios_biblioteca?.escola_id || '') === String(profile.escola_id || '') ||
+      String(solicitacao?.livros?.escola_id || '') === String(profile.escola_id || '');
+
+    if (!solicitacao?.id || !sameSchool) {
+      return jsonResponse({ success: false, error: 'Solicitacao nao encontrada para esta escola.' }, 404);
+    }
+    if (['recusada', 'negada', 'cancelada', 'aprovada'].includes(String(solicitacao.status || '').toLowerCase())) {
+      return jsonResponse({ success: false, error: 'Essa solicitacao ja foi finalizada.' }, 400);
+    }
+
+    await supabaseAdminRequest(env, '/rest/v1/solicitacoes_emprestimo_mensagens', {
+      method: 'POST',
+      body: [{
+        solicitacao_id: solicitacaoId,
+        autor_usuario_id: profile.id,
+        autor_tipo: 'bibliotecaria',
+        mensagem,
+      }],
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    const nextStatus = String(solicitacao.status || '') === 'pendente' ? 'indisponivel_em_analise' : String(solicitacao.status || '');
+
+    if (String(solicitacao.status || '') === 'pendente' && solicitacao?.livros?.disponivel !== false) {
+      await supabaseAdminRequest(
+        env,
+        `/rest/v1/livros?${new URLSearchParams({ id: `eq.${String(solicitacao.livro_id || '')}` }).toString()}`,
+        {
+          method: 'PATCH',
+          body: { disponivel: false },
+          headers: { Prefer: 'return=minimal' },
+        },
+      );
+    }
+
+    await supabaseAdminRequest(env, `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({ id: `eq.${solicitacaoId}` }).toString()}`, {
+      method: 'PATCH',
+      body: { status: nextStatus, resposta: mensagem },
       headers: { Prefer: 'return=minimal' },
     });
 
@@ -5466,7 +5533,7 @@ const routes: Record<string, RouteHandler> = {
       supabaseAdminRequest(env, `/rest/v1/avaliacoes_livros?${new URLSearchParams({ select: '*,livros(titulo,autor)', usuario_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
       supabaseAdminRequest(env, `/rest/v1/lista_desejos?${new URLSearchParams({ select: 'livro_id', usuario_id: `eq.${profile.id}` }).toString()}`),
       supabaseAdminRequest(env, `/rest/v1/sugestoes_livros?${new URLSearchParams({ select: '*,livros(titulo,autor)', aluno_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
-      supabaseAdminRequest(env, `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({ select: '*,livros(titulo,autor)', usuario_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
+        supabaseAdminRequest(env, `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({ select: '*,livros(titulo,autor),solicitacoes_emprestimo_mensagens(id,mensagem,autor_tipo,created_at)', usuario_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
       supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: '*,livros(titulo,autor),professor:usuarios_biblioteca!atividades_leitura_professor_id_fkey(nome)', aluno_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
       supabaseAdminRequest(env, `/rest/v1/atividades_entregas?${new URLSearchParams({ select: '*', aluno_id: `eq.${profile.id}`, order: 'updated_at.desc' }).toString()}`).catch(() => []),
       supabaseAdminRequest(env, '/rest/v1/audiobooks_biblioteca?select=*,livros(titulo,autor)&order=created_at.desc').catch(() => []),
@@ -5543,11 +5610,25 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Livro invalido.' }, 400);
     }
 
-    await supabaseAdminRequest(env, '/rest/v1/solicitacoes_emprestimo', {
+    const created = await supabaseAdminRequest(env, '/rest/v1/solicitacoes_emprestimo', {
       method: 'POST',
       body: { livro_id: livroId, usuario_id: alunoId, mensagem },
-      headers: { Prefer: 'return=minimal' },
+      headers: { Prefer: 'return=representation' },
     });
+
+    const solicitacaoId = Array.isArray(created) ? String(created?.[0]?.id || '').trim() : '';
+    if (solicitacaoId && mensagem) {
+      await supabaseAdminRequest(env, '/rest/v1/solicitacoes_emprestimo_mensagens', {
+        method: 'POST',
+        body: [{
+          solicitacao_id: solicitacaoId,
+          autor_usuario_id: alunoId,
+          autor_tipo: 'aluno',
+          mensagem,
+        }],
+        headers: { Prefer: 'return=minimal' },
+      });
+    }
 
     return jsonResponse({ success: true });
   },
@@ -5568,7 +5649,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Dados insuficientes para solicitar prorrogacao.' }, 400);
     }
 
-    await supabaseAdminRequest(env, '/rest/v1/solicitacoes_emprestimo', {
+    const created = await supabaseAdminRequest(env, '/rest/v1/solicitacoes_emprestimo', {
       method: 'POST',
       body: {
         livro_id: livroId,
@@ -5579,6 +5660,63 @@ const routes: Record<string, RouteHandler> = {
         data_devolucao_atual: dataDevolucaoAtual,
         nova_data_devolucao_solicitada: novaData,
       },
+      headers: { Prefer: 'return=representation' },
+    });
+
+    const solicitacaoId = Array.isArray(created) ? String(created?.[0]?.id || '').trim() : '';
+    if (solicitacaoId && mensagem) {
+      await supabaseAdminRequest(env, '/rest/v1/solicitacoes_emprestimo_mensagens', {
+        method: 'POST',
+        body: [{
+          solicitacao_id: solicitacaoId,
+          autor_usuario_id: alunoId,
+          autor_tipo: 'aluno',
+          mensagem,
+        }],
+        headers: { Prefer: 'return=minimal' },
+      });
+    }
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/aluno/solicitacoes-emprestimo/:id/chat': async (request, env) => {
+    const { alunoId } = await getCommunityModuleContext(request, env);
+    if (!alunoId) {
+      return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
+    }
+
+    const solicitacaoId = getPathParam(request, /^\/v1\/aluno\/solicitacoes-emprestimo\/([^/]+)\/chat$/i);
+    const body = await request.json().catch(() => ({} as Record<string, unknown>));
+    const mensagem = String(body?.mensagem || '').trim();
+    if (!mensagem) {
+      return jsonResponse({ success: false, error: 'Mensagem obrigatoria.' }, 400);
+    }
+
+    const [solicitacao] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
+        select: 'id,usuario_id,status',
+        id: `eq.${solicitacaoId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    if (!solicitacao?.id || String(solicitacao.usuario_id || '') !== String(alunoId || '')) {
+      return jsonResponse({ success: false, error: 'Solicitacao nao encontrada.' }, 404);
+    }
+    if (['recusada', 'negada', 'cancelada', 'aprovada'].includes(String(solicitacao.status || '').toLowerCase())) {
+      return jsonResponse({ success: false, error: 'Essa solicitacao ja foi finalizada.' }, 400);
+    }
+
+    await supabaseAdminRequest(env, '/rest/v1/solicitacoes_emprestimo_mensagens', {
+      method: 'POST',
+      body: [{
+        solicitacao_id: solicitacaoId,
+        autor_usuario_id: alunoId,
+        autor_tipo: 'aluno',
+        mensagem,
+      }],
       headers: { Prefer: 'return=minimal' },
     });
 
@@ -5978,9 +6116,11 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/aprovar$/, '/v1/solicitacoes-emprestimo/:id/aprovar')
     .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/recusar$/, '/v1/solicitacoes-emprestimo/:id/recusar')
     .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/indisponivel$/, '/v1/solicitacoes-emprestimo/:id/indisponivel')
+    .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/chat$/, '/v1/solicitacoes-emprestimo/:id/chat')
     .replace(/\/v1\/aluno\/comunidade\/posts\/[^/]+\/like$/, '/v1/aluno/comunidade/posts/:id/like')
     .replace(/\/v1\/aluno\/comunidade\/posts\/[^/]+\/delete$/, '/v1/aluno/comunidade/posts/:id/delete')
     .replace(/\/v1\/aluno\/comunidade\/posts\/[^/]+$/, '/v1/aluno/comunidade/posts/:id')
+    .replace(/\/v1\/aluno\/solicitacoes-emprestimo\/[^/]+\/chat$/, '/v1/aluno/solicitacoes-emprestimo/:id/chat')
     .replace(/\/v1\/aluno\/laboratorio\/criacoes\/[^/]+\/delete$/, '/v1/aluno/laboratorio/criacoes/:id/delete')
     .replace(/\/v1\/aluno\/laboratorio\/criacoes\/[^/]+$/, '/v1/aluno/laboratorio/criacoes/:id')
     .replace(/\/v1\/arquivos-aula\/[^/]+\/arquivos$/, '/v1/arquivos-aula/:id/arquivos')

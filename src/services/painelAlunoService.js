@@ -84,6 +84,13 @@ export async function createPainelAlunoLoanExtensionRequest({
   });
 }
 
+export async function sendPainelAlunoSolicitacaoChatMessage({ solicitacaoId, mensagem }) {
+  return requestPlatformApi(`/v1/aluno/solicitacoes-emprestimo/${solicitacaoId}/chat`, {
+    method: 'POST',
+    body: { mensagem },
+  });
+}
+
 export async function markPainelAlunoNotificationRead(notificationId) {
   return requestPlatformApi('/v1/notifications/read', {
     method: 'POST',

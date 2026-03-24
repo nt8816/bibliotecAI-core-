@@ -44,6 +44,7 @@ import {
   markSolicitacaoLivroIndisponivel,
   registerEmprestimoDevolucao,
   rejectSolicitacaoEmprestimo,
+  sendSolicitacaoEmprestimoChatMessage,
 } from '@/services/emprestimosService';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -201,7 +202,7 @@ export default function Emprestimos() {
   };
 
   const handleAprovarSolicitacao = async (solicitacao) => {
-    if (!canManageLoans || solicitacao.status !== 'pendente') return;
+    if (!canManageLoans || !['pendente', 'indisponivel_em_analise'].includes(String(solicitacao?.status || '').toLowerCase())) return;
     setSaving(true);
     setActionLoading({ devolucaoId: null, solicitacaoId: solicitacao.id, tipo: 'aprovar' });
     try {
@@ -223,7 +224,7 @@ export default function Emprestimos() {
   };
 
   const handleRecusarSolicitacao = async (solicitacao) => {
-    if (!canManageLoans || solicitacao.status !== 'pendente') return;
+    if (!canManageLoans || !['pendente', 'indisponivel_em_analise'].includes(String(solicitacao?.status || '').toLowerCase())) return;
     setSaving(true);
     setActionLoading({ devolucaoId: null, solicitacaoId: solicitacao.id, tipo: 'recusar' });
     try {
@@ -260,6 +261,45 @@ export default function Emprestimos() {
         variant: 'destructive',
         title: 'Erro',
         description: error?.message || 'Não foi possível marcar o livro como indisponível.',
+      });
+    } finally {
+      setSaving(false);
+      setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
+    }
+  };
+
+  const handleEnviarMensagemSolicitacao = async (solicitacao) => {
+    if (!canManageLoans) return;
+    if (['recusada', 'negada', 'cancelada', 'aprovada'].includes(String(solicitacao?.status || '').toLowerCase())) return;
+
+    const mensagem = String(respostaPorSolicitacao[solicitacao.id] || '').trim();
+    if (!mensagem) {
+      toast({
+        variant: 'destructive',
+        title: 'Mensagem obrigatória',
+        description: 'Escreva uma mensagem para continuar o atendimento desta solicitação.',
+      });
+      return;
+    }
+
+    setSaving(true);
+    setActionLoading({ devolucaoId: null, solicitacaoId: solicitacao.id, tipo: 'mensagem' });
+    try {
+      await sendSolicitacaoEmprestimoChatMessage(solicitacao.id, mensagem);
+      toast({
+        title: 'Mensagem enviada',
+        description:
+          String(solicitacao?.status || '').toLowerCase() === 'pendente'
+            ? 'A solicitação foi colocada como Sob Análise.'
+            : 'A conversa com o aluno foi atualizada.',
+      });
+      setRespostaPorSolicitacao((prev) => ({ ...prev, [solicitacao.id]: '' }));
+      fetchData();
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: error?.message || 'Não foi possível enviar a mensagem para o aluno.',
       });
     } finally {
       setSaving(false);
@@ -477,7 +517,6 @@ export default function Emprestimos() {
     if (status === 'aprovada') return <Badge>Aprovada</Badge>;
     if (status === 'recusada') return <Badge variant="destructive">Recusada</Badge>;
     if (status === 'indisponivel_em_analise') return <Badge variant="outline">Sob Análise</Badge>;
-    if (status === 'indisponivel_em_analise') return <Badge variant="outline">Indisponível em análise</Badge>;
     return <Badge variant="secondary">Pendente</Badge>;
   };
 
@@ -487,6 +526,8 @@ export default function Emprestimos() {
       const isProcessavel = isPendente || isEmAnalise;
       const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
       const livroDisponivel = solicitacao?.livros?.disponivel !== false;
+      const chatMensagens = [...(Array.isArray(solicitacao?.solicitacoes_emprestimo_mensagens) ? solicitacao.solicitacoes_emprestimo_mensagens : [])]
+        .sort((a, b) => new Date(a?.created_at || 0).getTime() - new Date(b?.created_at || 0).getTime());
 
     return (
       <div
@@ -519,6 +560,33 @@ export default function Emprestimos() {
             )}
           </div>
           <div>
+            <p className="text-xs text-muted-foreground mb-1">Conversa da solicitação</p>
+            <div className="rounded-md border bg-background p-2 space-y-2 min-h-[120px] max-h-56 overflow-y-auto">
+              {chatMensagens.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhuma mensagem registrada ainda.</p>
+              ) : (
+                chatMensagens.map((mensagem) => {
+                  const isBiblioteca = mensagem?.autor_tipo === 'bibliotecaria';
+                  return (
+                    <div
+                      key={mensagem.id}
+                      className={cn(
+                        'rounded-md px-3 py-2 text-sm',
+                        isBiblioteca ? 'ml-6 bg-primary/10 border border-primary/20' : 'mr-6 bg-muted/40 border',
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                        <span>{isBiblioteca ? 'Biblioteca' : 'Aluno'}</span>
+                        <span>{formatDateBR(mensagem.created_at)}</span>
+                      </div>
+                      <p className="mt-1 whitespace-pre-wrap">{mensagem.mensagem}</p>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          <div className="md:col-span-2">
             {readOnly ? (
               <>
                 <p className="text-xs text-muted-foreground mb-1">Resposta da biblioteca</p>
@@ -532,7 +600,7 @@ export default function Emprestimos() {
                 <Textarea
                   id={`resposta-${solicitacao.id}`}
                   rows={2}
-                  placeholder="Escreva uma resposta para o aluno..."
+                  placeholder="Escreva uma mensagem para conversar com o aluno..."
                   value={respostaPorSolicitacao[solicitacao.id] ?? solicitacao.resposta ?? ''}
                   onChange={(e) =>
                     setRespostaPorSolicitacao((prev) => ({
@@ -548,7 +616,20 @@ export default function Emprestimos() {
         </div>
 
           {!readOnly && isProcessavel ? (
-            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:justify-end gap-2">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:justify-end gap-2">
+            <Button
+              variant="secondary"
+              className="w-full sm:w-auto"
+              disabled={saving || (actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo && actionLoading.tipo !== 'mensagem')}
+              onClick={() => handleEnviarMensagemSolicitacao(solicitacao)}
+            >
+              {actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'mensagem' ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Inbox className="w-4 h-4 mr-2" />
+              )}
+              {isPendente ? 'Enviar mensagem e marcar sob análise' : 'Enviar mensagem'}
+            </Button>
               <Button
                 variant="secondary"
                 className="w-full sm:w-auto"

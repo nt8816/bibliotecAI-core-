@@ -53,6 +53,7 @@ import {
   markPainelAlunoNotificationsReadBatch,
   savePainelAlunoReview,
   savePainelAlunoChallenge,
+  sendPainelAlunoSolicitacaoChatMessage,
   submitPainelAlunoActivity,
   togglePainelAlunoWishlist,
   togglePainelAlunoAudiobook,
@@ -1078,6 +1079,7 @@ export default function PainelAluno() {
   const [atividadeTexto, setAtividadeTexto] = useState({});
   const [atividadeImagens, setAtividadeImagens] = useState({});
   const [atividadeRespostas, setAtividadeRespostas] = useState({});
+  const [mensagemSolicitacaoPorId, setMensagemSolicitacaoPorId] = useState({});
   const [saving, setSaving] = useState(false);
   const [showAccessChoice, setShowAccessChoice] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
@@ -1748,7 +1750,7 @@ export default function PainelAluno() {
       const status = String(solicitacao?.status || '').toLowerCase();
       if (status === 'aprovada' || status === 'aceita') return 'aceitos';
       if (status === 'recusada' || status === 'negada' || status === 'cancelada') return 'recusados';
-      if (status === 'pendente' || status === 'solicitada' || status === 'em_andamento') return 'pendentes';
+      if (status === 'pendente' || status === 'solicitada' || status === 'em_andamento' || status === 'indisponivel_em_analise') return 'pendentes';
       return 'pendentes';
     },
     [latestEmprestimoByLivro],
@@ -1799,9 +1801,46 @@ export default function PainelAluno() {
       if (status === 'recusada' || status === 'negada' || status === 'cancelada') {
         return { label: 'Recusado', variant: 'destructive', icon: <AlertTriangle className="w-3 h-3 mr-1" /> };
       }
+      if (status === 'indisponivel_em_analise') {
+        return { label: 'Sob Análise', variant: 'outline', icon: <Clock className="w-3 h-3 mr-1" /> };
+      }
       return { label: 'Pendente', variant: 'secondary', icon: <Clock className="w-3 h-3 mr-1" /> };
     },
     [latestEmprestimoByLivro],
+  );
+
+  const handleEnviarMensagemSolicitacao = useCallback(
+    async (solicitacaoId) => {
+      const mensagem = String(mensagemSolicitacaoPorId[solicitacaoId] || '').trim();
+      if (!mensagem) {
+        toast({
+          variant: 'destructive',
+          title: 'Mensagem obrigatória',
+          description: 'Escreva uma mensagem para conversar com a biblioteca.',
+        });
+        return;
+      }
+
+      setSaving(true);
+      try {
+        await sendPainelAlunoSolicitacaoChatMessage({ solicitacaoId, mensagem });
+        toast({
+          title: 'Mensagem enviada',
+          description: 'A biblioteca recebeu sua mensagem.',
+        });
+        setMensagemSolicitacaoPorId((prev) => ({ ...prev, [solicitacaoId]: '' }));
+        await fetchData();
+      } catch (error) {
+        toast({
+          variant: 'destructive',
+          title: 'Erro',
+          description: error?.message || 'Não foi possível enviar sua mensagem.',
+        });
+      } finally {
+        setSaving(false);
+      }
+    },
+    [fetchData, mensagemSolicitacaoPorId, toast],
   );
 
   const buildSolicitacaoTimeline = useCallback(
@@ -4497,6 +4536,12 @@ export default function PainelAluno() {
                           const statusInfo = getSolicitacaoStatusInfo(solicitacao);
                           const timeline = buildSolicitacaoTimeline(solicitacao);
                           const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
+                          const podeConversar = !['aprovada', 'aceita', 'recusada', 'negada', 'cancelada'].includes(
+                            String(solicitacao?.status || '').toLowerCase(),
+                          );
+                          const chatMensagens = [...ensureArray(solicitacao?.solicitacoes_emprestimo_mensagens)].sort(
+                            (a, b) => new Date(a?.created_at || 0).getTime() - new Date(b?.created_at || 0).getTime(),
+                          );
                           return (
                           <div key={solicitacao.id} className="p-3 border rounded-lg space-y-2">
                             <div className="flex items-center justify-between gap-3">
@@ -4550,6 +4595,61 @@ export default function PainelAluno() {
                                 <p className="text-sm">{solicitacao.resposta}</p>
                               </div>
                             )}
+
+                            <div className="rounded-md border bg-muted/20 p-3 space-y-2">
+                              <p className="text-xs text-muted-foreground">Conversa sobre a solicitação</p>
+                              {chatMensagens.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">Nenhuma mensagem registrada ainda.</p>
+                              ) : (
+                                <div className="space-y-2 max-h-56 overflow-y-auto">
+                                  {chatMensagens.map((mensagem) => {
+                                    const isBiblioteca = mensagem?.autor_tipo === 'bibliotecaria';
+                                    return (
+                                      <div
+                                        key={mensagem.id}
+                                        className={`rounded-md px-3 py-2 text-sm border ${
+                                          isBiblioteca ? 'bg-primary/10 border-primary/20 ml-6' : 'bg-background mr-6'
+                                        }`}
+                                      >
+                                        <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                                          <span>{isBiblioteca ? 'Biblioteca' : 'Você'}</span>
+                                          <span>{formatDateBR(mensagem.created_at)}</span>
+                                        </div>
+                                        <p className="mt-1 whitespace-pre-wrap">{mensagem.mensagem}</p>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {podeConversar && (
+                                <div className="space-y-2">
+                                  <Textarea
+                                    rows={2}
+                                    placeholder="Escreva sua mensagem para a biblioteca..."
+                                    value={mensagemSolicitacaoPorId[solicitacao.id] || ''}
+                                    onChange={(e) =>
+                                      setMensagemSolicitacaoPorId((prev) => ({
+                                        ...prev,
+                                        [solicitacao.id]: e.target.value,
+                                      }))
+                                    }
+                                    disabled={saving}
+                                  />
+                                  <div className="flex justify-end">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      onClick={() => handleEnviarMensagemSolicitacao(solicitacao.id)}
+                                      disabled={saving}
+                                    >
+                                      <Send className="w-4 h-4 mr-2" />
+                                      Enviar mensagem
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         );
                         })}
