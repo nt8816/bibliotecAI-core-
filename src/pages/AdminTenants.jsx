@@ -459,6 +459,14 @@ export default function AdminTenants() {
   const deleteGhost = async () => {
     const ghost = ghostPendingDelete;
     if (!ghost?.ghost_key) return;
+    if (ghost.can_delete === false) {
+      toast({
+        title: 'Exclusão bloqueada',
+        description: ghost.protected_reason || 'Contas administrativas não podem ser apagadas por esta tela.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setDeletingGhostKey(ghost.ghost_key);
     try {
@@ -922,10 +930,15 @@ export default function AdminTenants() {
                             variant="destructive"
                             size="sm"
                             onClick={() => setGhostPendingDelete(ghost)}
-                            disabled={deletingGhostKey === ghost.ghost_key}
+                            disabled={deletingGhostKey === ghost.ghost_key || ghost.can_delete === false}
+                            title={ghost.can_delete === false ? (ghost.protected_reason || 'Conta administrativa protegida.') : undefined}
                           >
                             <Trash2 className="w-4 h-4 mr-1" />
-                            {deletingGhostKey === ghost.ghost_key ? 'Excluindo...' : 'Apagar'}
+                            {ghost.can_delete === false
+                              ? 'Protegida'
+                              : deletingGhostKey === ghost.ghost_key
+                                ? 'Excluindo...'
+                                : 'Apagar'}
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -1095,16 +1108,17 @@ export default function AdminTenants() {
               <AlertDialogDescription>
                 Esta ação remove a conta <strong>{ghostPendingDelete?.nome || '-'}</strong> da autenticação e também limpa o
                 banco de dados quando houver perfil vinculado. Use isso para eliminar cadastros órfãos e destravar novos convites.
+                {ghostPendingDelete?.can_delete === false ? ` ${ghostPendingDelete?.protected_reason || 'Contas administrativas não podem ser apagadas por esta tela.'}` : ''}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel disabled={Boolean(deletingGhostKey)}>Cancelar</AlertDialogCancel>
               <AlertDialogAction
                 onClick={deleteGhost}
-                disabled={Boolean(deletingGhostKey)}
+                disabled={Boolean(deletingGhostKey) || ghostPendingDelete?.can_delete === false}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
-                {deletingGhostKey ? 'Excluindo...' : 'Apagar conta'}
+                {ghostPendingDelete?.can_delete === false ? 'Exclusão bloqueada' : deletingGhostKey ? 'Excluindo...' : 'Apagar conta'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

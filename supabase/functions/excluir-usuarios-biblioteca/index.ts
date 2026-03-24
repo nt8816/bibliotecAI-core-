@@ -110,12 +110,12 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Nenhum usuario informado para exclusao' }, 400);
     }
 
-    const foundProfilesByKey = new Map<string, { id: string; user_id: string | null; escola_id: string | null }>();
+    const foundProfilesByKey = new Map<string, { id: string; user_id: string | null; escola_id: string | null; tipo: string | null }>();
 
     if (ids.length > 0) {
       const { data: profilesById, error: profilesByIdError } = await adminClient
         .from('usuarios_biblioteca')
-        .select('id, user_id, escola_id')
+        .select('id, user_id, escola_id, tipo')
         .in('id', ids);
 
       if (profilesByIdError) {
@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
     if (requestedUserIds.length > 0) {
       const { data: profilesByUserId, error: profilesByUserIdError } = await adminClient
         .from('usuarios_biblioteca')
-        .select('id, user_id, escola_id')
+        .select('id, user_id, escola_id, tipo')
         .in('user_id', requestedUserIds);
 
       if (profilesByUserIdError) {
@@ -192,6 +192,29 @@ Deno.serve(async (req) => {
           userIdsToDelete.push(userId);
         }
       });
+    }
+
+    const protectedRoles = new Set(['super_admin', 'gestor', 'bibliotecaria']);
+    const protectedProfile = foundProfiles.find((profile) => protectedRoles.has(String(profile.tipo || '').trim()));
+    if (protectedProfile) {
+      return jsonResponse({ success: false, error: 'Contas administrativas nao podem ser excluidas por esta tela.' }, 403);
+    }
+
+    const targetUserIds = [...new Set(userIdsToDelete)];
+    if (targetUserIds.length > 0) {
+      const { data: targetRoles, error: targetRolesError } = await adminClient
+        .from('user_roles')
+        .select('user_id, role')
+        .in('user_id', targetUserIds);
+
+      if (targetRolesError) {
+        return jsonResponse({ success: false, error: 'Nao foi possivel validar as permissoes da conta a ser excluida' }, 500);
+      }
+
+      const hasProtectedRole = (targetRoles || []).some((item) => protectedRoles.has(String(item.role || '').trim()));
+      if (hasProtectedRole) {
+        return jsonResponse({ success: false, error: 'Contas administrativas nao podem ser excluidas por esta tela.' }, 403);
+      }
     }
 
     if (userIdsToDelete.includes(caller.id)) {

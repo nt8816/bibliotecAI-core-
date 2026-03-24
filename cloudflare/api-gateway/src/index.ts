@@ -576,6 +576,8 @@ async function buildGhostAccounts(env: Env) {
     schoolNameById.set(schoolId, String(school?.nome || '').trim());
   });
 
+  const protectedRoles = new Set(['super_admin', 'gestor', 'bibliotecaria']);
+
   const ghosts: Array<Record<string, unknown>> = [];
 
   authUsers.forEach((authUser) => {
@@ -586,6 +588,7 @@ async function buildGhostAccounts(env: Env) {
     const roleList = [...(rolesByUserId.get(userId) || new Set<string>())];
     const schoolIds = uniqueStrings(profileList.map((profile) => profile?.escola_id));
     const issues: string[] = [];
+    const isProtectedAdmin = roleList.some((role) => protectedRoles.has(role));
 
     if (profileList.length === 0) issues.push('Sem perfil em usuarios_biblioteca');
     if (roleList.length === 0) issues.push('Sem role em user_roles');
@@ -610,6 +613,9 @@ async function buildGhostAccounts(env: Env) {
       matricula: String(primaryProfile?.matricula || '').trim() || null,
       escola_id: schoolId || null,
       escola_nome: schoolId ? schoolNameById.get(schoolId) || null : null,
+      roles: roleList,
+      can_delete: !isProtectedAdmin,
+      protected_reason: isProtectedAdmin ? 'Conta administrativa deve ser removida por um fluxo dedicado.' : null,
       issues,
       created_at: authUser?.created_at || primaryProfile?.created_at || null,
     });
@@ -621,6 +627,8 @@ async function buildGhostAccounts(env: Env) {
     if (!profileId) return;
 
     const issues: string[] = [];
+    const profileType = String(profile?.tipo || '').trim();
+    const isProtectedAdmin = protectedRoles.has(profileType);
 
     if (!userId) {
       issues.push('Perfil sem user_id');
@@ -646,6 +654,9 @@ async function buildGhostAccounts(env: Env) {
       matricula: String(profile?.matricula || '').trim() || null,
       escola_id: String(profile?.escola_id || '').trim() || null,
       escola_nome: schoolNameById.get(String(profile?.escola_id || '').trim()) || null,
+      roles: profileType ? [profileType] : [],
+      can_delete: !isProtectedAdmin,
+      protected_reason: isProtectedAdmin ? 'Conta administrativa deve ser removida por um fluxo dedicado.' : null,
       issues,
       created_at: profile?.created_at || null,
     });
