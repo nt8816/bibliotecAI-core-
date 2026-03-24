@@ -2349,6 +2349,18 @@ const routes: Record<string, RouteHandler> = {
 
     const authEmail = `${cpf}@temp.bibliotecai.com`;
     let userId = '';
+    const duplicateEmailMarkers = ['already been registered', 'already exists', 'already registered'];
+    const existingProfileLookup = await supabaseAdminRequest(
+      env,
+      `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+        select: 'id,user_id',
+        escola_id: `eq.${inviteEscolaId}`,
+        tipo: 'eq.gestor',
+        cpf: `eq.${cpf}`,
+        limit: '1',
+      }).toString()}`,
+    );
+    const existingProfile = Array.isArray(existingProfileLookup) ? (existingProfileLookup[0] || null) : null;
 
     try {
       const authData = await supabaseAdminAuthRequest(env, '/users', {
@@ -2362,12 +2374,56 @@ const routes: Record<string, RouteHandler> = {
       });
       userId = String(authData?.user?.id || '');
     } catch (error) {
-      await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
-        method: 'PATCH',
-        body: { usado_em: null, usado_por: null },
-        headers: { Prefer: 'return=minimal' },
-      }).catch(() => null);
-      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao criar gestor.' }, 400);
+      const authErrorMessage = String(error instanceof Error ? error.message : '').toLowerCase();
+      if (!duplicateEmailMarkers.some((marker) => authErrorMessage.includes(marker))) {
+        await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
+          method: 'PATCH',
+          body: { usado_em: null, usado_por: null },
+          headers: { Prefer: 'return=minimal' },
+        }).catch(() => null);
+        return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao criar gestor.' }, 400);
+      }
+
+      const existingAuthUser = await findAuthUserByEmail(env, authEmail);
+      if (!existingAuthUser?.id) {
+        await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
+          method: 'PATCH',
+          body: { usado_em: null, usado_por: null },
+          headers: { Prefer: 'return=minimal' },
+        }).catch(() => null);
+        return jsonResponse({ success: false, error: 'Esta conta ja esta cadastrada. Verifique seus dados ou faca login.' }, 409);
+      }
+
+      if (existingProfile?.user_id && String(existingProfile.user_id) !== String(existingAuthUser.id)) {
+        await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
+          method: 'PATCH',
+          body: { usado_em: null, usado_por: null },
+          headers: { Prefer: 'return=minimal' },
+        }).catch(() => null);
+        return jsonResponse({ success: false, error: 'Este cadastro ja esta vinculado a outra conta. Faca login ou solicite suporte.' }, 409);
+      }
+
+      if (!existingProfile?.id) {
+        await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
+          method: 'PATCH',
+          body: { usado_em: null, usado_por: null },
+          headers: { Prefer: 'return=minimal' },
+        }).catch(() => null);
+        return jsonResponse({ success: false, error: 'Esta conta ja esta cadastrada. Verifique seus dados ou faca login.' }, 409);
+      }
+
+      await supabaseAdminAuthRequest(env, `/users/${existingAuthUser.id}`, {
+        method: 'PUT',
+        body: {
+          password: senha,
+          email_confirm: true,
+          user_metadata: {
+            ...(existingAuthUser.user_metadata && typeof existingAuthUser.user_metadata === 'object' ? existingAuthUser.user_metadata : {}),
+            nome,
+          },
+        },
+      });
+      userId = String(existingAuthUser.id);
     }
 
     try {
@@ -2377,19 +2433,29 @@ const routes: Record<string, RouteHandler> = {
         headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
       });
 
-      await supabaseAdminRequest(env, '/rest/v1/usuarios_biblioteca', {
-        method: 'POST',
-        body: {
-          user_id: userId,
-          nome,
-          email: authEmail,
-          cpf,
-          tipo: 'gestor',
-          escola_id: inviteEscolaId,
-          matricula: null,
-        },
-        headers: { Prefer: 'return=minimal' },
-      });
+      const profilePayload = {
+        user_id: userId,
+        nome,
+        email: authEmail,
+        cpf,
+        tipo: 'gestor',
+        escola_id: inviteEscolaId,
+        matricula: null,
+      };
+
+      if (existingProfile?.id) {
+        await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ id: `eq.${existingProfile.id}` }).toString()}`, {
+          method: 'PATCH',
+          body: profilePayload,
+          headers: { Prefer: 'return=minimal' },
+        });
+      } else {
+        await supabaseAdminRequest(env, '/rest/v1/usuarios_biblioteca', {
+          method: 'POST',
+          body: profilePayload,
+          headers: { Prefer: 'return=minimal' },
+        });
+      }
 
       await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
         method: 'PATCH',
