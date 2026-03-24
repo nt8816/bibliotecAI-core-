@@ -436,6 +436,12 @@ function getRequestUserAgent(request: Request) {
   return request.headers.get('user-agent') || null;
 }
 
+function formatSuperAdminDeviceType(deviceType: string, usedDesktopApproval: boolean) {
+  if (usedDesktopApproval) return 'desktop/mobile';
+  if (deviceType === 'mobile') return 'mobile';
+  return 'desktop';
+}
+
 async function insertSystemLog(
   request: Request,
   env: Env,
@@ -2234,6 +2240,7 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const nowIso = new Date().toISOString();
+    const resolvedDeviceType = formatSuperAdminDeviceType(risk.deviceType, Boolean(desktopChallengeToken));
     await patchSuperAdminChallenge(String(challenge.id), env, {
       email_verified_at: nowIso,
     });
@@ -2512,7 +2519,7 @@ const routes: Record<string, RouteHandler> = {
           ativo: true,
           bloqueado: false,
           bloqueado_em: null,
-          ultimo_dispositivo: risk.deviceType,
+          ultimo_dispositivo: resolvedDeviceType,
           ultimo_mfa_em: nowIso,
           ultimo_email_verificado_em: emailVerified ? nowIso : null,
         },
@@ -2534,7 +2541,7 @@ const routes: Record<string, RouteHandler> = {
         city: risk.city,
         region: risk.region,
         country: risk.country,
-        device_type: risk.deviceType,
+        device_type: resolvedDeviceType,
         email_verified: emailVerified,
       },
     });

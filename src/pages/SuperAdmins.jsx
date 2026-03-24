@@ -22,6 +22,15 @@ function formatDate(value) {
   }
 }
 
+function formatDeviceLabel(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return '-';
+  if (normalized === 'desktop/mobile' || normalized === 'desktop/celular') return 'Desktop/Celular';
+  if (normalized === 'mobile' || normalized === 'celular') return 'Celular';
+  if (normalized === 'desktop') return 'Desktop';
+  return String(value);
+}
+
 const emptyForm = {
   nome: '',
   email: '',
@@ -262,7 +271,7 @@ export default function SuperAdmins() {
                         <TableCell>{item.tentativas_falhas || 0}</TableCell>
                         <TableCell>{item.passkey_enrolled_at ? 'Cadastrada' : 'Pendente'}</TableCell>
                         <TableCell>{formatDate(item.ultimo_mfa_em)}</TableCell>
-                        <TableCell>{item.ultimo_dispositivo || '-'}</TableCell>
+                        <TableCell>{formatDeviceLabel(item.ultimo_dispositivo)}</TableCell>
                         <TableCell>{formatDate(item.ultimo_login_em)}</TableCell>
                         <TableCell>{formatDate(item.bloqueado_em)}</TableCell>
                         <TableCell className="text-right">
