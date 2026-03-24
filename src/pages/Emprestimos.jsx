@@ -242,7 +242,7 @@ export default function Emprestimos() {
   };
 
   const handleMarcarSolicitacaoIndisponivel = async (solicitacao) => {
-    if (!canManageLoans || !['pendente', 'indisponivel_em_analise'].includes(String(solicitacao.status || ''))) return;
+    if (!canManageLoans || solicitacao.status !== 'pendente') return;
     setSaving(true);
     setActionLoading({ devolucaoId: null, solicitacaoId: solicitacao.id, tipo: 'indisponivel' });
     try {
@@ -476,6 +476,7 @@ export default function Emprestimos() {
   const getStatusSolicitacaoBadge = (status) => {
     if (status === 'aprovada') return <Badge>Aprovada</Badge>;
     if (status === 'recusada') return <Badge variant="destructive">Recusada</Badge>;
+    if (status === 'indisponivel_em_analise') return <Badge variant="outline">Sob AnÃ¡lise</Badge>;
     if (status === 'indisponivel_em_analise') return <Badge variant="outline">IndisponÃ­vel em anÃ¡lise</Badge>;
     return <Badge variant="secondary">Pendente</Badge>;
   };
@@ -1273,7 +1274,8 @@ export default function Emprestimos() {
                     <p className="text-center text-muted-foreground py-8">Nenhuma solicitação de aluno no momento.</p>
                   ) : (
                     <div className="space-y-3">
-                      {solicitacoesPendentes.map((solicitacao) => {
+                      {solicitacoesPendentes.map((solicitacao) => renderSolicitacaoCard(solicitacao))}
+                      {false && solicitacoesPendentes.map((solicitacao) => {
                         const isPendente = solicitacao.status === 'pendente';
                         const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
                         return (
