@@ -320,6 +320,36 @@ function concatBytes(...parts: Uint8Array[]) {
   return output;
 }
 
+function derToRawEcdsaSignature(signature: Uint8Array, componentLength = 32) {
+  if (signature.length < 8 || signature[0] !== 0x30) {
+    throw new Error('Assinatura ECDSA DER invalida.');
+  }
+
+  let offset = 2;
+  if (signature[1] & 0x80) {
+    const lengthBytes = signature[1] & 0x7f;
+    offset = 2 + lengthBytes;
+  }
+
+  if (signature[offset] !== 0x02) {
+    throw new Error('Componente R ausente na assinatura ECDSA.');
+  }
+  const rLength = signature[offset + 1];
+  const r = signature.slice(offset + 2, offset + 2 + rLength);
+  offset = offset + 2 + rLength;
+
+  if (signature[offset] !== 0x02) {
+    throw new Error('Componente S ausente na assinatura ECDSA.');
+  }
+  const sLength = signature[offset + 1];
+  const s = signature.slice(offset + 2, offset + 2 + sLength);
+
+  const raw = new Uint8Array(componentLength * 2);
+  raw.set(r.slice(Math.max(0, r.length - componentLength)), componentLength - Math.min(componentLength, r.length));
+  raw.set(s.slice(Math.max(0, s.length - componentLength)), componentLength * 2 - Math.min(componentLength, s.length));
+  return raw;
+}
+
 async function verifyRpIdHash(rpId: string, actualHash: Uint8Array) {
   const expectedHash = new Uint8Array(await crypto.subtle.digest('SHA-256', textEncoder.encode(rpId)));
   if (expectedHash.length !== actualHash.length) return false;
@@ -364,8 +394,8 @@ export async function verifyRegistrationResponse(input: {
   }
 
   const parsed = parseAuthData(authDataBytes);
-  if (!(parsed.flags & 0x01) || !(parsed.flags & 0x04)) {
-    throw new Error('A passkey precisa confirmar presenca e biometria do usuario.');
+  if (!(parsed.flags & 0x01)) {
+    throw new Error('A passkey precisa confirmar a presença do usuário.');
   }
 
   if (!parsed.credentialId || !parsed.cosePublicKey) {
@@ -421,8 +451,8 @@ export async function verifyAuthenticationResponse(input: {
 
   const authenticatorData = base64UrlDecode(String(response.authenticatorData || ''));
   const parsed = parseAuthData(authenticatorData);
-  if (!(parsed.flags & 0x01) || !(parsed.flags & 0x04)) {
-    throw new Error('A autenticacao biometrica nao foi confirmada.');
+  if (!(parsed.flags & 0x01)) {
+    throw new Error('A autenticação da passkey não confirmou a presença do usuário.');
   }
 
   const rpIdValid = await verifyRpIdHash(rpId, parsed.rpIdHash);
@@ -445,7 +475,7 @@ export async function verifyAuthenticationResponse(input: {
     ['verify'],
   );
 
-  const verified = await crypto.subtle.verify(
+  let verified = await crypto.subtle.verify(
     { name: 'ECDSA', hash: 'SHA-256' },
     key,
     signature,
@@ -453,7 +483,21 @@ export async function verifyAuthenticationResponse(input: {
   );
 
   if (!verified) {
-    throw new Error('Assinatura biometrica invalida.');
+    try {
+      const rawSignature = derToRawEcdsaSignature(signature);
+      verified = await crypto.subtle.verify(
+        { name: 'ECDSA', hash: 'SHA-256' },
+        key,
+        rawSignature,
+        signedPayload,
+      );
+    } catch {
+      // Fall through to the final error below.
+    }
+  }
+
+  if (!verified) {
+    throw new Error('Assinatura da passkey inválida.');
   }
 
   return {
