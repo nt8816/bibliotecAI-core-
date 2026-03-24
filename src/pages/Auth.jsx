@@ -314,9 +314,16 @@ export default function Auth() {
 
     poll();
     const interval = window.setInterval(poll, 3000);
+    const handleFocus = () => {
+      poll();
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
     return () => {
       active = false;
       window.clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
     };
   }, [finalizingDesktop, pendingSecurity, securityStep]);
 
@@ -722,6 +729,22 @@ export default function Auth() {
   };
 
   const renderSecurityPanel = () => {
+    if (securityStep === 'desktop_resuming' && pendingSecurity) {
+      return (
+        <div className="space-y-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <div className="flex items-start gap-3">
+            <Loader2 className="mt-0.5 h-5 w-5 animate-spin text-primary" />
+            <div>
+              <p className="text-sm font-semibold">Retomando o login do computador</p>
+              <p className="text-sm text-muted-foreground">
+                A aprovação no celular foi detectada. Estamos concluindo a entrada do Super Admin neste computador.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     if (securityStep === 'desktop_waiting' && pendingSecurity) {
       return (
         <div className="space-y-4 rounded-xl border border-primary/20 bg-primary/5 p-4">

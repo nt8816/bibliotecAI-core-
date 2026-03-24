@@ -2348,7 +2348,7 @@ const routes: Record<string, RouteHandler> = {
       requiresEmailVerification: risk.outsideNordeste,
     });
   },
-  'GET /v1/auth/super-admin/desktop/challenges/([^/]+)': async (request, env) => {
+  'GET /v1/auth/super-admin/desktop/challenges/:token': async (request, env) => {
     const token = getPathParam(request, /^\/v1\/auth\/super-admin\/desktop\/challenges\/([^/]+)$/);
     const challenge = await getSuperAdminChallengeByToken(token, env);
     if (!challenge?.id) {
@@ -6232,6 +6232,7 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/recusar$/, '/v1/solicitacoes-emprestimo/:id/recusar')
     .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/indisponivel$/, '/v1/solicitacoes-emprestimo/:id/indisponivel')
     .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/chat$/, '/v1/solicitacoes-emprestimo/:id/chat')
+    .replace(/\/v1\/auth\/super-admin\/desktop\/challenges\/[^/]+$/, '/v1/auth/super-admin/desktop/challenges/:token')
     .replace(/\/v1\/aluno\/comunidade\/posts\/[^/]+\/like$/, '/v1/aluno/comunidade/posts/:id/like')
     .replace(/\/v1\/aluno\/comunidade\/posts\/[^/]+\/delete$/, '/v1/aluno/comunidade/posts/:id/delete')
     .replace(/\/v1\/aluno\/comunidade\/posts\/[^/]+$/, '/v1/aluno/comunidade/posts/:id')
