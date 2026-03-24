@@ -81,6 +81,15 @@ function formatDateBR(dateValue) {
   }
 }
 
+function formatDateInputValue(dateValue) {
+  if (!dateValue) return '';
+  try {
+    return format(new Date(dateValue), 'yyyy-MM-dd');
+  } catch {
+    return '';
+  }
+}
+
 function renderStars(nota, onClick) {
   return (
     <div className="flex gap-0.5">
@@ -136,6 +145,21 @@ function repairMojibakeText(value) {
     return text;
   }
 }
+
+const ALUNO_ONBOARDING_CARDS = [
+  {
+    title: 'Bem-vindo ao BibliotecAI',
+    description: 'Você vai ver um resumo rápido de como usar a plataforma.',
+  },
+  {
+    title: 'Catálogo e empréstimos',
+    description: 'Use a Biblioteca para solicitar livros e acompanhe seus empréstimos em Meus livros.',
+  },
+  {
+    title: 'Laboratório e comunidade',
+    description: 'Quizzes, resumos e publicações só podem usar livros que já estejam nos seus empréstimos ativos.',
+  },
+];
 
 function normalizeCriacaoShareTipo(criacao) {
   const tipo = String(criacao?.tipo || '');
@@ -1055,6 +1079,11 @@ export default function PainelAluno() {
   const [atividadeRespostas, setAtividadeRespostas] = useState({});
   const [saving, setSaving] = useState(false);
   const [showAccessChoice, setShowAccessChoice] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [extensionDialogOpen, setExtensionDialogOpen] = useState(false);
+  const [extensionEmprestimo, setExtensionEmprestimo] = useState(null);
+  const [extensionRequestedDate, setExtensionRequestedDate] = useState('');
+  const [extensionMessage, setExtensionMessage] = useState('');
   const [primeiroAcessoPassword, setPrimeiroAcessoPassword] = useState('');
   const [primeiroAcessoConfirmPassword, setPrimeiroAcessoConfirmPassword] = useState('');
   const [updatingPrimeiroAcessoPassword, setUpdatingPrimeiroAcessoPassword] = useState(false);
@@ -1294,42 +1323,21 @@ export default function PainelAluno() {
   useEffect(() => {
     if (!user?.id) return;
 
-    if (alunoSenhaDefinida) {
-      if (alunoOnboardingKey) {
-        localStorage.setItem(alunoOnboardingKey, 'done');
-      }
+    if (alunoOnboardingKey && localStorage.getItem(alunoOnboardingKey) === 'done') {
       setShowAccessChoice(false);
       return;
     }
 
-    if (localStorage.getItem(alunoOnboardingKey) === 'done') return;
-
     setShowAccessChoice(true);
-    setTimeout(() => {
-      toast({
-        title: 'Bem-vindo ao BibliotecAI',
-        description: 'Você receberá dicas rápidas para aprender o sistema.',
-      });
-    }, 250);
-    setTimeout(() => {
-      toast({
-        title: 'Passo 1 de 3',
-        description: 'Use o Catálogo para solicitar livros e montar sua lista de desejos.',
-      });
-    }, 2100);
-    setTimeout(() => {
-      toast({
-        title: 'Passo 2 de 3',
-        description: 'No painel você acompanha sugestões, atividades e solicitações.',
-      });
-    }, 4200);
-  }, [alunoOnboardingKey, alunoSenhaDefinida, toast, user?.id]);
+    setOnboardingStep(alunoSenhaDefinida ? 1 : 0);
+  }, [alunoOnboardingKey, alunoSenhaDefinida, user?.id]);
 
   const finalizeAlunoOnboarding = () => {
     if (alunoOnboardingKey) {
       localStorage.setItem(alunoOnboardingKey, 'done');
     }
     setShowAccessChoice(false);
+    setOnboardingStep(0);
   };
 
   const handlePrimeiroAcessoPassword = async () => {
@@ -1371,7 +1379,7 @@ export default function PainelAluno() {
 
       setPrimeiroAcessoPassword('');
       setPrimeiroAcessoConfirmPassword('');
-      finalizeAlunoOnboarding();
+      setOnboardingStep(1);
       toast({
         title: 'Senha criada',
         description: 'Sua nova senha foi salva e a senha inicial nao funciona mais.',
@@ -1625,6 +1633,11 @@ export default function PainelAluno() {
 
   const meusLivros = useMemo(() => emprestimos.filter((e) => e.status === 'ativo'), [emprestimos]);
 
+  const meusLivrosIds = useMemo(
+    () => new Set(meusLivros.map((item) => item?.livro_id).filter(Boolean)),
+    [meusLivros],
+  );
+
   const meusLivrosOptions = useMemo(() => {
     const map = new Map();
     meusLivros.forEach((item) => {
@@ -1636,11 +1649,25 @@ export default function PainelAluno() {
           id: item.livro_id,
           titulo: livro.titulo,
           autor: livro.autor || '',
+          dataDevolucaoPrevista: item.data_devolucao_prevista || null,
         });
       }
     });
     return Array.from(map.values());
   }, [livrosById, meusLivros]);
+
+  const alunoPodeUsarLivroEmprestado = useCallback(
+    (livroId, acao = 'usar este livro') => {
+      if (livroId && meusLivrosIds.has(livroId)) return true;
+      toast({
+        variant: 'destructive',
+        title: 'Livro não permitido',
+        description: `Para ${acao}, escolha apenas um livro que esteja em "Meus livros".`,
+      });
+      return false;
+    },
+    [meusLivrosIds, toast],
+  );
 
   const filteredMeusLivros = useMemo(
     () =>
@@ -1664,6 +1691,30 @@ export default function PainelAluno() {
     [solicitacoes, searchTerm],
   );
 
+  const pendingExtensionRequestsByLoanId = useMemo(() => {
+    const map = new Map();
+    solicitacoes.forEach((item) => {
+      if (String(item?.tipo || 'emprestimo') !== 'prorrogacao') return;
+      if (!item?.emprestimo_id) return;
+      const status = String(item?.status || '').toLowerCase();
+      if (status === 'pendente' || status === 'em_andamento') {
+        map.set(item.emprestimo_id, item);
+      }
+    });
+    return map;
+  }, [solicitacoes]);
+
+  const canRequestLoanExtension = useCallback(
+    (emprestimo) => {
+      if (!emprestimo?.id || emprestimo?.status !== 'ativo' || !emprestimo?.data_devolucao_prevista) return false;
+      if (pendingExtensionRequestsByLoanId.has(emprestimo.id)) return false;
+      const diffMs = new Date(emprestimo.data_devolucao_prevista).getTime() - Date.now();
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+      return diffDays <= 3;
+    },
+    [pendingExtensionRequestsByLoanId],
+  );
+
   const latestEmprestimoByLivro = useMemo(() => {
     const map = new Map();
     emprestimos.forEach((item) => {
@@ -1682,6 +1733,13 @@ export default function PainelAluno() {
 
   const classifySolicitacao = useCallback(
     (solicitacao) => {
+      const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
+      if (isExtension) {
+        const statusExt = String(solicitacao?.status || '').toLowerCase();
+        if (statusExt === 'aprovada' || statusExt === 'aceita') return 'aceitos';
+        if (statusExt === 'recusada' || statusExt === 'negada' || statusExt === 'cancelada') return 'recusados';
+        return 'pendentes';
+      }
       const emprestimo = latestEmprestimoByLivro.get(solicitacao?.livro_id);
       if (emprestimo?.status === 'devolvido') return 'historico';
       if (emprestimo?.status === 'ativo') return 'aceitos';
@@ -1715,6 +1773,17 @@ export default function PainelAluno() {
 
   const getSolicitacaoStatusInfo = useCallback(
     (solicitacao) => {
+      const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
+      if (isExtension) {
+        const statusExt = String(solicitacao?.status || '').toLowerCase();
+        if (statusExt === 'aprovada' || statusExt === 'aceita') {
+          return { label: 'Prorrogação aprovada', variant: 'default', icon: <CheckCircle2 className="w-3 h-3 mr-1" /> };
+        }
+        if (statusExt === 'recusada' || statusExt === 'negada' || statusExt === 'cancelada') {
+          return { label: 'Prorrogação recusada', variant: 'destructive', icon: <AlertTriangle className="w-3 h-3 mr-1" /> };
+        }
+        return { label: 'Prorrogação pendente', variant: 'secondary', icon: <Clock className="w-3 h-3 mr-1" /> };
+      }
       const emprestimo = latestEmprestimoByLivro.get(solicitacao?.livro_id);
       if (emprestimo?.status === 'devolvido') {
         return { label: 'Devolvido', variant: 'secondary', icon: <CheckCircle2 className="w-3 h-3 mr-1" /> };
@@ -1736,6 +1805,19 @@ export default function PainelAluno() {
 
   const buildSolicitacaoTimeline = useCallback(
     (solicitacao) => {
+      const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
+      if (isExtension) {
+        const timeline = [{ label: 'Prorrogação solicitada', date: solicitacao?.created_at }];
+        const statusExt = String(solicitacao?.status || '').toLowerCase();
+        if (statusExt !== 'pendente') {
+          timeline.push({
+            label: statusExt === 'recusada' || statusExt === 'negada' ? 'Prorrogação recusada' : 'Prorrogação aprovada',
+            date: solicitacao?.respondido_em || solicitacao?.updated_at,
+          });
+        }
+        return timeline.filter((item) => item.date);
+      }
+
       const emprestimo = latestEmprestimoByLivro.get(solicitacao?.livro_id);
       const timeline = [
         { label: 'Solicitado', date: solicitacao?.created_at },
@@ -2062,16 +2144,16 @@ export default function PainelAluno() {
     if (hasSolicitacaoEmAndamento(requestLivro.id)) {
       toast({
         variant: 'destructive',
-        title: 'SolicitaÃ§Ã£o jÃ¡ enviada',
-        description: 'Aguarde a aprovaÃ§Ã£o da bibliotecÃ¡ria antes de solicitar novamente este livro.',
+        title: 'Solicitação já enviada',
+        description: 'Aguarde a aprovação da bibliotecária antes de solicitar novamente este livro.',
       });
       return;
     }
     if (hasEmprestimoAtivo(requestLivro.id)) {
       toast({
         variant: 'destructive',
-        title: 'Livro jÃ¡ emprestado',
-        description: 'Este livro jÃ¡ estÃ¡ emprestado para vocÃª. Confira em â€œMeus livrosâ€.',
+        title: 'Livro já emprestado',
+        description: 'Este livro já está emprestado para você. Confira em "Meus livros".',
       });
       return;
     }
@@ -2083,12 +2165,73 @@ export default function PainelAluno() {
         mensagem: requestMsg || null,
       });
 
-      toast({ title: 'SolicitaÃ§Ã£o enviada!' });
+      toast({ title: 'Solicitação enviada!' });
       setRequestDialog(false);
       setRequestLivro(null);
       setRequestMsg('');
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Falha ao solicitar emprÃ©stimo.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Falha ao solicitar empréstimo.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openLoanExtensionDialog = (emprestimo) => {
+    if (!emprestimo?.id) return;
+    setExtensionEmprestimo(emprestimo);
+    setExtensionRequestedDate(formatDateInputValue(emprestimo.data_devolucao_prevista));
+    setExtensionMessage('');
+    setExtensionDialogOpen(true);
+  };
+
+  const handleRequestLoanExtension = async () => {
+    if (!alunoId || !extensionEmprestimo?.id || !extensionEmprestimo?.livro_id) return;
+    if (!extensionRequestedDate) {
+      toast({
+        variant: 'destructive',
+        title: 'Nova data obrigatória',
+        description: 'Escolha a nova data desejada para devolução.',
+      });
+      return;
+    }
+
+    const currentDate = formatDateInputValue(extensionEmprestimo.data_devolucao_prevista);
+    if (!currentDate || extensionRequestedDate <= currentDate) {
+      toast({
+        variant: 'destructive',
+        title: 'Data inválida',
+        description: 'A nova data precisa ser posterior à data de devolução atual.',
+      });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('solicitacoes_emprestimo').insert({
+        livro_id: extensionEmprestimo.livro_id,
+        usuario_id: alunoId,
+        emprestimo_id: extensionEmprestimo.id,
+        tipo: 'prorrogacao',
+        mensagem: extensionMessage?.trim() || 'Pedido de extensão de prazo para devolução.',
+        data_devolucao_atual: extensionEmprestimo.data_devolucao_prevista,
+        nova_data_devolucao_solicitada: new Date(`${extensionRequestedDate}T12:00:00`).toISOString(),
+      });
+      if (error) throw error;
+
+      toast({
+        title: 'Pedido enviado',
+        description: 'A bibliotecária vai analisar a prorrogação da data de devolução.',
+      });
+      setExtensionDialogOpen(false);
+      setExtensionEmprestimo(null);
+      setExtensionRequestedDate('');
+      setExtensionMessage('');
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao pedir extensão',
+        description: error?.message || 'Não foi possível enviar o pedido de extensão agora.',
+      });
     } finally {
       setSaving(false);
     }
@@ -2214,7 +2357,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Dados incompletos',
-        description: 'Selecione um livro e envie um arquivo de Ã¡udio (atÃ© 50MB).',
+        description: 'Selecione um livro e envie um arquivo de áudio (até 50MB).',
       });
       return;
     }
@@ -2241,7 +2384,7 @@ export default function PainelAluno() {
 
       await createPainelAlunoAudiobook(payload);
 
-      toast({ title: 'Audiobook adicionado ao catÃ¡logo!' });
+      toast({ title: 'Audiobook adicionado ao catálogo!' });
       setAudiobookForm({ livro_id: '', titulo: '', autor: '', duracao_minutos: '' });
       setAudiobookFileDataUrl('');
       setAudiobookFileNome('');
@@ -2250,7 +2393,7 @@ export default function PainelAluno() {
         variant: 'destructive',
         title: 'Erro',
         description: isMissingTableError(error)
-          ? 'Audiobooks indisponÃ­veis: aplique a migration do banco.'
+          ? 'Audiobooks indisponíveis: aplique a migration do banco.'
           : error?.message || 'Falha ao criar audiobook.',
       });
     } finally {
@@ -2263,8 +2406,8 @@ export default function PainelAluno() {
     if (!optionalFeaturesEnabled) {
       toast({
         variant: 'destructive',
-        title: 'Recurso indisponÃ­vel',
-        description: 'Audiobooks estÃ£o desativados neste ambiente.',
+        title: 'Recurso indisponível',
+        description: 'Audiobooks estão desativados neste ambiente.',
       });
       return;
     }
@@ -2281,7 +2424,7 @@ export default function PainelAluno() {
         variant: 'destructive',
         title: 'Erro',
         description: isMissingTableError(error)
-          ? 'Audiobooks indisponÃ­veis: aplique a migration do banco.'
+          ? 'Audiobooks indisponíveis: aplique a migration do banco.'
           : error?.message || 'Falha ao atualizar seus audiobooks.',
       });
     }
@@ -2294,7 +2437,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Arquivo muito grande',
-        description: 'O limite para audiobook Ã© 50MB.',
+        description: 'O limite para audiobook é 50MB.',
       });
       return;
     }
@@ -2304,7 +2447,7 @@ export default function PainelAluno() {
       setAudiobookFileDataUrl(dataUrl);
       setAudiobookFileNome(file.name);
     } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'NÃ£o foi possÃ­vel ler o arquivo.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível ler o arquivo.' });
     }
   };
 
@@ -2347,7 +2490,7 @@ export default function PainelAluno() {
       return;
     }
     if (studioSlides.length >= 8) {
-      toast({ variant: 'destructive', title: 'Limite atingido', description: 'Use no mÃ¡ximo 8 imagens por animaÃ§Ã£o.' });
+      toast({ variant: 'destructive', title: 'Limite atingido', description: 'Use no máximo 8 imagens por animação.' });
       return;
     }
 
@@ -2367,7 +2510,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Falha ao gerar imagem',
-        description: error?.message || 'NÃ£o foi possÃ­vel gerar imagem no momento.',
+        description: error?.message || 'Não foi possível gerar imagem no momento.',
       });
     } finally {
       setGerandoImagemIA(false);
@@ -2378,14 +2521,14 @@ export default function PainelAluno() {
     const file = files?.[0];
     if (!file) return;
     if (file.size > 50 * 1024 * 1024) {
-      toast({ variant: 'destructive', title: 'Arquivo muito grande', description: 'O Ã¡udio de fundo aceita atÃ© 50MB.' });
+      toast({ variant: 'destructive', title: 'Arquivo muito grande', description: 'O áudio de fundo aceita até 50MB.' });
       return;
     }
     try {
       const dataUrl = await fileToDataUrl(file);
       setStudioAudioFundoUrl(dataUrl);
     } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'NÃ£o foi possÃ­vel ler o Ã¡udio de fundo.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível ler o áudio de fundo.' });
     }
   };
 
@@ -2393,8 +2536,8 @@ export default function PainelAluno() {
     if (!optionalFeaturesEnabled || !alunoId || !escolaId) {
       toast({
         variant: 'destructive',
-        title: 'LaboratÃ³rio indisponÃ­vel',
-        description: 'NÃ£o foi possÃ­vel publicar agora. Verifique se as migrations do banco foram aplicadas.',
+        title: 'Laboratório indisponível',
+        description: 'Não foi possível publicar agora. Verifique se as migrations do banco foram aplicadas.',
       });
       return;
     }
@@ -2463,7 +2606,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: error?.message || 'NÃ£o foi possÃ­vel compartilhar o projeto criativo.',
+        description: error?.message || 'Não foi possível compartilhar o projeto criativo.',
       });
     } finally {
       setSaving(false);
@@ -2474,8 +2617,8 @@ export default function PainelAluno() {
     if (!optionalFeaturesEnabled || !alunoId || !escolaId) {
       toast({
         variant: 'destructive',
-        title: 'LaboratÃ³rio indisponÃ­vel',
-        description: 'NÃ£o foi possÃ­vel salvar agora. Verifique as configuraÃ§Ãµes do banco.',
+        title: 'Laboratório indisponível',
+        description: 'Não foi possível salvar agora. Verifique as configurações do banco.',
       });
       return;
     }
@@ -2524,7 +2667,8 @@ export default function PainelAluno() {
       toast({ variant: 'destructive', title: 'Selecione um livro', description: 'Escolha um livro para gerar o quiz.' });
       return;
     }
-    const tema = quizTema.trim() || 'compreensÃ£o da leitura';
+    if (!alunoPodeUsarLivroEmprestado(quizLivroId, 'gerar o quiz')) return;
+    const tema = quizTema.trim() || 'compreensão da leitura';
 
     setGerandoQuizIA(true);
     try {
@@ -2540,12 +2684,12 @@ export default function PainelAluno() {
           quantidade: 3,
           alternativas: 4,
         },
-        'NÃ£o foi possÃ­vel gerar quiz com IA no momento.',
+        'Não foi possível gerar quiz com IA no momento.',
       );
 
       const perguntas = extractQuizPerguntasFromIAResponse(data);
 
-      if (perguntas.length === 0) throw new Error('A IA respondeu sem perguntas vÃ¡lidas.');
+      if (perguntas.length === 0) throw new Error('A IA respondeu sem perguntas válidas.');
 
       setQuiz(perguntas);
       setQuizRespostas({});
@@ -2555,7 +2699,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro ao gerar quiz',
-        description: error?.message || 'NÃ£o foi possÃ­vel gerar quiz com IA.',
+        description: error?.message || 'Não foi possível gerar quiz com IA.',
       });
     } finally {
       setGerandoQuizIA(false);
@@ -2624,9 +2768,9 @@ export default function PainelAluno() {
   );
 
   const quizNivel = useMemo(() => {
-    if (quiz.length <= 3) return 'BÃ¡sico';
-    if (quiz.length <= 5) return 'IntermediÃ¡rio';
-    return 'AvanÃ§ado';
+    if (quiz.length <= 3) return 'Básico';
+    if (quiz.length <= 5) return 'Intermediário';
+    return 'Avançado';
   }, [quiz.length]);
 
   const quizHistoryKeyAtual = useMemo(() => {
@@ -2640,8 +2784,8 @@ export default function PainelAluno() {
     if (!optionalFeaturesEnabled || !alunoId || !escolaId) {
       toast({
         variant: 'destructive',
-        title: 'LaboratÃ³rio indisponÃ­vel',
-        description: 'NÃ£o foi possÃ­vel salvar o quiz agora. Verifique as migrations do banco.',
+        title: 'Laboratório indisponível',
+        description: 'Não foi possível salvar o quiz agora. Verifique as migrations do banco.',
       });
       return;
     }
@@ -2651,9 +2795,10 @@ export default function PainelAluno() {
     }
 
     const livro = livrosById.get(quizLivroId);
+    if (!alunoPodeUsarLivroEmprestado(quizLivroId, publicarNaComunidade ? 'publicar este quiz' : 'salvar este quiz')) return;
     let postId = null;
     const titulo = livro?.titulo ? `Quiz IA: ${livro.titulo}` : 'Quiz IA do aluno';
-    const descricao = quizTema.trim() || 'compreensÃ£o da leitura';
+    const descricao = quizTema.trim() || 'compreensão da leitura';
 
     setSaving(true);
     try {
@@ -2708,7 +2853,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro ao salvar quiz',
-        description: error?.message || 'NÃ£o foi possÃ­vel salvar o quiz.',
+        description: error?.message || 'Não foi possível salvar o quiz.',
       });
     } finally {
       setSaving(false);
@@ -2757,6 +2902,10 @@ export default function PainelAluno() {
       const tipoPersonalizado = String(customizacao.tipo || normalizeCriacaoShareTipo(criacao)).trim();
       const conteudoJson = extractQuizFromCriacao(criacao) || {};
       let payload = null;
+
+      if (criacao.livro_id && !alunoPodeUsarLivroEmprestado(criacao.livro_id, 'publicar esta criação')) {
+        throw new Error('Somente livros presentes em "Meus livros" podem ser usados em publicações.');
+      }
 
       if (criacao.tipo === 'quiz') {
         const perguntas = ensureArray(conteudoJson?.perguntas);
@@ -3125,7 +3274,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro ao gerar resumo',
-        description: error?.message || 'NÃ£o foi possÃ­vel gerar o resumo rÃ¡pido.',
+        description: error?.message || 'Não foi possível gerar o resumo rápido.',
       });
     } finally {
       setResumoRapidoLoadingId('');
@@ -3137,15 +3286,15 @@ export default function PainelAluno() {
     const payload = extractQuizFromCriacao(criacao);
     const perguntas = ensureArray(payload?.perguntas);
     if (perguntas.length === 0) {
-      toast({ variant: 'destructive', title: 'Quiz invÃ¡lido', description: 'NÃ£o foi possÃ­vel carregar este quiz.' });
+      toast({ variant: 'destructive', title: 'Quiz inválido', description: 'Não foi possível carregar este quiz.' });
       return;
     }
     setQuizLivroId(criacao.livro_id || '');
-    setQuizTema(criacao.descricao || 'compreensÃ£o da leitura');
+    setQuizTema(criacao.descricao || 'compreensão da leitura');
     setQuiz(perguntas);
     setQuizRespostas({});
     setQuizResultado(null);
-    toast({ title: 'Quiz carregado', description: 'VocÃª pode jogar novamente.' });
+    toast({ title: 'Quiz carregado', description: 'Você pode jogar novamente.' });
   };
 
   if (loading) {
@@ -3765,7 +3914,7 @@ export default function PainelAluno() {
                     <div className="rounded-md border bg-muted/20 p-3 text-sm">
                       <p className="font-medium">Fonte do quiz</p>
                       <p className="text-xs text-muted-foreground">
-                        Livro: {livrosById.get(quizLivroId)?.titulo || '-'} - Tema: {quizTema.trim() || 'compreensao da leitura'}
+                        Livro: {livrosById.get(quizLivroId)?.titulo || '-'} - Tema: {quizTema.trim() || 'compreensão da leitura'}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         Questoes: {quiz.length} - Nivel: {quizNivel}
@@ -4097,8 +4246,26 @@ export default function PainelAluno() {
                               <p className="text-sm font-semibold line-clamp-2">{item.livros?.titulo || 'Livro'}</p>
                               <p className="text-xs text-muted-foreground line-clamp-1">{item.livros?.autor || '-'}</p>
                               <p className="text-xs text-muted-foreground">
-                                EmprÃ©stimo: {formatDateBR(item.data_emprestimo)}
+                                Empréstimo: {formatDateBR(item.data_emprestimo)}
                               </p>
+                              <p className="text-xs text-muted-foreground">
+                                Devolução prevista: {item.data_devolucao_prevista ? formatDateBR(item.data_devolucao_prevista) : 'Não informada'}
+                              </p>
+                              {pendingExtensionRequestsByLoanId.has(item.id) ? (
+                                <div className="pt-1">
+                                  <Badge variant="secondary">Prorrogação em análise</Badge>
+                                </div>
+                              ) : canRequestLoanExtension(item) ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="mt-2 w-full"
+                                  onClick={() => openLoanExtensionDialog(item)}
+                                >
+                                  Pedir extensão de prazo
+                                </Button>
+                              ) : null}
                             </div>
                           </div>
                         ))}
@@ -4331,12 +4498,16 @@ export default function PainelAluno() {
                         {solicitacoesExibidas.slice(0, solicitacoesLimit).map((solicitacao) => {
                           const statusInfo = getSolicitacaoStatusInfo(solicitacao);
                           const timeline = buildSolicitacaoTimeline(solicitacao);
+                          const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
                           return (
                           <div key={solicitacao.id} className="p-3 border rounded-lg space-y-2">
                             <div className="flex items-center justify-between gap-3">
                               <div>
                                 <p className="font-medium">{solicitacao.livros?.titulo || 'Livro'}</p>
                                 <p className="text-xs text-muted-foreground">{solicitacao.livros?.autor || '-'}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {isExtension ? 'Tipo: pedido de prorrogação' : 'Tipo: solicitação de empréstimo'}
+                                </p>
                               </div>
                               <Badge
                                 variant={statusInfo.variant}
@@ -4347,6 +4518,13 @@ export default function PainelAluno() {
                             </div>
 
                             <p className="text-xs text-muted-foreground">Solicitado em: {formatDateBR(solicitacao.created_at)}</p>
+
+                            {isExtension && (
+                              <div className="rounded-md border bg-muted/20 p-2 text-xs">
+                                <p>Data atual: {formatDateBR(solicitacao.data_devolucao_atual)}</p>
+                                <p>Nova data pedida: {formatDateBR(solicitacao.nova_data_devolucao_solicitada)}</p>
+                              </div>
+                            )}
 
                             {timeline.length > 1 && (
                               <div className="rounded-md border bg-muted/20 p-2">
@@ -4444,11 +4622,11 @@ export default function PainelAluno() {
           <TabsContent value="avaliacoes">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Minhas avaliaÃ§Ãµes</CardTitle>
+                <CardTitle className="text-base">Minhas avaliações</CardTitle>
               </CardHeader>
               <CardContent>
                 {avaliacoes.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">VocÃª ainda nÃ£o avaliou nenhum livro.</p>
+                  <p className="text-center text-muted-foreground py-8">Você ainda não avaliou nenhum livro.</p>
                 ) : (
                   <div className="space-y-3">
                     {avaliacoes.map((a) => (
@@ -4502,7 +4680,7 @@ export default function PainelAluno() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Avaliar: {reviewLivro?.titulo}</DialogTitle>
-            <DialogDescription>DÃª uma nota e escreva sua resenha.</DialogDescription>
+            <DialogDescription>Dê uma nota e escreva sua resenha.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
@@ -4515,7 +4693,7 @@ export default function PainelAluno() {
               <Textarea
                 value={reviewTexto}
                 onChange={(e) => setReviewTexto(e.target.value)}
-                placeholder="O que vocÃª achou do livro?"
+                placeholder="O que você achou do livro?"
                 rows={4}
               />
             </div>
@@ -4544,19 +4722,19 @@ export default function PainelAluno() {
       <Dialog open={requestDialog} onOpenChange={setRequestDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Solicitar emprÃ©stimo</DialogTitle>
+            <DialogTitle>Solicitar empréstimo</DialogTitle>
             <DialogDescription>Solicitar: {requestLivro?.titulo}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             {requestLivro && hasSolicitacaoEmAndamento(requestLivro.id) && (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                VocÃª jÃ¡ solicitou este livro. Aguarde a aprovaÃ§Ã£o da bibliotecÃ¡ria para solicitar novamente.
+                Você já solicitou este livro. Aguarde a aprovação da bibliotecária para solicitar novamente.
               </div>
             )}
             {requestLivro && hasEmprestimoAtivo(requestLivro.id) && (
               <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
-                Este livro jÃ¡ estÃ¡ emprestado para vocÃª. Acompanhe em â€œMeus livrosâ€.
+                Este livro já está emprestado para você. Acompanhe em "Meus livros".
               </div>
             )}
             <div className="space-y-2">
@@ -4564,7 +4742,7 @@ export default function PainelAluno() {
               <Textarea
                 value={requestMsg}
                 onChange={(e) => setRequestMsg(e.target.value)}
-                placeholder="Motivo ou observaÃ§Ãµes..."
+                placeholder="Motivo ou observações..."
                 rows={3}
               />
             </div>
@@ -4581,7 +4759,63 @@ export default function PainelAluno() {
                 || (requestLivro && (hasSolicitacaoEmAndamento(requestLivro.id) || hasEmprestimoAtivo(requestLivro.id)))
               }
             >
-              {saving ? 'Enviando...' : 'Enviar solicitaÃ§Ã£o'}
+              {saving ? 'Enviando...' : 'Enviar solicitação'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={extensionDialogOpen}
+        onOpenChange={(open) => {
+          setExtensionDialogOpen(open);
+          if (!open) {
+            setExtensionEmprestimo(null);
+            setExtensionRequestedDate('');
+            setExtensionMessage('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pedir extensão de prazo</DialogTitle>
+            <DialogDescription>
+              {extensionEmprestimo?.livros?.titulo || 'Livro'}: solicite uma nova data para a bibliotecária avaliar.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+              Data atual de devolução: {formatDateBR(extensionEmprestimo?.data_devolucao_prevista)}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="extensionRequestedDate">Nova data desejada</Label>
+              <Input
+                id="extensionRequestedDate"
+                type="date"
+                value={extensionRequestedDate}
+                min={formatDateInputValue(extensionEmprestimo?.data_devolucao_prevista)}
+                onChange={(e) => setExtensionRequestedDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="extensionMessage">Mensagem para a biblioteca</Label>
+              <Textarea
+                id="extensionMessage"
+                rows={3}
+                value={extensionMessage}
+                onChange={(e) => setExtensionMessage(e.target.value)}
+                placeholder="Explique por que você precisa de mais prazo."
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setExtensionDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleRequestLoanExtension} disabled={saving}>
+              {saving ? 'Enviando...' : 'Enviar pedido'}
             </Button>
           </div>
         </DialogContent>
@@ -4826,11 +5060,6 @@ export default function PainelAluno() {
       <Dialog
         open={showAccessChoice}
         onOpenChange={(open) => {
-          if (alunoSenhaDefinida) {
-            setShowAccessChoice(open);
-            return;
-          }
-
           if (open) setShowAccessChoice(true);
         }}
       >
@@ -4839,47 +5068,74 @@ export default function PainelAluno() {
           onEscapeKeyDown={(event) => event.preventDefault()}
           className="[&>button:last-child]:hidden"
         >
-          <DialogHeader>
-            <DialogTitle>Acesso do aluno</DialogTitle>
-            <DialogDescription>
-              No primeiro acesso, é obrigatório criar uma nova senha para continuar usando a conta.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
-            Sua matricula continua como login. Assim que a nova senha for salva, a senha inicial deixa de funcionar.
-          </div>
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="primeiroAcessoPassword">Nova senha</Label>
-              <Input
-                id="primeiroAcessoPassword"
-                type="password"
-                value={primeiroAcessoPassword}
-                onChange={(e) => setPrimeiroAcessoPassword(e.target.value)}
-                disabled={updatingPrimeiroAcessoPassword}
-                placeholder="Digite sua nova senha"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="primeiroAcessoConfirmPassword">Confirmar nova senha</Label>
-              <Input
-                id="primeiroAcessoConfirmPassword"
-                type="password"
-                value={primeiroAcessoConfirmPassword}
-                onChange={(e) => setPrimeiroAcessoConfirmPassword(e.target.value)}
-                disabled={updatingPrimeiroAcessoPassword}
-                placeholder="Repita a nova senha"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end">
-            <Button
-              onClick={handlePrimeiroAcessoPassword}
-              disabled={updatingPrimeiroAcessoPassword}
-            >
-              {updatingPrimeiroAcessoPassword ? 'Salvando...' : 'Salvar nova senha'}
-            </Button>
-          </div>
+          {onboardingStep === 0 && !alunoSenhaDefinida ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Acesso do aluno</DialogTitle>
+                <DialogDescription>
+                  No primeiro acesso, é obrigatório criar uma nova senha para continuar usando a conta.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+                Sua matrícula continua como login. Assim que a nova senha for salva, a senha inicial deixa de funcionar.
+              </div>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="primeiroAcessoPassword">Nova senha</Label>
+                  <Input
+                    id="primeiroAcessoPassword"
+                    type="password"
+                    value={primeiroAcessoPassword}
+                    onChange={(e) => setPrimeiroAcessoPassword(e.target.value)}
+                    disabled={updatingPrimeiroAcessoPassword}
+                    placeholder="Digite sua nova senha"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="primeiroAcessoConfirmPassword">Confirmar nova senha</Label>
+                  <Input
+                    id="primeiroAcessoConfirmPassword"
+                    type="password"
+                    value={primeiroAcessoConfirmPassword}
+                    onChange={(e) => setPrimeiroAcessoConfirmPassword(e.target.value)}
+                    disabled={updatingPrimeiroAcessoPassword}
+                    placeholder="Repita a nova senha"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  onClick={handlePrimeiroAcessoPassword}
+                  disabled={updatingPrimeiroAcessoPassword}
+                >
+                  {updatingPrimeiroAcessoPassword ? 'Salvando...' : 'Salvar e continuar'}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>{ALUNO_ONBOARDING_CARDS[onboardingStep - 1]?.title || 'Primeiros passos'}</DialogTitle>
+                <DialogDescription>
+                  {ALUNO_ONBOARDING_CARDS[onboardingStep - 1]?.description || 'Conclua este passo para continuar.'}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+                Passo {onboardingStep} de {ALUNO_ONBOARDING_CARDS.length}. Este guia aparece apenas no primeiro acesso.
+              </div>
+              <div className="flex justify-end gap-2">
+                {onboardingStep < ALUNO_ONBOARDING_CARDS.length ? (
+                  <Button type="button" onClick={() => setOnboardingStep((prev) => prev + 1)}>
+                    Próximo
+                  </Button>
+                ) : (
+                  <Button type="button" onClick={finalizeAlunoOnboarding}>
+                    Finalizar
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </MainLayout>

@@ -1,12 +1,20 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 export default function AdminAcesso() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
-    navigate('/auth', { replace: true });
-  }, [navigate]);
+    navigate(
+      {
+        pathname: '/auth',
+        search: location.search,
+        hash: location.hash,
+      },
+      { replace: true },
+    );
+  }, [location.hash, location.search, navigate]);
 
   return null;
 }

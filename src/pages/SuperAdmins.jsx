@@ -250,6 +250,9 @@ export default function SuperAdmins() {
                       <TableHead>Status</TableHead>
                       <TableHead>Permissoes</TableHead>
                       <TableHead>Tentativas</TableHead>
+                      <TableHead>Passkey</TableHead>
+                      <TableHead>Ultimo MFA</TableHead>
+                      <TableHead>IP / regiao</TableHead>
                       <TableHead>Ultimo login</TableHead>
                       <TableHead>Bloqueado em</TableHead>
                       <TableHead className="text-right">Acao</TableHead>
@@ -271,6 +274,14 @@ export default function SuperAdmins() {
                           </Badge>
                         </TableCell>
                         <TableCell>{item.tentativas_falhas || 0}</TableCell>
+                        <TableCell>{item.passkey_enrolled_at ? 'Cadastrada' : 'Pendente'}</TableCell>
+                        <TableCell>{formatDate(item.ultimo_mfa_em)}</TableCell>
+                        <TableCell>
+                          <div className="text-xs">
+                            <p>{item.ultimo_ip || '-'}</p>
+                            <p className="text-muted-foreground">{[item.ultima_regiao, item.ultimo_dispositivo].filter(Boolean).join(' • ') || '-'}</p>
+                          </div>
+                        </TableCell>
                         <TableCell>{formatDate(item.ultimo_login_em)}</TableCell>
                         <TableCell>{formatDate(item.bloqueado_em)}</TableCell>
                         <TableCell className="text-right">

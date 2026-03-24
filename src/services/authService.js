@@ -24,6 +24,29 @@ export async function signInWithPlatform(email, password) {
   }
 }
 
+export async function authenticatePlatformCredentials(email, password) {
+  return requestPlatformApi('/v1/auth/login', {
+    method: 'POST',
+    body: { email, password },
+  });
+}
+
+export async function finalizePlatformSession(session) {
+  const accessToken = session?.access_token;
+  const refreshToken = session?.refresh_token;
+
+  if (!accessToken || !refreshToken) {
+    throw new Error('Sessao temporaria invalida.');
+  }
+
+  const { error } = await supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  });
+
+  if (error) throw error;
+}
+
 export async function signUpWithPlatform(email, password, nome) {
   try {
     const payload = await requestPlatformApi('/v1/auth/signup', {
@@ -108,5 +131,90 @@ export async function activateStudentMatricula(matricula, senha) {
     method: 'POST',
     body: { matricula, senha },
     auth: false,
+  });
+}
+
+function buildPendingHeaders(pendingAccessToken) {
+  return pendingAccessToken
+    ? {
+      Authorization: `Bearer ${pendingAccessToken}`,
+      'x-user-access-token': pendingAccessToken,
+    }
+    : {};
+}
+
+export async function fetchSuperAdminSecurityProfile(pendingAccessToken, context) {
+  return requestPlatformApi('/v1/auth/super-admin/security-profile', {
+    method: 'POST',
+    headers: buildPendingHeaders(pendingAccessToken),
+    body: { context },
+  });
+}
+
+export async function beginSuperAdminPasskeyRegistration(pendingAccessToken, context) {
+  return requestPlatformApi('/v1/auth/super-admin/passkeys/register/options', {
+    method: 'POST',
+    headers: buildPendingHeaders(pendingAccessToken),
+    body: { context },
+  });
+}
+
+export async function finishSuperAdminPasskeyRegistration(pendingAccessToken, payload) {
+  return requestPlatformApi('/v1/auth/super-admin/passkeys/register/verify', {
+    method: 'POST',
+    headers: buildPendingHeaders(pendingAccessToken),
+    body: payload,
+  });
+}
+
+export async function beginSuperAdminPasskeyAuthentication(pendingAccessToken, context) {
+  return requestPlatformApi('/v1/auth/super-admin/passkeys/authenticate/options', {
+    method: 'POST',
+    headers: buildPendingHeaders(pendingAccessToken),
+    body: { context },
+  });
+}
+
+export async function finishSuperAdminPasskeyAuthentication(pendingAccessToken, payload) {
+  return requestPlatformApi('/v1/auth/super-admin/passkeys/authenticate/verify', {
+    method: 'POST',
+    headers: buildPendingHeaders(pendingAccessToken),
+    body: payload,
+  });
+}
+
+export async function sendSuperAdminEmailCode(pendingAccessToken, challengeId) {
+  return requestPlatformApi('/v1/auth/super-admin/email/send-code', {
+    method: 'POST',
+    headers: buildPendingHeaders(pendingAccessToken),
+    body: { challengeId },
+  });
+}
+
+export async function verifySuperAdminEmailCode(pendingAccessToken, challengeId, code) {
+  return requestPlatformApi('/v1/auth/super-admin/email/verify-code', {
+    method: 'POST',
+    headers: buildPendingHeaders(pendingAccessToken),
+    body: { challengeId, code },
+  });
+}
+
+export async function startSuperAdminDesktopApproval(pendingAccessToken, context) {
+  return requestPlatformApi('/v1/auth/super-admin/desktop/start', {
+    method: 'POST',
+    headers: buildPendingHeaders(pendingAccessToken),
+    body: { context },
+  });
+}
+
+export async function fetchSuperAdminDesktopApprovalStatus(token) {
+  return requestPlatformApi(`/v1/auth/super-admin/desktop/challenges/${encodeURIComponent(token)}`);
+}
+
+export async function approveSuperAdminDesktopAccess(pendingAccessToken, token, authChallengeId) {
+  return requestPlatformApi('/v1/auth/super-admin/desktop/approve', {
+    method: 'POST',
+    headers: buildPendingHeaders(pendingAccessToken),
+    body: { token, authChallengeId },
   });
 }

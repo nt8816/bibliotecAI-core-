@@ -1,9 +1,28 @@
+import {
+  base64UrlEncode,
+  base64UrlDecode,
+  buildRiskContext,
+  detectDeviceType,
+  getRequestOrigin,
+  getRpId,
+  randomDigits,
+  randomToken,
+  sendSecurityEmail,
+  sha256Base64Url,
+  verifyAuthenticationResponse,
+  verifyRegistrationResponse,
+} from './superAdminSecurity';
+
 export interface Env {
   APP_ENV?: string;
   API_BASE_URL?: string;
   SUPABASE_URL?: string;
   SUPABASE_PUBLISHABLE_KEY?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
+  SECURITY_EMAIL_FROM?: string;
+  SECURITY_EMAIL_FROM_NAME?: string;
+  SECURITY_EMAIL_REPLY_TO?: string;
+  MAILCHANNELS_ENDPOINT?: string;
 }
 
 type RouteHandler = (request: Request, env: Env) => Promise<Response> | Response;
@@ -66,6 +85,14 @@ async function parseResponse(response: Response) {
 
 async function fetchSupabaseUser(request: Request, env: Env) {
   const token = getUserToken(request);
+  if (!token) {
+    return null;
+  }
+
+  return fetchSupabaseUserByToken(token, env);
+}
+
+async function fetchSupabaseUserByToken(token: string, env: Env) {
   if (!token) {
     return null;
   }
@@ -481,6 +508,146 @@ async function resolveSuperAdminMatch(identifier: string, env: Env) {
     bloqueado: account.bloqueado === true,
     tentativas_falhas: Number(account.tentativas_falhas || 0),
   };
+}
+
+async function getSuperAdminAccountById(accountId: string, env: Env) {
+  const payload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/super_admin_accounts?${new URLSearchParams({
+      select: 'id,nome,email,ativo,bloqueado,passkey_required,passkey_enrolled_at,ultimo_ip,ultima_regiao,ultimo_dispositivo,ultimo_mfa_em,ultimo_email_verificado_em,created_at',
+      id: `eq.${accountId}`,
+      limit: '1',
+    }).toString()}`,
+  );
+
+  return Array.isArray(payload) ? (payload[0] || null) : null;
+}
+
+async function getSuperAdminAccountByAuthUserId(userId: string, env: Env) {
+  const payload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/super_admin_accounts?${new URLSearchParams({
+      select: 'id,nome,email,ativo,bloqueado,passkey_required,passkey_enrolled_at,ultimo_ip,ultima_regiao,ultimo_dispositivo,ultimo_mfa_em,ultimo_email_verificado_em,created_at',
+      auth_user_id: `eq.${userId}`,
+      limit: '1',
+    }).toString()}`,
+  );
+
+  return Array.isArray(payload) ? (payload[0] || null) : null;
+}
+
+async function listActivePasskeys(accountId: string, env: Env) {
+  const payload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/super_admin_passkeys?${new URLSearchParams({
+      select: 'id,credential_id,credential_public_key_jwk,counter,transports,device_label,created_at,last_used_at,revoked_at',
+      account_id: `eq.${accountId}`,
+      revoked_at: 'is.null',
+      order: 'created_at.asc',
+    }).toString()}`,
+  );
+
+  return Array.isArray(payload) ? payload : [];
+}
+
+async function getActivePasskeyByCredential(accountId: string, credentialId: string, env: Env) {
+  const payload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/super_admin_passkeys?${new URLSearchParams({
+      select: 'id,credential_id,credential_public_key_jwk,counter,transports,device_label,created_at,last_used_at,revoked_at',
+      account_id: `eq.${accountId}`,
+      credential_id: `eq.${credentialId}`,
+      revoked_at: 'is.null',
+      limit: '1',
+    }).toString()}`,
+  );
+
+  return Array.isArray(payload) ? (payload[0] || null) : null;
+}
+
+async function createSuperAdminChallenge(
+  env: Env,
+  payload: Record<string, unknown>,
+) {
+  const created = await supabaseAdminRequest(env, '/rest/v1/super_admin_access_challenges', {
+    method: 'POST',
+    body: payload,
+    headers: {
+      Prefer: 'return=representation',
+    },
+  });
+
+  return Array.isArray(created) ? (created[0] || null) : created;
+}
+
+async function getSuperAdminChallengeByToken(token: string, env: Env) {
+  const tokenHash = await sha256Base64Url(token);
+  const payload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/super_admin_access_challenges?${new URLSearchParams({
+      select: 'id,account_id,kind,challenge_hash,token_hash,device_type,origin_ip,origin_region,origin_city,user_agent,requires_email_verification,email_code_hash,email_code_expires_at,email_verified_at,approved_at,approved_by_account_id,consumed_at,expires_at,metadata,created_at',
+      token_hash: `eq.${tokenHash}`,
+      limit: '1',
+    }).toString()}`,
+  );
+
+  return Array.isArray(payload) ? (payload[0] || null) : null;
+}
+
+async function getSuperAdminChallengeByHash(accountId: string, kind: string, challengeHash: string, env: Env) {
+  const payload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/super_admin_access_challenges?${new URLSearchParams({
+      select: 'id,account_id,kind,challenge_hash,token_hash,device_type,origin_ip,origin_region,origin_city,user_agent,requires_email_verification,email_code_hash,email_code_expires_at,email_verified_at,approved_at,approved_by_account_id,consumed_at,expires_at,metadata,created_at',
+      account_id: `eq.${accountId}`,
+      kind: `eq.${kind}`,
+      challenge_hash: `eq.${challengeHash}`,
+      order: 'created_at.desc',
+      limit: '1',
+    }).toString()}`,
+  );
+
+  return Array.isArray(payload) ? (payload[0] || null) : null;
+}
+
+async function getSuperAdminChallengeById(challengeId: string, env: Env) {
+  const payload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/super_admin_access_challenges?${new URLSearchParams({
+      select: 'id,account_id,kind,challenge_hash,token_hash,device_type,origin_ip,origin_region,origin_city,user_agent,requires_email_verification,email_code_hash,email_code_expires_at,email_verified_at,approved_at,approved_by_account_id,consumed_at,expires_at,metadata,created_at',
+      id: `eq.${challengeId}`,
+      limit: '1',
+    }).toString()}`,
+  );
+
+  return Array.isArray(payload) ? (payload[0] || null) : null;
+}
+
+async function patchSuperAdminChallenge(challengeId: string, env: Env, body: Record<string, unknown>) {
+  await supabaseAdminRequest(
+    env,
+    `/rest/v1/super_admin_access_challenges?${new URLSearchParams({ id: `eq.${challengeId}` }).toString()}`,
+    {
+      method: 'PATCH',
+      body,
+      headers: {
+        Prefer: 'return=minimal',
+      },
+    },
+  );
+}
+
+function isChallengeExpired(challenge: Record<string, unknown> | null | undefined) {
+  const expiresAt = String(challenge?.expires_at || '').trim();
+  return !expiresAt || Number.isNaN(Date.parse(expiresAt)) || new Date(expiresAt).getTime() <= Date.now();
+}
+
+function isPendingChallenge(challenge: Record<string, unknown> | null | undefined) {
+  return Boolean(
+    challenge?.id &&
+    !challenge?.consumed_at &&
+    !isChallengeExpired(challenge),
+  );
 }
 
 async function buildGestoresForEscola(escolaId: string, env: Env) {
@@ -1752,6 +1919,492 @@ const routes: Record<string, RouteHandler> = {
       tenant_subdomain: invite.subdominio || null,
     });
   },
+  'POST /v1/auth/super-admin/security-profile': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const account =
+      await getSuperAdminAccountByAuthUserId(user.id, env) ||
+      await resolveSuperAdminMatch(user.email || '', env).then((match) => (match?.account_id ? getSuperAdminAccountById(match.account_id, env) : null));
+
+    if (!account?.id) {
+      return jsonResponse({ success: false, error: 'Conta de Super Admin nao encontrada.' }, 404);
+    }
+
+    const passkeys = await listActivePasskeys(String(account.id), env);
+    const body = await request.json().catch(() => ({}));
+    const risk = buildRiskContext(request, body?.context && typeof body.context === 'object' ? body.context : null);
+
+    return jsonResponse({
+      success: true,
+      account: {
+        id: account.id,
+        nome: account.nome || null,
+        email: account.email || user.email || null,
+        passkey_required: account.passkey_required !== false,
+        passkey_enrolled_at: account.passkey_enrolled_at || null,
+      },
+      passkeysCount: passkeys.length,
+      needsPasskeyEnrollment: passkeys.length === 0,
+      requiresEmailVerification: risk.outsideNordeste,
+      deviceType: risk.deviceType,
+      risk,
+    });
+  },
+  'POST /v1/auth/super-admin/passkeys/register/options': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const account = await getSuperAdminAccountByAuthUserId(user.id, env);
+    if (!account?.id) {
+      return jsonResponse({ success: false, error: 'Conta de Super Admin nao encontrada.' }, 404);
+    }
+
+    const existingPasskeys = await listActivePasskeys(String(account.id), env);
+    const body = await request.json().catch(() => ({}));
+    const requestContext = body?.context && typeof body.context === 'object' ? body.context : null;
+    const risk = buildRiskContext(request, requestContext);
+    const challenge = randomToken(32);
+    const origin = getRequestOrigin(request, env, requestContext);
+    const rpId = getRpId(origin);
+
+    const challengeRow = await createSuperAdminChallenge(env, {
+      account_id: account.id,
+      kind: 'passkey_registration',
+      challenge_hash: await sha256Base64Url(challenge),
+      device_type: risk.deviceType,
+      origin_ip: risk.ip,
+      origin_region: risk.region,
+      origin_city: risk.city,
+      user_agent: risk.userAgent,
+      expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      metadata: {
+        origin,
+        rpId,
+        outsideNordeste: risk.outsideNordeste,
+      },
+    });
+
+    return jsonResponse({
+      success: true,
+      challengeId: challengeRow?.id || null,
+      publicKey: {
+        challenge,
+        rp: {
+          name: 'BibliotecAI Super Admin',
+          id: rpId,
+        },
+        user: {
+          id: base64UrlEncode(new TextEncoder().encode(String(account.id))),
+          name: String(account.email || user.email || '').trim().toLowerCase(),
+          displayName: String(account.nome || account.email || 'Super Admin'),
+        },
+        pubKeyCredParams: [
+          { type: 'public-key', alg: -7 },
+        ],
+        timeout: 60000,
+        attestation: 'none',
+        authenticatorSelection: {
+          authenticatorAttachment: 'platform',
+          residentKey: 'required',
+          userVerification: 'required',
+        },
+        excludeCredentials: existingPasskeys.map((item) => ({
+          id: item.credential_id,
+          type: 'public-key',
+          transports: Array.isArray(item.transports) ? item.transports : [],
+        })),
+      },
+    });
+  },
+  'POST /v1/auth/super-admin/passkeys/register/verify': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const account = await getSuperAdminAccountByAuthUserId(user.id, env);
+    if (!account?.id) {
+      return jsonResponse({ success: false, error: 'Conta de Super Admin nao encontrada.' }, 404);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const challenge = String(body?.challenge || '').trim();
+    const credential = body?.credential;
+    const deviceLabel = String(body?.deviceLabel || '').trim() || 'Passkey biometrica';
+    if (!challenge || !credential) {
+      return jsonResponse({ success: false, error: 'Challenge e credencial sao obrigatorios.' }, 400);
+    }
+
+    const challengeRow = await getSuperAdminChallengeByHash(String(account.id), 'passkey_registration', await sha256Base64Url(challenge), env);
+    if (!isPendingChallenge(challengeRow)) {
+      return jsonResponse({ success: false, error: 'Challenge de cadastro expirado ou invalido.' }, 410);
+    }
+
+    const verification = await verifyRegistrationResponse({
+      credential,
+      expectedChallenge: challenge,
+      expectedOrigin: String(challengeRow?.metadata?.origin || getRequestOrigin(request, env, body?.context && typeof body.context === 'object' ? body.context : null)),
+      rpId: String(challengeRow?.metadata?.rpId || getRpId(getRequestOrigin(request, env, body?.context && typeof body.context === 'object' ? body.context : null))),
+    });
+
+    const alreadyExists = await getActivePasskeyByCredential(String(account.id), verification.credentialId, env);
+    if (alreadyExists?.id) {
+      return jsonResponse({ success: true, alreadyRegistered: true });
+    }
+
+    await supabaseAdminRequest(env, '/rest/v1/super_admin_passkeys', {
+      method: 'POST',
+      body: {
+        account_id: account.id,
+        credential_id: verification.credentialId,
+        credential_public_key_jwk: verification.publicKeyJwk,
+        counter: verification.counter,
+        transports: verification.transports,
+        device_label: deviceLabel,
+        backed_up: verification.backedUp,
+        metadata: {
+          authenticator_attachment: credential?.authenticatorAttachment || null,
+        },
+      },
+      headers: {
+        Prefer: 'return=minimal',
+      },
+    });
+
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/super_admin_accounts?${new URLSearchParams({ id: `eq.${account.id}` }).toString()}`,
+      {
+        method: 'PATCH',
+        body: {
+          passkey_enrolled_at: new Date().toISOString(),
+        },
+        headers: { Prefer: 'return=minimal' },
+      },
+    );
+
+    await patchSuperAdminChallenge(String(challengeRow.id), env, {
+      consumed_at: new Date().toISOString(),
+      approved_at: new Date().toISOString(),
+    });
+
+    return jsonResponse({ success: true });
+  },
+  'POST /v1/auth/super-admin/passkeys/authenticate/options': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const account = await getSuperAdminAccountByAuthUserId(user.id, env);
+    if (!account?.id) {
+      return jsonResponse({ success: false, error: 'Conta de Super Admin nao encontrada.' }, 404);
+    }
+
+    const passkeys = await listActivePasskeys(String(account.id), env);
+    if (passkeys.length === 0) {
+      return jsonResponse({ success: false, error: 'Nenhuma passkey cadastrada para este Super Admin.' }, 409);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const requestContext = body?.context && typeof body.context === 'object' ? body.context : null;
+    const risk = buildRiskContext(request, requestContext);
+    const challenge = randomToken(32);
+    const origin = getRequestOrigin(request, env, requestContext);
+    const rpId = getRpId(origin);
+
+    const challengeRow = await createSuperAdminChallenge(env, {
+      account_id: account.id,
+      kind: 'passkey_authentication',
+      challenge_hash: await sha256Base64Url(challenge),
+      device_type: risk.deviceType,
+      origin_ip: risk.ip,
+      origin_region: risk.region,
+      origin_city: risk.city,
+      user_agent: risk.userAgent,
+      requires_email_verification: risk.outsideNordeste,
+      expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      metadata: {
+        origin,
+        rpId,
+        outsideNordeste: risk.outsideNordeste,
+      },
+    });
+
+    return jsonResponse({
+      success: true,
+      challengeId: challengeRow?.id || null,
+      requiresEmailVerification: risk.outsideNordeste,
+      publicKey: {
+        challenge,
+        rpId,
+        timeout: 60000,
+        userVerification: 'required',
+        allowCredentials: passkeys.map((item) => ({
+          id: item.credential_id,
+          type: 'public-key',
+          transports: Array.isArray(item.transports) ? item.transports : [],
+        })),
+      },
+    });
+  },
+  'POST /v1/auth/super-admin/passkeys/authenticate/verify': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const account = await getSuperAdminAccountByAuthUserId(user.id, env);
+    if (!account?.id) {
+      return jsonResponse({ success: false, error: 'Conta de Super Admin nao encontrada.' }, 404);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const challenge = String(body?.challenge || '').trim();
+    const credential = body?.credential;
+    if (!challenge || !credential?.id) {
+      return jsonResponse({ success: false, error: 'Credencial biometrica obrigatoria.' }, 400);
+    }
+
+    const passkey = await getActivePasskeyByCredential(String(account.id), String(credential.id), env);
+    if (!passkey?.id) {
+      return jsonResponse({ success: false, error: 'Passkey nao reconhecida para este Super Admin.' }, 404);
+    }
+
+    const challengeRow = await getSuperAdminChallengeByHash(String(account.id), 'passkey_authentication', await sha256Base64Url(challenge), env);
+    if (!isPendingChallenge(challengeRow)) {
+      return jsonResponse({ success: false, error: 'Challenge biometrico expirado ou invalido.' }, 410);
+    }
+
+    const verification = await verifyAuthenticationResponse({
+      credential,
+      expectedChallenge: challenge,
+      expectedOrigin: String(challengeRow?.metadata?.origin || getRequestOrigin(request, env, body?.context && typeof body.context === 'object' ? body.context : null)),
+      rpId: String(challengeRow?.metadata?.rpId || getRpId(getRequestOrigin(request, env, body?.context && typeof body.context === 'object' ? body.context : null))),
+      storedCredentialId: String(passkey.credential_id),
+      publicKeyJwk: passkey.credential_public_key_jwk,
+      previousCounter: Number(passkey.counter || 0),
+    });
+
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/super_admin_passkeys?${new URLSearchParams({ id: `eq.${passkey.id}` }).toString()}`,
+      {
+        method: 'PATCH',
+        body: {
+          counter: verification.counter,
+          last_used_at: new Date().toISOString(),
+        },
+        headers: { Prefer: 'return=minimal' },
+      },
+    );
+
+    await patchSuperAdminChallenge(String(challengeRow.id), env, {
+      approved_at: new Date().toISOString(),
+    });
+
+    return jsonResponse({
+      success: true,
+      challengeId: challengeRow.id,
+      requiresEmailVerification: challengeRow.requires_email_verification === true,
+    });
+  },
+  'POST /v1/auth/super-admin/email/send-code': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const account = await getSuperAdminAccountByAuthUserId(user.id, env);
+    if (!account?.id || !account.email) {
+      return jsonResponse({ success: false, error: 'Conta de Super Admin nao encontrada.' }, 404);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const challengeId = String(body?.challengeId || '').trim();
+    const challenge = await getSuperAdminChallengeById(challengeId, env);
+    if (!challenge?.id || String(challenge.account_id) !== String(account.id) || !isPendingChallenge(challenge)) {
+      return jsonResponse({ success: false, error: 'Desafio de email invalido.' }, 404);
+    }
+
+    const code = randomDigits(6);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+    await patchSuperAdminChallenge(String(challenge.id), env, {
+      requires_email_verification: true,
+      email_code_hash: await sha256Base64Url(code),
+      email_code_expires_at: expiresAt,
+    });
+
+    await sendSecurityEmail(
+      env,
+      String(account.email),
+      'Codigo de verificacao de Super Admin',
+      `<p>Seu codigo de verificacao da BibliotecAI e <strong>${code}</strong>.</p><p>Ele expira em 10 minutos.</p>`,
+      `Seu codigo de verificacao da BibliotecAI e ${code}. Ele expira em 10 minutos.`,
+    );
+
+    return jsonResponse({
+      success: true,
+      maskedEmail: String(account.email).replace(/(^.).*(@.*$)/, '$1***$2'),
+      expiresAt,
+    });
+  },
+  'POST /v1/auth/super-admin/email/verify-code': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const account = await getSuperAdminAccountByAuthUserId(user.id, env);
+    if (!account?.id) {
+      return jsonResponse({ success: false, error: 'Conta de Super Admin nao encontrada.' }, 404);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const challengeId = String(body?.challengeId || '').trim();
+    const code = String(body?.code || '').trim();
+    const challenge = await getSuperAdminChallengeById(challengeId, env);
+    if (!challenge?.id || String(challenge.account_id) !== String(account.id) || !isPendingChallenge(challenge)) {
+      return jsonResponse({ success: false, error: 'Desafio de email invalido.' }, 404);
+    }
+
+    if (!code || !challenge.email_code_hash || !challenge.email_code_expires_at || new Date(String(challenge.email_code_expires_at)).getTime() <= Date.now()) {
+      return jsonResponse({ success: false, error: 'Codigo expirado ou nao enviado.' }, 410);
+    }
+
+    if (await sha256Base64Url(code) !== String(challenge.email_code_hash)) {
+      return jsonResponse({ success: false, error: 'Codigo de verificacao invalido.' }, 400);
+    }
+
+    const nowIso = new Date().toISOString();
+    await patchSuperAdminChallenge(String(challenge.id), env, {
+      email_verified_at: nowIso,
+    });
+
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/super_admin_accounts?${new URLSearchParams({ id: `eq.${account.id}` }).toString()}`,
+      {
+        method: 'PATCH',
+        body: {
+          ultimo_email_verificado_em: nowIso,
+        },
+        headers: { Prefer: 'return=minimal' },
+      },
+    );
+
+    return jsonResponse({ success: true });
+  },
+  'POST /v1/auth/super-admin/desktop/start': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const account = await getSuperAdminAccountByAuthUserId(user.id, env);
+    if (!account?.id) {
+      return jsonResponse({ success: false, error: 'Conta de Super Admin nao encontrada.' }, 404);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const requestContext = body?.context && typeof body.context === 'object' ? body.context : null;
+    const risk = buildRiskContext(request, requestContext);
+    const token = randomToken(24);
+    const origin = getRequestOrigin(request, env, requestContext);
+    const challenge = await createSuperAdminChallenge(env, {
+      account_id: account.id,
+      kind: 'desktop_access',
+      challenge_hash: await sha256Base64Url(randomToken(32)),
+      token_hash: await sha256Base64Url(token),
+      device_type: 'desktop',
+      origin_ip: risk.ip,
+      origin_region: risk.region,
+      origin_city: risk.city,
+      user_agent: risk.userAgent,
+      requires_email_verification: risk.outsideNordeste,
+      expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      metadata: {
+        origin,
+        desktopRisk: risk,
+      },
+    });
+
+    const approvalUrl = `${origin}/admin/acesso?desktopApproval=${encodeURIComponent(token)}`;
+
+    return jsonResponse({
+      success: true,
+      token,
+      challengeId: challenge?.id || null,
+      approvalUrl,
+      qrCodeUrl: `https://quickchart.io/qr?text=${encodeURIComponent(approvalUrl)}&size=260`,
+      expiresAt: challenge?.expires_at || null,
+      requiresEmailVerification: risk.outsideNordeste,
+    });
+  },
+  'GET /v1/auth/super-admin/desktop/challenges/([^/]+)': async (request, env) => {
+    const token = getPathParam(request, /^\/v1\/auth\/super-admin\/desktop\/challenges\/([^/]+)$/);
+    const challenge = await getSuperAdminChallengeByToken(token, env);
+    if (!challenge?.id) {
+      return jsonResponse({ success: false, error: 'Desafio desktop nao encontrado.' }, 404);
+    }
+
+    return jsonResponse({
+      success: true,
+      approved: Boolean(challenge.approved_at),
+      consumed: Boolean(challenge.consumed_at),
+      expired: isChallengeExpired(challenge),
+      approvedAt: challenge.approved_at || null,
+      expiresAt: challenge.expires_at || null,
+    });
+  },
+  'POST /v1/auth/super-admin/desktop/approve': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const account = await getSuperAdminAccountByAuthUserId(user.id, env);
+    if (!account?.id) {
+      return jsonResponse({ success: false, error: 'Conta de Super Admin nao encontrada.' }, 404);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const token = String(body?.token || '').trim();
+    const authChallengeId = String(body?.authChallengeId || '').trim();
+    const desktopChallenge = await getSuperAdminChallengeByToken(token, env);
+    const authChallenge = await getSuperAdminChallengeById(authChallengeId, env);
+
+    if (!desktopChallenge?.id || !isPendingChallenge(desktopChallenge)) {
+      return jsonResponse({ success: false, error: 'Desafio do computador expirado ou invalido.' }, 410);
+    }
+
+    if (!authChallenge?.id || String(authChallenge.account_id) !== String(account.id) || String(authChallenge.kind) !== 'passkey_authentication' || !authChallenge.approved_at) {
+      return jsonResponse({ success: false, error: 'Autenticacao biometrica do celular nao foi confirmada.' }, 400);
+    }
+
+    if (authChallenge.requires_email_verification === true && !authChallenge.email_verified_at) {
+      return jsonResponse({ success: false, error: 'A verificacao adicional por email ainda nao foi concluida.' }, 400);
+    }
+
+    const nowIso = new Date().toISOString();
+    await patchSuperAdminChallenge(String(desktopChallenge.id), env, {
+      approved_at: nowIso,
+      approved_by_account_id: account.id,
+      metadata: {
+        ...(desktopChallenge.metadata && typeof desktopChallenge.metadata === 'object' ? desktopChallenge.metadata : {}),
+        mobile_auth_challenge_id: authChallenge.id,
+        approved_from_mobile_at: nowIso,
+      },
+    });
+
+    return jsonResponse({ success: true });
+  },
   'POST /v1/auth/resolve-login': async (request, env) => {
     const body = await request.json().catch(() => ({}));
     const identifier = String(body?.identifier || '').trim();
@@ -1858,10 +2511,44 @@ const routes: Record<string, RouteHandler> = {
     const jwtEmail = normalizeIdentifier(user?.email);
     const requestedEmail = normalizeIdentifier(body?.email);
     const match = await resolveSuperAdminMatch(requestedEmail || jwtEmail, env);
+    const mfaChallengeId = String(body?.mfaChallengeId || '').trim();
+    const desktopChallengeToken = String(body?.desktopChallengeToken || '').trim();
+    const securityContext = body?.context && typeof body.context === 'object' ? body.context : null;
 
     if (!match?.matched || !match?.account_id) {
       return jsonResponse({ success: true, successMatched: false, matched: false });
     }
+
+    if (!mfaChallengeId && !desktopChallengeToken) {
+      return jsonResponse({ success: false, error: 'Confirmacao biometrica obrigatoria para Super Admin.' }, 403);
+    }
+
+    let emailVerified = false;
+    if (desktopChallengeToken) {
+      const desktopChallenge = await getSuperAdminChallengeByToken(desktopChallengeToken, env);
+      if (!desktopChallenge?.id || String(desktopChallenge.account_id) !== String(match.account_id) || !desktopChallenge.approved_at || desktopChallenge.consumed_at || isChallengeExpired(desktopChallenge)) {
+        return jsonResponse({ success: false, error: 'Aprovacao do computador ainda nao foi validada.' }, 403);
+      }
+      emailVerified = desktopChallenge.requires_email_verification === true;
+      await patchSuperAdminChallenge(String(desktopChallenge.id), env, {
+        consumed_at: new Date().toISOString(),
+      });
+    } else {
+      const mfaChallenge = await getSuperAdminChallengeById(mfaChallengeId, env);
+      if (!mfaChallenge?.id || String(mfaChallenge.account_id) !== String(match.account_id) || String(mfaChallenge.kind) !== 'passkey_authentication' || !mfaChallenge.approved_at || mfaChallenge.consumed_at || isChallengeExpired(mfaChallenge)) {
+        return jsonResponse({ success: false, error: 'Autenticacao biometrica ainda nao foi validada.' }, 403);
+      }
+      if (mfaChallenge.requires_email_verification === true && !mfaChallenge.email_verified_at) {
+        return jsonResponse({ success: false, error: 'A verificacao adicional por email e obrigatoria para este acesso.' }, 403);
+      }
+      emailVerified = Boolean(mfaChallenge.email_verified_at);
+      await patchSuperAdminChallenge(String(mfaChallenge.id), env, {
+        consumed_at: new Date().toISOString(),
+      });
+    }
+
+    const risk = buildRiskContext(request, securityContext);
+    const nowIso = new Date().toISOString();
 
     await supabaseAdminRequest(
       env,
@@ -1871,11 +2558,16 @@ const routes: Record<string, RouteHandler> = {
         body: {
           auth_user_id: user.id,
           tentativas_falhas: 0,
-          ultima_tentativa_em: new Date().toISOString(),
-          ultimo_login_em: new Date().toISOString(),
+          ultima_tentativa_em: nowIso,
+          ultimo_login_em: nowIso,
           ativo: true,
           bloqueado: false,
           bloqueado_em: null,
+          ultimo_ip: risk.ip,
+          ultima_regiao: risk.region,
+          ultimo_dispositivo: risk.deviceType,
+          ultimo_mfa_em: nowIso,
+          ultimo_email_verificado_em: emailVerified ? nowIso : null,
         },
         headers: {
           Prefer: 'return=minimal',
@@ -1892,6 +2584,11 @@ const routes: Record<string, RouteHandler> = {
       context: {
         account_id: match.account_id,
         email: match.email || requestedEmail || jwtEmail || null,
+        city: risk.city,
+        region: risk.region,
+        country: risk.country,
+        device_type: risk.deviceType,
+        email_verified: emailVerified,
       },
     });
 
@@ -2823,7 +3520,7 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const accountsParams = new URLSearchParams({
-      select: 'id,nome,email,cpf,ativo,bloqueado,tentativas_falhas,ultima_tentativa_em,ultimo_login_em,bloqueado_em,created_at',
+      select: 'id,nome,email,cpf,ativo,bloqueado,tentativas_falhas,ultima_tentativa_em,ultimo_login_em,bloqueado_em,passkey_enrolled_at,ultimo_mfa_em,ultimo_ip,ultima_regiao,ultimo_dispositivo,created_at',
       order: 'created_at.asc',
     });
 

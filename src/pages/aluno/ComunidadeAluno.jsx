@@ -305,6 +305,7 @@ export default function ComunidadeAluno() {
 
   const [postTipo, setPostTipo] = useState('resenha');
   const [postLivroId, setPostLivroId] = useState('');
+  const [postLivroNomeManual, setPostLivroNomeManual] = useState('');
   const [postAudiobookId, setPostAudiobookId] = useState('');
   const [postTitulo, setPostTitulo] = useState('');
   const [postConteudo, setPostConteudo] = useState('');
@@ -601,6 +602,7 @@ export default function ComunidadeAluno() {
   const clearPostForm = () => {
     setPostTipo('resenha');
     setPostLivroId('');
+    setPostLivroNomeManual('');
     setPostAudiobookId('');
     setPostTitulo('');
     setPostConteudo('');
@@ -664,6 +666,19 @@ export default function ComunidadeAluno() {
             ),
           )
         : [];
+      const livroManual = postLivroNomeManual.trim();
+      const livroRelacionado = postLivroId
+        ? livros.find((livro) => livro.id === postLivroId)
+        : null;
+      const conteudoBase =
+        postConteudo.trim() || (postTipo === 'comunicado' ? 'Novo comunicado da escola.' : 'Compartilhamento de midia criado na comunidade.');
+      const conteudoComLivroManual =
+        !postLivroId && livroManual
+          ? `Livro desejado: ${livroManual}\n\n${conteudoBase}`.trim()
+          : conteudoBase;
+      const tituloBase = postTitulo.trim();
+      const tituloComLivroManual =
+        tituloBase || (!postLivroId && livroManual ? `${postTipo === 'resenha' ? 'Resenha' : 'Publicação'} sobre ${livroManual}` : null);
 
       const { data: novoPost, error } = await insertCommunityPostCompat({
         autor_id: alunoId,
@@ -673,10 +688,14 @@ export default function ComunidadeAluno() {
         livro_id: postLivroId || null,
         audiobook_id: postAudiobookId || null,
         tipo: postTipo,
-        titulo: postTitulo.trim() || null,
-        conteudo: postConteudo.trim() || (postTipo === 'comunicado' ? 'Novo comunicado da escola.' : 'Compartilhamento de midia criado na comunidade.'),
+        titulo: tituloComLivroManual,
+        conteudo: conteudoComLivroManual,
         imagem_urls: imagemUrls,
-        tags: Array.from(new Set([...(postComIA ? ['ia'] : []), ...(postTipo === 'comunicado' ? [COMUNICADO_AUTO_TAG] : [])])),
+        tags: Array.from(new Set([
+          ...(postComIA ? ['ia'] : []),
+          ...(postTipo === 'comunicado' ? [COMUNICADO_AUTO_TAG] : []),
+          ...(livroManual && !livroRelacionado ? ['livro-manual'] : []),
+        ])),
       });
 
       if (error) throw error;
@@ -1354,8 +1373,16 @@ export default function ComunidadeAluno() {
                     <option key={livro.id} value={livro.id}>
                       {livro.titulo}
                     </option>
-                  ))}
+                    ))}
                 </select>
+                <Input
+                  value={postLivroNomeManual}
+                  onChange={(e) => setPostLivroNomeManual(e.target.value)}
+                  placeholder="Ou digite o nome do livro que você quer citar"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Você pode selecionar um livro da biblioteca ou escrever o nome manualmente.
+                </p>
               </div>
               {(isProfessor || (canPublicarComunicado && postTipo === 'comunicado')) && (
                 <div className="space-y-2 sm:col-span-3">
@@ -1668,11 +1695,6 @@ export default function ComunidadeAluno() {
     </MainLayout>
   );
 }
-
-
-
-
-
 
 
 

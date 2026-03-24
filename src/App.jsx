@@ -74,6 +74,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/auth" element={<Auth />} />
       <Route path="/admin/acesso" element={<AdminAcesso />} />
+      <Route path="/admin/login" element={<Navigate to="/admin/acesso" replace />} />
+      <Route path="/acesso-admin" element={<Navigate to="/admin/acesso" replace />} />
       <Route path="/convite/:token" element={<Convite />} />
       <Route path="/onboarding/:token" element={<OnboardingGestor />} />
       <Route

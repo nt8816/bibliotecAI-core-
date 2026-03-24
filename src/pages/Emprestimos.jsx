@@ -274,7 +274,7 @@ export default function Emprestimos() {
       toast({
         variant: 'destructive',
         title: 'Per??odo inv??lido',
-        description: 'A devolu????o prevista n??o pode ser anterior ?? data do empr??stimo.',
+        description: 'A devolução prevista não pode ser anterior à data do empréstimo.',
       });
       return;
     }
@@ -1122,6 +1122,7 @@ export default function Emprestimos() {
                     <div className="space-y-3">
                       {solicitacoes.map((solicitacao) => {
                         const isPendente = solicitacao.status === 'pendente';
+                        const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
                         return (
                           <div key={solicitacao.id} className="border rounded-lg p-4 space-y-3">
                             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
@@ -1131,6 +1132,9 @@ export default function Emprestimos() {
                                 <p className="text-xs text-muted-foreground">
                                   Aluno: {solicitacao.usuarios_biblioteca?.nome || '-'} • {formatDateBR(solicitacao.created_at)}
                                 </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {isExtension ? 'Tipo: pedido de prorrogação' : 'Tipo: solicitação de empréstimo'}
+                                </p>
                               </div>
                               <div>{getStatusSolicitacaoBadge(solicitacao.status)}</div>
                             </div>
@@ -1139,6 +1143,12 @@ export default function Emprestimos() {
                               <div>
                                 <p className="text-xs text-muted-foreground mb-1">Mensagem do aluno</p>
                                 <p className="text-sm rounded-md border p-2 min-h-[52px] bg-muted/30">{solicitacao.mensagem || 'Sem mensagem.'}</p>
+                                {isExtension && (
+                                  <div className="mt-2 rounded-md border bg-background p-2 text-xs text-muted-foreground">
+                                    <p>Data atual: {formatDateBR(solicitacao.data_devolucao_atual)}</p>
+                                    <p>Nova data pedida: {formatDateBR(solicitacao.nova_data_devolucao_solicitada)}</p>
+                                  </div>
+                                )}
                               </div>
                               <div>
                                 <Label htmlFor={`resposta-${solicitacao.id}`}>Resposta da biblioteca</Label>
@@ -1183,7 +1193,7 @@ export default function Emprestimos() {
                                   ) : (
                                     <CheckCircle className="w-4 h-4 mr-2" />
                                   )}
-                                  Aprovar e gerar empréstimo
+                                  {isExtension ? 'Aprovar prorrogação' : 'Aprovar e gerar empréstimo'}
                                 </Button>
                               </div>
                             ) : (
@@ -1273,4 +1283,3 @@ export default function Emprestimos() {
     </MainLayout>
   );
 }
-

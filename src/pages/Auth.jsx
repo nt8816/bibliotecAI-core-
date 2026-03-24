@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
-import { Library, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Library, Loader2, Eye, EyeOff, QrCode, ShieldCheck, Smartphone, MonitorSmartphone, MailCheck } from 'lucide-react';
 
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -11,18 +11,32 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import {
   activateStudentMatricula,
+  approveSuperAdminDesktopAccess,
+  authenticatePlatformCredentials,
+  beginSuperAdminPasskeyAuthentication,
+  beginSuperAdminPasskeyRegistration,
+  fetchPlatformCurrentRoles,
+  fetchSuperAdminDesktopApprovalStatus,
+  fetchSuperAdminSecurityProfile,
+  finalizePlatformSession,
+  finishSuperAdminPasskeyAuthentication,
+  finishSuperAdminPasskeyRegistration,
   registerPlatformSuperAdminFailedAttempt,
   registerPlatformSuperAdminLoginSuccess,
   resolvePlatformLoginIdentifier,
+  sendSuperAdminEmailCode,
+  startSuperAdminDesktopApproval,
+  verifySuperAdminEmailCode,
 } from '@/services/authService';
+import { createPlatformPasskey, getPlatformPasskeyAssertion, isPlatformPasskeySupported } from '@/lib/webauthn';
+
+const EXACT_LOCATION_MAX_ACCURACY_METERS = 100;
+const DESKTOP_LOCATION_MAX_ACCURACY_METERS = 10000;
 
 const loginSchema = z.object({
   login: z.string().trim().min(2, 'Informe seu CPF ou matrícula'),
   password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
 });
-
-const EXACT_LOCATION_MAX_ACCURACY_METERS = 100;
-const DESKTOP_LOCATION_MAX_ACCURACY_METERS = 10000;
 
 function getCurrentPosition() {
   if (!navigator?.geolocation?.getCurrentPosition) {
@@ -61,6 +75,7 @@ async function reverseGeocodeCity(latitude, longitude) {
 
 async function captureSecurityLocationContext() {
   const baseContext = {
+    app_origin: window?.location?.origin || null,
     user_agent: navigator?.userAgent || null,
     language: navigator?.language || null,
     requested_high_accuracy: true,
@@ -115,11 +130,13 @@ async function captureSecurityLocationContext() {
   }
 }
 
+function isMobileDevice() {
+  return /android|iphone|ipad|ipod|mobile/i.test(String(navigator?.userAgent || '').toLowerCase());
+}
+
 function hasExactLocation(context) {
   const accuracy = Number(context?.coordinates?.accuracy_meters);
-  const userAgent = String(navigator?.userAgent || '').toLowerCase();
-  const isDesktop = !/android|iphone|ipad|ipod|mobile/i.test(userAgent);
-  const maxAccuracy = isDesktop ? DESKTOP_LOCATION_MAX_ACCURACY_METERS : EXACT_LOCATION_MAX_ACCURACY_METERS;
+  const maxAccuracy = isMobileDevice() ? EXACT_LOCATION_MAX_ACCURACY_METERS : DESKTOP_LOCATION_MAX_ACCURACY_METERS;
 
   return context?.geolocation_status === 'captured'
     && Number.isFinite(accuracy)
@@ -127,25 +144,247 @@ function hasExactLocation(context) {
     && accuracy <= maxAccuracy;
 }
 
+function maskIdentifier(value) {
+  return String(value || '').replace(/(^.).*(@.*$)/, '$1***$2');
+}
+
+function getDesktopApprovalToken() {
+  return new URLSearchParams(window.location.search).get('desktopApproval') || '';
+}
+
 export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [authAlert, setAuthAlert] = useState(null);
-  const [formData, setFormData] = useState({
-    login: '',
-    password: '',
-  });
+  const [securityStep, setSecurityStep] = useState('login');
+  const [formData, setFormData] = useState({ login: '', password: '' });
   const [errors, setErrors] = useState({});
+  const [pendingSecurity, setPendingSecurity] = useState(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpMeta, setOtpMeta] = useState(null);
+  const [desktopStatus, setDesktopStatus] = useState(null);
+  const [finalizingDesktop, setFinalizingDesktop] = useState(false);
 
+  const desktopApprovalTokenRef = useRef(getDesktopApprovalToken());
   const { signIn, user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    if (user) {
-      navigate('/dashboard', { replace: true });
+    if (user && !pendingSecurity) {
+      fetchPlatformCurrentRoles()
+        .then((roles) => {
+          if (roles.includes('super_admin')) {
+            navigate('/admin/tenants', { replace: true });
+            return;
+          }
+          navigate('/dashboard', { replace: true });
+        })
+        .catch(() => {
+          navigate('/dashboard', { replace: true });
+        });
     }
-  }, [user, navigate]);
+  }, [navigate, pendingSecurity, user]);
+
+  useEffect(() => {
+    if (!pendingSecurity?.desktopToken || securityStep !== 'desktop_waiting') return undefined;
+
+    let active = true;
+    const poll = async () => {
+      try {
+        const status = await fetchSuperAdminDesktopApprovalStatus(pendingSecurity.desktopToken);
+        if (!active) return;
+        setDesktopStatus(status);
+
+        if (status?.approved && !finalizingDesktop) {
+          setFinalizingDesktop(true);
+          await finalizePlatformSession(pendingSecurity.pendingSession);
+          await registerPlatformSuperAdminLoginSuccess(pendingSecurity.email, {
+            desktopChallengeToken: pendingSecurity.desktopToken,
+            context: pendingSecurity.context,
+          });
+          setPendingSecurity(null);
+          setSecurityStep('login');
+          toast({
+            title: 'Acesso liberado',
+            description: 'O computador foi liberado apos a aprovacao biometrica no celular.',
+          });
+          navigate('/admin/tenants', { replace: true });
+        }
+      } catch (error) {
+        if (!active) return;
+        setAuthAlert({
+          title: 'ERRO NA LIBERACAO DO COMPUTADOR',
+          description: error?.message || 'Nao foi possivel consultar o status da aprovacao.',
+        });
+      }
+    };
+
+    poll();
+    const interval = window.setInterval(poll, 3000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [finalizingDesktop, navigate, pendingSecurity, securityStep, toast]);
+
+  const finishSuperAdminLogin = async ({ pendingSession, email, context, mfaChallengeId, desktopChallengeToken }) => {
+    await finalizePlatformSession(pendingSession);
+    await registerPlatformSuperAdminLoginSuccess(email, {
+      context,
+      mfaChallengeId,
+      desktopChallengeToken,
+    });
+    setPendingSecurity(null);
+    setSecurityStep('login');
+    toast({
+      title: 'Acesso super admin autorizado',
+      description: 'Camadas extras de seguranca confirmadas com sucesso.',
+    });
+    navigate('/admin/tenants', { replace: true });
+  };
+
+  const triggerEmailVerification = async (nextPending, challengeId) => {
+    const response = await sendSuperAdminEmailCode(nextPending.pendingAccessToken, challengeId);
+    setOtpMeta({
+      challengeId,
+      maskedEmail: response?.maskedEmail || maskIdentifier(nextPending.email),
+      expiresAt: response?.expiresAt || null,
+    });
+    setPendingSecurity(nextPending);
+    setSecurityStep('email_verification');
+    toast({
+      title: 'Codigo enviado',
+      description: `Enviamos um codigo adicional para ${response?.maskedEmail || maskIdentifier(nextPending.email)}.`,
+    });
+  };
+
+  const runPasskeyAuthentication = async (nextPending, overrideContext) => {
+    const authOptions = await beginSuperAdminPasskeyAuthentication(nextPending.pendingAccessToken, overrideContext || nextPending.context);
+    const assertion = await getPlatformPasskeyAssertion(authOptions.publicKey);
+    const verification = await finishSuperAdminPasskeyAuthentication(nextPending.pendingAccessToken, {
+      challenge: authOptions.publicKey.challenge,
+      credential: assertion,
+    });
+
+    const updatedPending = {
+      ...nextPending,
+      mfaChallengeId: verification.challengeId,
+      requiresEmailVerification: verification.requiresEmailVerification === true,
+    };
+
+    if (desktopApprovalTokenRef.current) {
+      await approveSuperAdminDesktopAccess(
+        updatedPending.pendingAccessToken,
+        desktopApprovalTokenRef.current,
+        verification.challengeId,
+      );
+      setPendingSecurity(null);
+      setSecurityStep('mobile_approved');
+      toast({
+        title: 'Computador liberado',
+        description: 'A aprovacao biometrica foi enviada para o computador com sucesso.',
+      });
+      return;
+    }
+
+    if (verification.requiresEmailVerification) {
+      await triggerEmailVerification(updatedPending, verification.challengeId);
+      return;
+    }
+
+    await finishSuperAdminLogin({
+      pendingSession: updatedPending.pendingSession,
+      email: updatedPending.email,
+      context: updatedPending.context,
+      mfaChallengeId: verification.challengeId,
+    });
+  };
+
+  const enrollPasskey = async (nextPending) => {
+    if (!isPlatformPasskeySupported()) {
+      throw new Error('Este dispositivo nao suporta passkey biometrica. Use um celular com Android/iPhone e bloqueio biometrico ativo.');
+    }
+
+    const registerOptions = await beginSuperAdminPasskeyRegistration(nextPending.pendingAccessToken, nextPending.context);
+    const credential = await createPlatformPasskey(registerOptions.publicKey);
+    await finishSuperAdminPasskeyRegistration(nextPending.pendingAccessToken, {
+      challenge: registerOptions.publicKey.challenge,
+      credential,
+      deviceLabel: isMobileDevice() ? 'Celular biometrico do Super Admin' : 'Dispositivo biometrico do Super Admin',
+    });
+
+    toast({
+      title: 'Passkey cadastrada',
+      description: 'Agora vamos validar sua biometria para concluir o acesso.',
+    });
+
+    await runPasskeyAuthentication(nextPending);
+  };
+
+  const handleSuperAdminPasswordFlow = async (superAdminEmail, identifier) => {
+    const locationContext = await captureSecurityLocationContext();
+    if (!hasExactLocation(locationContext)) {
+      return {
+        error: {
+          message: 'O Super Admin precisa compartilhar a localizacao exata do dispositivo para entrar.',
+          exactLocationRequired: true,
+        },
+      };
+    }
+
+    const passwordPayload = await authenticatePlatformCredentials(superAdminEmail, formData.password);
+    const pendingAccessToken = passwordPayload?.session?.access_token;
+    if (!pendingAccessToken) {
+      return {
+        error: {
+          message: 'Sessao temporaria invalida para o Super Admin.',
+        },
+      };
+    }
+
+    const context = {
+      ...locationContext,
+      device_type: isMobileDevice() ? 'mobile' : 'desktop',
+      desktop_approval_token: desktopApprovalTokenRef.current || null,
+    };
+
+    const profile = await fetchSuperAdminSecurityProfile(pendingAccessToken, context);
+    const nextPending = {
+      account: profile?.account || null,
+      context,
+      email: superAdminEmail,
+      pendingAccessToken,
+      pendingSession: passwordPayload.session,
+      needsPasskeyEnrollment: profile?.needsPasskeyEnrollment === true,
+      requiresEmailVerification: profile?.requiresEmailVerification === true,
+      deviceType: profile?.deviceType || context.device_type,
+    };
+
+    setPendingSecurity(nextPending);
+
+    if (desktopApprovalTokenRef.current) {
+      setSecurityStep(nextPending.needsPasskeyEnrollment ? 'passkey_enrollment' : 'mobile_biometric');
+      return { success: true };
+    }
+
+    if (nextPending.deviceType === 'desktop') {
+      const desktopChallenge = await startSuperAdminDesktopApproval(pendingAccessToken, context);
+      setPendingSecurity({
+        ...nextPending,
+        desktopToken: desktopChallenge.token,
+        desktopQrCodeUrl: desktopChallenge.qrCodeUrl,
+        desktopApprovalUrl: desktopChallenge.approvalUrl,
+        desktopExpiresAt: desktopChallenge.expiresAt,
+      });
+      setDesktopStatus(null);
+      setSecurityStep('desktop_waiting');
+      return { success: true };
+    }
+
+    setSecurityStep(nextPending.needsPasskeyEnrollment ? 'passkey_enrollment' : 'mobile_biometric');
+    return { success: true };
+  };
 
   const loginWithIdentifier = async (login, password) => {
     const normalized = login.trim();
@@ -161,45 +400,38 @@ export default function Auth() {
         };
       }
 
-      const locationContext = await captureSecurityLocationContext();
-      if (!hasExactLocation(locationContext)) {
-        return {
-          error: {
-            message: 'O Super Admin precisa compartilhar a localizacao do dispositivo para entrar. Em celular, use localizacao precisa. Em computador, permita a localizacao do navegador.',
-            exactLocationRequired: true,
-          },
-        };
-      }
+      try {
+        return await handleSuperAdminPasswordFlow(String(superAdminMatch.email || '').trim().toLowerCase(), normalized);
+      } catch (error) {
+        if (String(error?.message || '').includes('Invalid login credentials')) {
+          const securityContext = await captureSecurityLocationContext();
+          const failedAttemptData = await registerPlatformSuperAdminFailedAttempt(normalized, {
+            ...securityContext,
+            device_type: isMobileDevice() ? 'mobile' : 'desktop',
+          });
 
-      const superAdminEmail = String(superAdminMatch?.email || '').trim().toLowerCase();
-      const result = await signIn(superAdminEmail, password);
+          if (failedAttemptData?.blocked) {
+            return {
+              error: {
+                message: 'Usuario bloqueado. Fale com seu parceiro ou superior para solicitar a liberacao.',
+                blocked: true,
+              },
+            };
+          }
 
-      if (!result.error) {
-        await registerPlatformSuperAdminLoginSuccess(superAdminEmail);
-        return result;
-      }
-
-      if (result.error.message === 'Invalid login credentials') {
-        const securityContext = await captureSecurityLocationContext();
-        const failedAttemptData = await registerPlatformSuperAdminFailedAttempt(normalized, securityContext);
-
-        if (failedAttemptData?.blocked) {
           return {
             error: {
-              message: 'Usuario bloqueado. Fale com seu parceiro ou superior para solicitar a liberacao.',
-              blocked: true,
+              message: `Senha incorreta para Super Admin. Tentativas restantes: ${failedAttemptData?.remaining ?? 0}.`,
             },
           };
         }
 
         return {
           error: {
-            message: `Senha incorreta para Super Admin. Tentativas restantes: ${failedAttemptData?.remaining ?? 0}.`,
+            message: error?.message || 'Falha inesperada no fluxo de seguranca do Super Admin.',
           },
         };
       }
-
-      return result;
     }
 
     if (normalized.includes('@')) {
@@ -225,7 +457,7 @@ export default function Auth() {
       } catch (activationInvokeError) {
         return {
           error: {
-            message: activationInvokeError.message || 'Não foi possível ativar sua conta por matrícula.',
+            message: activationInvokeError.message || 'Nao foi possivel ativar sua conta por matrícula.',
           },
         };
       }
@@ -233,7 +465,7 @@ export default function Auth() {
       if (!activationData?.success) {
         return {
           error: {
-            message: activationData?.error || 'Não foi possível ativar sua conta por matrícula.',
+            message: activationData?.error || 'Nao foi possivel ativar sua conta por matrícula.',
           },
         };
       }
@@ -257,8 +489,6 @@ export default function Auth() {
       }
 
       lastError = result.error;
-
-      // Stop fallback chain for non-auth errors.
       if (result.error.message !== 'Invalid login credentials') {
         break;
       }
@@ -278,20 +508,15 @@ export default function Auth() {
 
       if (!result.success) {
         const fieldErrors = {};
-
         result.error.errors.forEach((err) => {
-          if (err.path[0]) {
-            fieldErrors[err.path[0]] = err.message;
-          }
+          if (err.path[0]) fieldErrors[err.path[0]] = err.message;
         });
-
         setErrors(fieldErrors);
         setLoading(false);
         return;
       }
 
       const { error } = await loginWithIdentifier(formData.login, formData.password);
-
       if (error) {
         if (error.blocked) {
           setAuthAlert({
@@ -308,28 +533,170 @@ export default function Auth() {
         toast({
           variant: 'destructive',
           title: 'Erro ao entrar',
-          description:
-            error.message === 'Invalid login credentials'
-              ? 'CPF/matrícula ou senha incorretos'
-              : error.message,
+          description: error.message === 'Invalid login credentials' ? 'CPF/matrícula ou senha incorretos' : error.message,
         });
-
         return;
       }
 
-      toast({
-        title: 'Bem-vindo!',
-        description: 'Login realizado com sucesso.',
-      });
-    } catch (_error) {
+      if (securityStep === 'login') {
+        toast({
+          title: 'Bem-vindo!',
+          description: 'Login realizado com sucesso.',
+        });
+      }
+    } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: 'Ocorreu um erro inesperado. Tente novamente.',
+        description: error?.message || 'Ocorreu um erro inesperado. Tente novamente.',
       });
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleBiometricStep = async () => {
+    if (!pendingSecurity) return;
+    setLoading(true);
+    try {
+      if (securityStep === 'passkey_enrollment') {
+        await enrollPasskey(pendingSecurity);
+      } else {
+        await runPasskeyAuthentication(pendingSecurity);
+      }
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Falha na biometria',
+        description: error?.message || 'Nao foi possivel validar a passkey biometrica.',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyEmailCode = async () => {
+    if (!pendingSecurity || !otpMeta?.challengeId || otpCode.trim().length < 6) return;
+    setLoading(true);
+    try {
+      await verifySuperAdminEmailCode(pendingSecurity.pendingAccessToken, otpMeta.challengeId, otpCode.trim());
+      await finishSuperAdminLogin({
+        pendingSession: pendingSecurity.pendingSession,
+        email: pendingSecurity.email,
+        context: pendingSecurity.context,
+        mfaChallengeId: otpMeta.challengeId,
+      });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Codigo invalido',
+        description: error?.message || 'Nao foi possivel concluir a verificacao adicional.',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderSecurityPanel = () => {
+    if (securityStep === 'desktop_waiting' && pendingSecurity) {
+      return (
+        <div className="space-y-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <div className="flex items-start gap-3">
+            <QrCode className="mt-0.5 h-5 w-5 text-primary" />
+            <div>
+              <p className="text-sm font-semibold">Aguardando aprovacao no celular</p>
+              <p className="text-sm text-muted-foreground">
+                Depois da senha, o acesso do Super Admin em computador so e liberado apos escanear o QR, repetir as credenciais no celular e confirmar a biometria digital.
+              </p>
+            </div>
+          </div>
+          {pendingSecurity.desktopQrCodeUrl && (
+            <div className="mx-auto flex w-fit flex-col items-center gap-3 rounded-xl bg-white p-3 shadow-sm">
+              <img src={pendingSecurity.desktopQrCodeUrl} alt="QR Code de aprovacao do Super Admin" className="h-56 w-56 rounded-lg" />
+              <p className="max-w-[260px] text-center text-xs text-muted-foreground">
+                O QR carrega apenas um token temporario de aprovacao. Expira em poucos minutos e precisa de senha + biometria no celular.
+              </p>
+            </div>
+          )}
+          <div className="rounded-lg border bg-background/80 p-3 text-xs text-muted-foreground">
+            <p>Status atual: {desktopStatus?.approved ? 'Aprovado no celular' : 'Aguardando confirmacao biometrica'}</p>
+            <p>Link de emergencia: {pendingSecurity.desktopApprovalUrl}</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (securityStep === 'passkey_enrollment' || securityStep === 'mobile_biometric') {
+      const enrolling = securityStep === 'passkey_enrollment';
+      return (
+        <div className="space-y-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <div className="flex items-start gap-3">
+            <Smartphone className="mt-0.5 h-5 w-5 text-primary" />
+            <div>
+              <p className="text-sm font-semibold">{enrolling ? 'Cadastre a passkey biometrica' : 'Confirme sua biometria digital'}</p>
+              <p className="text-sm text-muted-foreground">
+                {enrolling
+                  ? 'O primeiro acesso do Super Admin no celular exige o cadastro da chave biometrica do aparelho.'
+                  : 'A senha ja foi validada. Agora so a biometria libera o painel global.'}
+              </p>
+            </div>
+          </div>
+          <Button type="button" onClick={handleBiometricStep} disabled={loading} className="w-full">
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {enrolling ? 'Cadastrar passkey e validar biometria' : 'Validar biometria agora'}
+          </Button>
+        </div>
+      );
+    }
+
+    if (securityStep === 'email_verification') {
+      return (
+        <div className="space-y-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+          <div className="flex items-start gap-3">
+            <MailCheck className="mt-0.5 h-5 w-5 text-amber-700" />
+            <div>
+              <p className="text-sm font-semibold">Verificacao extra fora do Nordeste</p>
+              <p className="text-sm text-muted-foreground">
+                Detectamos um acesso fora da regiao Nordeste. Para reduzir o risco de invasao, enviamos um codigo para {otpMeta?.maskedEmail || 'o email cadastrado'}.
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="otp-code">Codigo do email</Label>
+            <Input
+              id="otp-code"
+              inputMode="numeric"
+              maxLength={6}
+              value={otpCode}
+              onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="Digite os 6 numeros"
+            />
+          </div>
+          <Button type="button" onClick={handleVerifyEmailCode} disabled={loading || otpCode.length < 6} className="w-full">
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Confirmar codigo e concluir acesso
+          </Button>
+        </div>
+      );
+    }
+
+    if (securityStep === 'mobile_approved') {
+      return (
+        <div className="space-y-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+          <div className="flex items-start gap-3">
+            <ShieldCheck className="mt-0.5 h-5 w-5 text-emerald-700" />
+            <div>
+              <p className="text-sm font-semibold">Aprovacao enviada para o computador</p>
+              <p className="text-sm text-muted-foreground">
+                A senha e a biometria do super admin foram confirmadas no celular. O computador agora pode concluir a entrada.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
   };
 
   return (
@@ -339,23 +706,40 @@ export default function Auth() {
       <div className="auth-orb auth-orb-2" aria-hidden="true" />
       <div className="auth-orb auth-orb-3" aria-hidden="true" />
 
-      <Card className="auth-login-card w-full max-w-[560px] sm:max-w-md border-border/70 shadow-2xl" translate="no">
+      <Card className="auth-login-card w-full max-w-[560px] border-border/70 shadow-2xl" translate="no">
         <CardHeader className="text-center space-y-3 px-4 pt-5 pb-3 sm:px-6 sm:pt-6 sm:pb-3">
-          <div className="auth-logo-wrap mx-auto w-16 h-16 rounded-full bg-primary flex items-center justify-center">
-            <Library className="w-8 h-8 text-primary-foreground" />
+          <div className="auth-logo-wrap mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary">
+            <Library className="h-8 w-8 text-primary-foreground" />
           </div>
           <CardTitle className="text-2xl font-bold">BibliotecAI</CardTitle>
-          <CardDescription>Entre com CPF (gestor) ou matrícula (aluno). Para aluno, use a matrícula também na senha inicial.</CardDescription>
+          <CardDescription>
+            Para a gestao, entre com Gmail ou CPF. Para aluno, use a matrícula.
+          </CardDescription>
         </CardHeader>
 
-        <CardContent className="px-4 pb-5 sm:px-6 sm:pb-6 pt-0">
-          <form onSubmit={handleSubmit} className="space-y-4 auth-login-form w-full">
-            {authAlert && (
-              <div className="rounded-lg border border-destructive/60 bg-destructive/10 px-4 py-3 text-left">
-                <p className="text-sm font-bold text-destructive">{authAlert.title}</p>
-                <p className="text-sm text-destructive/90">{authAlert.description}</p>
+        <CardContent className="space-y-4 px-4 pb-5 pt-0 sm:px-6 sm:pb-6">
+          {authAlert && (
+            <div className="rounded-lg border border-destructive/60 bg-destructive/10 px-4 py-3 text-left">
+              <p className="text-sm font-bold text-destructive">{authAlert.title}</p>
+              <p className="text-sm text-destructive/90">{authAlert.description}</p>
+            </div>
+          )}
+
+          {desktopApprovalTokenRef.current && (
+            <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-left">
+              <div className="flex items-start gap-3">
+                <MonitorSmartphone className="mt-0.5 h-5 w-5 text-primary" />
+                <div>
+                  <p className="text-sm font-semibold">Modo aprovacao de computador</p>
+                  <p className="text-sm text-muted-foreground">
+                    Este celular vai validar as credenciais e a biometria para liberar um acesso pendente no computador.
+                  </p>
+                </div>
               </div>
-            )}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4 auth-login-form w-full">
             <div className="space-y-2 auth-field auth-field-1">
               <Label htmlFor="login">CPF ou matrícula</Label>
               <Input
@@ -365,7 +749,7 @@ export default function Auth() {
                 placeholder="CPF (somente números) ou matrícula"
                 value={formData.login}
                 onChange={(e) => setFormData({ ...formData, login: e.target.value })}
-                disabled={loading}
+                disabled={loading || securityStep !== 'login'}
                 className="auth-input transition-all duration-300 focus-visible:ring-2 focus-visible:ring-primary/60"
               />
               {errors.login && <p className="text-sm text-destructive">{errors.login}</p>}
@@ -381,7 +765,7 @@ export default function Auth() {
                   placeholder="••••••••"
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  disabled={loading}
+                  disabled={loading || securityStep !== 'login'}
                   className="auth-input pr-11 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-primary/60"
                 />
                 <Button
@@ -391,21 +775,21 @@ export default function Auth() {
                   className="auth-password-toggle absolute right-0 top-0 h-full px-3 hover:bg-transparent"
                   onClick={() => setShowPassword(!showPassword)}
                 >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  )}
+                  {showPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
                 </Button>
               </div>
               {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
             </div>
 
-            <Button type="submit" className="w-full auth-login-button auth-field auth-field-3" disabled={loading}>
-              {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Entrar
-            </Button>
+            {securityStep === 'login' && (
+              <Button type="submit" className="w-full auth-login-button auth-field auth-field-3" disabled={loading}>
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Entrar
+              </Button>
+            )}
           </form>
+
+          {renderSecurityPanel()}
         </CardContent>
       </Card>
     </div>
