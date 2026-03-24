@@ -715,7 +715,7 @@ async function persistStudioSlidesToR2({ slides, escolaId, alunoId }) {
       fileName: `slide-${index + 1}.${extension}`,
     });
 
-    return upload.publicUrl || upload.objectKey;
+    return upload.objectKey;
   }));
 }
 
@@ -2281,7 +2281,7 @@ export default function PainelAluno() {
             fileName: `atividade-${atividade.id || 'entrega'}-${index + 1}.jpg`,
           });
 
-          return upload.publicUrl || upload.objectKey;
+          return upload.objectKey;
         }),
       );
 
@@ -2376,7 +2376,7 @@ export default function PainelAluno() {
         titulo: audiobookForm.titulo.trim() || livro.titulo,
         autor: audiobookForm.autor.trim() || livro.autor,
         duracao_minutos: audiobookForm.duracao_minutos ? Number(audiobookForm.duracao_minutos) : null,
-        audio_url: uploadedAudio.publicUrl || uploadedAudio.objectKey,
+        audio_url: uploadedAudio.objectKey,
         criado_por: alunoId,
       };
 

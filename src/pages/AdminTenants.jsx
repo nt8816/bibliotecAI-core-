@@ -507,7 +507,7 @@ export default function AdminTenants() {
               escola_id: tenant.escola_id,
               titulo: `${livro.titulo} (Audiobook IA)`,
               autor: livro.autor || null,
-              audio_url: uploadedAudio.publicUrl || uploadedAudio.objectKey,
+              audio_url: uploadedAudio.objectKey,
               criado_por: autorComunidadeId,
             });
 

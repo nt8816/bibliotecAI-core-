@@ -657,13 +657,16 @@ export default function ComunidadeAluno() {
 
       const imagemUrls = imageDataUrls.length > 0
         ? await Promise.all(
-            imageDataUrls.map((dataUrl, index) =>
-              uploadDataUrlToR2(dataUrl, {
-                folder: 'comunidade/posts',
+            imageDataUrls.map(async (dataUrl, index) => {
+              const upload = await uploadDataUrlToR2({
+                dataUrl,
+                escolaId,
+                ownerId: alunoId,
+                scope: 'comunidade-posts',
                 fileName: `${Date.now()}-${index + 1}.jpg`,
-                contentType: dataUrl.match(/^data:(.*?);/)?.[1] || 'image/jpeg',
-              }),
-            ),
+              });
+              return upload.objectKey;
+            }),
           )
         : [];
       const livroManual = postLivroNomeManual.trim();
@@ -756,11 +759,13 @@ export default function ComunidadeAluno() {
       const imagemUrls = [];
       if (shareImageDataUrl) {
         const sharedUrl = await uploadDataUrlToR2(shareImageDataUrl, {
-          folder: 'comunidade/shared',
+          dataUrl: shareImageDataUrl,
+          escolaId,
+          ownerId: alunoId,
+          scope: 'comunidade-shared',
           fileName: `${Date.now()}-share.jpg`,
-          contentType: shareImageDataUrl.match(/^data:(.*?);/)?.[1] || 'image/jpeg',
         });
-        imagemUrls.push(sharedUrl);
+        imagemUrls.push(sharedUrl.objectKey);
       }
 
       const sourceLabel = sharePost?.tipo === 'quiz' || extractQuizFromConteudo(sharePost?.conteudo) ? 'quiz' : sharePost?.tipo || 'post';
