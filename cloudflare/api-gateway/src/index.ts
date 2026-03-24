@@ -5280,19 +5280,58 @@ const routes: Record<string, RouteHandler> = {
       }).toString()}`,
     ) as Array<Record<string, unknown>>;
 
-    const salas = await supabaseAdminRequest(
-      env,
-      `/rest/v1/salas_cursos?${new URLSearchParams({
-        select: 'id,nome,tipo,escola_id',
-        escola_id: `eq.${currentEscolaId}`,
-        order: 'nome.asc',
-      }).toString()}`,
-    ).catch(() => []) as Array<Record<string, unknown>>;
+    const [salas, usuariosSala, professorTurmasEscola] = await Promise.all([
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/salas_cursos?${new URLSearchParams({
+          select: 'id,nome,tipo,escola_id',
+          escola_id: `eq.${currentEscolaId}`,
+          order: 'nome.asc',
+        }).toString()}`,
+      ).catch(() => []),
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+          select: 'turma',
+          escola_id: `eq.${currentEscolaId}`,
+        }).toString()}`,
+      ).catch(() => []),
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/professor_turmas?${new URLSearchParams({
+          select: 'turma',
+          escola_id: `eq.${currentEscolaId}`,
+        }).toString()}`,
+      ).catch(() => []),
+    ]) as Array<Array<Record<string, unknown>>>;
+
+    const salasOficiais = Array.isArray(salas) ? salas : [];
+    const oficiaisKeys = new Set(
+      salasOficiais
+        .map((item) => normalizeTurmaKey(item?.nome))
+        .filter(Boolean),
+    );
+    const extras = new Map<string, Record<string, unknown>>();
+
+    [...(Array.isArray(usuariosSala) ? usuariosSala : []), ...(Array.isArray(professorTurmasEscola) ? professorTurmasEscola : [])].forEach((item) => {
+      const nome = String(item?.turma || '').trim();
+      if (!nome) return;
+      const key = normalizeTurmaKey(nome);
+      if (!key || oficiaisKeys.has(key) || extras.has(key)) return;
+      extras.set(key, {
+        id: `orphan-${key}`,
+        nome,
+        tipo: 'sala',
+        escola_id: currentEscolaId,
+        orphan: true,
+      });
+    });
 
     return jsonResponse({
       success: true,
       escola: escola || null,
-      salas: Array.isArray(salas) ? salas : [],
+      salas: [...salasOficiais, ...Array.from(extras.values())]
+        .sort((a, b) => String(a?.nome || '').localeCompare(String(b?.nome || ''), 'pt-BR')),
     });
   },
 
