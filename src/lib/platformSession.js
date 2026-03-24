@@ -3,7 +3,19 @@ const PLATFORM_SESSION_EVENT = 'bibliotecai:platform-session-changed';
 const PLATFORM_API_BASE_URL = String(import.meta.env.VITE_PLATFORM_API_BASE_URL || '').trim().replace(/\/+$/, '');
 
 function isBrowser() {
-  return typeof window !== 'undefined' && typeof localStorage !== 'undefined';
+  return typeof window !== 'undefined'
+    && typeof localStorage !== 'undefined'
+    && typeof sessionStorage !== 'undefined';
+}
+
+function getSessionStorage() {
+  if (!isBrowser()) return null;
+  return window.sessionStorage;
+}
+
+function getLegacyStorage() {
+  if (!isBrowser()) return null;
+  return window.localStorage;
 }
 
 function buildPlatformApiUrl(routePath) {
@@ -45,28 +57,50 @@ function notifyPlatformSessionChanged(session) {
 
 export function getPlatformSession() {
   if (!isBrowser()) return null;
-  const raw = localStorage.getItem(PLATFORM_SESSION_STORAGE_KEY);
-  return normalizeSessionPayload(parseJsonSafely(raw));
+  const sessionStorageRef = getSessionStorage();
+  const legacyStorageRef = getLegacyStorage();
+
+  const currentSession = normalizeSessionPayload(parseJsonSafely(
+    sessionStorageRef?.getItem(PLATFORM_SESSION_STORAGE_KEY),
+  ));
+
+  if (currentSession) return currentSession;
+
+  const legacySession = normalizeSessionPayload(parseJsonSafely(
+    legacyStorageRef?.getItem(PLATFORM_SESSION_STORAGE_KEY),
+  ));
+
+  if (!legacySession) return null;
+
+  sessionStorageRef?.setItem(PLATFORM_SESSION_STORAGE_KEY, JSON.stringify(legacySession));
+  legacyStorageRef?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
+  return legacySession;
 }
 
 export function setPlatformSession(session) {
   const normalized = normalizeSessionPayload(session);
   if (!isBrowser()) return normalized;
 
+  const sessionStorageRef = getSessionStorage();
+  const legacyStorageRef = getLegacyStorage();
+
   if (!normalized) {
-    localStorage.removeItem(PLATFORM_SESSION_STORAGE_KEY);
+    sessionStorageRef?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
+    legacyStorageRef?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
     notifyPlatformSessionChanged(null);
     return null;
   }
 
-  localStorage.setItem(PLATFORM_SESSION_STORAGE_KEY, JSON.stringify(normalized));
+  sessionStorageRef?.setItem(PLATFORM_SESSION_STORAGE_KEY, JSON.stringify(normalized));
+  legacyStorageRef?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
   notifyPlatformSessionChanged(normalized);
   return normalized;
 }
 
 export function clearPlatformSession() {
   if (!isBrowser()) return;
-  localStorage.removeItem(PLATFORM_SESSION_STORAGE_KEY);
+  getSessionStorage()?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
+  getLegacyStorage()?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
   notifyPlatformSessionChanged(null);
 }
 
