@@ -11,8 +11,8 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { generateAudioWithCloudflare } from '@/lib/cloudflareAiApi';
+import { requestPlatformApi } from '@/lib/platformApi';
 import { uploadDataUrlToR2 } from '@/lib/r2Storage';
 import {
   createAdminTenantInvite,
@@ -37,25 +37,12 @@ function isMissingProvisionTenantSignature(error) {
   );
 }
 
-function isMissingColumnError(error, columnName, tableName) {
-  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
-  const column = String(columnName || '').toLowerCase();
-  const table = String(tableName || '').toLowerCase();
-  return (
-    message.includes(`could not find the '${column}' column`) &&
-    (!table || message.includes(`'${table}'`) || message.includes(`"${table}"`))
-  );
-}
-
 async function insertCommunityPostCompat(payload) {
-  const { error } = await supabase.from('comunidade_posts').insert(payload);
-
-  if (error && Object.hasOwn(payload, 'escola_id') && isMissingColumnError(error, 'escola_id', 'comunidade_posts')) {
-    const { escola_id: _ignored, ...fallbackPayload } = payload;
-    return await supabase.from('comunidade_posts').insert(fallbackPayload);
-  }
-
-  return { error };
+  await requestPlatformApi('/v1/admin/comunidade/posts', {
+    method: 'POST',
+    body: payload,
+  });
+  return { error: null };
 }
 
 function supportsWildcardSubdomain(baseDomain) {

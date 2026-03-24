@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,20 +8,14 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
-import { useTenant } from '@/hooks/useTenant';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { School, Plus, Trash2, GraduationCap, BookOpen, Loader2, Pencil } from 'lucide-react';
-
-const normalizeTurmaKey = (value) =>
-  String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
+import {
+  createSchoolRoom,
+  deleteSchoolRoom,
+  fetchSchoolConfiguration,
+  renameSchoolRoom,
+  saveSchoolConfiguration,
+} from '@/services/schoolConfigService';
 
 export default function ConfiguracaoEscola() {
   const [escola, setEscola] = useState(null);
@@ -38,114 +32,15 @@ export default function ConfiguracaoEscola() {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const { toast } = useToast();
-  const { user } = useAuth();
-  const { tenant } = useTenant();
 
   const fetchEscola = useCallback(async () => {
-    if (!user?.id) return;
-
     setLoading(true);
     try {
-      const { data: perfil, error: perfilError } = await supabase
-        .from('usuarios_biblioteca')
-        .select('escola_id')
-        .eq('user_id', user.id)
-        .order('updated_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (perfilError) throw perfilError;
-
-      const { data: rpcEscolaId } = await supabase.rpc('get_user_escola_id', { _user_id: user.id });
-      const candidateEscolaIds = [...new Set([
-        perfil?.escola_id || null,
-        tenant?.escola_id || null,
-        rpcEscolaId || null,
-      ].filter(Boolean))];
-
-      let escolaData = null;
-
-      for (const escolaId of candidateEscolaIds) {
-        const { data, error } = await supabase
-          .from('escolas')
-          .select('*')
-          .eq('id', escolaId)
-          .maybeSingle();
-
-        if (error) throw error;
-        if (data) {
-          escolaData = data;
-          break;
-        }
-      }
-
-      if (!escolaData) {
-        const { data, error } = await supabase
-          .from('escolas')
-          .select('*')
-          .eq('gestor_id', user.id)
-          .maybeSingle();
-
-        if (error) throw error;
-        escolaData = data || null;
-      }
-
-      setEscola(escolaData);
-      setNomeEscola(escolaData?.nome || '');
+      const payload = await fetchSchoolConfiguration();
+      setEscola(payload.escola);
+      setNomeEscola(payload.escola?.nome || '');
+      setSalas(payload.salas);
       setEditingNome(false);
-
-      if (!escolaData?.id) {
-        setSalas([]);
-        return;
-      }
-
-      const { data: salasData, error: salasError } = await supabase
-        .from('salas_cursos')
-        .select('*')
-        .eq('escola_id', escolaData.id)
-        .order('tipo')
-        .order('nome');
-
-      if (salasError) throw salasError;
-
-      const [{ data: usuariosSalaData, error: usuariosSalaError }, { data: professorTurmasData, error: professorTurmasError }] = await Promise.all([
-        supabase
-          .from('usuarios_biblioteca')
-          .select('turma, sala_curso_id')
-          .eq('escola_id', escolaData.id),
-        supabase
-          .from('professor_turmas')
-          .select('turma')
-          .eq('escola_id', escolaData.id),
-      ]);
-
-      if (usuariosSalaError) throw usuariosSalaError;
-      if (professorTurmasError) throw professorTurmasError;
-
-      const oficiais = salasData || [];
-      const oficiaisMap = new Map(
-        oficiais
-          .map((item) => [normalizeTurmaKey(item?.nome), item])
-          .filter(([key]) => key),
-      );
-
-      const orphanNames = new Map();
-      [...(usuariosSalaData || []), ...(professorTurmasData || [])].forEach((item) => {
-        const nome = String(item?.turma || '').trim();
-        const key = normalizeTurmaKey(nome);
-        if (!key || oficiaisMap.has(key)) return;
-        if (!orphanNames.has(key)) {
-          orphanNames.set(key, {
-            id: `orphan:${key}`,
-            nome,
-            tipo: 'sala',
-            orphan: true,
-          });
-        }
-      });
-
-      setSalas([...oficiais, ...Array.from(orphanNames.values())]);
     } catch (error) {
       console.error('Error fetching escola:', error);
       toast({
@@ -156,43 +51,20 @@ export default function ConfiguracaoEscola() {
     } finally {
       setLoading(false);
     }
-  }, [tenant?.escola_id, toast, user?.id]);
+  }, [toast]);
 
   useEffect(() => {
     fetchEscola();
   }, [fetchEscola]);
 
-  useRealtimeSubscription({ table: 'escolas', onChange: fetchEscola });
-  useRealtimeSubscription({ table: 'salas_cursos', onChange: fetchEscola });
-
   const salvarEscola = async () => {
-    if (!user?.id || !nomeEscola.trim()) return;
+    if (!nomeEscola.trim()) return;
 
     setSaving(true);
     try {
-      if (escola?.id) {
-        const { error } = await supabase
-          .from('escolas')
-          .update({ nome: nomeEscola.trim() })
-          .eq('id', escola.id);
-
-        if (error) throw error;
-
-        const escolaAtualizada = { ...escola, nome: nomeEscola.trim() };
-        setEscola(escolaAtualizada);
-        setNomeEscola(escolaAtualizada.nome);
-      } else {
-        const { data, error } = await supabase
-          .from('escolas')
-          .insert({ nome: nomeEscola.trim(), gestor_id: user.id })
-          .select()
-          .single();
-
-        if (error) throw error;
-        setEscola(data);
-        setNomeEscola(data.nome || '');
-      }
-
+      const escolaAtualizada = await saveSchoolConfiguration(nomeEscola.trim());
+      setEscola(escolaAtualizada);
+      setNomeEscola(escolaAtualizada?.nome || '');
       setEditingNome(false);
       toast({
         title: 'Salvo',
@@ -214,17 +86,10 @@ export default function ConfiguracaoEscola() {
     if (!escola?.id || !novaSala.trim()) return;
 
     try {
-      const { data, error } = await supabase
-        .from('salas_cursos')
-        .insert({
-          escola_id: escola.id,
-          nome: novaSala.trim(),
-          tipo: tipoNovaSala,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await createSchoolRoom({
+        nome: novaSala.trim(),
+        tipo: tipoNovaSala,
+      });
 
       setSalas((prev) => [...prev, data].sort((a, b) => String(a?.nome || '').localeCompare(String(b?.nome || ''), 'pt-BR')));
       setNovaSala('');
@@ -247,25 +112,10 @@ export default function ConfiguracaoEscola() {
 
   const removerSala = async (sala) => {
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw sessionError;
-
-      const accessToken = sessionData?.session?.access_token;
-      if (!accessToken) {
-        throw new Error('Sessao invalida. Faca login novamente.');
-      }
-
-      const data = await invokeEdgeFunction('excluir-sala-escola', {
-        body: sala?.orphan ? { sala_nome: sala.nome } : { sala_id: sala.id },
-        headers: { 'x-user-access-token': accessToken },
-        requireAuth: false,
-        signOutOnAuthFailure: false,
-        fallbackErrorMessage: 'Nao foi possivel excluir a sala.',
+      await deleteSchoolRoom({
+        salaId: sala?.orphan ? null : sala?.id,
+        salaNome: sala?.nome,
       });
-
-      if (!data?.success) {
-        throw new Error(data?.error || 'Nao foi possivel excluir a sala.');
-      }
 
       setSalas((prev) => prev.filter((item) => item.id !== sala.id));
       toast({
@@ -289,53 +139,12 @@ export default function ConfiguracaoEscola() {
 
   const salvarEdicaoSala = async () => {
     const sala = editingSala;
-    const nomeAnterior = String(sala?.nome || '').trim();
     const nomeNovo = String(novoNomeSala || '').trim();
-
-    if (!escola?.id || !nomeAnterior || !nomeNovo) return;
-    if (normalizeTurmaKey(nomeAnterior) === normalizeTurmaKey(nomeNovo)) {
-      setEditingSala(null);
-      setNovoNomeSala('');
-      return;
-    }
+    if (!sala?.id || !nomeNovo) return;
 
     setSavingSala(true);
     try {
-      if (!sala?.orphan && sala?.id) {
-        const { error: updateSalaError } = await supabase
-          .from('salas_cursos')
-          .update({ nome: nomeNovo })
-          .eq('id', sala.id);
-
-        if (updateSalaError) throw updateSalaError;
-      }
-
-      const { error: updateUsuariosBySalaError } = await supabase
-        .from('usuarios_biblioteca')
-        .update({ turma: nomeNovo })
-        .eq('escola_id', escola.id)
-        .eq('turma', nomeAnterior);
-
-      if (updateUsuariosBySalaError) throw updateUsuariosBySalaError;
-
-      if (sala?.id && !sala?.orphan) {
-        const { error: updateUsuariosBySalaIdError } = await supabase
-          .from('usuarios_biblioteca')
-          .update({ turma: nomeNovo })
-          .eq('escola_id', escola.id)
-          .eq('sala_curso_id', sala.id);
-
-        if (updateUsuariosBySalaIdError) throw updateUsuariosBySalaIdError;
-      }
-
-      const { error: updateProfessorTurmasError } = await supabase
-        .from('professor_turmas')
-        .update({ turma: nomeNovo })
-        .eq('escola_id', escola.id)
-        .eq('turma', nomeAnterior);
-
-      if (updateProfessorTurmasError) throw updateProfessorTurmasError;
-
+      await renameSchoolRoom(sala.id, nomeNovo);
       setEditingSala(null);
       setNovoNomeSala('');
       await fetchEscola();

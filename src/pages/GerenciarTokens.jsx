@@ -12,19 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
-import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
-import { useTenant } from '@/hooks/useTenant';
-
-const isTempLoginEmail = (value) => /@temp\.bibliotecai\.com$/i.test(String(value || ''));
-
-const getDisplayName = (nome, email, fallback = 'Usuário') => {
-  const cleanNome = String(nome || '').trim();
-  if (cleanNome) return cleanNome;
-  if (email && !isTempLoginEmail(email)) return String(email);
-  return fallback;
-};
+import { createInviteToken, deleteInviteToken, fetchInviteTokens } from '@/services/inviteTokensService';
 
 export default function GerenciarTokens() {
   const [tokens, setTokens] = useState([]);
@@ -36,102 +24,19 @@ export default function GerenciarTokens() {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const { toast } = useToast();
-  const { user } = useAuth();
-  const { tenant } = useTenant();
 
-  const resolveEscolaId = useCallback(async () => {
-    if (!user?.id) return null;
-
-    const [{ data: perfil, error: perfilError }, { data: rpcEscolaId, error: rpcError }] = await Promise.all([
-      supabase
-        .from('usuarios_biblioteca')
-        .select('escola_id')
-        .eq('user_id', user.id)
-        .order('updated_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase.rpc('get_user_escola_id', { _user_id: user.id }),
-    ]);
-
-    if (perfilError) throw perfilError;
-    if (rpcError) throw rpcError;
-
-    let escolaId = perfil?.escola_id || tenant?.escola_id || rpcEscolaId || null;
-
-    if (!escolaId) {
-      const { data: escolaByGestor, error: escolaByGestorError } = await supabase
-        .from('escolas')
-        .select('id')
-        .eq('gestor_id', user.id)
-        .maybeSingle();
-
-      if (escolaByGestorError) throw escolaByGestorError;
-      escolaId = escolaByGestor?.id || null;
-    }
-
-    return escolaId;
-  }, [tenant?.escola_id, user?.id]);
-
-  const fetchTokens = useCallback(async () => {
+  const refreshTokens = useCallback(async () => {
+    setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('tokens_convite')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      const tokenList = data || [];
-      setTokens(tokenList);
-
-      const criadorIds = [...new Set(tokenList.map((t) => t.criado_por).filter(Boolean))];
-      const utilizadorIds = [...new Set(tokenList.map((t) => t.usado_por).filter(Boolean))];
-
-      if (criadorIds.length === 0 && utilizadorIds.length === 0) {
-        setCriadoresInfo({});
-        setUtilizadoresInfo({});
-        return;
-      }
-
-      const [usuariosRes, rolesRes, usuariosUtilizadoresRes, rolesUtilizadoresRes] = await Promise.all([
-        criadorIds.length
-          ? supabase.from('usuarios_biblioteca').select('user_id, nome').in('user_id', criadorIds)
-          : Promise.resolve({ data: [], error: null }),
-        criadorIds.length
-          ? supabase.from('user_roles').select('user_id, role').in('user_id', criadorIds)
-          : Promise.resolve({ data: [], error: null }),
-        utilizadorIds.length
-          ? supabase.from('usuarios_biblioteca').select('user_id, nome').in('user_id', utilizadorIds)
-          : Promise.resolve({ data: [], error: null }),
-        utilizadorIds.length
-          ? supabase.from('user_roles').select('user_id, role').in('user_id', utilizadorIds)
-          : Promise.resolve({ data: [], error: null }),
-      ]);
-
-      const infoMap = {};
-      (usuariosRes.data || []).forEach((u) => {
-        infoMap[u.user_id] = { ...(infoMap[u.user_id] || {}), nome: u.nome };
-      });
-      (rolesRes.data || []).forEach((r) => {
-        infoMap[r.user_id] = { ...(infoMap[r.user_id] || {}), role: r.role };
-      });
-
-      setCriadoresInfo(infoMap);
-
-      const utilizadoresMap = {};
-      (usuariosUtilizadoresRes.data || []).forEach((u) => {
-        utilizadoresMap[u.user_id] = { ...(utilizadoresMap[u.user_id] || {}), nome: u.nome };
-      });
-      (rolesUtilizadoresRes.data || []).forEach((r) => {
-        utilizadoresMap[r.user_id] = { ...(utilizadoresMap[r.user_id] || {}), role: r.role };
-      });
-      setUtilizadoresInfo(utilizadoresMap);
+      const payload = await fetchInviteTokens();
+      setTokens(payload.tokens);
+      setCriadoresInfo(payload.criadoresInfo || {});
+      setUtilizadoresInfo(payload.utilizadoresInfo || {});
     } catch (error) {
       console.error('Error fetching tokens:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível carregar os tokens.',
+        description: 'Nao foi possivel carregar os tokens.',
         variant: 'destructive',
       });
     } finally {
@@ -140,54 +45,15 @@ export default function GerenciarTokens() {
   }, [toast]);
 
   useEffect(() => {
-    fetchTokens();
-  }, [fetchTokens]);
-
-  const handleRealtimeChange = useCallback(() => {
-    fetchTokens();
-  }, [fetchTokens]);
-
-  useRealtimeSubscription({ table: 'tokens_convite', onChange: handleRealtimeChange });
-  useRealtimeSubscription({ table: 'usuarios_biblioteca', onChange: handleRealtimeChange });
-  useRealtimeSubscription({ table: 'user_roles', onChange: handleRealtimeChange });
+    refreshTokens();
+  }, [refreshTokens]);
 
   const gerarToken = async () => {
-    if (!user) return;
-
     setCreating(true);
-
     try {
-      const escolaId = await resolveEscolaId();
-      if (!escolaId) {
-        throw new Error('Nenhuma escola vinculada foi encontrada para este gestor.');
-      }
-
-      const [perfilRes, roleRes] = await Promise.all([
-        supabase.from('usuarios_biblioteca').select('nome').eq('user_id', user.id).maybeSingle(),
-        supabase.from('user_roles').select('role').eq('user_id', user.id).maybeSingle(),
-      ]);
-
-      const { data, error } = await supabase
-        .from('tokens_convite')
-        .insert({
-          escola_id: escolaId,
-          role_destino: roleDestino,
-          criado_por: user.id,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setTokens((prev) => [data, ...prev]);
-      setCriadoresInfo((prev) => ({
-        ...prev,
-        [user.id]: {
-          nome: getDisplayName(perfilRes.data?.nome, user.email),
-          role: roleRes.data?.role || 'gestor',
-        },
-      }));
-
+      const data = await createInviteToken(roleDestino);
+      setTokens((prev) => [data.token, ...prev]);
+      setCriadoresInfo((prev) => ({ ...prev, ...(data.criadoresInfo || {}) }));
       setDialogOpen(false);
       toast({
         title: 'Token criado!',
@@ -197,7 +63,7 @@ export default function GerenciarTokens() {
       console.error('Error creating token:', error);
       toast({
         title: 'Erro',
-        description: error?.message || 'Não foi possível criar o token.',
+        description: error?.message || 'Nao foi possivel criar o token.',
         variant: 'destructive',
       });
     } finally {
@@ -225,12 +91,12 @@ export default function GerenciarTokens() {
 
       toast({
         title: 'Link copiado!',
-        description: 'O link de convite foi copiado para a área de transferência.',
+        description: 'O link de convite foi copiado para a area de transferencia.',
       });
     } catch (error) {
       console.error('Error copying invite link:', error);
       toast({
-        title: 'Não foi possível copiar automaticamente',
+        title: 'Nao foi possivel copiar automaticamente',
         description: link,
         variant: 'destructive',
       });
@@ -241,9 +107,7 @@ export default function GerenciarTokens() {
     if (!confirm('Tem certeza que deseja apagar este token de convite?')) return;
 
     try {
-      const { error } = await supabase.from('tokens_convite').delete().eq('id', id);
-      if (error) throw error;
-
+      await deleteInviteToken(id);
       setTokens((prev) => prev.filter((t) => t.id !== id));
       toast({
         title: 'Token apagado',
@@ -253,7 +117,7 @@ export default function GerenciarTokens() {
       console.error('Error deleting token:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível apagar o token.',
+        description: 'Nao foi possivel apagar o token.',
         variant: 'destructive',
       });
     }
@@ -275,7 +139,7 @@ export default function GerenciarTokens() {
 
     const labels = {
       professor: 'Professor',
-      bibliotecaria: 'Bibliotecária',
+      bibliotecaria: 'Bibliotecaria',
       aluno: 'Aluno',
     };
 
@@ -286,7 +150,7 @@ export default function GerenciarTokens() {
     const labels = {
       gestor: 'Gestor',
       professor: 'Professor',
-      bibliotecaria: 'Bibliotecária',
+      bibliotecaria: 'Bibliotecaria',
       aluno: 'Aluno',
     };
 
@@ -301,7 +165,7 @@ export default function GerenciarTokens() {
             <div>
               <CardTitle>Tokens de Convite</CardTitle>
               <CardDescription>
-                Gere links de convite para professores, bibliotecárias e alunos se cadastrarem no sistema.
+                Gere links de convite para professores, bibliotecarias e alunos se cadastrarem no sistema.
               </CardDescription>
             </div>
 
@@ -312,30 +176,30 @@ export default function GerenciarTokens() {
                   Novo Token
                 </Button>
               </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Gerar Novo Token de Convite</DialogTitle>
-                    <DialogDescription>
-                      Escolha o cargo do convite e gere um link único para cadastro.
-                    </DialogDescription>
-                  </DialogHeader>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Gerar Novo Token de Convite</DialogTitle>
+                  <DialogDescription>
+                    Escolha o cargo do convite e gere um link unico para cadastro.
+                  </DialogDescription>
+                </DialogHeader>
                 <div className="space-y-4 pt-4">
                   <div className="space-y-2">
-                    <Label>Tipo de Usuário</Label>
+                    <Label>Tipo de Usuario</Label>
                     <Select value={roleDestino} onValueChange={(v) => setRoleDestino(v)}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="professor">Professor</SelectItem>
-                        <SelectItem value="bibliotecaria">Bibliotecária</SelectItem>
+                        <SelectItem value="bibliotecaria">Bibliotecaria</SelectItem>
                         <SelectItem value="aluno">Aluno</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
                   <p className="text-sm text-muted-foreground">
-                    O token será válido por 7 dias e pode ser usado apenas uma vez.
+                    O token sera valido por 7 dias e pode ser usado apenas uma vez.
                   </p>
 
                   <Button onClick={gerarToken} disabled={creating} className="w-full">
@@ -366,7 +230,7 @@ export default function GerenciarTokens() {
                     <TableHead>Status</TableHead>
                     <TableHead>Criado em</TableHead>
                     <TableHead>Expira em</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
+                    <TableHead className="text-right">Acoes</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -374,7 +238,7 @@ export default function GerenciarTokens() {
                     <TableRow key={token.id}>
                       <TableCell>{getRoleBadge(token.role_destino)}</TableCell>
                       <TableCell>{criadoresInfo[token.criado_por]?.nome || '—'}</TableCell>
-                      <TableCell>{token.usado_por ? (utilizadoresInfo[token.usado_por]?.nome || 'Usuário não encontrado') : '—'}</TableCell>
+                      <TableCell>{token.usado_por ? (utilizadoresInfo[token.usado_por]?.nome || 'Usuario nao encontrado') : '—'}</TableCell>
                       <TableCell>
                         <Badge variant="secondary">
                           {token.usado_por ? getRoleLabel(utilizadoresInfo[token.usado_por]?.role) : '—'}

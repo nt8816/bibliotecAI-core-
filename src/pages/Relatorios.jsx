@@ -22,9 +22,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { supabase } from '@/integrations/supabase/client';
 import { ExportPeriodDialog } from '@/components/export/ExportPeriodDialog';
 import { useToast } from '@/hooks/use-toast';
+import { fetchReportsData } from '@/services/reportsService';
 
 const PIE_COLORS = ['hsl(122, 46%, 34%)', 'hsl(43, 96%, 56%)'];
 const loadXlsx = async () => import('xlsx');
@@ -35,28 +35,6 @@ const loadPdf = async () => {
   ]);
   return { jsPDF, autoTable };
 };
-
-function monthKey(dateValue) {
-  const d = new Date(dateValue);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  return `${y}-${m}`;
-}
-
-function monthLabel(key) {
-  const [y, m] = key.split('-').map(Number);
-  return format(new Date(y, (m || 1) - 1, 1), 'MMM/yy', { locale: ptBR });
-}
-
-function buildLastMonths(size = 12) {
-  const now = new Date();
-  const keys = [];
-  for (let i = size - 1; i >= 0; i -= 1) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-  }
-  return keys;
-}
 
 export default function Relatorios() {
   const { toast } = useToast();
@@ -86,89 +64,25 @@ export default function Relatorios() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [
-          livrosCountRes,
-          livrosDisponiveisRes,
-          usuariosCountRes,
-          emprestimosCountRes,
-          emprestimosRes,
-          atrasadosRes,
-        ] = await Promise.all([
-          supabase.from('livros').select('*', { count: 'exact', head: true }),
-          supabase.from('livros').select('*', { count: 'exact', head: true }).eq('disponivel', true),
-          supabase.from('usuarios_biblioteca').select('*', { count: 'exact', head: true }),
-          supabase.from('emprestimos').select('*', { count: 'exact', head: true }),
-          supabase
-            .from('emprestimos')
-            .select('id, livro_id, usuario_id, created_at, data_emprestimo, data_devolucao_real, status, data_devolucao_prevista, livros(titulo), usuarios_biblioteca(nome, turma, tipo)'),
-          supabase
-            .from('emprestimos')
-            .select('id', { count: 'exact', head: true })
-            .eq('status', 'ativo')
-            .lt('data_devolucao_prevista', new Date().toISOString()),
-        ]);
-
-        const allEmprestimos = emprestimosRes.data || [];
-        setEmprestimosDetalhados(allEmprestimos);
-        const monthlyKeys = buildLastMonths(12);
-        const monthlyMap = new Map(
-          monthlyKeys.map((key) => [key, { key, mes: monthLabel(key), emprestimos: 0, devolucoes: 0 }]),
-        );
-
-        const livroCountMap = new Map();
-
-        allEmprestimos.forEach((emp) => {
-          const loanDate = emp.data_emprestimo || emp.created_at;
-          if (loanDate) {
-            const key = monthKey(loanDate);
-            if (monthlyMap.has(key)) {
-              monthlyMap.get(key).emprestimos += 1;
-            }
-          }
-
-          if (emp.data_devolucao_real) {
-            const key = monthKey(emp.data_devolucao_real);
-            if (monthlyMap.has(key)) {
-              monthlyMap.get(key).devolucoes += 1;
-            }
-          }
-
-          const livroNome = emp?.livros?.titulo || 'Livro sem título';
-          const current = livroCountMap.get(livroNome) || 0;
-          livroCountMap.set(livroNome, current + 1);
-        });
-
-        const monthlyData = Array.from(monthlyMap.values());
-        setEmprestimosPorMes(monthlyData);
-
-        const rankedBooks = Array.from(livroCountMap.entries())
-          .map(([titulo, emprestimos]) => ({ titulo, emprestimos }))
-          .sort((a, b) => b.emprestimos - a.emprestimos)
-          .slice(0, 8);
-
-        setLivrosMaisEmprestados(rankedBooks);
-
-        const mesAtual = monthlyData[monthlyData.length - 1]?.emprestimos || 0;
-        const mesAnterior = monthlyData[monthlyData.length - 2]?.emprestimos || 0;
-
-        setStats({
-          totalLivros: livrosCountRes.count || 0,
-          livrosDisponiveis: livrosDisponiveisRes.count || 0,
-          totalUsuarios: usuariosCountRes.count || 0,
-          totalEmprestimos: emprestimosCountRes.count || 0,
-          emprestimosMesAtual: mesAtual,
-          emprestimosMesAnterior: mesAnterior,
-          atrasadosAtuais: atrasadosRes.count || 0,
-        });
+        const data = await fetchReportsData();
+        setStats(data?.stats || {});
+        setEmprestimosDetalhados(data?.emprestimosDetalhados || []);
+        setEmprestimosPorMes(data?.emprestimosPorMes || []);
+        setLivrosMaisEmprestados(data?.livrosMaisEmprestados || []);
       } catch (error) {
-        console.error('Erro ao carregar relatórios:', error);
+        console.error('Erro ao carregar relatorios:', error);
+        toast({
+          variant: 'destructive',
+          title: 'Erro',
+          description: 'Nao foi possivel carregar os relatorios.',
+        });
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, []);
+  }, [toast]);
 
   const variacaoMes = useMemo(() => {
     const anterior = stats.emprestimosMesAnterior;
@@ -178,7 +92,7 @@ export default function Relatorios() {
 
   const pieData = useMemo(
     () => [
-      { name: 'Disponíveis', value: stats.livrosDisponiveis },
+      { name: 'Disponiveis', value: stats.livrosDisponiveis },
       { name: 'Emprestados', value: Math.max(0, stats.totalLivros - stats.livrosDisponiveis) },
     ],
     [stats.livrosDisponiveis, stats.totalLivros],
@@ -186,8 +100,8 @@ export default function Relatorios() {
 
   const statCards = [
     { title: 'Total de Livros', value: stats.totalLivros, icon: BookOpen, color: 'text-primary' },
-    { title: 'Total de Usuários', value: stats.totalUsuarios, icon: Users, color: 'text-info' },
-    { title: 'Empréstimos no Mês', value: stats.emprestimosMesAtual, icon: CalendarDays, color: 'text-secondary' },
+    { title: 'Total de Usuarios', value: stats.totalUsuarios, icon: Users, color: 'text-info' },
+    { title: 'Emprestimos no Mes', value: stats.emprestimosMesAtual, icon: CalendarDays, color: 'text-secondary' },
     { title: 'Atrasados Atuais', value: stats.atrasadosAtuais, icon: AlertTriangle, color: 'text-warning' },
   ];
 
@@ -238,8 +152,8 @@ export default function Relatorios() {
   }, [emprestimosDetalhados, rankingAno, rankingMes, rankingMode, rankingStartDate, rankingEndDate]);
 
   const getPeriodLabel = (period) => {
-    if (period.mode === 'total') return 'Período total';
-    return `Período: ${period.startDate} a ${period.endDate}`;
+    if (period.mode === 'total') return 'Periodo total';
+    return `Periodo: ${period.startDate} a ${period.endDate}`;
   };
 
   const filtrarEmprestimosPorPeriodo = (period) => {
@@ -255,7 +169,7 @@ export default function Relatorios() {
     });
   };
 
-  const exportarRelatoriosExcel = async (dataRows, periodLabel) => {
+  const exportarRelatoriosExcel = async (dataRows) => {
     const XLSX = await loadXlsx();
     const headers = ['Data', 'Aluno', 'Turma', 'Livro', 'Status'];
     const rows = dataRows.map((item) => [
@@ -270,14 +184,13 @@ export default function Relatorios() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Relatorios');
     XLSX.writeFile(wb, 'relatorios_gerais.xlsx');
-    return periodLabel;
   };
 
   const exportarRelatoriosPdf = async (dataRows, periodLabel) => {
     const { jsPDF, autoTable } = await loadPdf();
     const doc = new jsPDF('landscape');
     doc.setFontSize(14);
-    doc.text('Relatórios Gerais - Biblioteca', 14, 16);
+    doc.text('Relatorios Gerais - Biblioteca', 14, 16);
     doc.setFontSize(10);
     doc.text(periodLabel, 14, 23);
 
@@ -298,7 +211,6 @@ export default function Relatorios() {
       headStyles: { fillColor: [46, 125, 50] },
     });
     doc.save('relatorios_gerais.pdf');
-    return periodLabel;
   };
 
   const handleOpenExportDialog = (formatName) => {
@@ -312,7 +224,7 @@ export default function Relatorios() {
       toast({
         variant: 'destructive',
         title: 'Sem dados',
-        description: 'Não há registros no período selecionado para exportar.',
+        description: 'Nao ha registros no periodo selecionado para exportar.',
       });
       return;
     }
@@ -328,11 +240,11 @@ export default function Relatorios() {
       setExportDialogOpen(false);
       toast({ title: 'Exportado!', description: `Arquivo gerado com sucesso. ${periodLabel}` });
     } catch (error) {
-      console.error('Erro ao exportar relatórios:', error);
+      console.error('Erro ao exportar relatorios:', error);
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: 'Não foi possível exportar os relatórios.',
+        description: 'Nao foi possivel exportar os relatorios.',
       });
     } finally {
       setExporting(false);
@@ -340,14 +252,14 @@ export default function Relatorios() {
   };
 
   return (
-    <MainLayout title="Relatórios">
+    <MainLayout title="Relatorios">
       <div className="space-y-4 sm:space-y-6">
         <Card>
           <CardContent className="p-3 sm:p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold">Exportar relatórios</p>
-                <p className="text-xs text-muted-foreground">Escolha formato e período (total ou específico).</p>
+                <p className="text-sm font-semibold">Exportar relatorios</p>
+                <p className="text-xs text-muted-foreground">Escolha formato e periodo (total ou especifico).</p>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => handleOpenExportDialog('xlsx')}>
@@ -383,9 +295,9 @@ export default function Relatorios() {
           <CardContent className="p-3 sm:p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="text-sm font-semibold">Variação de empréstimos (mês atual vs anterior)</p>
+                <p className="text-sm font-semibold">Variacao de emprestimos (mes atual vs anterior)</p>
                 <p className="text-xs text-muted-foreground">
-                  {stats.emprestimosMesAtual} no mês atual e {stats.emprestimosMesAnterior} no anterior
+                  {stats.emprestimosMesAtual} no mes atual e {stats.emprestimosMesAnterior} no anterior
                 </p>
               </div>
               <Badge variant={variacaoMes >= 0 ? 'outline' : 'destructive'}>
@@ -400,7 +312,7 @@ export default function Relatorios() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5" /> Empréstimos por mês
+                <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5" /> Emprestimos por mes
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -425,7 +337,7 @@ export default function Relatorios() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" /> Evolução (empréstimos vs devoluções)
+                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" /> Evolucao (emprestimos vs devolucoes)
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -493,7 +405,7 @@ export default function Relatorios() {
               {loading ? (
                 <p className="text-sm text-muted-foreground py-8 text-center">Carregando...</p>
               ) : livrosMaisEmprestados.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-8 text-center">Sem empréstimos registrados.</p>
+                <p className="text-sm text-muted-foreground py-8 text-center">Sem emprestimos registrados.</p>
               ) : (
                 <div className="space-y-2">
                   {livrosMaisEmprestados.map((livro, index) => (
@@ -529,14 +441,14 @@ export default function Relatorios() {
                     onChange={(e) => setRankingMode(e.target.value)}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   >
-                    <option value="month">Mês/Ano</option>
-                    <option value="period">Período específico</option>
+                    <option value="month">Mes/Ano</option>
+                    <option value="period">Periodo especifico</option>
                   </select>
                 </div>
                 {rankingMode === 'period' ? (
                   <div className="grid grid-cols-2 gap-2 w-full sm:w-auto">
                     <div className="space-y-1">
-                      <Label htmlFor="ranking-start">Início</Label>
+                      <Label htmlFor="ranking-start">Inicio</Label>
                       <input
                         id="ranking-start"
                         type="date"
@@ -559,7 +471,7 @@ export default function Relatorios() {
                 ) : (
                   <div className="grid grid-cols-2 gap-2 w-full sm:w-auto">
                     <div className="space-y-1">
-                      <Label htmlFor="ranking-mes">Mês</Label>
+                      <Label htmlFor="ranking-mes">Mes</Label>
                       <select
                         id="ranking-mes"
                         value={rankingMes}
@@ -595,7 +507,7 @@ export default function Relatorios() {
             {loading ? (
               <p className="text-sm text-muted-foreground py-8 text-center">Carregando...</p>
             ) : rankingAlunos.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">Sem leituras concluídas para o mês/ano selecionado.</p>
+              <p className="text-sm text-muted-foreground py-8 text-center">Sem leituras concluidas para o mes/ano selecionado.</p>
             ) : (
               <div className="space-y-2">
                 {rankingAlunos.map((aluno, index) => (
@@ -618,13 +530,12 @@ export default function Relatorios() {
             )}
           </CardContent>
         </Card>
-
       </div>
       <ExportPeriodDialog
         open={exportDialogOpen}
         onOpenChange={setExportDialogOpen}
-        title="Exportar relatórios"
-        description="Escolha o período para exportar os dados consolidados de empréstimos."
+        title="Exportar relatorios"
+        description="Escolha o periodo para exportar os dados consolidados de emprestimos."
         loading={exporting}
         onConfirm={handleConfirmExport}
       />

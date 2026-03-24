@@ -618,6 +618,130 @@ async function fetchMatriculaProfile(identifier: string, env: Env) {
   return Array.isArray(payload) ? (payload[0] || null) : null;
 }
 
+function isMissingTableMessage(error: unknown) {
+  const message = String(error instanceof Error ? error.message : error || '').toLowerCase();
+  return (
+    message.includes('could not find the table') ||
+    message.includes('does not exist') ||
+    message.includes('42p01') ||
+    message.includes('pgrst205')
+  );
+}
+
+async function releasePublicInviteReservation(env: Env, tokenId: string) {
+  if (!tokenId) return;
+  await supabaseAdminRequest(env, `/rest/v1/tokens_convite?${new URLSearchParams({ id: `eq.${tokenId}` }).toString()}`, {
+    method: 'PATCH',
+    body: { ativo: true },
+    headers: { Prefer: 'return=minimal' },
+  }).catch(() => null);
+}
+
+async function fetchPublicInviteTokenContext(token: string, env: Env) {
+  const normalizedToken = String(token || '').trim().toLowerCase();
+  if (!normalizedToken) return null;
+
+  const payload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/tokens_convite?${new URLSearchParams({
+      select: 'id,role_destino,escola_id,expira_em',
+      token: `eq.${normalizedToken}`,
+      ativo: 'eq.true',
+      usado_por: 'is.null',
+      expira_em: `gt.${new Date().toISOString()}`,
+      limit: '1',
+    }).toString()}`,
+  );
+
+  return Array.isArray(payload) ? (payload[0] || null) : null;
+}
+
+async function fetchTenantAdminInviteContext(token: string, env: Env) {
+  const normalizedToken = String(token || '').trim().toLowerCase();
+  if (!normalizedToken) return null;
+
+  const payload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/tenant_admin_invites?${new URLSearchParams({
+      select: 'id,tenant_id,escola_id,cpf,email,expira_em,usado_em',
+      token: `eq.${normalizedToken}`,
+      usado_em: 'is.null',
+      expira_em: `gt.${new Date().toISOString()}`,
+      limit: '1',
+    }).toString()}`,
+  );
+
+  const invite = Array.isArray(payload) ? (payload[0] || null) : null;
+  if (!invite?.id) return null;
+
+  const [escola, tenant] = await Promise.all([
+    supabaseAdminRequest(env, `/rest/v1/escolas?${new URLSearchParams({
+      select: 'id,nome',
+      id: `eq.${invite.escola_id}`,
+      limit: '1',
+    }).toString()}`).then((rows) => Array.isArray(rows) ? (rows[0] || null) : null).catch(() => null),
+    supabaseAdminRequest(env, `/rest/v1/tenants?${new URLSearchParams({
+      select: 'id,subdominio',
+      id: `eq.${invite.tenant_id}`,
+      limit: '1',
+    }).toString()}`).then((rows) => Array.isArray(rows) ? (rows[0] || null) : null).catch(() => null),
+  ]);
+
+  return {
+    ...invite,
+    escola_nome: escola?.nome || null,
+    subdominio: tenant?.subdominio || null,
+  };
+}
+
+async function getArquivosAulaModuleContext(request: Request, env: Env) {
+  const caller = await fetchSupabaseUser(request, env);
+  if (!caller?.id) throw new Error('Nao autenticado.');
+
+  const profile = await getLatestUserProfile(caller.id, env);
+  if (!profile?.id) throw new Error('Perfil nao encontrado.');
+
+  const tipo = String(profile.tipo || '').trim().toLowerCase();
+  const escolaId = String(profile.escola_id || '').trim();
+  const perfilId = String(profile.id || '').trim();
+
+  const professorTurmas = tipo === 'professor' && perfilId
+    ? await supabaseAdminRequest(env, `/rest/v1/professor_turmas?${new URLSearchParams({
+      select: 'turma',
+      professor_id: `eq.${perfilId}`,
+    }).toString()}`).catch(() => [])
+    : [];
+
+  let professoresPermitidos: Array<{ id: string; nome: string }> = [];
+  if (tipo !== 'professor' && escolaId && profile.turma) {
+    const turmasRows = await supabaseAdminRequest(env, `/rest/v1/professor_turmas?${new URLSearchParams({
+      select: 'professor_id',
+      escola_id: `eq.${escolaId}`,
+      turma: `eq.${String(profile.turma).trim()}`,
+    }).toString()}`).catch(() => []);
+
+    const professorIds = [...new Set((Array.isArray(turmasRows) ? turmasRows : []).map((item) => String(item?.professor_id || '').trim()).filter(Boolean))];
+    if (professorIds.length > 0) {
+      const professoresRows = await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+        select: 'id,nome',
+        id: `in.(${professorIds.join(',')})`,
+      }).toString()}`).catch(() => []);
+
+      professoresPermitidos = Array.isArray(professoresRows) ? professoresRows : [];
+    }
+  }
+
+  return {
+    caller,
+    profile,
+    tipo,
+    escolaId: escolaId || null,
+    perfilId: perfilId || null,
+    professorTurmas: [...new Set((Array.isArray(professorTurmas) ? professorTurmas : []).map((item) => String(item?.turma || '').trim()).filter(Boolean))].sort(),
+    professoresPermitidos: [...new Set(professoresPermitidos.map((item) => String(item?.nome || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+  };
+}
+
 function estimateDataUrlBytes(value: unknown) {
   if (typeof value !== 'string' || !value || !value.startsWith('data:')) return 0;
 
@@ -733,9 +857,26 @@ const routes: Record<string, RouteHandler> = {
         usuarios: 'write_ready',
         comunidade_aluno: 'write_ready',
         painel_aluno: 'write_ready',
+        arquivos_aula: 'write_ready',
+        convites_publicos: 'write_ready',
         media: 'planned',
       },
     }),
+  'POST /v1/system-logs': async (request, env) => {
+    const body = await request.json().catch(() => ({}));
+    await insertSystemLog(request, env, {
+      user_id: String(body?.user_id || '').trim() || undefined,
+      level: String(body?.level || 'info'),
+      event: String(body?.event || 'system_event'),
+      message: body?.message ? String(body.message) : null,
+      path: body?.path ? String(body.path) : undefined,
+      context: body?.context && typeof body.context === 'object' ? body.context : null,
+      input: body?.input ?? null,
+      output: body?.output ?? null,
+      escola_id: body?.escolaId ? String(body.escolaId) : null,
+    });
+    return jsonResponse({ success: true });
+  },
 
   'POST /v1/auth/login': async (request, env) => {
     const body = await request.json().catch(() => ({}));
@@ -826,6 +967,264 @@ const routes: Record<string, RouteHandler> = {
       success: true,
       session: signupPayload,
       user: signupPayload?.user || null,
+    });
+  },
+  'POST /v1/public/convites/context': async (request, env) => {
+    const body = await request.json().catch(() => ({}));
+    const token = String(body?.token || '').trim();
+    const tokenInfo = await fetchPublicInviteTokenContext(token, env);
+
+    if (!tokenInfo?.id) {
+      return jsonResponse({ success: false, error: 'Token invalido ou expirado.' }, 404);
+    }
+
+    return jsonResponse({ success: true, tokenInfo });
+  },
+  'POST /v1/public/convites/register': async (request, env) => {
+    const body = await request.json().catch(() => ({}));
+    const token = String(body?.token || '').trim().toLowerCase();
+    const nome = String(body?.nome || '').trim();
+    const email = normalizeEmail(body?.email);
+    const senha = String(body?.senha || '');
+    const matricula = String(body?.matricula || '').trim();
+
+    if (!token || !nome) {
+      return jsonResponse({ success: false, error: 'Dados incompletos.' }, 400);
+    }
+
+    const reserved = await supabaseAdminRequest(
+      env,
+      `/rest/v1/tokens_convite?${new URLSearchParams({
+        select: 'id,role_destino,escola_id',
+        token: `eq.${token}`,
+        ativo: 'eq.true',
+        usado_por: 'is.null',
+        expira_em: `gt.${new Date().toISOString()}`,
+      }).toString()}`,
+      {
+        method: 'PATCH',
+        body: { ativo: false },
+        headers: { Prefer: 'return=representation' },
+      },
+    );
+    const tokenInfo = Array.isArray(reserved) ? (reserved[0] || null) : null;
+    if (!tokenInfo?.id) {
+      return jsonResponse({ success: false, error: 'Token invalido ou expirado.' }, 400);
+    }
+
+    const isAluno = String(tokenInfo.role_destino || '') === 'aluno';
+    const normalizedMatricula = String(matricula || '').trim();
+    const authEmail = isAluno ? `${normalizedMatricula.replace(/\s+/g, '')}@temp.bibliotecai.com` : email;
+    const authPassword = isAluno ? normalizedMatricula : senha;
+
+    if (!authEmail || !authPassword || authPassword.length < 6) {
+      await releasePublicInviteReservation(env, String(tokenInfo.id));
+      return jsonResponse({ success: false, error: 'Dados invalidos para criacao da conta.' }, 400);
+    }
+
+    let userId = '';
+    try {
+      const authData = await supabaseAdminAuthRequest(env, '/users', {
+        method: 'POST',
+        body: {
+          email: authEmail,
+          password: authPassword,
+          email_confirm: true,
+          user_metadata: { nome },
+        },
+      });
+      userId = String(authData?.user?.id || '');
+    } catch (error) {
+      await releasePublicInviteReservation(env, String(tokenInfo.id));
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao criar usuario.' }, 400);
+    }
+
+    try {
+      await supabaseAdminRequest(env, `/rest/v1/user_roles?on_conflict=user_id,role`, {
+        method: 'POST',
+        body: [{ user_id: userId, role: tokenInfo.role_destino }],
+        headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      });
+
+      const profilePayload: Record<string, unknown> = {
+        user_id: userId,
+        nome,
+        email: authEmail,
+        tipo: tokenInfo.role_destino,
+        escola_id: tokenInfo.escola_id,
+        matricula: isAluno ? normalizedMatricula : null,
+      };
+
+      if (isAluno && normalizedMatricula) {
+        const existingAluno = await supabaseAdminRequest(
+          env,
+          `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+            select: 'id,user_id',
+            matricula: `eq.${normalizedMatricula}`,
+            limit: '1',
+          }).toString()}`,
+        );
+        const alunoProfile = Array.isArray(existingAluno) ? (existingAluno[0] || null) : null;
+        if (alunoProfile?.id) {
+          await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ id: `eq.${alunoProfile.id}` }).toString()}`, {
+            method: 'PATCH',
+            body: profilePayload,
+            headers: { Prefer: 'return=minimal' },
+          });
+        } else {
+          await supabaseAdminRequest(env, '/rest/v1/usuarios_biblioteca', {
+            method: 'POST',
+            body: profilePayload,
+            headers: { Prefer: 'return=minimal' },
+          });
+        }
+      } else {
+        await supabaseAdminRequest(env, '/rest/v1/usuarios_biblioteca', {
+          method: 'POST',
+          body: profilePayload,
+          headers: { Prefer: 'return=minimal' },
+        });
+      }
+
+      await supabaseAdminRequest(env, `/rest/v1/tokens_convite?${new URLSearchParams({ id: `eq.${tokenInfo.id}` }).toString()}`, {
+        method: 'PATCH',
+        body: {
+          usado_por: userId,
+          usado_em: new Date().toISOString(),
+        },
+        headers: { Prefer: 'return=minimal' },
+      });
+    } catch (error) {
+      await supabaseAdminAuthRequest(env, `/users/${userId}`, { method: 'DELETE' }).catch(() => null);
+      await releasePublicInviteReservation(env, String(tokenInfo.id));
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao concluir registro.' }, 500);
+    }
+
+    return jsonResponse({
+      success: true,
+      role: tokenInfo.role_destino,
+      message: 'Usuario registrado com sucesso.',
+    });
+  },
+  'POST /v1/public/tenant-invites/context': async (request, env) => {
+    const body = await request.json().catch(() => ({}));
+    const token = String(body?.token || '').trim();
+    const invite = await fetchTenantAdminInviteContext(token, env);
+
+    if (!invite?.id) {
+      return jsonResponse({ success: false, error: 'Link invalido ou expirado.' }, 404);
+    }
+
+    return jsonResponse({ success: true, invite });
+  },
+  'POST /v1/public/tenant-invites/register': async (request, env) => {
+    const body = await request.json().catch(() => ({}));
+    const token = String(body?.token || '').trim().toLowerCase();
+    const nome = String(body?.nome || '').trim();
+    const cpf = normalizeCpf(body?.cpf);
+    const senha = String(body?.senha || '');
+
+    if (!token || !nome || cpf.length !== 11 || senha.length < 6) {
+      return jsonResponse({ success: false, error: 'Dados invalidos.' }, 400);
+    }
+
+    const invite = await fetchTenantAdminInviteContext(token, env);
+    if (!invite?.id) {
+      return jsonResponse({ success: false, error: 'Link invalido ou expirado.' }, 400);
+    }
+    if (invite.cpf && String(invite.cpf) !== cpf) {
+      return jsonResponse({ success: false, error: 'Este convite esta vinculado a outro CPF.' }, 403);
+    }
+
+    const reserved = await supabaseAdminRequest(
+      env,
+      `/rest/v1/tenant_admin_invites?${new URLSearchParams({
+        select: 'id',
+        token: `eq.${token}`,
+        usado_em: 'is.null',
+        expira_em: `gt.${new Date().toISOString()}`,
+      }).toString()}`,
+      {
+        method: 'PATCH',
+        body: { usado_em: new Date().toISOString() },
+        headers: { Prefer: 'return=representation' },
+      },
+    );
+    const reservedInvite = Array.isArray(reserved) ? (reserved[0] || null) : null;
+    if (!reservedInvite?.id) {
+      return jsonResponse({ success: false, error: 'Link invalido ou ja utilizado.' }, 400);
+    }
+
+    const authEmail = `${cpf}@temp.bibliotecai.com`;
+    let userId = '';
+
+    try {
+      const authData = await supabaseAdminAuthRequest(env, '/users', {
+        method: 'POST',
+        body: {
+          email: authEmail,
+          password: senha,
+          email_confirm: true,
+          user_metadata: { nome },
+        },
+      });
+      userId = String(authData?.user?.id || '');
+    } catch (error) {
+      await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
+        method: 'PATCH',
+        body: { usado_em: null, usado_por: null },
+        headers: { Prefer: 'return=minimal' },
+      }).catch(() => null);
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao criar gestor.' }, 400);
+    }
+
+    try {
+      await supabaseAdminRequest(env, `/rest/v1/user_roles?on_conflict=user_id,role`, {
+        method: 'POST',
+        body: [{ user_id: userId, role: 'gestor' }],
+        headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      });
+
+      await supabaseAdminRequest(env, '/rest/v1/usuarios_biblioteca', {
+        method: 'POST',
+        body: {
+          user_id: userId,
+          nome,
+          email: authEmail,
+          cpf,
+          tipo: 'gestor',
+          escola_id: invite.escola_id,
+          matricula: null,
+        },
+        headers: { Prefer: 'return=minimal' },
+      });
+
+      await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
+        method: 'PATCH',
+        body: { usado_por: userId },
+        headers: { Prefer: 'return=minimal' },
+      });
+
+      await supabaseAdminRequest(env, `/rest/v1/escolas?${new URLSearchParams({ id: `eq.${invite.escola_id}`, gestor_id: 'is.null' }).toString()}`, {
+        method: 'PATCH',
+        body: { gestor_id: userId },
+        headers: { Prefer: 'return=minimal' },
+      }).catch(() => null);
+    } catch (error) {
+      await supabaseAdminAuthRequest(env, `/users/${userId}`, { method: 'DELETE' }).catch(() => null);
+      await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
+        method: 'PATCH',
+        body: { usado_em: null, usado_por: null },
+        headers: { Prefer: 'return=minimal' },
+      }).catch(() => null);
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao concluir cadastro.' }, 500);
+    }
+
+    return jsonResponse({
+      success: true,
+      role: 'gestor',
+      login_email: authEmail,
+      tenant_subdomain: invite.subdominio || null,
     });
   },
   'POST /v1/auth/resolve-login': async (request, env) => {
@@ -1529,6 +1928,33 @@ const routes: Record<string, RouteHandler> = {
       escolasCadastradas,
       superAdminStats,
     });
+  },
+  'POST /v1/admin/comunidade/posts': async (request, env) => {
+    const caller = await fetchSupabaseUser(request, env);
+    if (!caller?.id || !(await isSuperAdmin(caller.id, env))) {
+      return jsonResponse({ success: false, error: 'Sem permissao para publicar comunicado global.' }, 403);
+    }
+    const body = await request.json().catch(() => ({}));
+    try {
+      await supabaseAdminRequest(env, '/rest/v1/comunidade_posts', {
+        method: 'POST',
+        body,
+        headers: { Prefer: 'return=minimal' },
+      });
+    } catch (error) {
+      const message = String(error instanceof Error ? error.message : error || '').toLowerCase();
+      if (Object.prototype.hasOwnProperty.call(body || {}, 'escola_id') && message.includes("could not find the 'escola_id' column")) {
+        const { escola_id: _ignored, ...fallbackBody } = body as Record<string, unknown>;
+        await supabaseAdminRequest(env, '/rest/v1/comunidade_posts', {
+          method: 'POST',
+          body: fallbackBody,
+          headers: { Prefer: 'return=minimal' },
+        });
+      } else {
+        throw error;
+      }
+    }
+    return jsonResponse({ success: true });
   },
   'GET /v1/notifications/system': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);
@@ -3466,6 +3892,122 @@ const routes: Record<string, RouteHandler> = {
     return jsonResponse(payload);
   },
 
+  'GET /v1/arquivos-aula': async (request, env) => {
+    const context = await getArquivosAulaModuleContext(request, env);
+
+    let posts: Array<Record<string, unknown>> = [];
+    let enabled = true;
+    try {
+      const rawPosts = await supabaseAdminRequest(
+        env,
+        '/rest/v1/arquivos_aula_posts?select=*&order=created_at.desc',
+      );
+      posts = Array.isArray(rawPosts) ? rawPosts : [];
+    } catch (error) {
+      if (isMissingTableMessage(error)) {
+        enabled = false;
+      } else {
+        throw error;
+      }
+    }
+
+    if (enabled && posts.length > 0) {
+      const authorIds = [...new Set(posts.map((item) => String(item?.autor_id || '').trim()).filter(Boolean))];
+      if (authorIds.length > 0) {
+        const authors = await supabaseAdminRequest(
+          env,
+          `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+            select: 'id,nome',
+            id: `in.(${authorIds.join(',')})`,
+          }).toString()}`,
+        ).catch(() => []);
+        const authorMap = new Map((Array.isArray(authors) ? authors : []).map((item) => [String(item?.id || ''), String(item?.nome || '')]));
+        posts = posts.map((item) => ({
+          ...item,
+          autor_nome: String(item?.autor_nome || '').trim() || authorMap.get(String(item?.autor_id || '')) || null,
+        }));
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      enabled,
+      perfilId: context.perfilId,
+      perfilNome: context.profile?.nome || null,
+      escolaId: context.escolaId,
+      alunoTurma: context.profile?.turma || null,
+      professorTurmas: context.professorTurmas,
+      professoresPermitidos: context.professoresPermitidos,
+      posts,
+    });
+  },
+
+  'POST /v1/arquivos-aula': async (request, env) => {
+    const context = await getArquivosAulaModuleContext(request, env);
+    if (context.tipo !== 'professor' || !context.perfilId || !context.escolaId) {
+      return jsonResponse({ success: false, error: 'Apenas professores podem publicar materiais.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const mensagem = String(body?.mensagem || '').trim();
+    const turmaPublico = body?.turma_publico ? String(body.turma_publico).trim() : null;
+    const arquivos = Array.isArray(body?.arquivos) ? body.arquivos : [];
+
+    if (!mensagem || arquivos.length === 0) {
+      return jsonResponse({ success: false, error: 'Mensagem e arquivos sao obrigatorios.' }, 400);
+    }
+
+    await supabaseAdminRequest(env, '/rest/v1/arquivos_aula_posts', {
+      method: 'POST',
+      body: {
+        autor_id: context.perfilId,
+        autor_nome: context.profile?.nome || null,
+        escola_id: context.escolaId,
+        turma_publico: turmaPublico,
+        mensagem,
+        arquivos,
+      },
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    return jsonResponse({ success: true });
+  },
+
+  'PATCH /v1/arquivos-aula/:id/arquivos': async (request, env) => {
+    const context = await getArquivosAulaModuleContext(request, env);
+    const postId = getPathParam(request, /^\/v1\/arquivos-aula\/([^/]+)\/arquivos$/i);
+    const body = await request.json().catch(() => ({}));
+    const arquivos = Array.isArray(body?.arquivos) ? body.arquivos : [];
+
+    const existingRows = await supabaseAdminRequest(
+      env,
+      `/rest/v1/arquivos_aula_posts?${new URLSearchParams({
+        select: 'id,autor_id',
+        id: `eq.${postId}`,
+        limit: '1',
+      }).toString()}`,
+    );
+    const post = Array.isArray(existingRows) ? (existingRows[0] || null) : null;
+    if (!post?.id) {
+      return jsonResponse({ success: false, error: 'Publicacao nao encontrada.' }, 404);
+    }
+    if (String(post?.autor_id || '') !== String(context.perfilId || '')) {
+      return jsonResponse({ success: false, error: 'Voce so pode editar arquivos publicados por voce.' }, 403);
+    }
+
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/arquivos_aula_posts?${new URLSearchParams({ id: `eq.${postId}` }).toString()}`,
+      {
+        method: 'PATCH',
+        body: { arquivos },
+        headers: { Prefer: 'return=minimal' },
+      },
+    );
+
+    return jsonResponse({ success: true });
+  },
+
   'GET /v1/aluno/comunidade': async (request, env) => {
     const { profile, escolaId, alunoId, isProfessor, canPublicarComunicado } = await getCommunityModuleContext(request, env);
 
@@ -3990,6 +4532,7 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/aluno\/comunidade\/posts\/[^/]+$/, '/v1/aluno/comunidade/posts/:id')
     .replace(/\/v1\/aluno\/laboratorio\/criacoes\/[^/]+\/delete$/, '/v1/aluno/laboratorio/criacoes/:id/delete')
     .replace(/\/v1\/aluno\/laboratorio\/criacoes\/[^/]+$/, '/v1/aluno/laboratorio/criacoes/:id')
+    .replace(/\/v1\/arquivos-aula\/[^/]+\/arquivos$/, '/v1/arquivos-aula/:id/arquivos')
     .replace(/\/v1\/livros\/[^/]+\/delete$/, '/v1/livros/:id/delete')
     .replace(/\/v1\/livros\/[^/]+$/, '/v1/livros/:id')
     .replace(/\/v1\/usuarios\/[^/]+$/, '/v1/usuarios/:id');

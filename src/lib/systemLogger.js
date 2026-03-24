@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { requestPlatformApi } from '@/lib/platformApi';
 
 const MAX_QUEUE = 200;
 const MAX_FIELD_SIZE = 2000;
@@ -80,15 +80,19 @@ async function flushQueue() {
   while (queue.length > 0) {
     const entry = queue.shift();
     try {
-      await supabase.rpc('log_system_event', {
-        _event: entry.event,
-        _level: entry.level,
-        _message: entry.message || null,
-        _path: entry.path || window.location.pathname,
-        _input: entry.input ?? null,
-        _output: entry.output ?? null,
-        _context: entry.context ?? null,
-        _escola_id: entry.escolaId || null,
+      await requestPlatformApi('/v1/system-logs', {
+        method: 'POST',
+        auth: false,
+        body: {
+          event: entry.event,
+          level: entry.level,
+          message: entry.message || null,
+          path: entry.path || window.location.pathname,
+          input: entry.input ?? null,
+          output: entry.output ?? null,
+          context: entry.context ?? null,
+          escolaId: entry.escolaId || null,
+        },
       });
     } catch {
       // swallow to avoid cascading errors
@@ -100,7 +104,7 @@ async function flushQueue() {
 function shouldSkipFetchLog(url) {
   if (!url) return false;
   const value = String(url);
-  return value.includes('/rpc/log_system_event') || value.includes('/rest/v1/system_logs');
+  return value.includes('/v1/system-logs') || value.includes('/rest/v1/system_logs');
 }
 
 export function logSystemEvent({

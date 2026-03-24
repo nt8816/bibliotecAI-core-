@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { signInWithPlatform } from '@/services/authService';
+import { fetchConviteContext, registerViaConvite } from '@/services/inviteService';
 
 export default function Convite() {
   const { token } = useParams();
@@ -29,14 +29,14 @@ export default function Convite() {
   const isAlunoInvite = tokenInfo?.role_destino === 'aluno';
 
   const mapSignupError = (message) => {
-    if (!message) return 'Não foi possível criar sua conta.';
+    if (!message) return 'Nao foi possivel criar sua conta.';
 
     if (
       message.includes('already been registered')
       || message.includes('already registered')
       || message.includes('User already registered')
     ) {
-      return 'Esta conta já está cadastrada. Verifique seus dados ou faça login.';
+      return 'Esta conta ja esta cadastrada. Verifique seus dados ou faca login.';
     }
 
     return message;
@@ -44,19 +44,12 @@ export default function Convite() {
 
   const verificarToken = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('tokens_convite')
-        .select('id, role_destino, escola_id, expira_em')
-        .eq('token', token)
-        .eq('ativo', true)
-        .is('usado_por', null)
-        .gt('expira_em', new Date().toISOString())
-        .maybeSingle();
+      const payload = await fetchConviteContext(token);
 
-      if (error || !data) {
+      if (!payload?.success || !payload?.tokenInfo) {
         setInvalidToken(true);
       } else {
-        setTokenInfo(data);
+        setTokenInfo(payload.tokenInfo);
       }
     } catch (error) {
       console.error('Error verifying token:', error);
@@ -78,21 +71,21 @@ export default function Convite() {
 
     if (isAlunoInvite) {
       if (!matricula.trim()) {
-        toast({ title: 'Erro', description: 'Informe a matrícula.', variant: 'destructive' });
+        toast({ title: 'Erro', description: 'Informe a matricula.', variant: 'destructive' });
         return;
       }
 
       if (matricula.trim().length < 6) {
         toast({
           title: 'Erro',
-          description: 'A matrícula deve ter pelo menos 6 caracteres para ser usada como senha.',
+          description: 'A matricula deve ter pelo menos 6 caracteres para ser usada como senha.',
           variant: 'destructive',
         });
         return;
       }
     } else {
       if (senha !== confirmarSenha) {
-        toast({ title: 'Erro', description: 'As senhas não coincidem.', variant: 'destructive' });
+        toast({ title: 'Erro', description: 'As senhas nao coincidem.', variant: 'destructive' });
         return;
       }
 
@@ -105,16 +98,12 @@ export default function Convite() {
     setSubmitting(true);
 
     try {
-      const data = await invokeEdgeFunction('registrar-via-convite', {
-        body: {
-          token,
-          nome,
-          email: isAlunoInvite ? undefined : email,
-          senha: isAlunoInvite ? undefined : senha,
-          matricula: isAlunoInvite ? matricula.trim() : undefined,
-        },
-        requireAuth: false,
-        fallbackErrorMessage: 'Não foi possível criar sua conta.',
+      const data = await registerViaConvite({
+        token,
+        nome,
+        email: isAlunoInvite ? undefined : email,
+        senha: isAlunoInvite ? undefined : senha,
+        matricula: isAlunoInvite ? matricula.trim() : undefined,
       });
 
       if (!data?.success) {
@@ -137,8 +126,8 @@ export default function Convite() {
         toast({
           title: 'Conta criada com sucesso',
           description: isAlunoInvite
-            ? 'Faça login com matrícula no usuário e na senha.'
-            : 'Faça login para continuar.',
+            ? 'Faca login com matricula no usuario e na senha.'
+            : 'Faca login para continuar.',
         });
 
         navigate('/auth', { replace: true });
@@ -150,7 +139,7 @@ export default function Convite() {
       console.error('Error during signup:', error);
       toast({
         title: 'Erro no cadastro',
-        description: mapSignupError(error.message),
+        description: mapSignupError(error?.message || ''),
         variant: 'destructive',
       });
     } finally {
@@ -162,7 +151,7 @@ export default function Convite() {
     const labels = {
       aluno: 'Aluno',
       professor: 'Professor(a)',
-      bibliotecaria: 'Bibliotecária',
+      bibliotecaria: 'Bibliotecaria',
     };
 
     return labels[role] || role;
@@ -189,11 +178,11 @@ export default function Convite() {
         <Card className="w-full max-w-md">
           <CardContent className="pt-6 text-center">
             <XCircle className="w-16 h-16 mx-auto text-destructive mb-4" />
-            <h2 className="text-xl font-bold mb-2">Link Inválido ou Expirado</h2>
+            <h2 className="text-xl font-bold mb-2">Link invalido ou expirado</h2>
             <p className="text-muted-foreground mb-6">
-              Este link de convite não é mais válido. Entre em contato com o gestor da escola para solicitar um novo convite.
+              Este link de convite nao e mais valido. Entre em contato com o gestor da escola para solicitar um novo convite.
             </p>
-            <Button onClick={() => navigate('/auth')} variant="outline">Ir para Login</Button>
+            <Button onClick={() => navigate('/auth')} variant="outline">Ir para login</Button>
           </CardContent>
         </Card>
       </div>
@@ -209,14 +198,14 @@ export default function Convite() {
           </div>
           <CardTitle>Bem-vindo ao BibliotecAI</CardTitle>
           <CardDescription>
-            Você foi convidado como <strong>{getRoleLabel(tokenInfo?.role_destino || '')}</strong>. Complete seu cadastro abaixo.
+            Voce foi convidado como <strong>{getRoleLabel(tokenInfo?.role_destino || '')}</strong>. Complete seu cadastro abaixo.
           </CardDescription>
         </CardHeader>
 
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="nome">Nome Completo</Label>
+              <Label htmlFor="nome">Nome completo</Label>
               <Input
                 id="nome"
                 value={nome}
@@ -229,7 +218,7 @@ export default function Convite() {
             {isAlunoInvite ? (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="matricula">Matrícula</Label>
+                  <Label htmlFor="matricula">Matricula</Label>
                   <Input
                     id="matricula"
                     value={matricula}
@@ -240,10 +229,10 @@ export default function Convite() {
                 </div>
 
                 <p className="text-sm text-muted-foreground">
-                  Para alunos, a matrícula será usada como usuário e senha inicial.
+                  Para alunos, a matricula sera usada como usuario e senha inicial.
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Depois do primeiro acesso, você pode alterar sua senha em Configurações.
+                  Depois do primeiro acesso, voce pode alterar sua senha em Configuracoes.
                 </p>
               </>
             ) : (
@@ -267,13 +256,13 @@ export default function Convite() {
                     type="password"
                     value={senha}
                     onChange={(e) => setSenha(e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
+                    placeholder="Minimo 6 caracteres"
                     required
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="confirmarSenha">Confirmar Senha</Label>
+                  <Label htmlFor="confirmarSenha">Confirmar senha</Label>
                   <Input
                     id="confirmarSenha"
                     type="password"
@@ -293,7 +282,7 @@ export default function Convite() {
                   Criando conta...
                 </>
               ) : (
-                'Criar Conta'
+                'Criar conta'
               )}
             </Button>
           </form>

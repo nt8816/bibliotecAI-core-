@@ -7,9 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { signInWithPlatform } from '@/services/authService';
+import { fetchTenantInviteContext, registerTenantGestor } from '@/services/inviteService';
 
 export default function OnboardingGestor() {
   const { token } = useParams();
@@ -25,6 +24,7 @@ export default function OnboardingGestor() {
   const [cpf, setCpf] = useState('');
   const [senha, setSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
+
   const handleCpfChange = (value) => {
     const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
     setCpf(digits);
@@ -40,14 +40,10 @@ export default function OnboardingGestor() {
         return;
       }
 
-      const { data, error } = await supabase
-        .rpc('get_tenant_invite_context', { _token: normalizedToken })
-        .maybeSingle();
+      const response = await fetchTenantInviteContext(normalizedToken);
+      const data = response?.invite || null;
 
-      if (error || !data) {
-        if (error) {
-          console.error('get_tenant_invite_context error:', error);
-        }
+      if (!response?.success || !data) {
         setInvalidInvite(true);
         return;
       }
@@ -72,28 +68,24 @@ export default function OnboardingGestor() {
     const cpfDigits = cpf.replace(/\D/g, '');
 
     if (cpfDigits.length !== 11) {
-      toast({ title: 'CPF inválido', description: 'Informe um CPF com 11 dígitos.', variant: 'destructive' });
+      toast({ title: 'CPF invalido', description: 'Informe um CPF com 11 digitos.', variant: 'destructive' });
       return;
     }
 
     if (senha.length < 6) {
-      toast({ title: 'Senha inválida', description: 'Use ao menos 6 caracteres.', variant: 'destructive' });
+      toast({ title: 'Senha invalida', description: 'Use ao menos 6 caracteres.', variant: 'destructive' });
       return;
     }
 
     if (senha !== confirmarSenha) {
-      toast({ title: 'Senha inválida', description: 'As senhas não coincidem.', variant: 'destructive' });
+      toast({ title: 'Senha invalida', description: 'As senhas nao coincidem.', variant: 'destructive' });
       return;
     }
 
     setSubmitting(true);
 
     try {
-      const data = await invokeEdgeFunction('registrar-gestor-tenant', {
-        body: { token, nome, cpf: cpfDigits, senha },
-        requireAuth: false,
-        fallbackErrorMessage: 'Não foi possível concluir o cadastro',
-      });
+      const data = await registerTenantGestor({ token, nome, cpf: cpfDigits, senha });
 
       if (!data?.success) {
         throw new Error(data?.error || 'Falha no cadastro');
@@ -105,17 +97,17 @@ export default function OnboardingGestor() {
       );
 
       if (signInError) {
-        toast({ title: 'Conta criada', description: 'Faça login para continuar.' });
+        toast({ title: 'Conta criada', description: 'Faca login para continuar.' });
         navigate('/auth', { replace: true });
         return;
       }
 
-      toast({ title: 'Cadastro concluído', description: 'Bem-vindo ao painel da escola.' });
+      toast({ title: 'Cadastro concluido', description: 'Bem-vindo ao painel da escola.' });
       navigate('/dashboard', { replace: true });
     } catch (error) {
       toast({
         title: 'Erro no onboarding',
-        description: error.message || 'Erro inesperado',
+        description: error?.message || 'Erro inesperado',
         variant: 'destructive',
       });
     } finally {
@@ -136,8 +128,8 @@ export default function OnboardingGestor() {
       <div className="min-h-screen flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>Link inválido</CardTitle>
-            <CardDescription>O link de onboarding está expirado ou já foi usado.</CardDescription>
+            <CardTitle>Link invalido</CardTitle>
+            <CardDescription>O link de onboarding esta expirado ou ja foi usado.</CardDescription>
           </CardHeader>
           <CardContent>
             <Button onClick={() => navigate('/auth')} variant="outline" className="w-full">
@@ -156,7 +148,7 @@ export default function OnboardingGestor() {
           <div className="w-14 h-14 mx-auto rounded-full bg-primary/10 flex items-center justify-center mb-2">
             <ShieldCheck className="w-7 h-7 text-primary" />
           </div>
-          <CardTitle>Onboarding do Gestor</CardTitle>
+          <CardTitle>Onboarding do gestor</CardTitle>
           <CardDescription>
             Escola: <strong>{invite?.escola_nome}</strong>. Use seu CPF como login.
           </CardDescription>
@@ -180,7 +172,7 @@ export default function OnboardingGestor() {
             </div>
             {invite?.cpf && (
               <p className="text-xs text-muted-foreground">
-                Este convite está vinculado ao CPF acima.
+                Este convite esta vinculado ao CPF acima.
               </p>
             )}
             <div className="space-y-2">

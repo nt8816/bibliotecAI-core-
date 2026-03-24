@@ -4,14 +4,17 @@ import { Download, FileStack, ImagePlus, Send, Trash2, X } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { deleteR2Object, getR2DownloadUrl, uploadFileToR2 } from '@/lib/r2Storage';
+import {
+  createArquivosAulaPost,
+  fetchArquivosAulaData,
+  updateArquivosAulaFiles,
+} from '@/services/arquivosAulaService';
 const ALL_TURMAS_OPTION = '__all_turmas__';
 const ACCEPTED_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg', 'ppt', 'pptx'];
 const ACCEPTED_INPUT = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.ppt,.pptx';
@@ -43,26 +46,6 @@ function normalizeTurmaKey(value) {
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function isMissingTableError(error) {
-  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
-  return (
-    error?.code === '42P01' ||
-    error?.code === 'PGRST205' ||
-    message.includes('could not find the table') ||
-    message.includes('does not exist')
-  );
-}
-
-function isMissingColumnError(error, columnName, tableName) {
-  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
-  const column = String(columnName || '').toLowerCase();
-  const table = String(tableName || '').toLowerCase();
-  return (
-    message.includes(`could not find the '${column}' column`) &&
-    (!table || message.includes(`'${table}'`) || message.includes(`"${table}"`))
-  );
 }
 
 function getFileExtension(fileName) {
@@ -107,7 +90,6 @@ export default function ArquivosAula() {
   const [saving, setSaving] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [perfilId, setPerfilId] = useState(null);
-  const [perfilNome, setPerfilNome] = useState('');
   const [escolaId, setEscolaId] = useState(null);
   const [alunoTurma, setAlunoTurma] = useState(null);
   const [professorTurmas, setProfessorTurmas] = useState([]);
@@ -123,113 +105,14 @@ export default function ArquivosAula() {
 
     setLoading(true);
     try {
-      const { data: perfil, error: perfilError } = await supabase
-        .from('usuarios_biblioteca')
-        .select('id, escola_id, turma, tipo, nome')
-        .eq('user_id', user.id)
-        .order('updated_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (perfilError || !perfil) throw perfilError || new Error('Perfil nao encontrado.');
-
-      setPerfilId(perfil.id);
-      setPerfilNome(safeText(perfil.nome, '').trim());
-      setEscolaId(perfil.escola_id || null);
-      setAlunoTurma(perfil.turma || null);
-
-      if (String(perfil.tipo || '') === 'professor') {
-        const { data: turmasData, error: turmasError } = await supabase
-          .from('professor_turmas')
-          .select('turma')
-          .eq('professor_id', perfil.id);
-        if (turmasError && !isMissingTableError(turmasError)) throw turmasError;
-        setProfessorTurmas(
-          [...new Set(ensureArray(turmasData).map((item) => safeText(item?.turma, '').trim()).filter(Boolean))].sort(),
-        );
-        setProfessoresPermitidos([]);
-      } else {
-        setProfessorTurmas([]);
-        if (perfil.escola_id && perfil.turma) {
-          const { data: professorTurmasData, error: professorTurmasError } = await supabase
-            .from('professor_turmas')
-            .select('professor_id')
-            .eq('escola_id', perfil.escola_id)
-            .eq('turma', perfil.turma);
-
-          if (!professorTurmasError && !isMissingTableError(professorTurmasError)) {
-            const professorIds = [...new Set(
-              ensureArray(professorTurmasData).map((item) => item?.professor_id).filter(Boolean),
-            )];
-
-            if (professorIds.length > 0) {
-              const { data: professoresData, error: professoresError } = await supabase
-                .from('usuarios_biblioteca')
-                .select('id, nome')
-                .in('id', professorIds);
-
-              if (!professoresError) {
-                setProfessoresPermitidos(
-                  [...new Set(
-                    ensureArray(professoresData).map((item) => safeText(item?.nome, '').trim()).filter(Boolean),
-                  )].sort((a, b) => a.localeCompare(b, 'pt-BR')),
-                );
-              }
-            } else {
-              setProfessoresPermitidos([]);
-            }
-          } else {
-            setProfessoresPermitidos([]);
-          }
-        } else {
-          setProfessoresPermitidos([]);
-        }
-      }
-
-      const { data, error } = await supabase
-        .from('arquivos_aula_posts')
-        .select('*, usuarios_biblioteca!arquivos_aula_posts_autor_id_fkey(nome)')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        if (isMissingTableError(error)) {
-          setEnabled(false);
-          setPosts([]);
-          return;
-        }
-        throw error;
-      }
-
-      const rawPosts = data || [];
-      const missingAuthorIds = [...new Set(
-        ensureArray(rawPosts)
-          .filter((item) => !getAuthorName(item) && item?.autor_id)
-          .map((item) => item.autor_id),
-      )];
-
-      let postsWithAuthors = rawPosts;
-      if (missingAuthorIds.length > 0) {
-        const { data: autoresData, error: autoresError } = await supabase
-          .from('usuarios_biblioteca')
-          .select('id, nome')
-          .in('id', missingAuthorIds);
-
-        if (!autoresError) {
-          const autoresMap = new Map(ensureArray(autoresData).map((item) => [item.id, item.nome]));
-          postsWithAuthors = rawPosts.map((item) =>
-            getAuthorName(item) || !item?.autor_id
-              ? item
-              : {
-                  ...item,
-                  usuarios_biblioteca: { nome: safeText(autoresMap.get(item.autor_id), '') || null },
-                },
-          );
-        }
-      }
-
-      setEnabled(true);
-      setPosts(postsWithAuthors);
+      const data = await fetchArquivosAulaData();
+      setEnabled(data?.enabled !== false);
+      setPerfilId(data?.perfilId || null);
+      setEscolaId(data?.escolaId || null);
+      setAlunoTurma(data?.alunoTurma || null);
+      setProfessorTurmas(ensureArray(data?.professorTurmas));
+      setProfessoresPermitidos(ensureArray(data?.professoresPermitidos));
+      setPosts(ensureArray(data?.posts));
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -345,20 +228,12 @@ export default function ArquivosAula() {
       }
 
       const payload = {
-        autor_id: perfilId,
-        autor_nome: perfilNome || null,
-        escola_id: escolaId,
         turma_publico: turmaPublico === ALL_TURMAS_OPTION ? null : turmaPublico,
         mensagem: mensagem.trim(),
         arquivos,
       };
 
-      let { error } = await supabase.from('arquivos_aula_posts').insert(payload);
-      if (error && isMissingColumnError(error, 'autor_nome', 'arquivos_aula_posts')) {
-        const { autor_nome: _ignored, ...fallbackPayload } = payload;
-        ({ error } = await supabase.from('arquivos_aula_posts').insert(fallbackPayload));
-      }
-      if (error) throw error;
+      await createArquivosAulaPost(payload);
 
       setMensagem('');
       setTurmaPublico('');
@@ -391,10 +266,14 @@ export default function ArquivosAula() {
         return;
       }
 
-      const legacyStorageBucket = 'arquivos-aula';
-      const { data, error } = await supabase.storage.from(legacyStorageBucket).download(path);
-      if (error) throw error;
-      downloadBlob(data, safeText(arquivo?.nome, 'arquivo'));
+      if (String(arquivo?.public_url || '').trim()) {
+        const response = await fetch(String(arquivo.public_url));
+        if (!response.ok) throw new Error(`Falha ao baixar o arquivo (HTTP ${response.status}).`);
+        const blob = await response.blob();
+        downloadBlob(blob, safeText(arquivo?.nome, 'arquivo'));
+        return;
+      }
+      throw new Error('Arquivo sem rota de download suportada.');
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -422,23 +301,11 @@ export default function ArquivosAula() {
           } catch (storageError) {
             console.warn('Falha ao remover arquivo do Cloudflare R2.', storageError);
           }
-        } else {
-          const legacyStorageBucket = 'arquivos-aula';
-          const { error: storageError } = await supabase.storage.from(legacyStorageBucket).remove([filePath]);
-          if (storageError) {
-            console.warn('Falha ao remover arquivo do storage legado.', storageError);
-          }
         }
       }
 
       const proximosArquivos = arquivosAtuais.filter((_, index) => index !== arquivoIndex);
-      const { error } = await supabase
-        .from('arquivos_aula_posts')
-        .update({ arquivos: proximosArquivos })
-        .eq('id', post.id)
-        .eq('autor_id', perfilId);
-
-      if (error) throw error;
+      await updateArquivosAulaFiles(post.id, proximosArquivos);
 
       setPosts((prev) =>
         ensureArray(prev).map((item) => (item.id === post.id ? { ...item, arquivos: proximosArquivos } : item)),
