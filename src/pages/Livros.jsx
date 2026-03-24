@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { Plus, Pencil, Trash2, Search, BookOpen, Sparkles, Loader2, Info, Download, Upload, FileSpreadsheet, FileText, AlertCircle, CheckCircle, SlidersHorizontal, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, BookOpen, Sparkles, Loader2, Info, Download, Upload, FileSpreadsheet, FileText, AlertCircle, CheckCircle, SlidersHorizontal, X, ChevronsUpDown, Check } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -110,6 +111,7 @@ export default function Livros() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [areaFilter, setAreaFilter] = useState('all');
+  const [areaFilterOpen, setAreaFilterOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -127,6 +129,7 @@ export default function Livros() {
   const [preCategoriasDialogOpen, setPreCategoriasDialogOpen] = useState(false);
   const [preCategorias, setPreCategorias] = useState(DEFAULT_PRE_CATEGORIES);
   const [novaPreCategoria, setNovaPreCategoria] = useState('');
+  const [preCategoriaSearch, setPreCategoriaSearch] = useState('');
   const [escolaId, setEscolaId] = useState(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState('xlsx');
@@ -232,6 +235,31 @@ export default function Livros() {
         variant: 'destructive',
         title: 'Erro',
         description: 'N??o foi poss??vel salvar a pr??-categoria.',
+      });
+      fetchLivros();
+    }
+  };
+
+  const handleSalvarPreCategoria = async (categoriaNome) => {
+    const categoria = canonicalizeBookArea(categoriaNome, preCategorias);
+    if (!categoria) return;
+    const exists = preCategorias.some((item) => item.toLowerCase() === categoria.toLowerCase());
+    if (exists) return;
+
+    setPreCategorias((prev) => [...prev, categoria]);
+    if (!escolaId) return;
+    try {
+      await createLivroCategoria({
+        escola_id: escolaId,
+        nome: categoria,
+        created_by: user?.id || null,
+      });
+      fetchLivros();
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'Não foi possível salvar a pré-categoria.',
       });
       fetchLivros();
     }
@@ -709,6 +737,18 @@ export default function Livros() {
     [livros, preCategorias],
   );
 
+  const categoriasGerenciaveis = useMemo(() => {
+    const term = preCategoriaSearch.trim().toLowerCase();
+    return [...new Set([...preCategorias, ...areaOptions])]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+      .filter((categoria) => !term || categoria.toLowerCase().includes(term))
+      .map((categoria) => ({
+        nome: categoria,
+        saved: preCategorias.some((item) => item.toLowerCase() === categoria.toLowerCase()),
+        inUse: areaOptions.some((item) => item.toLowerCase() === categoria.toLowerCase()),
+      }));
+  }, [preCategorias, areaOptions, preCategoriaSearch]);
+
   const filteredLivros = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     return livros.filter((livro) => {
@@ -909,21 +949,48 @@ export default function Livros() {
                                     </Button>
                                   </div>
 
+                                  <Input
+                                    placeholder="Pesquisar categoria..."
+                                    value={preCategoriaSearch}
+                                    onChange={(e) => setPreCategoriaSearch(e.target.value)}
+                                  />
+
                                   <div className="max-h-64 overflow-y-auto rounded-md border p-2">
                                     <div className="space-y-1.5">
-                                      {preCategorias.map((categoria) => (
-                                        <div key={categoria} className="flex items-center justify-between rounded-md border px-2.5 py-2 text-sm">
-                                          <span className="truncate pr-2">{categoria}</span>
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-7 w-7"
-                                            onClick={() => handleRemoverPreCategoria(categoria)}
-                                            aria-label={`Remover categoria ${categoria}`}
-                                          >
-                                            <Trash2 className="h-3.5 w-3.5" />
-                                          </Button>
+                                      {categoriasGerenciaveis.length === 0 && (
+                                        <p className="px-2 py-3 text-sm text-muted-foreground">Nenhuma categoria encontrada.</p>
+                                      )}
+                                      {categoriasGerenciaveis.map((categoria) => (
+                                        <div key={categoria.nome} className="flex items-center justify-between rounded-md border px-2.5 py-2 text-sm">
+                                          <div className="min-w-0 pr-3">
+                                            <div className="truncate">{categoria.nome}</div>
+                                            <div className="mt-1 flex flex-wrap gap-1">
+                                              {categoria.saved && <Badge variant="secondary" className="text-[10px]">Pré-definida</Badge>}
+                                              {categoria.inUse && <Badge variant="outline" className="text-[10px]">No acervo</Badge>}
+                                            </div>
+                                          </div>
+                                          {categoria.saved ? (
+                                            <Button
+                                              type="button"
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-7 w-7 shrink-0"
+                                              onClick={() => handleRemoverPreCategoria(categoria.nome)}
+                                              aria-label={`Remover categoria ${categoria.nome}`}
+                                            >
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                            </Button>
+                                          ) : (
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="sm"
+                                              className="shrink-0"
+                                              onClick={() => handleSalvarPreCategoria(categoria.nome)}
+                                            >
+                                              Salvar
+                                            </Button>
+                                          )}
                                         </div>
                                       ))}
                                     </div>
@@ -1042,17 +1109,54 @@ export default function Livros() {
                   />
                 </div>
 
-                <Select value={areaFilter} onValueChange={setAreaFilter}>
-                  <SelectTrigger className="w-full sm:w-[180px]">
-                    <SelectValue placeholder="Filtrar por área" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas as áreas</SelectItem>
-                    {areaOptions.map((area) => (
-                      <SelectItem key={area} value={area}>{area}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={areaFilterOpen} onOpenChange={setAreaFilterOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={areaFilterOpen}
+                      className="w-full justify-between sm:w-[220px]"
+                    >
+                      <span className="truncate">
+                        {areaFilter === 'all' ? 'Todas as áreas' : areaFilter}
+                      </span>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0 sm:w-[220px]" align="start">
+                    <Command>
+                      <CommandInput placeholder="Pesquisar área..." />
+                      <CommandList>
+                        <CommandEmpty>Nenhuma área encontrada.</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value="Todas as áreas"
+                            onSelect={() => {
+                              setAreaFilter('all');
+                              setAreaFilterOpen(false);
+                            }}
+                          >
+                            <Check className={`mr-2 h-4 w-4 ${areaFilter === 'all' ? 'opacity-100' : 'opacity-0'}`} />
+                            Todas as áreas
+                          </CommandItem>
+                          {areaOptions.map((area) => (
+                            <CommandItem
+                              key={area}
+                              value={area}
+                              onSelect={() => {
+                                setAreaFilter(area);
+                                setAreaFilterOpen(false);
+                              }}
+                            >
+                              <Check className={`mr-2 h-4 w-4 ${areaFilter === area ? 'opacity-100' : 'opacity-0'}`} />
+                              {area}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
 
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-full sm:w-[180px]">
