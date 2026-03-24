@@ -66,9 +66,15 @@ export default function OnboardingGestor() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const cpfDigits = cpf.replace(/\D/g, '');
+    const normalizedToken = decodeURIComponent(String(token || '')).trim().toLowerCase();
 
     if (cpfDigits.length !== 11) {
       toast({ title: 'CPF invalido', description: 'Informe um CPF com 11 digitos.', variant: 'destructive' });
+      return;
+    }
+
+    if (!normalizedToken) {
+      toast({ title: 'Link invalido', description: 'O convite de onboarding nao e valido.', variant: 'destructive' });
       return;
     }
 
@@ -85,7 +91,7 @@ export default function OnboardingGestor() {
     setSubmitting(true);
 
     try {
-      const data = await registerTenantGestor({ token, nome, cpf: cpfDigits, senha });
+      const data = await registerTenantGestor({ token: normalizedToken, nome, cpf: cpfDigits, senha });
 
       if (!data?.success) {
         throw new Error(data?.error || 'Falha no cadastro');

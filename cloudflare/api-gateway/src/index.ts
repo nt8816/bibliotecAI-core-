@@ -2305,7 +2305,7 @@ const routes: Record<string, RouteHandler> = {
   },
   'POST /v1/public/tenant-invites/register': async (request, env) => {
     const body = await request.json().catch(() => ({}));
-    const token = String(body?.token || '').trim().toLowerCase();
+    const token = decodeURIComponent(String(body?.token || '')).trim().toLowerCase();
     const nome = String(body?.nome || '').trim();
     const cpf = normalizeCpf(body?.cpf);
     const senha = String(body?.senha || '');
@@ -2320,6 +2320,12 @@ const routes: Record<string, RouteHandler> = {
     }
     if (invite.cpf && String(invite.cpf) !== cpf) {
       return jsonResponse({ success: false, error: 'Este convite esta vinculado a outro CPF.' }, 403);
+    }
+
+    const inviteTenantId = String(invite?.tenant_id || '').trim();
+    const inviteEscolaId = String(invite?.escola_id || '').trim();
+    if (!UUID_PATTERN.test(inviteTenantId) || !UUID_PATTERN.test(inviteEscolaId)) {
+      return jsonResponse({ success: false, error: 'Convite inconsistente. Gere um novo link de onboarding.' }, 400);
     }
 
     const reserved = await supabaseAdminRequest(
@@ -2379,7 +2385,7 @@ const routes: Record<string, RouteHandler> = {
           email: authEmail,
           cpf,
           tipo: 'gestor',
-          escola_id: invite.escola_id,
+          escola_id: inviteEscolaId,
           matricula: null,
         },
         headers: { Prefer: 'return=minimal' },
@@ -2391,7 +2397,7 @@ const routes: Record<string, RouteHandler> = {
         headers: { Prefer: 'return=minimal' },
       });
 
-      await supabaseAdminRequest(env, `/rest/v1/escolas?${new URLSearchParams({ id: `eq.${invite.escola_id}`, gestor_id: 'is.null' }).toString()}`, {
+      await supabaseAdminRequest(env, `/rest/v1/escolas?${new URLSearchParams({ id: `eq.${inviteEscolaId}`, gestor_id: 'is.null' }).toString()}`, {
         method: 'PATCH',
         body: { gestor_id: userId },
         headers: { Prefer: 'return=minimal' },
@@ -7151,6 +7157,8 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/livros\/[^/]+$/, '/v1/livros/:id')
     .replace(/\/v1\/usuarios\/[^/]+$/, '/v1/usuarios/:id');
 }
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function resolveRoute(request: Request) {
   const url = new URL(request.url);
