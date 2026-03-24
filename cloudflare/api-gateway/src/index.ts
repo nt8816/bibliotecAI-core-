@@ -4891,7 +4891,7 @@ const routes: Record<string, RouteHandler> = {
     const { profile } = await getBooksModuleContext(request, env);
     const escolaId = String(profile.escola_id || '').trim();
 
-    const [escolaLivros, legacyLivros, categorias] = await Promise.all([
+    const [escolaLivros, legacyLivros, categorias, emprestimosAtivos] = await Promise.all([
       escolaId
         ? supabaseAdminRequest(
             env,
@@ -4920,6 +4920,18 @@ const routes: Record<string, RouteHandler> = {
             }).toString()}`,
           )
         : Promise.resolve([]),
+      escolaId
+        ? supabaseAdminRequest(
+            env,
+            `/rest/v1/emprestimos?${new URLSearchParams({
+              select: 'id,livro_id,livros!inner(escola_id)',
+              status: 'eq.ativo',
+              data_devolucao_real: 'is.null',
+              'livros.escola_id': `eq.${escolaId}`,
+              limit: '5000',
+            }).toString()}`,
+          ).catch(() => [])
+        : Promise.resolve([]),
     ]);
 
     const byId = new Map<string, Record<string, unknown>>();
@@ -4927,6 +4939,13 @@ const routes: Record<string, RouteHandler> = {
       const id = String(livro?.id || '').trim();
       if (id) byId.set(id, livro);
     });
+    const activeLoanBookIds = Array.from(
+      new Set(
+        (Array.isArray(emprestimosAtivos) ? emprestimosAtivos : [])
+          .map((item) => String(item?.livro_id || '').trim())
+          .filter(Boolean),
+      ),
+    );
 
     const preCategorias = Array.isArray(categorias) && categorias.length > 0
       ? Array.from(new Set(categorias.map((item) => String(item?.nome || '').trim()).filter(Boolean)))
@@ -4937,6 +4956,7 @@ const routes: Record<string, RouteHandler> = {
       escolaId: escolaId || null,
       livros: Array.from(byId.values()).sort((a, b) => String(a?.titulo || '').localeCompare(String(b?.titulo || ''), 'pt-BR')),
       preCategorias,
+      activeLoanBookIds,
     });
   },
 

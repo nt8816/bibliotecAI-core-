@@ -45,6 +45,18 @@ const emptyLivro = {
 };
 
 const DEFAULT_PRE_CATEGORIES = ['Literatura', 'Ciências', 'Matemática', 'História', 'Geografia', 'Infantil'];
+const getLivroStatus = (livro) => {
+  if (livro?.isEmprestado) return 'emprestado';
+  if (livro?.disponivel) return 'disponivel';
+  return 'indisponivel';
+};
+const getLivroStatusLabel = (livro) => {
+  const status = getLivroStatus(livro);
+  if (status === 'emprestado') return 'Emprestado';
+  if (status === 'disponivel') return 'Disponível';
+  return 'Indisponível';
+};
+const getLivroStatusVariant = (livro) => (getLivroStatus(livro) === 'disponivel' ? 'default' : 'secondary');
 const loadXlsx = async () => import('xlsx');
 const loadPdf = async () => {
   const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
@@ -708,8 +720,9 @@ export default function Livros() {
 
       const areaMatches = areaFilter === 'all' || canonicalizeBookArea(livro.area, preCategorias) === areaFilter;
       const statusMatches = statusFilter === 'all'
-        || (statusFilter === 'disponivel' && livro.disponivel)
-        || (statusFilter === 'emprestado' && !livro.disponivel);
+        || (statusFilter === 'disponivel' && getLivroStatus(livro) === 'disponivel')
+        || (statusFilter === 'emprestado' && getLivroStatus(livro) === 'emprestado')
+        || (statusFilter === 'indisponivel' && getLivroStatus(livro) === 'indisponivel');
 
       return searchMatches && areaMatches && statusMatches;
     });
@@ -717,7 +730,7 @@ export default function Livros() {
 
   const totalLivros = livros.length;
   const totalDisponiveis = livros.filter((livro) => livro.disponivel).length;
-  const totalEmprestados = totalLivros - totalDisponiveis;
+  const totalEmprestados = livros.filter((livro) => livro.isEmprestado).length;
   const hasActiveFilters = Boolean(searchTerm.trim()) || areaFilter !== 'all' || statusFilter !== 'all';
 
   return (
@@ -1049,6 +1062,7 @@ export default function Livros() {
                     <SelectItem value="all">Todos os status</SelectItem>
                     <SelectItem value="disponivel">Disponíveis</SelectItem>
                     <SelectItem value="emprestado">Emprestados</SelectItem>
+                    <SelectItem value="indisponivel">Indisponíveis</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1126,7 +1140,7 @@ export default function Livros() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={livro.disponivel ? 'default' : 'secondary'}>{livro.disponivel ? 'Disponível' : 'Emprestado'}</Badge>
+                        <Badge variant={getLivroStatusVariant(livro)}>{getLivroStatusLabel(livro)}</Badge>
                       </TableCell>
                       {canManageBooks && (
                         <TableCell className="text-right">

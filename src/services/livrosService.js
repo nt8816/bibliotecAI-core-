@@ -2,6 +2,11 @@ import { requestPlatformApi } from '@/lib/platformApi';
 
 export async function fetchLivrosCatalogo({ preCategorias, canonicalizeBookArea, defaultPreCategories }) {
   const payload = await requestPlatformApi('/v1/livros');
+  const activeLoanBookIds = new Set(
+    (Array.isArray(payload?.activeLoanBookIds) ? payload.activeLoanBookIds : [])
+      .map((id) => String(id || '').trim())
+      .filter(Boolean),
+  );
   const categoriasBase = Array.isArray(payload?.preCategorias) && payload.preCategorias.length > 0
     ? payload.preCategorias
     : defaultPreCategories;
@@ -11,6 +16,7 @@ export async function fetchLivrosCatalogo({ preCategorias, canonicalizeBookArea,
     livros: (Array.isArray(payload?.livros) ? payload.livros : []).map((livro) => ({
       ...livro,
       area: canonicalizeBookArea(livro?.area, preCategorias),
+      isEmprestado: activeLoanBookIds.has(String(livro?.id || '').trim()),
     })),
     preCategorias: categoriasBase.map((nome) => canonicalizeBookArea(nome)),
   };
