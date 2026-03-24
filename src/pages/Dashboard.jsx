@@ -14,7 +14,7 @@ import {
   School,
   ShieldAlert,
   ShieldCheck,
-  ShieldUser,
+  Shield,
   TrendingUp,
   Users,
 } from 'lucide-react';
@@ -298,7 +298,7 @@ export default function Dashboard() {
       description: 'Criar contas, revisar bloqueios, passkeys pendentes e ultimos acessos.',
       action: '/admin/super-admins',
       actionLabel: 'Abrir Super Admins',
-      icon: ShieldUser,
+      icon: Shield,
     },
     {
       title: 'Reclamacoes criticas',

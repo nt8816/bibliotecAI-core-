@@ -7,6 +7,7 @@ import {
   fetchPlatformSessionProfile,
   signInWithPlatform,
   signOutWithPlatform,
+  signOutWithPlatformOnPageExit,
   signUpWithPlatform,
 } from '@/services/authService';
 
@@ -69,6 +70,22 @@ export function AuthProvider({ children }) {
       unsubscribe();
     };
   }, [syncAuthState]);
+
+  useEffect(() => {
+    if (!session?.access_token) return undefined;
+
+    const handlePageExit = () => {
+      signOutWithPlatformOnPageExit();
+    };
+
+    window.addEventListener('pagehide', handlePageExit);
+    window.addEventListener('beforeunload', handlePageExit);
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageExit);
+      window.removeEventListener('beforeunload', handlePageExit);
+    };
+  }, [session]);
 
   const signIn = useCallback(async (email, password) => {
     const result = await signInWithPlatform(email, password);
