@@ -166,6 +166,12 @@ Deno.serve(async (req) => {
       .filter(Boolean);
     const authOnlyUserIds = requestedUserIds.filter((userId) => !foundTargetKeys.has(userId));
 
+    authOnlyUserIds.forEach((userId) => {
+      if (!userIdsToDelete.includes(userId)) {
+        userIdsToDelete.push(userId);
+      }
+    });
+
     if (requestedSchoolId && authOnlyUserIds.length > 0) {
       const { data: schoolsWithTargetGestor, error: schoolsWithTargetGestorError } = await adminClient
         .from('escolas')
@@ -186,6 +192,10 @@ Deno.serve(async (req) => {
           userIdsToDelete.push(userId);
         }
       });
+    }
+
+    if (userIdsToDelete.includes(caller.id)) {
+      return jsonResponse({ success: false, error: 'Voce nao pode excluir o proprio usuario por esta tela' }, 400);
     }
 
     if (foundProfiles.length === 0 && userIdsToDelete.length === 0) {
