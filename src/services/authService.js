@@ -28,23 +28,16 @@ export async function authenticatePlatformCredentials(email, password) {
   return requestPlatformApi('/v1/auth/login', {
     method: 'POST',
     body: { email, password },
+    auth: false,
   });
 }
 
 export async function finalizePlatformSession(session) {
-  const accessToken = session?.access_token;
-  const refreshToken = session?.refresh_token;
-
-  if (!accessToken || !refreshToken) {
+  const normalizedSession = setPlatformSession(session);
+  if (!normalizedSession?.access_token || !normalizedSession?.refresh_token) {
     throw new Error('Sessao temporaria invalida.');
   }
-
-  const { error } = await supabase.auth.setSession({
-    access_token: accessToken,
-    refresh_token: refreshToken,
-  });
-
-  if (error) throw error;
+  return normalizedSession;
 }
 
 export async function signUpWithPlatform(email, password, nome) {
@@ -111,10 +104,10 @@ export async function resolvePlatformLoginIdentifier(identifier) {
   });
 }
 
-export async function registerPlatformSuperAdminLoginSuccess(email) {
+export async function registerPlatformSuperAdminLoginSuccess(email, options = {}) {
   return requestPlatformApi('/v1/auth/super-admin/login-success', {
     method: 'POST',
-    body: { email, path: '/auth' },
+    body: { email, path: '/auth', ...options },
   });
 }
 
@@ -208,7 +201,9 @@ export async function startSuperAdminDesktopApproval(pendingAccessToken, context
 }
 
 export async function fetchSuperAdminDesktopApprovalStatus(token) {
-  return requestPlatformApi(`/v1/auth/super-admin/desktop/challenges/${encodeURIComponent(token)}`);
+  return requestPlatformApi(`/v1/auth/super-admin/desktop/challenges/${encodeURIComponent(token)}`, {
+    auth: false,
+  });
 }
 
 export async function approveSuperAdminDesktopAccess(pendingAccessToken, token, authChallengeId) {
