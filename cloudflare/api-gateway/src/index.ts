@@ -5265,6 +5265,232 @@ const routes: Record<string, RouteHandler> = {
     return jsonResponse({ success: true });
   },
 
+  'GET /v1/escola/config': async (request, env) => {
+    const { isGestor, currentEscolaId } = await getUsersModuleContext(request, env);
+    if (!isGestor || !currentEscolaId) {
+      return jsonResponse({ success: false, error: 'Sem permissao para carregar a configuracao da escola.' }, 403);
+    }
+
+    const [escola] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/escolas?${new URLSearchParams({
+        select: 'id,nome,gestor_id',
+        id: `eq.${currentEscolaId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    const salas = await supabaseAdminRequest(
+      env,
+      `/rest/v1/salas_cursos?${new URLSearchParams({
+        select: 'id,nome,tipo,escola_id',
+        escola_id: `eq.${currentEscolaId}`,
+        order: 'nome.asc',
+      }).toString()}`,
+    ).catch(() => []) as Array<Record<string, unknown>>;
+
+    return jsonResponse({
+      success: true,
+      escola: escola || null,
+      salas: Array.isArray(salas) ? salas : [],
+    });
+  },
+
+  'POST /v1/escola/config': async (request, env) => {
+    const { isGestor, currentEscolaId } = await getUsersModuleContext(request, env);
+    if (!isGestor || !currentEscolaId) {
+      return jsonResponse({ success: false, error: 'Sem permissao para editar a escola.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const nome = String(body?.nome || '').trim();
+    if (!nome) {
+      return jsonResponse({ success: false, error: 'Nome da escola obrigatorio.' }, 400);
+    }
+
+    const updated = await supabaseAdminRequest(
+      env,
+      `/rest/v1/escolas?${new URLSearchParams({ id: `eq.${currentEscolaId}`, select: 'id,nome,gestor_id' }).toString()}`,
+      {
+        method: 'PATCH',
+        body: { nome },
+        headers: { Prefer: 'return=representation' },
+      },
+    ) as Array<Record<string, unknown>>;
+
+    return jsonResponse({ success: true, escola: updated?.[0] || null });
+  },
+
+  'POST /v1/escola/salas': async (request, env) => {
+    const { isGestor, currentEscolaId } = await getUsersModuleContext(request, env);
+    if (!isGestor || !currentEscolaId) {
+      return jsonResponse({ success: false, error: 'Sem permissao para criar salas ou cursos.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const nome = String(body?.nome || '').trim();
+    const tipo = String(body?.tipo || 'sala').trim().toLowerCase();
+    if (!nome) {
+      return jsonResponse({ success: false, error: 'Nome obrigatorio.' }, 400);
+    }
+
+    const created = await supabaseAdminRequest(env, '/rest/v1/salas_cursos?select=id,nome,tipo,escola_id', {
+      method: 'POST',
+      body: [{ nome, tipo, escola_id: currentEscolaId }],
+      headers: { Prefer: 'return=representation' },
+    }) as Array<Record<string, unknown>>;
+
+    return jsonResponse({ success: true, sala: created?.[0] || null });
+  },
+
+  'PATCH /v1/escola/salas/:id': async (request, env) => {
+    const { isGestor, currentEscolaId } = await getUsersModuleContext(request, env);
+    if (!isGestor || !currentEscolaId) {
+      return jsonResponse({ success: false, error: 'Sem permissao para editar salas.' }, 403);
+    }
+
+    const salaId = getPathParam(request, /^\/v1\/escola\/salas\/([^/]+)$/i);
+    const body = await request.json().catch(() => ({}));
+    const nome = String(body?.nome || '').trim();
+    if (!salaId || !nome) {
+      return jsonResponse({ success: false, error: 'Sala e nome sao obrigatorios.' }, 400);
+    }
+
+    const [salaAtual] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/salas_cursos?${new URLSearchParams({
+        select: 'id,nome,tipo,escola_id',
+        id: `eq.${salaId}`,
+        escola_id: `eq.${currentEscolaId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    if (!salaAtual?.id) {
+      return jsonResponse({ success: false, error: 'Sala nao encontrada para esta escola.' }, 404);
+    }
+
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/salas_cursos?${new URLSearchParams({ id: `eq.${salaId}` }).toString()}`,
+      {
+        method: 'PATCH',
+        body: { nome },
+        headers: { Prefer: 'return=minimal' },
+      },
+    );
+
+    const nomeAnterior = String(salaAtual?.nome || '').trim();
+    if (nomeAnterior && nomeAnterior !== nome) {
+      await supabaseAdminRequest(
+        env,
+        `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+          escola_id: `eq.${currentEscolaId}`,
+          turma: `eq.${nomeAnterior}`,
+        }).toString()}`,
+        {
+          method: 'PATCH',
+          body: { turma: nome },
+          headers: { Prefer: 'return=minimal' },
+        },
+      ).catch(() => null);
+
+      await supabaseAdminRequest(
+        env,
+        `/rest/v1/professor_turmas?${new URLSearchParams({
+          escola_id: `eq.${currentEscolaId}`,
+          turma: `eq.${nomeAnterior}`,
+        }).toString()}`,
+        {
+          method: 'PATCH',
+          body: { turma: nome },
+          headers: { Prefer: 'return=minimal' },
+        },
+      ).catch(() => null);
+    }
+
+    return jsonResponse({ success: true });
+  },
+
+  'POST /v1/escola/salas/delete': async (request, env) => {
+    const { isGestor, currentEscolaId } = await getUsersModuleContext(request, env);
+    if (!isGestor || !currentEscolaId) {
+      return jsonResponse({ success: false, error: 'Sem permissao para excluir salas.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const salaId = String(body?.salaId || '').trim();
+    const salaNome = String(body?.salaNome || '').trim();
+
+    let targetSalaNome = salaNome;
+    if (salaId) {
+      const [sala] = await supabaseAdminRequest(
+        env,
+        `/rest/v1/salas_cursos?${new URLSearchParams({
+          select: 'id,nome',
+          id: `eq.${salaId}`,
+          escola_id: `eq.${currentEscolaId}`,
+          limit: '1',
+        }).toString()}`,
+      ) as Array<Record<string, unknown>>;
+
+      if (!sala?.id) {
+        return jsonResponse({ success: false, error: 'Sala nao encontrada para esta escola.' }, 404);
+      }
+
+      targetSalaNome = String(sala?.nome || '').trim();
+    }
+
+    if (!targetSalaNome) {
+      return jsonResponse({ success: false, error: 'Sala nao informada.' }, 400);
+    }
+
+    const usuariosDaSala = await supabaseAdminRequest(
+      env,
+      `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+        select: 'id',
+        escola_id: `eq.${currentEscolaId}`,
+        turma: `eq.${targetSalaNome}`,
+      }).toString()}`,
+    ).catch(() => []) as Array<Record<string, unknown>>;
+
+    const usuarioIds = (Array.isArray(usuariosDaSala) ? usuariosDaSala : [])
+      .map((item) => String(item?.id || '').trim())
+      .filter(Boolean);
+
+    if (usuarioIds.length > 0) {
+      await callSupabaseFunction(request, env, 'excluir-usuarios-biblioteca', { ids: usuarioIds, escola_id: currentEscolaId });
+    }
+
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/professor_turmas?${new URLSearchParams({
+        escola_id: `eq.${currentEscolaId}`,
+        turma: `eq.${targetSalaNome}`,
+      }).toString()}`,
+      {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+      },
+    ).catch(() => null);
+
+    if (salaId) {
+      await supabaseAdminRequest(
+        env,
+        `/rest/v1/salas_cursos?${new URLSearchParams({
+          id: `eq.${salaId}`,
+          escola_id: `eq.${currentEscolaId}`,
+        }).toString()}`,
+        {
+          method: 'DELETE',
+          headers: { Prefer: 'return=minimal' },
+        },
+      );
+    }
+
+    return jsonResponse({ success: true });
+  },
+
   'GET /v1/usuarios': async (request, env) => {
     const { currentEscolaId } = await getUsersModuleContext(request, env);
 
@@ -6293,6 +6519,7 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/admin\/schools\/[^/]+\/delete$/, '/v1/admin/schools/:id/delete')
     .replace(/\/v1\/admin\/super-admins\/[^/]+\/unlock$/, '/v1/admin/super-admins/:id/unlock')
     .replace(/\/v1\/tokens-convite\/[^/]+\/delete$/, '/v1/tokens-convite/:id/delete')
+    .replace(/\/v1\/escola\/salas\/[^/]+$/, '/v1/escola/salas/:id')
     .replace(/\/v1\/emprestimos\/[^/]+\/devolucao$/, '/v1/emprestimos/:id/devolucao')
     .replace(/\/v1\/emprestimos\/[^/]+\/delete$/, '/v1/emprestimos/:id/delete')
     .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/aprovar$/, '/v1/solicitacoes-emprestimo/:id/aprovar')
