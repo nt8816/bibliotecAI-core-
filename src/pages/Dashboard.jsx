@@ -31,7 +31,6 @@ import {
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/hooks/useAuth';
 import { fetchDashboardData } from '@/services/dashboardService';
 
@@ -114,8 +113,6 @@ export default function Dashboard() {
   });
 
   const fetchInFlightRef = useRef(null);
-  const realtimeDebounceRef = useRef(null);
-
   const fetchData = useCallback(async () => {
     if (fetchInFlightRef.current) return fetchInFlightRef.current;
 
@@ -148,26 +145,23 @@ export default function Dashboard() {
     fetchData();
   }, [fetchData]);
 
-  const handleRealtimeChange = useCallback(() => {
-    if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
-    realtimeDebounceRef.current = setTimeout(() => {
-      fetchData();
-    }, 300);
-  }, [fetchData]);
-
   useEffect(() => {
-    return () => {
-      if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
-    };
-  }, []);
+    const interval = window.setInterval(() => {
+      fetchData();
+    }, 30000);
 
-  useRealtimeSubscription({ table: 'livros', onChange: handleRealtimeChange });
-  useRealtimeSubscription({ table: 'usuarios_biblioteca', onChange: handleRealtimeChange });
-  useRealtimeSubscription({ table: 'emprestimos', onChange: handleRealtimeChange });
-  useRealtimeSubscription({ table: userRole === 'super_admin' ? 'tenants' : null, onChange: handleRealtimeChange });
-  useRealtimeSubscription({ table: userRole === 'super_admin' ? 'escolas' : null, onChange: handleRealtimeChange });
-  useRealtimeSubscription({ table: userRole === 'super_admin' ? 'super_admin_accounts' : null, onChange: handleRealtimeChange });
-  useRealtimeSubscription({ table: userRole === 'super_admin' ? 'reclamacoes_super_admin' : null, onChange: handleRealtimeChange });
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchData]);
 
   if (userRole === 'aluno') {
     return <Navigate to="/aluno/perfil" replace />;

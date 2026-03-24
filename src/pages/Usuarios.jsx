@@ -30,7 +30,6 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
 import { useToast } from '@/hooks/use-toast';
@@ -187,12 +186,24 @@ export default function Usuarios() {
   useEffect(() => {
     fetchUsuarios();
   }, [fetchUsuarios]);
-  const handleRealtimeChange = useCallback(() => {
-    fetchUsuarios();
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      fetchUsuarios();
+    }, 30000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchUsuarios();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [fetchUsuarios]);
-  useRealtimeSubscription({ table: 'usuarios_biblioteca', onChange: handleRealtimeChange });
-  useRealtimeSubscription({ table: 'salas_cursos', onChange: fetchUsuarios });
-  useRealtimeSubscription({ table: 'professor_turmas', onChange: fetchUsuarios });
 
   const handleToggleProfessorTurma = (turma, checked) => {
     if (!turma) return;

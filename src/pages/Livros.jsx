@@ -15,7 +15,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
@@ -155,11 +154,24 @@ export default function Livros() {
   useEffect(() => {
     fetchLivros();
   }, [fetchLivros]);
-  const handleRealtimeChange = useCallback(() => {
-    fetchLivros();
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      fetchLivros();
+    }, 30000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchLivros();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [fetchLivros]);
-  useRealtimeSubscription({ table: 'livros', onChange: handleRealtimeChange });
-  useRealtimeSubscription({ table: 'categorias_livros', onChange: fetchLivros });
 
   const handleOpenDialog = (livro) => {
     if (livro) {

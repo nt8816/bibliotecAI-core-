@@ -33,7 +33,6 @@ import {
 } from 'lucide-react';
 import { format, isPast, addMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { cn } from '@/lib/utils';
 import { ExportPeriodDialog } from '@/components/export/ExportPeriodDialog';
 import {
@@ -137,14 +136,23 @@ export default function Emprestimos() {
     fetchData();
   }, [fetchData]);
 
-  const handleRealtimeChange = useCallback(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      fetchData();
+    }, 30000);
 
-  useRealtimeSubscription({ table: 'emprestimos', onChange: handleRealtimeChange });
-  useRealtimeSubscription({ table: 'livros', onChange: handleRealtimeChange });
-  useRealtimeSubscription({ table: 'usuarios_biblioteca', onChange: handleRealtimeChange });
-  useRealtimeSubscription({ table: 'solicitacoes_emprestimo', onChange: handleRealtimeChange });
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchData]);
 
   const handleCreateEmprestimo = async () => {
     if (!selectedLivro || !selectedUsuario) {
