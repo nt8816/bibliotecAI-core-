@@ -784,7 +784,7 @@ export default function Auth() {
           </div>
           <CardTitle className="text-2xl font-bold">BibliotecAI</CardTitle>
           <CardDescription>
-            Para a gestão, entre com Gmail ou CPF. Para aluno, use a matrícula.
+            Professores e diretores entram com CPF. Alunos entram com matrícula.
           </CardDescription>
         </CardHeader>
 

@@ -291,6 +291,15 @@ export default function Usuarios() {
       return;
     }
 
+    if ((formData.tipo === 'professor' || formData.tipo === 'gestor') && String(formData.cpf || '').trim().length !== 11) {
+      toast({
+        variant: 'destructive',
+        title: 'CPF obrigatorio',
+        description: `Informe o CPF do ${formData.tipo === 'professor' ? 'professor' : 'diretor'} com 11 digitos.`,
+      });
+      return;
+    }
+
     if (formData.tipo !== 'aluno' && !formData.email.trim()) {
       toast({ variant: 'destructive', title: 'Erro', description: 'Email e obrigatorio para este tipo de usuario.' });
       return;

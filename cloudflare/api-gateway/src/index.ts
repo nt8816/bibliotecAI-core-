@@ -1791,6 +1791,7 @@ const routes: Record<string, RouteHandler> = {
     const token = String(body?.token || '').trim().toLowerCase();
     const nome = String(body?.nome || '').trim();
     const email = normalizeEmail(body?.email);
+    const cpf = normalizeCpf(body?.cpf);
     const senha = String(body?.senha || '');
     const matricula = String(body?.matricula || '').trim();
 
@@ -1819,11 +1820,16 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const isAluno = String(tokenInfo.role_destino || '') === 'aluno';
+    const usesCpfAsLogin = String(tokenInfo.role_destino || '') === 'professor';
     const normalizedMatricula = String(matricula || '').trim();
-    const authEmail = isAluno ? `${normalizedMatricula.replace(/\s+/g, '')}@temp.bibliotecai.com` : email;
+    const authEmail = isAluno
+      ? `${normalizedMatricula.replace(/\s+/g, '')}@temp.bibliotecai.com`
+      : usesCpfAsLogin
+        ? `${cpf}@temp.bibliotecai.com`
+        : email;
     const authPassword = isAluno ? normalizedMatricula : senha;
 
-    if (!authEmail || !authPassword || authPassword.length < 6) {
+    if ((usesCpfAsLogin && (!cpf || !isValidCpf(cpf))) || !authEmail || !authPassword || authPassword.length < 6) {
       await releasePublicInviteReservation(env, String(tokenInfo.id));
       return jsonResponse({ success: false, error: 'Dados invalidos para criacao da conta.' }, 400);
     }
@@ -1856,6 +1862,7 @@ const routes: Record<string, RouteHandler> = {
         user_id: userId,
         nome,
         email: authEmail,
+        cpf: usesCpfAsLogin ? cpf : null,
         tipo: tokenInfo.role_destino,
         escola_id: tokenInfo.escola_id,
         matricula: isAluno ? normalizedMatricula : null,
@@ -1873,6 +1880,31 @@ const routes: Record<string, RouteHandler> = {
         const alunoProfile = Array.isArray(existingAluno) ? (existingAluno[0] || null) : null;
         if (alunoProfile?.id) {
           await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ id: `eq.${alunoProfile.id}` }).toString()}`, {
+            method: 'PATCH',
+            body: profilePayload,
+            headers: { Prefer: 'return=minimal' },
+          });
+        } else {
+          await supabaseAdminRequest(env, '/rest/v1/usuarios_biblioteca', {
+            method: 'POST',
+            body: profilePayload,
+            headers: { Prefer: 'return=minimal' },
+          });
+        }
+      } else if (usesCpfAsLogin) {
+        const existingProfessor = await supabaseAdminRequest(
+          env,
+          `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+            select: 'id,user_id',
+            escola_id: `eq.${tokenInfo.escola_id}`,
+            tipo: `eq.${tokenInfo.role_destino}`,
+            cpf: `eq.${cpf}`,
+            limit: '1',
+          }).toString()}`,
+        );
+        const professorProfile = Array.isArray(existingProfessor) ? (existingProfessor[0] || null) : null;
+        if (professorProfile?.id) {
+          await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ id: `eq.${professorProfile.id}` }).toString()}`, {
             method: 'PATCH',
             body: profilePayload,
             headers: { Prefer: 'return=minimal' },

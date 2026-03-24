@@ -22,11 +22,16 @@ export default function Convite() {
 
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
+  const [cpf, setCpf] = useState('');
   const [senha, setSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
   const [matricula, setMatricula] = useState('');
 
   const isAlunoInvite = tokenInfo?.role_destino === 'aluno';
+  const isProfessorInvite = tokenInfo?.role_destino === 'professor';
+  const handleCpfChange = (value) => {
+    setCpf(String(value || '').replace(/\D/g, '').slice(0, 11));
+  };
 
   const mapSignupError = (message) => {
     if (!message) return 'Não foi possível criar sua conta.';
@@ -84,6 +89,11 @@ export default function Convite() {
         return;
       }
     } else {
+      if (isProfessorInvite && cpf.trim().length !== 11) {
+        toast({ title: 'Erro', description: 'Informe um CPF com 11 digitos.', variant: 'destructive' });
+        return;
+      }
+
       if (senha !== confirmarSenha) {
         toast({ title: 'Erro', description: 'As senhas nao coincidem.', variant: 'destructive' });
         return;
@@ -101,7 +111,8 @@ export default function Convite() {
       const data = await registerViaConvite({
         token,
         nome,
-        email: isAlunoInvite ? undefined : email,
+        email: isAlunoInvite || isProfessorInvite ? undefined : email,
+        cpf: isProfessorInvite ? cpf.trim() : undefined,
         senha: isAlunoInvite ? undefined : senha,
         matricula: isAlunoInvite ? matricula.trim() : undefined,
       });
@@ -117,7 +128,9 @@ export default function Convite() {
 
       const authEmail = isAlunoInvite
         ? `${matricula.trim().replace(/\s+/g, '')}@temp.bibliotecai.com`
-        : email.trim().toLowerCase();
+        : isProfessorInvite
+          ? `${cpf.trim()}@temp.bibliotecai.com`
+          : email.trim().toLowerCase();
       const authPassword = isAlunoInvite ? matricula.trim() : senha;
 
       const { error: signInError } = await signInWithPlatform(authEmail, authPassword);
@@ -127,6 +140,8 @@ export default function Convite() {
           title: 'Conta criada com sucesso',
           description: isAlunoInvite
             ? 'Faca login com matricula no usuario e na senha.'
+            : isProfessorInvite
+              ? 'Faca login com CPF e a senha escolhida.'
             : 'Faca login para continuar.',
         });
 
@@ -237,17 +252,31 @@ export default function Convite() {
               </>
             ) : (
               <>
-                <div className="space-y-2">
-                  <Label htmlFor="email">E-mail</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="seu@email.com"
-                    required
-                  />
-                </div>
+                {isProfessorInvite ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="cpf">CPF</Label>
+                    <Input
+                      id="cpf"
+                      inputMode="numeric"
+                      value={cpf}
+                      onChange={(e) => handleCpfChange(e.target.value)}
+                      placeholder="Somente numeros"
+                      required
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="email">E-mail</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="seu@email.com"
+                      required
+                    />
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="senha">Senha</Label>
@@ -272,6 +301,12 @@ export default function Convite() {
                     required
                   />
                 </div>
+
+                {isProfessorInvite && (
+                  <p className="text-xs text-muted-foreground">
+                    O professor fara login usando o CPF e a senha escolhida neste cadastro.
+                  </p>
+                )}
               </>
             )}
 
