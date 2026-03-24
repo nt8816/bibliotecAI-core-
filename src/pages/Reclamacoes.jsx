@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { uploadFileToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrls } from '@/lib/resolveR2Media';
 import { createReclamacao, fetchReclamacoesFeed, markReclamacaoAsRead, updateReclamacao } from '@/services/reclamacoesService';
+import { fetchMyProfile } from '@/services/meService';
 
 function formatDateTime(value) {
   if (!value) return '-';
@@ -70,6 +71,7 @@ export default function Reclamacoes() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [items, setItems] = useState([]);
+  const [profile, setProfile] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedItemId, setSelectedItemId] = useState('');
@@ -125,6 +127,17 @@ export default function Reclamacoes() {
   }, [fetchItems]);
 
   useEffect(() => {
+    if (!user?.id || isSuperAdmin) {
+      setProfile(null);
+      return;
+    }
+
+    fetchMyProfile()
+      .then((data) => setProfile(data || null))
+      .catch(() => setProfile(null));
+  }, [isSuperAdmin, user?.id]);
+
+  useEffect(() => {
     pendingImagesRef.current = ensureArray(form.pendingImages);
   }, [form.pendingImages]);
 
@@ -159,11 +172,16 @@ export default function Reclamacoes() {
 
     setSaving(true);
     try {
+      const escolaId = String(profile?.escola_id || '').trim();
+      if (!escolaId) {
+        throw new Error('Nao foi possivel identificar a escola da sua conta para enviar os anexos.');
+      }
+
       const imageUrls = await Promise.all(
         pendingImages.map(async (image) => {
           const upload = await uploadFileToR2({
             file: image.file,
-            escolaId: 'sem-escola',
+            escolaId,
             ownerId: user?.id || 'anonimo',
             scope: 'reclamacoes',
           });

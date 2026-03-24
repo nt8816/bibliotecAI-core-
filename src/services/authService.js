@@ -1,15 +1,8 @@
 import { requestPlatformApi } from '@/lib/platformApi';
 import { clearPlatformSession, getPlatformSession, setPlatformSession } from '@/lib/platformSession';
 
-const PLATFORM_API_BASE_URL = String(import.meta.env.VITE_PLATFORM_API_BASE_URL || '').trim().replace(/\/+$/, '');
-
 function toErrorResult(error) {
   return { error: error instanceof Error ? error : new Error(String(error || 'Falha inesperada.')) };
-}
-
-function buildPlatformLogoutUrl() {
-  if (!PLATFORM_API_BASE_URL) return '';
-  return `${PLATFORM_API_BASE_URL}/v1/auth/logout`;
 }
 
 export async function signInWithPlatform(email, password) {
@@ -82,33 +75,6 @@ export async function signOutWithPlatform() {
   }
 
   return { error: null };
-}
-
-export function signOutWithPlatformOnPageExit() {
-  const session = getPlatformSession();
-  const logoutUrl = buildPlatformLogoutUrl();
-
-  if (!session?.access_token || !logoutUrl || typeof window === 'undefined') {
-    clearPlatformSession();
-    return;
-  }
-
-  try {
-    window.fetch(logoutUrl, {
-      method: 'POST',
-      keepalive: true,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
-        'x-user-access-token': session.access_token,
-      },
-      body: JSON.stringify({}),
-    }).catch(() => null);
-  } catch {
-    // Ignore network errors during page exit and still clear the local session.
-  } finally {
-    clearPlatformSession();
-  }
 }
 
 export async function fetchPlatformSessionProfile() {
