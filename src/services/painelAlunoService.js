@@ -65,6 +65,25 @@ export async function createPainelAlunoLoanRequest({ livroId, mensagem }) {
   });
 }
 
+export async function createPainelAlunoLoanExtensionRequest({
+  livroId,
+  emprestimoId,
+  mensagem,
+  dataDevolucaoAtual,
+  novaDataDevolucaoSolicitada,
+}) {
+  return requestPlatformApi('/v1/aluno/solicitacoes-emprestimo/prorrogacao', {
+    method: 'POST',
+    body: {
+      livroId,
+      emprestimoId,
+      mensagem,
+      dataDevolucaoAtual,
+      novaDataDevolucaoSolicitada,
+    },
+  });
+}
+
 export async function markPainelAlunoNotificationRead(notificationId) {
   return requestPlatformApi('/v1/notifications/read', {
     method: 'POST',

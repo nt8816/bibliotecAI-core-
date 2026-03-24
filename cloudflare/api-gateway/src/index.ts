@@ -5496,6 +5496,39 @@ const routes: Record<string, RouteHandler> = {
 
     return jsonResponse({ success: true });
   },
+  'POST /v1/aluno/solicitacoes-emprestimo/prorrogacao': async (request, env) => {
+    const { alunoId } = await getCommunityModuleContext(request, env);
+    if (!alunoId) {
+      return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const livroId = String(body?.livroId || '').trim();
+    const emprestimoId = String(body?.emprestimoId || '').trim();
+    const mensagem = String(body?.mensagem || '').trim() || 'Pedido de extensao de prazo para devolucao.';
+    const dataDevolucaoAtual = body?.dataDevolucaoAtual ? String(body.dataDevolucaoAtual) : null;
+    const novaData = body?.novaDataDevolucaoSolicitada ? String(body.novaDataDevolucaoSolicitada) : null;
+
+    if (!livroId || !emprestimoId || !novaData) {
+      return jsonResponse({ success: false, error: 'Dados insuficientes para solicitar prorrogacao.' }, 400);
+    }
+
+    await supabaseAdminRequest(env, '/rest/v1/solicitacoes_emprestimo', {
+      method: 'POST',
+      body: {
+        livro_id: livroId,
+        usuario_id: alunoId,
+        emprestimo_id: emprestimoId,
+        tipo: 'prorrogacao',
+        mensagem,
+        data_devolucao_atual: dataDevolucaoAtual,
+        nova_data_devolucao_solicitada: novaData,
+      },
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    return jsonResponse({ success: true });
+  },
 
   'POST /v1/aluno/notificacoes/read-batch': async (request, env) => {
     const { profile } = await getCommunityModuleContext(request, env);

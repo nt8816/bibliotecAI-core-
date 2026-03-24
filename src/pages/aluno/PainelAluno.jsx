@@ -44,6 +44,7 @@ import { useToast } from '@/hooks/use-toast';
 import {
   createPainelAlunoAudiobook,
   createPainelAlunoLabCreation,
+  createPainelAlunoLoanExtensionRequest,
   createPainelAlunoLoanRequest,
   deletePainelAlunoLabCreation,
   fetchPainelAlunoBooks,
@@ -2207,16 +2208,13 @@ export default function PainelAluno() {
 
     setSaving(true);
     try {
-      const { error } = await supabase.from('solicitacoes_emprestimo').insert({
-        livro_id: extensionEmprestimo.livro_id,
-        usuario_id: alunoId,
-        emprestimo_id: extensionEmprestimo.id,
-        tipo: 'prorrogacao',
+      await createPainelAlunoLoanExtensionRequest({
+        livroId: extensionEmprestimo.livro_id,
+        emprestimoId: extensionEmprestimo.id,
         mensagem: extensionMessage?.trim() || 'Pedido de extensão de prazo para devolução.',
-        data_devolucao_atual: extensionEmprestimo.data_devolucao_prevista,
-        nova_data_devolucao_solicitada: new Date(`${extensionRequestedDate}T12:00:00`).toISOString(),
+        dataDevolucaoAtual: extensionEmprestimo.data_devolucao_prevista,
+        novaDataDevolucaoSolicitada: new Date(`${extensionRequestedDate}T12:00:00`).toISOString(),
       });
-      if (error) throw error;
 
       toast({
         title: 'Pedido enviado',
