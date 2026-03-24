@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Download, FileStack, ImagePlus, Send, Trash2, X } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -117,7 +117,7 @@ export default function ArquivosAula() {
       toast({
         variant: 'destructive',
         title: 'Erro em Arquivos de Aula',
-        description: error?.message || 'Nao foi possivel carregar os arquivos de aula.',
+        description: error?.message || 'Não foi possível carregar os arquivos de aula.',
       });
     } finally {
       setLoading(false);
@@ -176,7 +176,7 @@ export default function ArquivosAula() {
       toast({
         variant: 'destructive',
         title: 'Arquivos de Aula indisponivel',
-        description: 'Nao foi possivel publicar agora.',
+        description: 'Não foi possível publicar agora.',
       });
       return;
     }
@@ -245,7 +245,7 @@ export default function ArquivosAula() {
       toast({
         variant: 'destructive',
         title: 'Erro ao publicar',
-        description: error?.message || 'Nao foi possivel publicar os arquivos.',
+        description: error?.message || 'Não foi possível publicar os arquivos.',
       });
     } finally {
       setSaving(false);
@@ -278,7 +278,7 @@ export default function ArquivosAula() {
       toast({
         variant: 'destructive',
         title: 'Erro no download',
-        description: error?.message || 'Nao foi possivel baixar o arquivo.',
+        description: error?.message || 'Não foi possível baixar o arquivo.',
       });
     }
   };
@@ -315,7 +315,7 @@ export default function ArquivosAula() {
       toast({
         variant: 'destructive',
         title: 'Erro ao excluir arquivo',
-        description: error?.message || 'Nao foi possivel excluir o arquivo.',
+        description: error?.message || 'Não foi possível excluir o arquivo.',
       });
     } finally {
       setSaving(false);
@@ -505,3 +505,4 @@ export default function ArquivosAula() {
     </MainLayout>
   );
 }
+

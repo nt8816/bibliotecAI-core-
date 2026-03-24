@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+﻿import { Suspense, lazy } from 'react';
 import { Toaster } from '@/components/ui/toaster';
 import { Toaster as Sonner } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -33,7 +33,7 @@ const AdminLogs = lazy(() => import('./pages/AdminLogs'));
 const SuperAdmins = lazy(() => import('./pages/SuperAdmins'));
 const AdminAcesso = lazy(() => import('./pages/AdminAcesso'));
 const OnboardingGestor = lazy(() => import('./pages/OnboardingGestor'));
-const Configuracoes = lazy(() => import('./pages/Configuracoes'));
+const Configurações = lazy(() => import('./pages/Configurações'));
 const Reclamacoes = lazy(() => import('./pages/Reclamacoes'));
 const ComunidadeAluno = lazy(() => import('./pages/aluno/ComunidadeAluno'));
 const ArquivosAula = lazy(() => import('./pages/ArquivosAula'));
@@ -79,7 +79,7 @@ function AppRoutes() {
       <Route path="/convite/:token" element={<Convite />} />
       <Route path="/onboarding/:token" element={<OnboardingGestor />} />
       <Route
-        path="/reclamacoes"
+        path="/reclamações"
         element={(
           <ProtectedRoute>
             <Reclamacoes />
@@ -208,7 +208,7 @@ function AppRoutes() {
         path="/configuracoes"
         element={
           <ProtectedRoute>
-            <Configuracoes />
+            <Configurações />
           </ProtectedRoute>
         }
       />
@@ -333,7 +333,7 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/gestao"
+        path="/gestão"
         element={(
           <ProtectedRoute>
             <Navigate to="/dashboard" replace />
@@ -396,3 +396,4 @@ const App = () => (
 );
 
 export default App;
+

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Library, Loader2, XCircle } from 'lucide-react';
 
@@ -29,7 +29,7 @@ export default function Convite() {
   const isAlunoInvite = tokenInfo?.role_destino === 'aluno';
 
   const mapSignupError = (message) => {
-    if (!message) return 'Nao foi possivel criar sua conta.';
+    if (!message) return 'Não foi possível criar sua conta.';
 
     if (
       message.includes('already been registered')
@@ -198,7 +198,7 @@ export default function Convite() {
           </div>
           <CardTitle>Bem-vindo ao BibliotecAI</CardTitle>
           <CardDescription>
-            Voce foi convidado como <strong>{getRoleLabel(tokenInfo?.role_destino || '')}</strong>. Complete seu cadastro abaixo.
+            Você foi convidado como <strong>{getRoleLabel(tokenInfo?.role_destino || '')}</strong>. Complete seu cadastro abaixo.
           </CardDescription>
         </CardHeader>
 
@@ -229,10 +229,10 @@ export default function Convite() {
                 </div>
 
                 <p className="text-sm text-muted-foreground">
-                  Para alunos, a matricula sera usada como usuario e senha inicial.
+                  Para alunos, a matricula será usada como usuario e senha inicial.
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Depois do primeiro acesso, voce pode alterar sua senha em Configuracoes.
+                  Depois do primeiro acesso, você pode alterar sua senha em Configurações.
                 </p>
               </>
             ) : (
@@ -291,3 +291,4 @@ export default function Convite() {
     </div>
   );
 }
+

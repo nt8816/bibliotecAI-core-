@@ -1,4 +1,4 @@
-import { getPlatformAccessToken } from '@/lib/platformSession';
+﻿import { getPlatformAccessToken } from '@/lib/platformSession';
 import { requestPlatformApi } from '@/lib/platformApi';
 
 function sanitizeFileName(fileName) {
@@ -27,7 +27,7 @@ function buildR2NetworkErrorMessage(error, action) {
   if (message.toLowerCase().includes('failed to fetch')) {
     return `Falha de rede ao ${action} no Cloudflare R2. Verifique o CORS do bucket e tente novamente.`;
   }
-  return message || `Nao foi possivel ${action} no Cloudflare R2.`;
+  return message || `Não foi possível ${action} no Cloudflare R2.`;
 }
 
 export async function uploadFileToR2({ file, escolaId, ownerId, scope = 'arquivos-aula' }) {
@@ -149,3 +149,4 @@ export async function deleteR2Object(objectKey) {
     throw new Error(buildR2NetworkErrorMessage(error, 'excluir o arquivo'));
   }
 }
+

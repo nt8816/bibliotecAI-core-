@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -244,7 +244,7 @@ export type Database = {
           },
         ]
       }
-      avaliacoes_livros: {
+      avaliações_livros: {
         Row: {
           created_at: string
           id: string
@@ -274,14 +274,14 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "avaliacoes_livros_livro_id_fkey"
+            foreignKeyName: "avaliações_livros_livro_id_fkey"
             columns: ["livro_id"]
             isOneToOne: false
             referencedRelation: "livros"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "avaliacoes_livros_usuario_id_fkey"
+            foreignKeyName: "avaliações_livros_usuario_id_fkey"
             columns: ["usuario_id"]
             isOneToOne: false
             referencedRelation: "usuarios_biblioteca"
@@ -766,7 +766,7 @@ export type Database = {
           },
         ]
       }
-      notificacoes_lidas: {
+      notificações_lidas: {
         Row: {
           created_at: string
           id: string
@@ -787,7 +787,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "notificacoes_lidas_usuario_id_fkey"
+            foreignKeyName: "notificações_lidas_usuario_id_fkey"
             columns: ["usuario_id"]
             isOneToOne: false
             referencedRelation: "usuarios_biblioteca"
@@ -795,7 +795,7 @@ export type Database = {
           },
         ]
       }
-      notificacoes_sistema: {
+      notificações_sistema: {
         Row: {
           conteudo: string
           created_at: string
@@ -828,7 +828,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "notificacoes_sistema_enviado_por_fkey"
+            foreignKeyName: "notificações_sistema_enviado_por_fkey"
             columns: ["enviado_por"]
             isOneToOne: false
             referencedRelation: "usuarios_biblioteca"
@@ -975,7 +975,7 @@ export type Database = {
           },
         ]
       }
-      solicitacoes_emprestimo: {
+      solicitações_emprestimo: {
         Row: {
           created_at: string
           id: string
@@ -1008,14 +1008,14 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "solicitacoes_emprestimo_livro_id_fkey"
+            foreignKeyName: "solicitações_emprestimo_livro_id_fkey"
             columns: ["livro_id"]
             isOneToOne: false
             referencedRelation: "livros"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "solicitacoes_emprestimo_usuario_id_fkey"
+            foreignKeyName: "solicitações_emprestimo_usuario_id_fkey"
             columns: ["usuario_id"]
             isOneToOne: false
             referencedRelation: "usuarios_biblioteca"
@@ -1560,3 +1560,4 @@ export const Constants = {
     },
   },
 } as const
+

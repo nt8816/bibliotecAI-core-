@@ -15,7 +15,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { uploadFileToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrls } from '@/lib/resolveR2Media';
-import { createReclamacao, fetchReclamacoesFeed, markReclamacaoAsRead, updateReclamacao } from '@/services/reclamacoesService';
+import { createReclamacao, fetchReclamacoesFeed, markReclamacaoAsRead, updateReclamacao } from '@/services/reclamaçõesService';
 
 function formatDateTime(value) {
   if (!value) return '-';
@@ -111,8 +111,8 @@ export default function Reclamacoes() {
       setResponseDraft(nextSelected?.resposta || '');
     } catch (error) {
       toast({
-        title: 'Erro ao carregar reclamacoes',
-        description: error?.message || 'Nao foi possivel carregar as reclamacoes.',
+        title: 'Erro ao carregar reclamações',
+        description: error?.message || 'Não foi possível carregar as reclamações.',
         variant: 'destructive',
       });
     } finally {
@@ -165,7 +165,7 @@ export default function Reclamacoes() {
             file: image.file,
             escolaId: 'sem-escola',
             ownerId: user?.id || 'anonimo',
-            scope: 'reclamacoes',
+            scope: 'reclamações',
           });
           return upload.objectKey;
         }),
@@ -191,7 +191,7 @@ export default function Reclamacoes() {
     } catch (error) {
       toast({
         title: 'Erro ao enviar reclamacao',
-        description: error?.message || 'Nao foi possivel enviar a reclamacao.',
+        description: error?.message || 'Não foi possível enviar a reclamacao.',
         variant: 'destructive',
       });
     } finally {
@@ -219,7 +219,7 @@ export default function Reclamacoes() {
     } catch (error) {
       toast({
         title: 'Erro ao atualizar reclamacao',
-        description: error?.message || 'Nao foi possivel salvar as alteracoes.',
+        description: error?.message || 'Não foi possível salvar as alteracoes.',
         variant: 'destructive',
       });
     } finally {
@@ -377,7 +377,7 @@ export default function Reclamacoes() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 {isSuperAdmin ? <ShieldAlert className="h-5 w-5" /> : <MessageSquareWarning className="h-5 w-5" />}
-                {isSuperAdmin ? 'Caixa de reclamacoes' : 'Minhas reclamacoes'}
+                {isSuperAdmin ? 'Caixa de reclamações' : 'Minhas reclamações'}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -397,10 +397,10 @@ export default function Reclamacoes() {
               )}
 
               {loading ? (
-                <p className="text-sm text-muted-foreground">Carregando reclamacoes...</p>
+                <p className="text-sm text-muted-foreground">Carregando reclamações...</p>
               ) : filteredItems.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  {isSuperAdmin ? 'Nenhuma reclamacao recebida.' : 'Voce ainda nao enviou reclamacoes.'}
+                  {isSuperAdmin ? 'Nenhuma reclamacao recebida.' : 'Você ainda nao enviou reclamações.'}
                 </p>
               ) : isSuperAdmin ? (
                 <div className="overflow-x-auto">
@@ -574,5 +574,6 @@ export default function Reclamacoes() {
     </MainLayout>
   );
 }
+
 
 

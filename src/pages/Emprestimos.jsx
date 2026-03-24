@@ -80,7 +80,7 @@ function getVisibleEmail(nome, email) {
 export default function Emprestimos() {
   const [searchParams] = useSearchParams();
   const [emprestimos, setEmprestimos] = useState([]);
-  const [solicitacoes, setSolicitacoes] = useState([]);
+  const [solicitações, setSolicitacoes] = useState([]);
   const [livrosDisponiveis, setLivrosDisponiveis] = useState([]);
   const [livrosCatalogo, setLivrosCatalogo] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
@@ -128,7 +128,7 @@ export default function Emprestimos() {
       setUsuarios(Array.isArray(payload?.usuarios) ? payload.usuarios : []);
       setSolicitacoes(Array.isArray(payload?.solicitacoes) ? payload.solicitacoes : []);
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'NÃ£o foi possÃ­vel carregar os dados.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível carregar os dados.' });
     } finally {
       setLoading(false);
     }
@@ -158,7 +158,7 @@ export default function Emprestimos() {
 
   const handleCreateEmprestimo = async () => {
     if (!selectedLivro || !selectedUsuario) {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Selecione um livro e um usuÃ¡rio.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Selecione um livro e um usuário.' });
       return;
     }
     setSaving(true);
@@ -171,7 +171,7 @@ export default function Emprestimos() {
         insertData.data_devolucao_prevista = dataDevolucao.toISOString();
       }
       await createEmprestimo(insertData);
-      toast({ title: 'Sucesso', description: 'EmprÃ©stimo registrado com sucesso.' });
+      toast({ title: 'Sucesso', description: 'Empréstimo registrado com sucesso.' });
       trackEvent('emprestimo_criado', { livroId: selectedLivro, usuarioId: selectedUsuario });
       setIsDialogOpen(false);
       setSelectedLivro('');
@@ -181,7 +181,7 @@ export default function Emprestimos() {
       setSearchLivro('');
       fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'NÃ£o foi possÃ­vel registrar o emprÃ©stimo.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível registrar o empréstimo.' });
     } finally {
       setSaving(false);
     }
@@ -191,11 +191,11 @@ export default function Emprestimos() {
     setActionLoading({ devolucaoId: emprestimo.id, solicitacaoId: null, tipo: 'devolucao' });
     try {
       await registerEmprestimoDevolucao(emprestimo.id);
-      toast({ title: 'Sucesso', description: 'DevoluÃ§Ã£o registrada com sucesso.' });
+      toast({ title: 'Sucesso', description: 'Devolução registrada com sucesso.' });
       trackEvent('emprestimo_devolvido', { id: emprestimo.id });
       fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'NÃ£o foi possÃ­vel registrar a devoluÃ§Ã£o.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível registrar a devolução.' });
     } finally {
       setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
     }
@@ -207,16 +207,16 @@ export default function Emprestimos() {
     setActionLoading({ devolucaoId: null, solicitacaoId: solicitacao.id, tipo: 'aprovar' });
     try {
       if (solicitacao?.livros?.disponivel === false && solicitacao.status !== 'indisponivel_em_analise') {
-        throw new Error('Este livro nÃ£o estÃ¡ disponÃ­vel para emprÃ©stimo no momento.');
+        throw new Error('Este livro não está disponível para empréstimo no momento.');
       }
-      const resposta = (respostaPorSolicitacao[solicitacao.id] || '').trim() || 'SolicitaÃ§Ã£o aprovada pela biblioteca.';
+      const resposta = (respostaPorSolicitacao[solicitacao.id] || '').trim() || 'Solicitação aprovada pela biblioteca.';
       await approveSolicitacaoEmprestimo(solicitacao.id, resposta);
-      toast({ title: 'SolicitaÃ§Ã£o aprovada', description: 'EmprÃ©stimo criado e aluno notificado.' });
+      toast({ title: 'Solicitação aprovada', description: 'Empréstimo criado e aluno notificado.' });
       trackEvent('solicitacao_aprovada', { id: solicitacao.id });
       setRespostaPorSolicitacao((prev) => ({ ...prev, [solicitacao.id]: '' }));
       fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'NÃ£o foi possÃ­vel aprovar a solicitaÃ§Ã£o.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível aprovar a solicitação.' });
     } finally {
       setSaving(false);
       setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
@@ -228,14 +228,14 @@ export default function Emprestimos() {
     setSaving(true);
     setActionLoading({ devolucaoId: null, solicitacaoId: solicitacao.id, tipo: 'recusar' });
     try {
-      const resposta = (respostaPorSolicitacao[solicitacao.id] || '').trim() || 'SolicitaÃ§Ã£o recusada pela biblioteca.';
+      const resposta = (respostaPorSolicitacao[solicitacao.id] || '').trim() || 'Solicitação recusada pela biblioteca.';
       await rejectSolicitacaoEmprestimo(solicitacao.id, resposta);
-      toast({ title: 'SolicitaÃ§Ã£o recusada' });
+      toast({ title: 'Solicitação recusada' });
       trackEvent('solicitacao_recusada', { id: solicitacao.id });
       setRespostaPorSolicitacao((prev) => ({ ...prev, [solicitacao.id]: '' }));
       fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'NÃ£o foi possÃ­vel recusar a solicitaÃ§Ã£o.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível recusar a solicitação.' });
     } finally {
       setSaving(false);
       setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
@@ -341,7 +341,7 @@ export default function Emprestimos() {
       toast({
         variant: 'destructive',
         title: 'Período inválido',
-        description: 'A devoluÃ§Ã£o prevista nÃ£o pode ser anterior Ã  data do emprÃ©stimo.',
+        description: 'A devolução prevista não pode ser anterior à data do empréstimo.',
       });
       return;
     }
@@ -399,9 +399,9 @@ export default function Emprestimos() {
     }
   };
 
-  const handleExcluirHistorico = async (emprestimo) => {
+  const handleExcluirHistórico = async (emprestimo) => {
     if (!canManageLoans || !emprestimo?.id || emprestimo?.status !== 'devolvido') return;
-    setActionLoading({ devolucaoId: null, solicitacaoId: emprestimo.id, tipo: 'excluir_historico' });
+    setActionLoading({ devolucaoId: null, solicitacaoId: emprestimo.id, tipo: 'excluir_histórico' });
     try {
       await deleteHistoricEmprestimo(emprestimo.id);
       toast({ title: 'Histórico excluído', description: 'O registro foi removido com sucesso.' });
@@ -458,7 +458,7 @@ export default function Emprestimos() {
     doc.setTextColor(100);
     doc.text(`${periodLabel} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
 
-    const headers = ['Livro', 'Usuário', 'EmprÃ©stimo', 'Prev. DevoluÃ§Ã£o', 'Status'];
+    const headers = ['Livro', 'Usuário', 'Empréstimo', 'Prev. Devolução', 'Status'];
     const data = emprestimosSelecionados.map((e) => [
       e.livros?.titulo || '-',
       e.usuarios_biblioteca?.nome || '-',
@@ -526,7 +526,7 @@ export default function Emprestimos() {
       const isProcessavel = isPendente || isEmAnalise;
       const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
       const livroDisponivel = solicitacao?.livros?.disponivel !== false;
-      const chatMensagens = [...(Array.isArray(solicitacao?.solicitacoes_emprestimo_mensagens) ? solicitacao.solicitacoes_emprestimo_mensagens : [])]
+      const chatMensagens = [...(Array.isArray(solicitacao?.solicitações_emprestimo_mensagens) ? solicitacao.solicitações_emprestimo_mensagens : [])]
         .sort((a, b) => new Date(a?.created_at || 0).getTime() - new Date(b?.created_at || 0).getTime());
 
     return (
@@ -692,23 +692,23 @@ export default function Emprestimos() {
     });
 
   const emprestimosAtivos = sortEmprestimos(emprestimos.filter((e) => e.status === 'ativo'));
-  const emprestimosHistorico = sortEmprestimos(emprestimos.filter((e) => e.status === 'devolvido'));
+  const emprestimosHistórico = sortEmprestimos(emprestimos.filter((e) => e.status === 'devolvido'));
   const emprestimosAtivosFiltrados = requestedStatus === 'atrasados'
     ? emprestimosAtivos.filter((emprestimo) => isAtrasado(emprestimo))
     : emprestimosAtivos;
-  const solicitacoesPendentes = useMemo(
-    () => solicitacoes.filter((s) => ['pendente', 'indisponivel_em_analise'].includes(String(s?.status || '').toLowerCase())),
-    [solicitacoes],
+  const solicitaçõesPendentes = useMemo(
+    () => solicitações.filter((s) => ['pendente', 'indisponivel_em_analise'].includes(String(s?.status || '').toLowerCase())),
+    [solicitações],
   );
-  const solicitacoesRecusadas = useMemo(
-    () => solicitacoes.filter((s) => ['recusada', 'negada', 'cancelada'].includes(String(s?.status || '').toLowerCase())),
-    [solicitacoes],
+  const solicitaçõesRecusadas = useMemo(
+    () => solicitações.filter((s) => ['recusada', 'negada', 'cancelada'].includes(String(s?.status || '').toLowerCase())),
+    [solicitações],
   );
 
   useEffect(() => {
-    const defaultTab = canManageLoans ? 'solicitacoes' : 'ativos';
+    const defaultTab = canManageLoans ? 'solicitações' : 'ativos';
     const nextTab = requestedTab || defaultTab;
-    const isValidTab = ['ativos', 'historico', ...(canManageLoans ? ['solicitacoes', 'recusadas'] : [])].includes(nextTab);
+    const isValidTab = ['ativos', 'histórico', ...(canManageLoans ? ['solicitações', 'recusadas'] : [])].includes(nextTab);
     setActiveTab(isValidTab ? nextTab : defaultTab);
   }, [canManageLoans, requestedTab]);
 
@@ -757,13 +757,13 @@ export default function Emprestimos() {
               <p className="text-right truncate">{emprestimo.usuarios_biblioteca?.nome || '-'}</p>
               <p className="text-muted-foreground">E-mail</p>
               <p className="text-right truncate">{getVisibleEmail(emprestimo.usuarios_biblioteca?.nome, emprestimo.usuarios_biblioteca?.email)}</p>
-              <p className="text-muted-foreground">EmprÃ©stimo</p>
+              <p className="text-muted-foreground">Empréstimo</p>
               <p className="text-right">{formatDateBR(emprestimo.data_emprestimo)}</p>
               <p className="text-muted-foreground">Devolução prevista</p>
               <p className="text-right">{formatDateBR(emprestimo.data_devolucao_prevista)}</p>
               {!showDevolucao && (
                 <>
-                  <p className="text-muted-foreground">DevoluÃ§Ã£o real</p>
+                  <p className="text-muted-foreground">Devolução real</p>
                   <p className="text-right">{emprestimo.data_devolucao_real ? formatDateBR(emprestimo.data_devolucao_real) : '-'}</p>
                 </>
               )}
@@ -788,14 +788,14 @@ export default function Emprestimos() {
                     variant="destructive"
                     className="mt-3 w-full"
                     onClick={() => setDeleteConfirmEmprestimo(emprestimo)}
-                    disabled={actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico'}
+                    disabled={actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_histórico'}
                   >
-                    {actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico' ? (
+                    {actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_histórico' ? (
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     ) : (
                       <Trash2 className="w-4 h-4 mr-2" />
                     )}
-                    Excluir histÃ³rico
+                    Excluir histórico
                   </Button>
                 )}
               </>
@@ -848,7 +848,7 @@ export default function Emprestimos() {
     </>
   );
 
-  const renderHistoricoTable = (data) => (
+  const renderHistóricoTable = (data) => (
     <>
       <div className="space-y-3 md:hidden">
         {data.map((emprestimo) => (
@@ -866,9 +866,9 @@ export default function Emprestimos() {
               <p className="text-right truncate">{emprestimo.usuarios_biblioteca?.nome || '-'}</p>
               <p className="text-muted-foreground">E-mail</p>
               <p className="text-right truncate">{getVisibleEmail(emprestimo.usuarios_biblioteca?.nome, emprestimo.usuarios_biblioteca?.email)}</p>
-              <p className="text-muted-foreground">EmprÃ©stimo</p>
+              <p className="text-muted-foreground">Empréstimo</p>
               <p className="text-right">{formatDateBR(emprestimo.data_emprestimo)}</p>
-              <p className="text-muted-foreground">DevoluÃ§Ã£o real</p>
+              <p className="text-muted-foreground">Devolução real</p>
               <p className="text-right">{emprestimo.data_devolucao_real ? formatDateBR(emprestimo.data_devolucao_real) : '-'}</p>
             </div>
 
@@ -877,14 +877,14 @@ export default function Emprestimos() {
               variant="destructive"
               className="mt-3 w-full"
               onClick={() => setDeleteConfirmEmprestimo(emprestimo)}
-              disabled={actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico'}
+              disabled={actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_histórico'}
             >
-              {actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico' ? (
+              {actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_histórico' ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
                 <Trash2 className="w-4 h-4 mr-2" />
               )}
-              Excluir histÃ³rico
+              Excluir histórico
             </Button>
           </div>
         ))}
@@ -923,9 +923,9 @@ export default function Emprestimos() {
                     size="sm"
                     variant="destructive"
                     onClick={() => setDeleteConfirmEmprestimo(emprestimo)}
-                    disabled={actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico'}
+                    disabled={actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_histórico'}
                   >
-                    {actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico' ? (
+                    {actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_histórico' ? (
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     ) : (
                       <Trash2 className="w-4 h-4 mr-2" />
@@ -1077,7 +1077,7 @@ export default function Emprestimos() {
                         ) : searchLivro.length >= 2 ? (
                           <div className="max-h-40 overflow-y-auto border rounded-md">
                             {filteredLivrosDialog.length === 0 ? (
-                              <p className="text-sm text-muted-foreground p-3">Nenhum livro disponÃ­vel encontrado</p>
+                              <p className="text-sm text-muted-foreground p-3">Nenhum livro disponível encontrado</p>
                             ) : (
                               filteredLivrosDialog.slice(0, 10).map((l) => (
                                 <button
@@ -1219,7 +1219,7 @@ export default function Emprestimos() {
                         <div className="relative">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                           <Input
-                            placeholder={oldLoanStatus === 'ativo' ? 'Pesquisar livro disponÃ­vel...' : 'Pesquisar livro...'}
+                            placeholder={oldLoanStatus === 'ativo' ? 'Pesquisar livro disponível...' : 'Pesquisar livro...'}
                             className="pl-9"
                             value={oldSearchLivro}
                             onChange={(e) => {
@@ -1240,7 +1240,7 @@ export default function Emprestimos() {
                           <div className="max-h-40 overflow-y-auto rounded-md border">
                             {filteredOldLivrosDialog.length === 0 ? (
                               <p className="p-3 text-sm text-muted-foreground">
-                                {oldLoanStatus === 'ativo' ? 'Nenhum livro disponÃ­vel encontrado' : 'Nenhum livro encontrado'}
+                                {oldLoanStatus === 'ativo' ? 'Nenhum livro disponível encontrado' : 'Nenhum livro encontrado'}
                               </p>
                             ) : (
                               filteredOldLivrosDialog.slice(0, 10).map((l) => (
@@ -1302,7 +1302,7 @@ export default function Emprestimos() {
 
                       <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground sm:col-span-2">
                         Registros marcados como <strong>{oldLoanStatus === 'ativo' ? 'ainda emprestados' : 'já devolvidos'}</strong>{' '}
-                        entram no histÃ³rico real do sistema. Livros ativos ficam indisponíveis no acervo atual.
+                        entram no histórico real do sistema. Livros ativos ficam indisponíveis no acervo atual.
                       </div>
                     </div>
 
@@ -1311,7 +1311,7 @@ export default function Emprestimos() {
                         Cancelar
                       </Button>
                       <Button onClick={handleCreateOldEmprestimo} disabled={saving} className="w-full sm:w-auto">
-                        {saving ? 'Salvando...' : 'Registrar no histÃ³rico'}
+                        {saving ? 'Salvando...' : 'Registrar no histórico'}
                       </Button>
                     </div>
                   </DialogContent>
@@ -1324,9 +1324,9 @@ export default function Emprestimos() {
         <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
           {loading ? (
             <p className="text-center text-muted-foreground py-8">Carregando...</p>
-          ) : emprestimos.length === 0 && (!canManageLoans || solicitacoes.length === 0) ? (
+          ) : emprestimos.length === 0 && (!canManageLoans || solicitações.length === 0) ? (
             <div className="py-10 text-center space-y-3">
-              <p className="text-muted-foreground">Nenhum dado de emprÃ©stimo registrado</p>
+              <p className="text-muted-foreground">Nenhum dado de empréstimo registrado</p>
               {canManageLoans && (
                 <Button onClick={() => setIsDialogOpen(true)}>
                   <Plus className="w-4 h-4 mr-2" />
@@ -1338,31 +1338,31 @@ export default function Emprestimos() {
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="mb-4 h-auto w-full justify-start gap-1 overflow-x-auto whitespace-nowrap pb-1 sm:gap-2">
                 {canManageLoans && (
-                  <TabsTrigger value="solicitacoes" className="gap-2 shrink-0">
-                    <Inbox className="w-4 h-4" /> Solicitações ({solicitacoesPendentes.length})
+                  <TabsTrigger value="solicitações" className="gap-2 shrink-0">
+                    <Inbox className="w-4 h-4" /> Solicitações ({solicitaçõesPendentes.length})
                   </TabsTrigger>
                 )}
                 {canManageLoans && (
                   <TabsTrigger value="recusadas" className="gap-2 shrink-0">
-                    <XCircle className="w-4 h-4" /> Recusadas ({solicitacoesRecusadas.length})
+                    <XCircle className="w-4 h-4" /> Recusadas ({solicitaçõesRecusadas.length})
                   </TabsTrigger>
                 )}
                 <TabsTrigger value="ativos" className="gap-2 shrink-0">
                   <AlertTriangle className="w-4 h-4" /> Ativos ({emprestimosAtivos.length})
                 </TabsTrigger>
-                <TabsTrigger value="historico" className="gap-2 shrink-0">
-                  <CheckCircle className="w-4 h-4" /> Histórico ({emprestimosHistorico.length})
+                <TabsTrigger value="histórico" className="gap-2 shrink-0">
+                  <CheckCircle className="w-4 h-4" /> Histórico ({emprestimosHistórico.length})
                 </TabsTrigger>
               </TabsList>
 
               {canManageLoans && (
-                <TabsContent value="solicitacoes">
-                  {solicitacoesPendentes.length === 0 ? (
+                <TabsContent value="solicitações">
+                  {solicitaçõesPendentes.length === 0 ? (
                     <p className="text-center text-muted-foreground py-8">Nenhuma solicitação de aluno no momento.</p>
                   ) : (
                     <div className="space-y-3">
-                      {solicitacoesPendentes.map((solicitacao) => renderSolicitacaoCard(solicitacao))}
-                      {false && solicitacoesPendentes.map((solicitacao) => {
+                      {solicitaçõesPendentes.map((solicitacao) => renderSolicitacaoCard(solicitacao))}
+                      {false && solicitaçõesPendentes.map((solicitacao) => {
                         const isPendente = solicitacao.status === 'pendente';
                         const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
                         return (
@@ -1451,11 +1451,11 @@ export default function Emprestimos() {
 
               {canManageLoans && (
                 <TabsContent value="recusadas">
-                  {solicitacoesRecusadas.length === 0 ? (
+                  {solicitaçõesRecusadas.length === 0 ? (
                     <p className="text-center text-muted-foreground py-8">Nenhuma solicitação recusada.</p>
                   ) : (
                     <div className="space-y-3">
-                      {solicitacoesRecusadas.map((solicitacao) =>
+                      {solicitaçõesRecusadas.map((solicitacao) =>
                         renderSolicitacaoCard(solicitacao, { readOnly: true }),
                       )}
                     </div>
@@ -1471,11 +1471,11 @@ export default function Emprestimos() {
                 )}
               </TabsContent>
 
-              <TabsContent value="historico">
-                {emprestimosHistorico.length === 0 ? (
+              <TabsContent value="histórico">
+                {emprestimosHistórico.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">Nenhum empréstimo no histórico</p>
                 ) : (
-                  renderHistoricoTable(emprestimosHistorico)
+                  renderHistóricoTable(emprestimosHistórico)
                 )}
               </TabsContent>
             </Tabs>
@@ -1486,8 +1486,8 @@ export default function Emprestimos() {
       <ExportPeriodDialog
         open={exportDialogOpen}
         onOpenChange={setExportDialogOpen}
-        title="Exportar emprÃ©stimos"
-        description="Escolha o perÃ­odo para exportar os dados de emprÃ©stimos."
+        title="Exportar empréstimos"
+        description="Escolha o período para exportar os dados de empréstimos."
         loading={exporting}
         onConfirm={handleConfirmExport}
       />
@@ -1523,10 +1523,10 @@ export default function Emprestimos() {
             </Button>
             <Button
               variant="destructive"
-              onClick={() => handleExcluirHistorico(deleteConfirmEmprestimo)}
-              disabled={!deleteConfirmEmprestimo || (actionLoading.solicitacaoId === deleteConfirmEmprestimo?.id && actionLoading.tipo === 'excluir_historico')}
+              onClick={() => handleExcluirHistórico(deleteConfirmEmprestimo)}
+              disabled={!deleteConfirmEmprestimo || (actionLoading.solicitacaoId === deleteConfirmEmprestimo?.id && actionLoading.tipo === 'excluir_histórico')}
             >
-              {actionLoading.solicitacaoId === deleteConfirmEmprestimo?.id && actionLoading.tipo === 'excluir_historico' ? (
+              {actionLoading.solicitacaoId === deleteConfirmEmprestimo?.id && actionLoading.tipo === 'excluir_histórico' ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
                 <Trash2 className="w-4 h-4 mr-2" />
@@ -1539,4 +1539,7 @@ export default function Emprestimos() {
     </MainLayout>
   );
 }
+
+
+
 

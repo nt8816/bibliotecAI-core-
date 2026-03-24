@@ -1,4 +1,4 @@
-import { requestPlatformApi } from '@/lib/platformApi';
+﻿import { requestPlatformApi } from '@/lib/platformApi';
 
 export async function fetchSystemNotificationsData({ user, canView }) {
   if (!canView || !user?.id) {
@@ -23,3 +23,4 @@ export async function markSystemNotificationAsRead({ notificationId }) {
     body: { notification_id: notificationId },
   });
 }
+

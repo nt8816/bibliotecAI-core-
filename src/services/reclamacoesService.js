@@ -1,4 +1,4 @@
-import { requestPlatformApi } from '@/lib/platformApi';
+﻿import { requestPlatformApi } from '@/lib/platformApi';
 
 export async function fetchReclamacoesFeed() {
   const payload = await requestPlatformApi('/v1/reclamacoes');
@@ -16,3 +16,4 @@ export async function updateReclamacao(id, payload) {
 export async function markReclamacaoAsRead(id) {
   return requestPlatformApi(`/v1/reclamacoes/${id}/read`, { method: 'POST' });
 }
+

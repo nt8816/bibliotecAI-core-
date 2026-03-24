@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { CheckCircle, ClipboardList, Clock, Pencil, Plus, Star, Trash2 } from 'lucide-react';
@@ -48,7 +48,7 @@ export default function AtividadesLeitura() {
       setUsuarios(Array.isArray(data?.usuarios) ? data.usuarios : []);
       setAtividades(Array.isArray(data?.atividades) ? data.atividades : []);
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Nao foi possivel carregar os dados.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível carregar os dados.' });
     } finally {
       setLoading(false);
     }
@@ -104,7 +104,7 @@ export default function AtividadesLeitura() {
       setIsDialogOpen(false);
       await fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Nao foi possivel salvar a atividade.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível salvar a atividade.' });
     } finally {
       setSaving(false);
     }
@@ -116,7 +116,7 @@ export default function AtividadesLeitura() {
       toast({ title: 'Sucesso', description: 'Status atualizado!' });
       await fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Nao foi possivel atualizar o status.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível atualizar o status.' });
     }
   };
 
@@ -127,7 +127,7 @@ export default function AtividadesLeitura() {
       toast({ title: 'Sucesso', description: 'Atividade excluida.' });
       await fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Nao foi possivel excluir.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível excluir.' });
     }
   };
 
@@ -260,3 +260,4 @@ export default function AtividadesLeitura() {
     </MainLayout>
   );
 }
+

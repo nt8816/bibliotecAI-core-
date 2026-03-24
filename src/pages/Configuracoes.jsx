@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useTheme } from 'next-themes';
 import { Loader2, Moon, Settings, Sun, UserRound } from 'lucide-react';
@@ -35,7 +35,7 @@ const roleLabel = {
 
 const isTempLoginEmail = (value) => /@temp\.bibliotecai\.com$/i.test(String(value || '').trim());
 
-export default function Configuracoes() {
+export default function Configurações() {
   const { userRole, user } = useAuth();
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
@@ -69,9 +69,9 @@ export default function Configuracoes() {
   const forcePasswordChange = Boolean(location.state?.forcePasswordChange) && isAluno && !alunoSenhaDefinida;
   const canEditTurma = userRole === 'aluno' || userRole === 'professor';
   const showMatricula = userRole === 'aluno';
-  const isGestao = userRole === 'gestor' || userRole === 'bibliotecaria' || userRole === 'super_admin';
-  const showEmailInProfile = !isAluno && !isGestao;
-  const showTelefoneInProfile = !isAluno && !isGestao;
+  const isGestão = userRole === 'gestor' || userRole === 'bibliotecaria' || userRole === 'super_admin';
+  const showEmailInProfile = !isAluno && !isGestão;
+  const showTelefoneInProfile = !isAluno && !isGestão;
   const showCpfInProfile = !isAluno;
 
   const loadProfile = useCallback(async () => {
@@ -336,7 +336,7 @@ export default function Configuracoes() {
             <div className="rounded-lg border p-3 space-y-3">
               <div className="space-y-1">
                 <p className="text-sm font-medium">Senha de acesso</p>
-                <p className="text-xs text-muted-foreground">Voce pode alterar sua senha quando quiser.</p>
+                <p className="text-xs text-muted-foreground">Você pode alterar sua senha quando quiser.</p>
               </div>
               {forcePasswordChange && (
                 <Alert>
@@ -392,3 +392,4 @@ export default function Configuracoes() {
     </MainLayout>
   );
 }
+

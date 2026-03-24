@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+﻿import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Plus,
   Pencil,
@@ -178,7 +178,7 @@ export default function Usuarios() {
       setProfessorTurmasMap(data?.professorTurmasMap || {});
     } catch (error) {
       console.error('Error fetching users:', error);
-      toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel carregar os usuarios.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível carregar os usuarios.' });
     } finally {
       setLoading(false);
     }
@@ -237,7 +237,7 @@ export default function Usuarios() {
       toast({
         variant: 'destructive',
         title: 'Sem permissao',
-        description: 'Voce nao pode editar informacoes do gestor.',
+        description: 'Você nao pode editar informacoes do gestor.',
       });
       return;
     }
@@ -309,7 +309,7 @@ export default function Usuarios() {
       toast({
         variant: 'destructive',
         title: 'Escola nao vinculada',
-        description: 'Seu usuario nao esta vinculado a uma escola. Nao e possivel cadastrar usuarios.',
+        description: 'Seu usuario nao esta vinculado a uma escola. Não é possível cadastrar usuarios.',
       });
       return;
     }
@@ -362,7 +362,7 @@ export default function Usuarios() {
       const tableMessage = isMissingTableError(error)
         ? 'Tabela professor_turmas nao encontrada. Aplique as migrations do Supabase.'
         : null;
-      toast({ variant: 'destructive', title: 'Erro', description: tableMessage || error.message || 'Nao foi possivel salvar o usuario.' });
+      toast({ variant: 'destructive', title: 'Erro', description: tableMessage || error.message || 'Não foi possível salvar o usuario.' });
     } finally {
       setSaving(false);
     }
@@ -379,7 +379,7 @@ export default function Usuarios() {
       setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
       fetchUsuarios();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error.message || 'Nao foi possivel excluir o usuario.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error.message || 'Não foi possível excluir o usuario.' });
     } finally {
       setDeletingId(null);
     }
@@ -397,7 +397,7 @@ export default function Usuarios() {
       setSelectedIds([]);
       fetchUsuarios();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error.message || 'Nao foi possivel excluir os usuarios selecionados.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error.message || 'Não foi possível excluir os usuarios selecionados.' });
     } finally {
       setBatchDeleting(false);
     }
@@ -439,7 +439,7 @@ export default function Usuarios() {
 
     toast({ title: 'Exportado!', description: `Arquivo usuarios.xlsx baixado. ${periodLabel}` });
     }).catch(() => {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel exportar o arquivo Excel.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível exportar o arquivo Excel.' });
     });
   };
 
@@ -460,7 +460,7 @@ export default function Usuarios() {
 
       toast({ title: 'Exportado!', description: `Arquivo usuarios.pdf baixado. ${periodLabel}` });
     }).catch(() => {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel exportar o PDF.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível exportar o PDF.' });
     });
   };
 
@@ -472,7 +472,7 @@ export default function Usuarios() {
   const handleConfirmExport = async (period) => {
     const usuariosSelecionados = filtrarUsuariosPorPeriodo(period);
     if (usuariosSelecionados.length === 0) {
-      toast({ variant: 'destructive', title: 'Sem dados', description: 'Nao ha usuarios no periodo selecionado.' });
+      toast({ variant: 'destructive', title: 'Sem dados', description: 'Não há usuarios no periodo selecionado.' });
       return;
     }
 
@@ -620,7 +620,7 @@ export default function Usuarios() {
       XLSX.utils.book_append_sheet(wb, ws, 'Usuarios');
       XLSX.writeFile(wb, 'modelo_importacao_usuarios.xlsx');
     }).catch(() => {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel baixar o modelo.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível baixar o modelo.' });
     });
   };
 
@@ -772,7 +772,7 @@ export default function Usuarios() {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: error.message || 'Nao foi possivel redefinir a senha.',
+        description: error.message || 'Não foi possível redefinir a senha.',
       });
     } finally {
       setResettingPassword(false);
@@ -785,7 +785,7 @@ export default function Usuarios() {
       await navigator.clipboard.writeText(senhaTemporariaGerada);
       toast({ title: 'Senha copiada', description: 'A senha temporaria foi copiada para a area de transferencia.' });
     } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel copiar a senha.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível copiar a senha.' });
     }
   };
 
@@ -1337,4 +1337,5 @@ export default function Usuarios() {
     </MainLayout>
   );
 }
+
 

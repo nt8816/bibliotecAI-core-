@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '@/hooks/useAuth';
 import { fetchSystemNotificationsData, markSystemNotificationAsRead } from '@/services/notificationsService';
@@ -185,3 +185,4 @@ export function useSystemNotifications() {
     markNotificationRead,
   };
 }
+

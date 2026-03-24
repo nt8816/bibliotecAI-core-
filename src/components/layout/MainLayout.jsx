@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+﻿import { useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { MessageSquareWarning } from 'lucide-react';
 
@@ -16,7 +16,7 @@ export function MainLayout({ children, title }) {
     () => (isAluno || isProfessor || isGestor || isBibliotecaria) && !isSuperAdmin,
     [isAluno, isBibliotecaria, isGestor, isProfessor, isSuperAdmin],
   );
-  const isComplaintsPage = location.pathname === '/reclamacoes';
+  const isComplaintsPage = location.pathname === '/reclamações';
 
   return (
     <SidebarProvider>
@@ -40,7 +40,7 @@ export function MainLayout({ children, title }) {
                   variant="outline"
                   size="sm"
                   className="h-9 gap-2 rounded-full px-3 text-xs sm:text-sm"
-                  onClick={() => navigate('/reclamacoes')}
+                  onClick={() => navigate('/reclamações')}
                 >
                   <MessageSquareWarning className="h-4 w-4" />
                   <span className="hidden sm:inline">Faça uma reclamação</span>
@@ -63,4 +63,5 @@ export function MainLayout({ children, title }) {
     </SidebarProvider>
   );
 }
+
 

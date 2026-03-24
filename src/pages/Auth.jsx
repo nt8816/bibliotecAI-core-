@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { Library, Loader2, Eye, EyeOff, QrCode, ShieldCheck, Smartphone, MonitorSmartphone, MailCheck } from 'lucide-react';
@@ -215,7 +215,7 @@ export default function Auth() {
         if (!active) return;
         setAuthAlert({
           title: 'ERRO NA LIBERACAO DO COMPUTADOR',
-          description: error?.message || 'Nao foi possivel consultar o status da aprovacao.',
+          description: error?.message || 'Não foi possível consultar o status da aprovacao.',
         });
       }
     };
@@ -457,7 +457,7 @@ export default function Auth() {
       } catch (activationInvokeError) {
         return {
           error: {
-            message: activationInvokeError.message || 'Nao foi possivel ativar sua conta por matrícula.',
+            message: activationInvokeError.message || 'Não foi possível ativar sua conta por matrícula.',
           },
         };
       }
@@ -465,7 +465,7 @@ export default function Auth() {
       if (!activationData?.success) {
         return {
           error: {
-            message: activationData?.error || 'Nao foi possivel ativar sua conta por matrícula.',
+            message: activationData?.error || 'Não foi possível ativar sua conta por matrícula.',
           },
         };
       }
@@ -568,7 +568,7 @@ export default function Auth() {
       toast({
         variant: 'destructive',
         title: 'Falha na biometria',
-        description: error?.message || 'Nao foi possivel validar a passkey biometrica.',
+        description: error?.message || 'Não foi possível validar a passkey biometrica.',
       });
     } finally {
       setLoading(false);
@@ -590,7 +590,7 @@ export default function Auth() {
       toast({
         variant: 'destructive',
         title: 'Codigo invalido',
-        description: error?.message || 'Nao foi possivel concluir a verificacao adicional.',
+        description: error?.message || 'Não foi possível concluir a verificacao adicional.',
       });
     } finally {
       setLoading(false);
@@ -604,7 +604,7 @@ export default function Auth() {
           <div className="flex items-start gap-3">
             <QrCode className="mt-0.5 h-5 w-5 text-primary" />
             <div>
-              <p className="text-sm font-semibold">Aguardando aprovacao no celular</p>
+              <p className="text-sm font-semibold">Aguardando aprovação no celular</p>
               <p className="text-sm text-muted-foreground">
                 Depois da senha, o acesso do Super Admin em computador so e liberado apos escanear o QR, repetir as credenciais no celular e confirmar a biometria digital.
               </p>
@@ -713,7 +713,7 @@ export default function Auth() {
           </div>
           <CardTitle className="text-2xl font-bold">BibliotecAI</CardTitle>
           <CardDescription>
-            Para a gestao, entre com Gmail ou CPF. Para aluno, use a matrícula.
+            Para a gestão, entre com Gmail ou CPF. Para aluno, use a matrícula.
           </CardDescription>
         </CardHeader>
 
@@ -795,3 +795,4 @@ export default function Auth() {
     </div>
   );
 }
+

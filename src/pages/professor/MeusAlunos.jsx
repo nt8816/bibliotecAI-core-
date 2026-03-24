@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GraduationCap, Search, Users } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -34,7 +34,7 @@ export default function MeusAlunos() {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: error?.message || 'Nao foi possivel carregar os alunos.',
+        description: error?.message || 'Não foi possível carregar os alunos.',
       });
     } finally {
       setLoading(false);
@@ -182,3 +182,4 @@ export default function MeusAlunos() {
     </MainLayout>
   );
 }
+

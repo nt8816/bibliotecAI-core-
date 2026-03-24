@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BookOpen, Lightbulb, Send, Sparkles, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { createProfessorSugestao, deleteProfessorSugestao, fetchProfessorPainelData } from '@/services/professorService';
+import { createProfessorSugestão, deleteProfessorSugestão, fetchProfessorPainelData } from '@/services/professorService';
 
 export default function SugestoesLivros() {
   const { user } = useAuth();
@@ -41,7 +41,7 @@ export default function SugestoesLivros() {
       setUsuarios(Array.isArray(data?.usuarios) ? data.usuarios : []);
       setSugestoes(Array.isArray(data?.sugestoes) ? data.sugestoes : []);
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Nao foi possivel carregar as sugestoes.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível carregar as sugestoes.' });
     } finally {
       setLoading(false);
     }
@@ -60,28 +60,28 @@ export default function SugestoesLivros() {
     };
   }, [fetchData]);
 
-  const handleSendSugestao = async () => {
+  const handleSendSugestão = async () => {
     if (!selectedAluno || !selectedLivro) {
       toast({ variant: 'destructive', title: 'Erro', description: 'Selecione um aluno e um livro.' });
       return;
     }
     setSaving(true);
     try {
-      await createProfessorSugestao({ aluno_id: selectedAluno, livro_id: selectedLivro, mensagem });
-      toast({ title: 'Sucesso', description: 'Sugestao enviada com sucesso!' });
+      await createProfessorSugestão({ aluno_id: selectedAluno, livro_id: selectedLivro, mensagem });
+      toast({ title: 'Sucesso', description: 'Sugestão enviada com sucesso!' });
       setIsDialogOpen(false);
       setSelectedAluno('');
       setSelectedLivro('');
       setMensagem('');
       await fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Nao foi possivel enviar a sugestao.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível enviar a sugestão.' });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleAutoSugestao = async () => {
+  const handleAutoSugestão = async () => {
     if (!selectedArea) {
       toast({ variant: 'destructive', title: 'Erro', description: 'Selecione uma area de livros.' });
       return;
@@ -92,7 +92,7 @@ export default function SugestoesLivros() {
     if (selectedTurma) alunos = usuarios.filter((item) => item.turma === selectedTurma);
 
     if (!livrosDaArea.length || !alunos.length) {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Nao ha livros ou alunos suficientes para gerar as sugestoes.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não há livros ou alunos suficientes para gerar as sugestoes.' });
       return;
     }
 
@@ -101,10 +101,10 @@ export default function SugestoesLivros() {
       for (let index = 0; index < alunos.length; index += 1) {
         const aluno = alunos[index];
         const livro = livrosDaArea[index % livrosDaArea.length];
-        await createProfessorSugestao({
+        await createProfessorSugestão({
           aluno_id: aluno.id,
           livro_id: livro.id,
-          mensagem: `Sugestao automatica da area: ${selectedArea}`,
+          mensagem: `Sugestão automatica da area: ${selectedArea}`,
         });
       }
       toast({ title: 'Sucesso', description: `${alunos.length} sugestoes enviadas!` });
@@ -113,20 +113,20 @@ export default function SugestoesLivros() {
       setSelectedTurma('');
       await fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Nao foi possivel enviar as sugestoes.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível enviar as sugestoes.' });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDeleteSugestao = async (id) => {
-    if (!window.confirm('Tem certeza que deseja excluir esta sugestao?')) return;
+  const handleDeleteSugestão = async (id) => {
+    if (!window.confirm('Tem certeza que deseja excluir esta sugestão?')) return;
     try {
-      await deleteProfessorSugestao(id);
-      toast({ title: 'Sucesso', description: 'Sugestao excluida.' });
+      await deleteProfessorSugestão(id);
+      toast({ title: 'Sucesso', description: 'Sugestão excluida.' });
       await fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Nao foi possivel excluir.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível excluir.' });
     }
   };
 
@@ -148,7 +148,7 @@ export default function SugestoesLivros() {
               <Button><Send className="w-4 h-4 mr-2" />Sugerir para Aluno</Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Sugerir Livro para Aluno</DialogTitle><DialogDescription>Envie uma sugestao de leitura personalizada para um aluno.</DialogDescription></DialogHeader>
+              <DialogHeader><DialogTitle>Sugerir Livro para Aluno</DialogTitle><DialogDescription>Envie uma sugestão de leitura personalizada para um aluno.</DialogDescription></DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <Label>Aluno *</Label>
@@ -171,17 +171,17 @@ export default function SugestoesLivros() {
               </div>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                <Button onClick={handleSendSugestao} disabled={saving}>{saving ? 'Enviando...' : 'Enviar Sugestao'}</Button>
+                <Button onClick={handleSendSugestão} disabled={saving}>{saving ? 'Enviando...' : 'Enviar Sugestão'}</Button>
               </div>
             </DialogContent>
           </Dialog>
 
           <Dialog open={isAutoDialogOpen} onOpenChange={setIsAutoDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="secondary"><Sparkles className="w-4 h-4 mr-2" />Sugestao Automatica por Turma</Button>
+              <Button variant="secondary"><Sparkles className="w-4 h-4 mr-2" />Sugestão Automatica por Turma</Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Sugestao Automatica</DialogTitle><DialogDescription>Selecione uma area e turma. O sistema sugerira um livro diferente para cada aluno.</DialogDescription></DialogHeader>
+              <DialogHeader><DialogTitle>Sugestão Automatica</DialogTitle><DialogDescription>Selecione uma area e turma. O sistema sugerira um livro diferente para cada aluno.</DialogDescription></DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <Label>Area do Livro *</Label>
@@ -203,19 +203,19 @@ export default function SugestoesLivros() {
               </div>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setIsAutoDialogOpen(false)}>Cancelar</Button>
-                <Button onClick={handleAutoSugestao} disabled={saving}>{saving ? 'Enviando...' : 'Enviar Sugestoes'}</Button>
+                <Button onClick={handleAutoSugestão} disabled={saving}>{saving ? 'Enviando...' : 'Enviar Sugestoes'}</Button>
               </div>
             </DialogContent>
           </Dialog>
         </div>
 
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Lightbulb className="w-5 h-5" />Historico de Sugestoes</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Lightbulb className="w-5 h-5" />Histórico de Sugestoes</CardTitle></CardHeader>
           <CardContent>
             {loading ? (
               <p className="text-center text-muted-foreground py-8">Carregando...</p>
             ) : sugestoes.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">Nenhuma sugestao enviada ainda</p>
+              <p className="text-center text-muted-foreground py-8">Nenhuma sugestão enviada ainda</p>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -231,15 +231,15 @@ export default function SugestoesLivros() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {sugestoes.map((sugestao) => (
-                      <TableRow key={sugestao.id}>
-                        <TableCell className="font-medium">{sugestao.usuarios_biblioteca?.nome || 'N/A'}</TableCell>
-                        <TableCell>{sugestao.usuarios_biblioteca?.turma || '-'}</TableCell>
-                        <TableCell>{sugestao.livros?.titulo || 'N/A'}</TableCell>
-                        <TableCell className="max-w-[200px] truncate">{sugestao.mensagem || '-'}</TableCell>
-                        <TableCell>{format(new Date(sugestao.created_at), 'dd/MM/yyyy', { locale: ptBR })}</TableCell>
-                        <TableCell><Badge variant={sugestao.lido ? 'default' : 'secondary'}>{sugestao.lido ? 'Lido' : 'Pendente'}</Badge></TableCell>
-                        <TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => handleDeleteSugestao(sugestao.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button></TableCell>
+                    {sugestoes.map((sugestão) => (
+                      <TableRow key={sugestão.id}>
+                        <TableCell className="font-medium">{sugestão.usuarios_biblioteca?.nome || 'N/A'}</TableCell>
+                        <TableCell>{sugestão.usuarios_biblioteca?.turma || '-'}</TableCell>
+                        <TableCell>{sugestão.livros?.titulo || 'N/A'}</TableCell>
+                        <TableCell className="max-w-[200px] truncate">{sugestão.mensagem || '-'}</TableCell>
+                        <TableCell>{format(new Date(sugestão.created_at), 'dd/MM/yyyy', { locale: ptBR })}</TableCell>
+                        <TableCell><Badge variant={sugestão.lido ? 'default' : 'secondary'}>{sugestão.lido ? 'Lido' : 'Pendente'}</Badge></TableCell>
+                        <TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => handleDeleteSugestão(sugestão.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -252,3 +252,5 @@ export default function SugestoesLivros() {
     </MainLayout>
   );
 }
+
+

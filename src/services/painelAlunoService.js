@@ -1,4 +1,4 @@
-import { requestPlatformApi } from '@/lib/platformApi';
+﻿import { requestPlatformApi } from '@/lib/platformApi';
 
 export async function fetchPainelAlunoData() {
   const payload = await requestPlatformApi('/v1/aluno/painel');
@@ -160,3 +160,4 @@ export async function deletePainelAlunoLabCreation({ id, comunidadePostId }) {
     body: { comunidadePostId },
   });
 }
+

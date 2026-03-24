@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import {
   Trophy,
   Medal,
@@ -20,7 +20,7 @@ import { fetchRankingData } from '@/services/rankingService';
 
 function repairMojibakeText(value) {
   const text = String(value || '');
-  if (!text || !/[ÃƒÆ’Ãƒâ€š]/.test(text)) return text;
+  if (!text || !/[ÃÂ]/.test(text)) return text;
   try {
     return decodeURIComponent(escape(text));
   } catch {
@@ -86,7 +86,7 @@ function RankingList({ items, currentStudentId }) {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm text-muted-foreground">#{position}</span>
                     <p className="font-semibold">{repairMojibakeText(aluno.nome) || 'Aluno sem nome'}</p>
-                    {isCurrentStudent && <Badge variant="default">Voce</Badge>}
+                    {isCurrentStudent && <Badge variant="default">Você</Badge>}
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                     <span>Turma: {repairMojibakeText(aluno.turma) || 'Sem turma'}</span>
@@ -154,7 +154,7 @@ export default function RankingAluno() {
         toast({
           variant: 'destructive',
           title: 'Erro ao carregar ranking',
-          description: error?.message || 'Nao foi possivel montar o ranking agora.',
+          description: error?.message || 'Não foi possível montar o ranking agora.',
         });
       } finally {
         if (active) setLoading(false);
@@ -215,7 +215,7 @@ export default function RankingAluno() {
       <MainLayout title="Ranking">
         <Card>
           <CardContent className="py-10 text-sm text-muted-foreground">
-            Esta area esta disponivel apenas para alunos, professores, gestao e bibliotecaria.
+            Esta area esta disponivel apenas para alunos, professores, gestão e bibliotecaria.
           </CardContent>
         </Card>
       </MainLayout>
@@ -318,7 +318,7 @@ export default function RankingAluno() {
                 </SelectContent>
               </Select>
               <p className="text-sm text-muted-foreground">
-                Professores, gestao e bibliotecaria visualizam o ranking escolar e podem filtrar por turma.
+                Professores, gestão e bibliotecaria visualizam o ranking escolar e podem filtrar por turma.
               </p>
             </CardContent>
           </Card>
@@ -329,3 +329,5 @@ export default function RankingAluno() {
     </MainLayout>
   );
 }
+
+

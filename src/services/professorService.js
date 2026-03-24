@@ -1,17 +1,17 @@
-import { requestPlatformApi } from '@/lib/platformApi';
+﻿import { requestPlatformApi } from '@/lib/platformApi';
 
 export async function fetchProfessorPainelData() {
   return requestPlatformApi('/v1/professor/painel');
 }
 
-export async function createProfessorSugestao(payload) {
+export async function createProfessorSugestão(payload) {
   return requestPlatformApi('/v1/professor/sugestoes', {
     method: 'POST',
     body: payload,
   });
 }
 
-export async function deleteProfessorSugestao(id) {
+export async function deleteProfessorSugestão(id) {
   return requestPlatformApi(`/v1/professor/sugestoes/${id}/delete`, {
     method: 'POST',
   });
@@ -46,3 +46,4 @@ export async function avaliarProfessorEntrega(id, payload) {
     body: payload,
   });
 }
+

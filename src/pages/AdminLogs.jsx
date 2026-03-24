@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Eye } from 'lucide-react';
@@ -58,7 +58,7 @@ export default function AdminLogs() {
       });
       setLogs(nextLogs);
     } catch (error) {
-      toast({ title: 'Erro', description: error?.message || 'Nao foi possivel carregar os acessos do Super Admin.', variant: 'destructive' });
+      toast({ title: 'Erro', description: error?.message || 'Não foi possível carregar os acessos do Super Admin.', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -146,3 +146,4 @@ export default function AdminLogs() {
     </MainLayout>
   );
 }
+

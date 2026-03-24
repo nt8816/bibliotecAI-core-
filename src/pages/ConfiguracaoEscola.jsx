@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -45,7 +45,7 @@ export default function ConfiguracaoEscola() {
       console.error('Error fetching escola:', error);
       toast({
         title: 'Erro',
-        description: 'Nao foi possivel carregar os dados da escola.',
+        description: 'Não foi possível carregar os dados da escola.',
         variant: 'destructive',
       });
     } finally {
@@ -74,7 +74,7 @@ export default function ConfiguracaoEscola() {
       console.error('Error saving escola:', error);
       toast({
         title: 'Erro',
-        description: 'Nao foi possivel salvar as informacoes da escola.',
+        description: 'Não foi possível salvar as informacoes da escola.',
         variant: 'destructive',
       });
     } finally {
@@ -104,7 +104,7 @@ export default function ConfiguracaoEscola() {
       console.error('Error adding sala:', error);
       toast({
         title: 'Erro',
-        description: 'Nao foi possivel adicionar a sala ou curso.',
+        description: 'Não foi possível adicionar a sala ou curso.',
         variant: 'destructive',
       });
     }
@@ -126,7 +126,7 @@ export default function ConfiguracaoEscola() {
       console.error('Error removing sala:', error);
       toast({
         title: 'Erro',
-        description: 'Nao foi possivel remover o item.',
+        description: 'Não foi possível remover o item.',
         variant: 'destructive',
       });
     }
@@ -156,7 +156,7 @@ export default function ConfiguracaoEscola() {
       console.error('Error renaming sala:', error);
       toast({
         title: 'Erro',
-        description: 'Nao foi possivel editar a turma.',
+        description: 'Não foi possível editar a turma.',
         variant: 'destructive',
       });
     } finally {
@@ -388,3 +388,4 @@ export default function ConfiguracaoEscola() {
     </MainLayout>
   );
 }
+

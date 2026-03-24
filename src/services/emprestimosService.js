@@ -1,4 +1,4 @@
-import { requestPlatformApi } from '@/lib/platformApi';
+﻿import { requestPlatformApi } from '@/lib/platformApi';
 
 export async function fetchEmprestimosData() {
   const payload = await requestPlatformApi('/v1/emprestimos');
@@ -55,3 +55,4 @@ export async function createHistoricEmprestimo(payload) {
 export async function deleteHistoricEmprestimo(emprestimoId) {
   return requestPlatformApi(`/v1/emprestimos/${emprestimoId}/delete`, { method: 'POST' });
 }
+

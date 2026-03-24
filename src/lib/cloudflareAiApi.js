@@ -1,4 +1,4 @@
-const DEFAULT_BASE_URL = 'https://api-bibliotecai.ntn3223.workers.dev';
+﻿const DEFAULT_BASE_URL = 'https://api-bibliotecai.ntn3223.workers.dev';
 const API_BASE_URL = String(import.meta.env.VITE_BIBLIOTECA_AI_API_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
 
 const ensureObject = (value) => (value && typeof value === 'object' ? value : {});
@@ -92,7 +92,7 @@ const buildTextPromptFromTask = (task, input) => {
   if (safeTask === 'sinopse_livro') {
     return [
       'Gere uma sinopse curta e clara em portugues do Brasil para uso escolar.',
-      'Se possivel, tambem complete metadados bibliograficos basicos.',
+      'Se possivel, também complete metadados bibliograficos basicos.',
       'Responda SOMENTE com JSON valido no formato: {"sinopse":"...","autor":"...","ano":"...","editora":"..."}',
       'Quando nao souber um campo, use string vazia.',
       `Titulo: ${titulo || 'nao informado'}`,
@@ -130,7 +130,7 @@ const buildTextPromptFromTask = (task, input) => {
     return [
       'Crie um desafio curto de gamificacao educacional para aluno.',
       'Responda SOMENTE com JSON valido no formato:',
-      '{"titulo":"...","desafio":"...","recompensa":"...","xp_recompensa":50,"criterio":{"tipo":"livros_lidos|avaliacoes|atividades_aprovadas","alvo_total":2,"valor_inicial":1,"rotulo":"..."},"livro_diferenciado":{"titulo":"...","autor":"...","motivo":"..."}}',
+      '{"titulo":"...","desafio":"...","recompensa":"...","xp_recompensa":50,"criterio":{"tipo":"livros_lidos|avaliações|atividades_aprovadas","alvo_total":2,"valor_inicial":1,"rotulo":"..."},"livro_diferenciado":{"titulo":"...","autor":"...","motivo":"..."}}',
       'O criterio precisa ser verificavel automaticamente pela plataforma.',
       'Use o nivel do aluno para definir o desafio.',
       'Se o aluno for iniciante, priorize leitura de 1 livro diferenciado escolhido pela IA.',
@@ -140,7 +140,7 @@ const buildTextPromptFromTask = (task, input) => {
       `Perfil de nivel: ${sanitizeText(safeInput.perfil_descricao || safeInput.perfil_nivel || '', 80) || 'iniciante'}`,
       `XP atual: ${Number(safeInput.xp) || 0}`,
       `Livros lidos: ${Number(safeInput.livrosLidos) || 0}`,
-      `Avaliacoes publicadas: ${Number(safeInput.avaliacoes || 0)}`,
+      `Avaliações publicadas: ${Number(safeInput.avaliacoes || 0)}`,
       `Atividades aprovadas: ${Number(safeInput.atividadesAprovadas || 0)}`,
       `Criterio sugerido: ${sanitizeText(safeInput.criterio_tipo || '', 80) || 'livros_lidos'}`,
       `Meta sugerida total: ${Number(safeInput.criterio_alvo_total) || 1}`,
@@ -218,7 +218,7 @@ export const generateTextWithCloudflare = async ({
   task,
   input,
   prompt,
-  fallbackErrorMessage = 'Nao foi possivel gerar texto com IA no momento.',
+  fallbackErrorMessage = 'Não foi possível gerar texto com IA no momento.',
 } = {}) => {
   const finalPrompt = sanitizeText(String(prompt || '').trim(), 4000) || buildTextPromptFromTask(task, input);
   if (hasSecretLikeContent(finalPrompt)) {
@@ -248,7 +248,7 @@ export const generateImageWithCloudflare = async ({
   model,
   provider,
   parameters,
-  fallbackErrorMessage = 'Nao foi possivel gerar imagem no momento.',
+  fallbackErrorMessage = 'Não foi possível gerar imagem no momento.',
 } = {}) => {
   const safePrompt = sanitizeText(prompt, 2000);
   if (hasSecretLikeContent(safePrompt)) {
@@ -289,7 +289,7 @@ export const generateAudioWithCloudflare = async ({
   language = 'pt-BR',
   model,
   prompt,
-  fallbackErrorMessage = 'Nao foi possivel gerar audio no momento.',
+  fallbackErrorMessage = 'Não foi possível gerar audio no momento.',
 } = {}) => {
   const textPrompt = sanitizeText(String(prompt || text || '').trim(), 4000);
   if (hasSecretLikeContent(textPrompt)) {
@@ -339,3 +339,5 @@ export const generateAudioWithCloudflare = async ({
 
   return { audioDataUrl };
 };
+
+

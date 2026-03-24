@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Plus, Copy, Link as LinkIcon, Trash2 } from 'lucide-react';
@@ -36,7 +36,7 @@ export default function GerenciarTokens() {
       console.error('Error fetching tokens:', error);
       toast({
         title: 'Erro',
-        description: 'Nao foi possivel carregar os tokens.',
+        description: 'Não foi possível carregar os tokens.',
         variant: 'destructive',
       });
     } finally {
@@ -63,7 +63,7 @@ export default function GerenciarTokens() {
       console.error('Error creating token:', error);
       toast({
         title: 'Erro',
-        description: error?.message || 'Nao foi possivel criar o token.',
+        description: error?.message || 'Não foi possível criar o token.',
         variant: 'destructive',
       });
     } finally {
@@ -96,7 +96,7 @@ export default function GerenciarTokens() {
     } catch (error) {
       console.error('Error copying invite link:', error);
       toast({
-        title: 'Nao foi possivel copiar automaticamente',
+        title: 'Não foi possível copiar automaticamente',
         description: link,
         variant: 'destructive',
       });
@@ -117,7 +117,7 @@ export default function GerenciarTokens() {
       console.error('Error deleting token:', error);
       toast({
         title: 'Erro',
-        description: 'Nao foi possivel apagar o token.',
+        description: 'Não foi possível apagar o token.',
         variant: 'destructive',
       });
     }
@@ -199,7 +199,7 @@ export default function GerenciarTokens() {
                   </div>
 
                   <p className="text-sm text-muted-foreground">
-                    O token sera valido por 7 dias e pode ser usado apenas uma vez.
+                    O token será valido por 7 dias e pode ser usado apenas uma vez.
                   </p>
 
                   <Button onClick={gerarToken} disabled={creating} className="w-full">
@@ -268,3 +268,4 @@ export default function GerenciarTokens() {
     </MainLayout>
   );
 }
+

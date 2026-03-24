@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { endOfMonth, format, isWithinInterval, parseISO, startOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { BarChart3, BookOpen, Calendar, Filter, GraduationCap, TrendingUp } from 'lucide-react';
@@ -40,7 +40,7 @@ export default function RelatoriosLeitura() {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: error?.message || 'Nao foi possivel carregar os relatorios.',
+        description: error?.message || 'Não foi possível carregar os relatorios.',
       });
     } finally {
       setLoading(false);
@@ -248,3 +248,4 @@ export default function RelatoriosLeitura() {
     </MainLayout>
   );
 }
+

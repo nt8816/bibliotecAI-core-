@@ -167,7 +167,7 @@ function normalizeCriacaoShareTipo(criacao) {
   const tipo = String(criacao?.tipo || '');
   if (tipo === 'quiz') return 'quiz';
   if (tipo === 'resenha') return 'resenha';
-  if (tipo === 'resumo') return 'sugestao';
+  if (tipo === 'resumo') return 'sugestão';
   return 'dica';
 }
 
@@ -352,10 +352,10 @@ function normalizeDesafioIA(rawValue) {
   };
 }
 
-function buildDesafioMetricas({ livrosLidos, avaliacoesCount, atividadesAprovadas }) {
+function buildDesafioMetricas({ livrosLidos, avaliaçõesCount, atividadesAprovadas }) {
   return {
     livros_lidos: Math.max(0, Number(livrosLidos || 0)),
-    avaliacoes: Math.max(0, Number(avaliacoesCount || 0)),
+    avaliações: Math.max(0, Number(avaliaçõesCount || 0)),
     atividades_aprovadas: Math.max(0, Number(atividadesAprovadas || 0)),
   };
 }
@@ -388,9 +388,9 @@ function getDesafioPerfilPorNivel(nivel) {
           rotulo: 'concluir 1 nova leitura',
         },
         {
-          tipo: 'avaliacoes',
+          tipo: 'avaliações',
           incremento: 1,
-          rotulo: 'publicar 1 nova avaliacao',
+          rotulo: 'publicar 1 nova avaliação',
         },
       ],
     };
@@ -401,9 +401,9 @@ function getDesafioPerfilPorNivel(nivel) {
     descricao: 'avancado',
     candidatos: [
       {
-        tipo: 'avaliacoes',
+        tipo: 'avaliações',
         incremento: 1,
-        rotulo: 'publicar 1 nova avaliacao',
+        rotulo: 'publicar 1 nova avaliação',
       },
       {
         tipo: 'atividades_aprovadas',
@@ -427,7 +427,7 @@ function escolherCriterioDesafioLegacy(metricas) {
       rotulo: 'concluir 1 nova leitura',
     },
     {
-      tipo: 'avaliacoes',
+      tipo: 'avaliações',
       incremento: 1,
       rotulo: 'publicar 1 nova avaliação',
     },
@@ -454,7 +454,7 @@ function escolherCriterioDesafioLegacy(metricas) {
 function normalizarCriterioDesafioLegacy(rawCriterio, metricasAtuais) {
   const fallback = escolherCriterioDesafioLegacy(metricasAtuais);
   const criterio = rawCriterio && typeof rawCriterio === 'object' ? rawCriterio : {};
-  const tipo = ['livros_lidos', 'avaliacoes', 'atividades_aprovadas'].includes(String(criterio.tipo))
+  const tipo = ['livros_lidos', 'avaliações', 'atividades_aprovadas'].includes(String(criterio.tipo))
     ? String(criterio.tipo)
     : fallback.tipo;
   const valorInicial = Math.max(
@@ -504,7 +504,7 @@ function escolherCriterioDesafio(metricas, nivel = 1) {
 function normalizarCriterioDesafioPorNivel(rawCriterio, metricasAtuais, nivel = 1) {
   const fallback = escolherCriterioDesafio(metricasAtuais, nivel);
   const criterio = rawCriterio && typeof rawCriterio === 'object' ? rawCriterio : {};
-  const tipo = ['livros_lidos', 'avaliacoes', 'atividades_aprovadas'].includes(String(criterio.tipo))
+  const tipo = ['livros_lidos', 'avaliações', 'atividades_aprovadas'].includes(String(criterio.tipo))
     ? String(criterio.tipo)
     : fallback.tipo;
   const valorInicial = Math.max(
@@ -750,7 +750,7 @@ async function resolveLabCriacaoRecord(record) {
 async function generateImageWithIA(prompt) {
   const data = await generateImageWithCloudflare({
     prompt,
-    fallbackErrorMessage: 'NÃ£o foi possÃ­vel gerar imagem no momento.',
+    fallbackErrorMessage: 'Não foi possível gerar imagem no momento.',
   });
 
   const imageDataUrl = data?.imageDataUrl;
@@ -765,7 +765,7 @@ async function generateTextWithIA(task, input, fallbackErrorMessage) {
   const data = await generateTextWithCloudflare({
     task,
     input,
-    fallbackErrorMessage: fallbackErrorMessage || 'NÃ£o foi possÃ­vel gerar texto com IA no momento.',
+    fallbackErrorMessage: fallbackErrorMessage || 'Não foi possível gerar texto com IA no momento.',
   });
 
   return data;
@@ -1008,10 +1008,10 @@ export default function PainelAluno() {
 
   const [livros, setLivros] = useState([]);
   const [emprestimos, setEmprestimos] = useState([]);
-  const [avaliacoes, setAvaliacoes] = useState([]);
+  const [avaliações, setAvaliacoes] = useState([]);
   const [wishlist, setWishlist] = useState([]);
   const [sugestoes, setSugestoes] = useState([]);
-  const [solicitacoes, setSolicitacoes] = useState([]);
+  const [solicitações, setSolicitacoes] = useState([]);
   const [atividades, setAtividades] = useState([]);
   const [entregas, setEntregas] = useState([]);
   const [audiobookCatalogo, setAudiobookCatalogo] = useState([]);
@@ -1027,11 +1027,11 @@ export default function PainelAluno() {
   const [livrosHasMore, setLivrosHasMore] = useState(false);
   const [livrosLoadingMore, setLivrosLoadingMore] = useState(false);
   const [bibliotecaView, setBibliotecaView] = useState('meus_livros');
-  const [solicitacoesView, setSolicitacoesView] = useState('pendentes');
+  const [solicitaçõesView, setSolicitacoesView] = useState('pendentes');
   const [speakingLivroId, setSpeakingLivroId] = useState(null);
   const [speakingPhase, setSpeakingPhase] = useState('idle');
   const [ariaLiveMessage, setAriaLiveMessage] = useState('');
-  const [notificacoesLidas, setNotificacoesLidas] = useState(new Set());
+  const [notificaçõesLidas, setNotificacoesLidas] = useState(new Set());
 
   const [reviewDialog, setReviewDialog] = useState(false);
   const [reviewLivro, setReviewLivro] = useState(null);
@@ -1110,7 +1110,7 @@ export default function PainelAluno() {
   const [resumoRapidoOpen, setResumoRapidoOpen] = useState(false);
   const [resumoRapidoData, setResumoRapidoData] = useState(null);
   const [resumoRapidoLoadingId, setResumoRapidoLoadingId] = useState('');
-  const [solicitacoesLimit, setSolicitacoesLimit] = useState(10);
+  const [solicitaçõesLimit, setSolicitacoesLimit] = useState(10);
   const [criacoesLimit, setCriacoesLimit] = useState(10);
   const [resumosLimit, setResumosLimit] = useState(5);
   const warnedMissingFeaturesRef = useRef(false);
@@ -1211,10 +1211,10 @@ export default function PainelAluno() {
         await livrosPromise;
 
         setEmprestimos(painelData?.emprestimos || []);
-        setAvaliacoes(painelData?.avaliacoes || []);
+        setAvaliacoes(painelData?.avaliações || []);
         setWishlist((painelData?.wishlist || []).map((item) => item.livro_id));
         setSugestoes(painelData?.sugestoes || []);
-        setSolicitacoes(painelData?.solicitacoes || []);
+        setSolicitacoes(painelData?.solicitações || []);
         setAtividades(painelData?.atividades || []);
         setEntregas(painelData?.entregas || []);
         setAudiobookCatalogo(await Promise.all((painelData?.audiobookCatalogo || []).map(resolveAudiobookRecord)));
@@ -1228,7 +1228,7 @@ export default function PainelAluno() {
             return !turmaDestino || turmaDestino === normalizeTurmaKey(perfil.turma);
           }),
         );
-        setNotificacoesLidas(new Set((painelData?.notificacoesLidas || []).map((item) => item.notification_id)));
+        setNotificacoesLidas(new Set((painelData?.notificaçõesLidas || []).map((item) => item.notification_id)));
         setDesafioXpBonus(Math.max(0, Number(painelData?.preferenciasAluno?.desafio_ia_xp_bonus || 0)));
 
         const metricasCarregadas = buildDesafioMetricas({
@@ -1238,7 +1238,7 @@ export default function PainelAluno() {
               .map((item) => item.livro_id)
               .filter(Boolean),
           ).size,
-          avaliacoesCount: (painelData?.avaliacoes || []).length,
+          avaliaçõesCount: (painelData?.avaliações || []).length,
           atividadesAprovadas: (painelData?.entregas || []).filter((item) => item.status === 'aprovada').length,
         });
         const pontosAprovadosCarregados = (painelData?.entregas || [])
@@ -1262,7 +1262,7 @@ export default function PainelAluno() {
         }, 0);
         const pontosExperienciaCarregados =
           xpLeiturasCarregado +
-          metricasCarregadas.avaliacoes * 15 +
+          metricasCarregadas.avaliações * 15 +
           metricasCarregadas.atividades_aprovadas * 25 +
           pontosAprovadosCarregados +
           xpBonusCarregado;
@@ -1359,7 +1359,7 @@ export default function PainelAluno() {
     if (novaSenha !== confirmarSenha) {
       toast({
         title: 'Confirmacao invalida',
-        description: 'A confirmacao da nova senha nao confere.',
+        description: 'A confirmacao da nova senha não confere.',
         variant: 'destructive',
       });
       return;
@@ -1385,12 +1385,12 @@ export default function PainelAluno() {
       setOnboardingStep(1);
       toast({
         title: 'Senha criada',
-        description: 'Sua nova senha foi salva e a senha inicial nao funciona mais.',
+        description: 'Sua nova senha foi salva e a senha inicial não funciona mais.',
       });
     } catch (error) {
       toast({
         title: 'Erro ao criar senha',
-        description: error?.message || 'Nao foi possivel definir sua nova senha agora.',
+        description: error?.message || 'Não foi possível definir sua nova senha agora.',
         variant: 'destructive',
       });
     } finally {
@@ -1515,10 +1515,10 @@ export default function PainelAluno() {
 
   const pontosExperiencia = useMemo(() => {
     const baseLeituras = xpLeituras;
-    const baseAvaliacoes = avaliacoes.length * 15;
+    const baseAvaliacoes = avaliações.length * 15;
     const baseAtividades = atividadesAprovadas * 25;
     return baseLeituras + baseAvaliacoes + baseAtividades + Number(pontosGanhos || 0) + Number(desafioXpBonus || 0);
-  }, [atividadesAprovadas, avaliacoes.length, desafioXpBonus, pontosGanhos, xpLeituras]);
+  }, [atividadesAprovadas, avaliações.length, desafioXpBonus, pontosGanhos, xpLeituras]);
 
   const nivelAtual = useMemo(() => Math.max(1, Math.floor(pontosExperiencia / 150) + 1), [pontosExperiencia]);
 
@@ -1533,10 +1533,10 @@ export default function PainelAluno() {
     () =>
       buildDesafioMetricas({
         livrosLidos,
-        avaliacoesCount: avaliacoes.length,
+        avaliaçõesCount: avaliações.length,
         atividadesAprovadas,
       }),
-    [atividadesAprovadas, avaliacoes.length, livrosLidos],
+    [atividadesAprovadas, avaliações.length, livrosLidos],
   );
 
   const desafioProgressoAtual = useMemo(() => {
@@ -1570,8 +1570,8 @@ export default function PainelAluno() {
       {
         id: 'autor-da-comunidade',
         nome: 'Autor da Comunidade',
-        descricao: 'Publicou sua primeira avaliacao.',
-        desbloqueado: avaliacoes.length >= 1,
+        descricao: 'Publicou sua primeira avaliação.',
+        desbloqueado: avaliações.length >= 1,
         icon: Sparkles,
       },
       {
@@ -1582,7 +1582,7 @@ export default function PainelAluno() {
         icon: Trophy,
       },
     ],
-    [avaliacoes.length, entregas, leiturasRecentes, livrosLidos],
+    [avaliações.length, entregas, leiturasRecentes, livrosLidos],
   );
 
   const selosConquistados = useMemo(() => selos.filter((s) => s.desbloqueado), [selos]);
@@ -1685,18 +1685,18 @@ export default function PainelAluno() {
 
   const filteredSolicitacoes = useMemo(
     () =>
-      solicitacoes.filter((item) => {
+      solicitações.filter((item) => {
         const t = searchTerm.toLowerCase();
         const titulo = String(item?.livros?.titulo || '').toLowerCase();
         const autor = String(item?.livros?.autor || '').toLowerCase();
         return titulo.includes(t) || autor.includes(t);
       }),
-    [solicitacoes, searchTerm],
+    [solicitações, searchTerm],
   );
 
   const pendingExtensionRequestsByLoanId = useMemo(() => {
     const map = new Map();
-    solicitacoes.forEach((item) => {
+    solicitações.forEach((item) => {
       if (String(item?.tipo || 'emprestimo') !== 'prorrogacao') return;
       if (!item?.emprestimo_id) return;
       const status = String(item?.status || '').toLowerCase();
@@ -1705,7 +1705,7 @@ export default function PainelAluno() {
       }
     });
     return map;
-  }, [solicitacoes]);
+  }, [solicitações]);
 
   const canRequestLoanExtension = useCallback(
     (emprestimo) => {
@@ -1744,7 +1744,7 @@ export default function PainelAluno() {
         return 'pendentes';
       }
       const emprestimo = latestEmprestimoByLivro.get(solicitacao?.livro_id);
-      if (emprestimo?.status === 'devolvido') return 'historico';
+      if (emprestimo?.status === 'devolvido') return 'histórico';
       if (emprestimo?.status === 'ativo') return 'aceitos';
 
       const status = String(solicitacao?.status || '').toLowerCase();
@@ -1756,12 +1756,12 @@ export default function PainelAluno() {
     [latestEmprestimoByLivro],
   );
 
-  const solicitacoesGroups = useMemo(() => {
+  const solicitaçõesGroups = useMemo(() => {
     const grouped = {
       pendentes: [],
       aceitos: [],
       recusados: [],
-      historico: [],
+      histórico: [],
     };
     filteredSolicitacoes.forEach((item) => {
       grouped[classifySolicitacao(item)].push(item);
@@ -1769,9 +1769,9 @@ export default function PainelAluno() {
     return grouped;
   }, [classifySolicitacao, filteredSolicitacoes]);
 
-  const solicitacoesExibidas = useMemo(
-    () => solicitacoesGroups[solicitacoesView] || [],
-    [solicitacoesGroups, solicitacoesView],
+  const solicitaçõesExibidas = useMemo(
+    () => solicitaçõesGroups[solicitaçõesView] || [],
+    [solicitaçõesGroups, solicitaçõesView],
   );
 
   const getSolicitacaoStatusInfo = useCallback(
@@ -1880,9 +1880,9 @@ export default function PainelAluno() {
     [latestEmprestimoByLivro],
   );
 
-  const notificacoes = useMemo(() => {
+  const notificações = useMemo(() => {
     const itens = [];
-    const solicitacoesPendentes = solicitacoes.filter((s) => classifySolicitacao(s) === 'pendentes').length;
+    const solicitaçõesPendentes = solicitações.filter((s) => classifySolicitacao(s) === 'pendentes').length;
 
     ensureArray(comunicados)
       .sort((a, b) => new Date(b?.created_at || 0).getTime() - new Date(a?.created_at || 0).getTime())
@@ -1901,7 +1901,7 @@ export default function PainelAluno() {
       itens.push({
         id: `atraso-${emp.id}`,
         tipo: 'atraso',
-        titulo: 'Livro com devoluÃ§Ã£o em atraso',
+        titulo: 'Livro com devolução em atraso',
         descricao: `${emp.livros?.titulo || 'Livro'} deveria ter sido devolvido em ${formatDateBR(emp.data_devolucao_prevista)}.`,
       });
     });
@@ -1919,18 +1919,18 @@ export default function PainelAluno() {
         });
       });
 
-    if (solicitacoesPendentes > 0) {
+    if (solicitaçõesPendentes > 0) {
       itens.push({
-        id: 'solicitacoes-pendentes',
+        id: 'solicitações-pendentes',
         tipo: 'solicitacao',
         titulo: 'Solicitações pendentes',
-        descricao: `${solicitacoesPendentes} solicitação(ões) aguardando aprovação.`,
+        descricao: `${solicitaçõesPendentes} solicitação(ões) aguardando aprovação.`,
       });
     }
 
-    solicitacoes
+    solicitações
       .flatMap((solicitacao) => {
-        const mensagens = ensureArray(solicitacao?.solicitacoes_emprestimo_mensagens)
+        const mensagens = ensureArray(solicitacao?.solicitações_emprestimo_mensagens)
           .filter((mensagem) => String(mensagem?.autor_tipo || '').toLowerCase() === 'bibliotecaria');
 
         return mensagens.map((mensagem) => ({
@@ -1947,9 +1947,9 @@ export default function PainelAluno() {
         itens.push(item);
       });
 
-    const filtradas = itens.filter((item) => !notificacoesLidas.has(item.id));
+    const filtradas = itens.filter((item) => !notificaçõesLidas.has(item.id));
     return filtradas.slice(0, 8);
-  }, [atrasos, atividadesComEntrega, comunicados, solicitacoes, classifySolicitacao, notificacoesLidas]);
+  }, [atrasos, atividadesComEntrega, comunicados, solicitações, classifySolicitacao, notificaçõesLidas]);
 
   const markNotificationRead = useCallback(
     async (notificationId) => {
@@ -1959,15 +1959,15 @@ export default function PainelAluno() {
       try {
         await markPainelAlunoNotificationRead(notificationId);
       } catch {
-        // fallback silencioso: mantÃ©m estado local
+        // fallback silencioso: mantém estado local
       }
     },
     [alunoId],
   );
 
   const markAllNotificationsRead = useCallback(async () => {
-    if (!alunoId || notificacoes.length === 0) return;
-    const payload = notificacoes.map((item) => ({ usuario_id: alunoId, notification_id: item.id }));
+    if (!alunoId || notificações.length === 0) return;
+    const payload = notificações.map((item) => ({ usuario_id: alunoId, notification_id: item.id }));
     setNotificacoesLidas((prev) => {
       const next = new Set(prev);
       payload.forEach((item) => next.add(item.notification_id));
@@ -1979,12 +1979,12 @@ export default function PainelAluno() {
     } catch {
       // fallback silencioso
     }
-  }, [alunoId, notificacoes]);
+  }, [alunoId, notificações]);
 
   const hasSolicitacaoEmAndamento = useCallback(
     (livroId) =>
-      solicitacoes.some((item) => item?.livro_id === livroId && classifySolicitacao(item) === 'pendentes'),
-    [classifySolicitacao, solicitacoes],
+      solicitações.some((item) => item?.livro_id === livroId && classifySolicitacao(item) === 'pendentes'),
+    [classifySolicitacao, solicitações],
   );
 
   const hasEmprestimoAtivo = useCallback(
@@ -2054,7 +2054,7 @@ export default function PainelAluno() {
       const { audioDataUrl } = await generateAudioWithCloudflare({
         text: normalizedText,
         language: 'pt-BR',
-        fallbackErrorMessage: 'NÃ£o foi possÃ­vel gerar Ã¡udio da sinopse no momento.',
+        fallbackErrorMessage: 'Não foi possível gerar áudio da sinopse no momento.',
       });
       if (requestId !== speechRequestRef.current) return;
 
@@ -2117,7 +2117,7 @@ export default function PainelAluno() {
 
   const salvarCriacaoLaboratorio = async (payload) => {
     if (labCriacoesMissingTable) {
-      throw new Error('Tabela laboratorio_criacoes nÃ£o encontrada. Aplique as migrations do Supabase.');
+      throw new Error('Tabela laboratorio_criacoes não encontrada. Aplique as migrations do Supabase.');
     }
 
     try {
@@ -2126,7 +2126,7 @@ export default function PainelAluno() {
     } catch (error) {
       if (isMissingTableError(error)) {
         setLabCriacoesMissingTable(true);
-        throw new Error('Tabela laboratorio_criacoes nÃ£o encontrada. Aplique as migrations do Supabase.');
+        throw new Error('Tabela laboratorio_criacoes não encontrada. Aplique as migrations do Supabase.');
       }
 
       throw error;
@@ -2138,7 +2138,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Perfil incompleto',
-        description: 'NÃ£o foi possÃ­vel identificar seu vÃ­nculo com a escola para salvar a resenha.',
+        description: 'Não foi possível identificar seu vínculo com a escola para salvar a resenha.',
       });
       return;
     }
@@ -2186,13 +2186,13 @@ export default function PainelAluno() {
         comunidade_post_id: comunidadePostId,
       });
 
-      toast({ title: 'AvaliaÃ§Ã£o salva!' });
+      toast({ title: 'Avaliação salva!' });
       setReviewDialog(false);
       setReviewLivro(null);
       setReviewTexto('');
       setShareReviewToCommunity(false);
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'NÃ£o foi possÃ­vel salvar.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível salvar.' });
     } finally {
       setSaving(false);
     }
@@ -2299,7 +2299,7 @@ export default function PainelAluno() {
     if (!optionalFeaturesEnabled) {
       toast({
         variant: 'destructive',
-        title: 'Recurso indisponÃ­vel',
+        title: 'Recurso indisponível',
         description: 'Entrega de atividades desativada neste ambiente.',
       });
       return;
@@ -2320,8 +2320,8 @@ export default function PainelAluno() {
         variant: 'destructive',
         title: 'Informe sua resposta',
         description: temFormulario
-          ? 'Preencha o formulÃ¡rio, escreva uma resposta ou envie imagens.'
-          : 'Escreva o conteÃºdo da entrega ou envie imagens.',
+          ? 'Preencha o formulário, escreva uma resposta ou envie imagens.'
+          : 'Escreva o conteúdo da entrega ou envie imagens.',
       });
       return;
     }
@@ -2363,13 +2363,13 @@ export default function PainelAluno() {
         enviadoEm: payload.enviado_em,
       });
 
-      toast({ title: 'Entrega enviada', description: 'Seu professor jÃ¡ pode avaliar e liberar pontos.' });
+      toast({ title: 'Entrega enviada', description: 'Seu professor já pode avaliar e liberar pontos.' });
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Erro',
         description: isMissingTableError(error)
-          ? 'Entrega de atividade indisponÃ­vel: aplique a migration do banco.'
+          ? 'Entrega de atividade indisponível: aplique a migration do banco.'
           : error?.message || 'Falha ao enviar atividade.',
       });
     } finally {
@@ -2387,7 +2387,7 @@ export default function PainelAluno() {
         [atividadeId]: [...ensureArray(prev[atividadeId]), ...converted].slice(0, 4),
       }));
     } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'NÃ£o foi possÃ­vel processar as imagens da atividade.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível processar as imagens da atividade.' });
     }
   };
 
@@ -2396,15 +2396,15 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Perfil incompleto',
-        description: 'NÃ£o foi possÃ­vel identificar sua escola para criar audiobook.',
+        description: 'Não foi possível identificar sua escola para criar audiobook.',
       });
       return;
     }
     if (!optionalFeaturesEnabled) {
       toast({
         variant: 'destructive',
-        title: 'Recurso indisponÃ­vel',
-        description: 'Audiobooks estÃ£o desativados neste ambiente.',
+        title: 'Recurso indisponível',
+        description: 'Audiobooks estão desativados neste ambiente.',
       });
       return;
     }
@@ -2712,7 +2712,7 @@ export default function PainelAluno() {
 
       toast({ title: 'Projeto salvo no laboratório!' });
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'NÃ£o foi possÃ­vel salvar o projeto.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível salvar o projeto.' });
     } finally {
       setSaving(false);
     }
@@ -2835,7 +2835,7 @@ export default function PainelAluno() {
     return `${quizLivroId}::${(quizTema || 'geral').trim().toLowerCase()}`;
   }, [quizLivroId, quizTema]);
 
-  const quizHistoricoAtual = quizHistoryKeyAtual ? quizHistory?.[quizHistoryKeyAtual] : null;
+  const quizHistóricoAtual = quizHistoryKeyAtual ? quizHistory?.[quizHistoryKeyAtual] : null;
 
   const salvarQuizNoLaboratorio = async (publicarNaComunidade = false) => {
     if (!optionalFeaturesEnabled || !alunoId || !escolaId) {
@@ -3005,7 +3005,7 @@ export default function PainelAluno() {
           autor_id: alunoId,
           escola_id: escolaId,
           livro_id: criacao.livro_id || null,
-          tipo: ['dica', 'sugestao'].includes(tipoPersonalizado) ? tipoPersonalizado : 'sugestao',
+          tipo: ['dica', 'sugestão'].includes(tipoPersonalizado) ? tipoPersonalizado : 'sugestão',
           titulo: tituloBase,
           conteudo: descricaoBase || extractResumoTextoFromCriacao(criacao) || 'Resumo compartilhado pelo aluno.',
           imagem_urls: criacaoImagemUrls,
@@ -3017,7 +3017,7 @@ export default function PainelAluno() {
           escola_id: escolaId,
           livro_id: criacao.livro_id || null,
           audiobook_id: conteudoJson?.audiobook_id || null,
-          tipo: ['dica', 'sugestao', 'resenha'].includes(tipoPersonalizado) ? tipoPersonalizado : 'dica',
+          tipo: ['dica', 'sugestão', 'resenha'].includes(tipoPersonalizado) ? tipoPersonalizado : 'dica',
           titulo: tituloBase,
           conteudo: descricaoBase || 'Projeto criativo compartilhado pelo aluno.',
           imagem_urls: criacaoImagemUrls,
@@ -3067,7 +3067,7 @@ export default function PainelAluno() {
     setSaving(true);
     try {
       if (labCriacoesMissingTable) {
-        throw new Error('Tabela laboratorio_criacoes nÃ£o encontrada. Aplique as migrations do Supabase.');
+        throw new Error('Tabela laboratorio_criacoes não encontrada. Aplique as migrations do Supabase.');
       }
 
       try {
@@ -3078,7 +3078,7 @@ export default function PainelAluno() {
       } catch (error) {
         if (isMissingTableError(error)) {
           setLabCriacoesMissingTable(true);
-          throw new Error('Tabela laboratorio_criacoes nÃ£o encontrada. Aplique as migrations do Supabase.');
+          throw new Error('Tabela laboratorio_criacoes não encontrada. Aplique as migrations do Supabase.');
         }
         throw error;
       }
@@ -3087,7 +3087,7 @@ export default function PainelAluno() {
       setDeleteCriacaoItem(null);
       toast({ title: 'Criação removida.' });
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro ao apagar', description: error?.message || 'NÃ£o foi possÃ­vel apagar.' });
+      toast({ variant: 'destructive', title: 'Erro ao apagar', description: error?.message || 'Não foi possível apagar.' });
     } finally {
       setSaving(false);
     }
@@ -3116,7 +3116,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Perfil incompleto',
-        description: 'NÃ£o foi possÃ­vel identificar sua escola para gerar o resumo.',
+        description: 'Não foi possível identificar sua escola para gerar o resumo.',
       });
       return;
     }
@@ -3135,7 +3135,7 @@ export default function PainelAluno() {
           autor: livro.autor,
           sinopse: livro.sinopse || '',
         },
-        'NÃ£o foi possÃ­vel gerar resumo com IA no momento.',
+        'Não foi possível gerar resumo com IA no momento.',
       );
 
       const texto = extractResumoTextoFromIAResponse(data);
@@ -3146,7 +3146,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro ao gerar resumo',
-        description: error?.message || 'NÃ£o foi possÃ­vel gerar resumo com IA.',
+        description: error?.message || 'Não foi possível gerar resumo com IA.',
       });
     } finally {
       setGerandoResumoIA(false);
@@ -3158,7 +3158,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Perfil incompleto',
-        description: 'NÃ£o foi possÃ­vel identificar seu perfil para salvar o desafio.',
+        description: 'Não foi possível identificar seu perfil para salvar o desafio.',
       });
       return;
     }
@@ -3176,7 +3176,7 @@ export default function PainelAluno() {
           perfil_descricao: perfilDesafio.descricao,
           xp: pontosExperiencia,
           livrosLidos,
-          avaliacoes: avaliacoes.length,
+          avaliações: avaliações.length,
           atividadesAprovadas,
           criterio_tipo: criterio.tipo,
           criterio_alvo_total: criterio.alvo_total,
@@ -3184,7 +3184,7 @@ export default function PainelAluno() {
           criterio_rotulo: criterio.rotulo,
           livros_sugeridos: livrosSugeriveisDesafio,
         },
-        'NÃ£o foi possÃ­vel gerar desafio de gamificaÃ§Ã£o no momento.',
+        'Não foi possível gerar desafio de gamificação no momento.',
       );
       const desafio = normalizeDesafioIA({
         ...(data?.data || {}),
@@ -3194,16 +3194,16 @@ export default function PainelAluno() {
           [criterio.tipo]: criterio.valor_inicial,
         }, nivelAtual),
       });
-      if (!desafio?.titulo || !desafio?.desafio) throw new Error('A IA respondeu sem desafio vÃ¡lido.');
+      if (!desafio?.titulo || !desafio?.desafio) throw new Error('A IA respondeu sem desafio válido.');
       await persistirDesafioIA({ desafio, xpBonus: desafioXpBonus });
       setDesafioIA(desafio);
       if (desafioCacheKey) writeCache(desafioCacheKey, desafio);
-      toast({ title: 'Desafio de gamificaÃ§Ã£o gerado!' });
+      toast({ title: 'Desafio de gamificação gerado!' });
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Erro no desafio IA',
-        description: error?.message || 'NÃ£o foi possÃ­vel gerar desafio agora.',
+        description: error?.message || 'Não foi possível gerar desafio agora.',
       });
     } finally {
       setGerandoDesafioIA(false);
@@ -3214,7 +3214,7 @@ export default function PainelAluno() {
     if (!desafioIA) return;
     if (desafioIA.concluido_em && origem === 'silenciosa') return;
     if (desafioIA.concluido_em) {
-      toast({ title: 'Desafio jÃ¡ concluÃ­do', description: 'A recompensa deste desafio jÃ¡ foi adicionada ao seu perfil.' });
+      toast({ title: 'Desafio já concluído', description: 'A recompensa deste desafio já foi adicionada ao seu perfil.' });
       return;
     }
 
@@ -3234,15 +3234,15 @@ export default function PainelAluno() {
       if (desafioCacheKey) writeCache(desafioCacheKey, desafioConcluido);
 
       toast({
-        title: 'Desafio concluÃ­do',
-        description: xpRecompensa > 0 ? `VocÃª recebeu ${xpRecompensa} XP pelo desafio do dia.` : 'Sua conclusÃ£o foi registrada.',
+        title: 'Desafio concluído',
+        description: xpRecompensa > 0 ? `Você recebeu ${xpRecompensa} XP pelo desafio do dia.` : 'Sua conclusão foi registrada.',
       });
       navigate('/aluno');
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Erro ao concluir desafio',
-        description: error?.message || 'NÃ£o foi possÃ­vel registrar a conclusÃ£o do desafio.',
+        description: error?.message || 'Não foi possível registrar a conclusão do desafio.',
       });
     } finally {
       setSalvandoDesafioIA(false);
@@ -3294,7 +3294,7 @@ export default function PainelAluno() {
       toast({ title: 'Resumo salvo no laboratório' });
       setResumoTexto('');
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'NÃ£o foi possÃ­vel salvar o resumo.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível salvar o resumo.' });
     }
   };
 
@@ -3321,7 +3321,7 @@ export default function PainelAluno() {
           autor: livro.autor,
           sinopse: livro.sinopse || '',
         },
-        'NÃ£o foi possÃ­vel gerar o resumo rÃ¡pido agora.',
+        'Não foi possível gerar o resumo rápido agora.',
       );
       const texto = extractResumoTextoFromIAResponse(data);
       if (!texto) throw new Error('A IA respondeu sem resumo.');
@@ -3523,7 +3523,7 @@ export default function PainelAluno() {
                     </button>
                     <div>
                       <p className="text-xs text-muted-foreground">Notificacoes</p>
-                      <p className="text-xl font-bold">{notificacoes.length}</p>
+                      <p className="text-xl font-bold">{notificações.length}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -3572,7 +3572,7 @@ export default function PainelAluno() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {notificacoes.length === 0 ? (
+                {notificações.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Sem alertas no momento.</p>
                 ) : (
                   <div className="space-y-2">
@@ -3581,7 +3581,7 @@ export default function PainelAluno() {
                         Marcar todas como lidas
                       </Button>
                     </div>
-                    {notificacoes.map((n) => {
+                    {notificações.map((n) => {
                       const content = (
                         <>
                           {n.tipo === 'atraso' ? (
@@ -3602,7 +3602,7 @@ export default function PainelAluno() {
                       const handleClick = () => {
                         if (n.tipo === 'solicitacao') {
                           navigate('/aluno/biblioteca');
-                          setBibliotecaView('minhas_solicitacoes');
+                          setBibliotecaView('minhas_solicitações');
                           setSolicitacoesView('pendentes');
                           return;
                         }
@@ -3687,7 +3687,7 @@ export default function PainelAluno() {
                             <Label>Minha entrega</Label>
                             <Textarea
                               rows={3}
-                              placeholder="Escreva sua resposta, resumo ou reflexao..."
+                              placeholder="Escreva sua resposta, resumo ou reflexão..."
                               value={atividadeTexto[atividade.id] ?? parseEntregaPayload(atividade.entrega?.texto_entrega).texto ?? ''}
                               onChange={(e) =>
                                 setAtividadeTexto((prev) => ({
@@ -3756,7 +3756,7 @@ export default function PainelAluno() {
                           )}
 
                           <div className="space-y-2">
-                            <Label>Imagens da atividade (opcional, atÃ© 4)</Label>
+                            <Label>Imagens da atividade (opcional, até 4)</Label>
                             <Input
                               type="file"
                               accept="image/*"
@@ -3810,7 +3810,7 @@ export default function PainelAluno() {
                                   </span>
                                 </>
                               ) : (
-                                <Badge variant="outline">Ainda nÃ£o enviado</Badge>
+                                <Badge variant="outline">Ainda não enviado</Badge>
                               )}
                             </div>
 
@@ -3839,7 +3839,7 @@ export default function PainelAluno() {
                 </CardHeader>
                 <CardContent>
                   {sugestoes.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8">Nenhuma sugestao recebida.</p>
+                    <p className="text-center text-muted-foreground py-8">Nenhuma sugestão recebida.</p>
                   ) : (
                     <div className="space-y-3">
                       {sugestoes.map((s) => (
@@ -3976,9 +3976,9 @@ export default function PainelAluno() {
                       <p className="text-xs text-muted-foreground">
                         Questoes: {quiz.length} - Nivel: {quizNivel}
                       </p>
-                      {quizHistoricoAtual && (
+                      {quizHistóricoAtual && (
                         <p className="text-xs text-muted-foreground mt-1">
-                          Ultimo: {quizHistoricoAtual.last?.acertos}/{quizHistoricoAtual.last?.total} - Melhor: {quizHistoricoAtual.best?.acertos}/{quizHistoricoAtual.best?.total}
+                          Ultimo: {quizHistóricoAtual.last?.acertos}/{quizHistóricoAtual.last?.total} - Melhor: {quizHistóricoAtual.best?.acertos}/{quizHistóricoAtual.best?.total}
                         </p>
                       )}
                     </div>
@@ -4270,10 +4270,10 @@ export default function PainelAluno() {
                   <Button
                     type="button"
                     size="sm"
-                    variant={bibliotecaView === 'minhas_solicitacoes' ? 'default' : 'ghost'}
-                    onClick={() => setBibliotecaView('minhas_solicitacoes')}
+                    variant={bibliotecaView === 'minhas_solicitações' ? 'default' : 'ghost'}
+                    onClick={() => setBibliotecaView('minhas_solicitações')}
                   >
-                    Minhas solicitacoes
+                    Minhas solicitações
                   </Button>
                   <Button
                     type="button"
@@ -4289,7 +4289,7 @@ export default function PainelAluno() {
                   <div className="space-y-3">
                     <p className="text-sm font-semibold">Meus livros</p>
                     {filteredMeusLivros.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Voce ainda nao tem livros aprovados/emprestados.</p>
+                      <p className="text-sm text-muted-foreground">Você ainda nao tem livros aprovados/emprestados.</p>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                         {filteredMeusLivros.map((item) => (
@@ -4478,7 +4478,7 @@ export default function PainelAluno() {
                                       ? 'Livro ja emprestado'
                                       : hasSolicitacaoEmAndamento(livro.id)
                                         ? 'Solicitacao ja enviada'
-                                        : 'Solicitar emprestimo'
+                                        : 'Solicitar empréstimo'
                                 }
                                 onClick={() => {
                                   setRequestLivro(livro);
@@ -4511,55 +4511,55 @@ export default function PainelAluno() {
                   </div>
                 )}
 
-                {bibliotecaView === 'minhas_solicitacoes' && (
+                {bibliotecaView === 'minhas_solicitações' && (
                   <div className="space-y-3">
-                    <p className="text-sm font-semibold">Minhas solicitacoes de emprestimo</p>
+                    <p className="text-sm font-semibold">Minhas solicitações de emprestimo</p>
                     <div className="flex flex-wrap gap-2 rounded-lg border p-1 bg-muted/20">
                       <Button
                         type="button"
                         size="sm"
-                        variant={solicitacoesView === 'pendentes' ? 'default' : 'ghost'}
+                        variant={solicitaçõesView === 'pendentes' ? 'default' : 'ghost'}
                         onClick={() => setSolicitacoesView('pendentes')}
                       >
-                        Aguardando aprovação ({solicitacoesGroups.pendentes.length})
+                        Aguardando aprovação ({solicitaçõesGroups.pendentes.length})
                       </Button>
                       <Button
                         type="button"
                         size="sm"
-                        variant={solicitacoesView === 'aceitos' ? 'default' : 'ghost'}
+                        variant={solicitaçõesView === 'aceitos' ? 'default' : 'ghost'}
                         onClick={() => setSolicitacoesView('aceitos')}
                       >
-                        Aceitos ({solicitacoesGroups.aceitos.length})
+                        Aceitos ({solicitaçõesGroups.aceitos.length})
                       </Button>
                       <Button
                         type="button"
                         size="sm"
-                        variant={solicitacoesView === 'recusados' ? 'default' : 'ghost'}
+                        variant={solicitaçõesView === 'recusados' ? 'default' : 'ghost'}
                         onClick={() => setSolicitacoesView('recusados')}
                       >
-                        Recusados ({solicitacoesGroups.recusados.length})
+                        Recusados ({solicitaçõesGroups.recusados.length})
                       </Button>
                       <Button
                         type="button"
                         size="sm"
-                        variant={solicitacoesView === 'historico' ? 'default' : 'ghost'}
-                        onClick={() => setSolicitacoesView('historico')}
+                        variant={solicitaçõesView === 'histórico' ? 'default' : 'ghost'}
+                        onClick={() => setSolicitacoesView('histórico')}
                       >
-                        Histórico ({solicitacoesGroups.historico.length})
+                        Histórico ({solicitaçõesGroups.histórico.length})
                       </Button>
                     </div>
-                    {solicitacoesExibidas.length === 0 ? (
+                    {solicitaçõesExibidas.length === 0 ? (
                       <p className="text-center text-muted-foreground py-8">Você ainda não fez solicitações.</p>
                     ) : (
                       <div className="space-y-3">
-                        {solicitacoesExibidas.slice(0, solicitacoesLimit).map((solicitacao) => {
+                        {solicitaçõesExibidas.slice(0, solicitaçõesLimit).map((solicitacao) => {
                           const statusInfo = getSolicitacaoStatusInfo(solicitacao);
                           const timeline = buildSolicitacaoTimeline(solicitacao);
                           const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
                           const podeConversar = !['aprovada', 'aceita', 'recusada', 'negada', 'cancelada'].includes(
                             String(solicitacao?.status || '').toLowerCase(),
                           );
-                          const chatMensagens = [...ensureArray(solicitacao?.solicitacoes_emprestimo_mensagens)].sort(
+                          const chatMensagens = [...ensureArray(solicitacao?.solicitações_emprestimo_mensagens)].sort(
                             (a, b) => new Date(a?.created_at || 0).getTime() - new Date(b?.created_at || 0).getTime(),
                           );
                           return (
@@ -4679,7 +4679,7 @@ export default function PainelAluno() {
                           </div>
                         );
                         })}
-                        {solicitacoesExibidas.length > solicitacoesLimit && (
+                        {solicitaçõesExibidas.length > solicitaçõesLimit && (
                           <div className="flex justify-center">
                             <Button type="button" variant="outline" size="sm" onClick={() => setSolicitacoesLimit((prev) => prev + 10)}>
                               Carregar mais
@@ -4701,7 +4701,7 @@ export default function PainelAluno() {
               </CardHeader>
               <CardContent>
                 {wishlist.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">Sua lista estÃ¡ vazia.</p>
+                  <p className="text-center text-muted-foreground py-8">Sua lista está vazia.</p>
                 ) : (
                   <div className="space-y-3">
                     {wishlist.map((livroId) => {
@@ -4714,7 +4714,7 @@ export default function PainelAluno() {
                             <p className="font-medium">{livro.titulo}</p>
                             <p className="text-xs text-muted-foreground">{livro.autor}</p>
                             <Badge variant={livro.disponivel ? 'default' : 'secondary'} className="mt-1 text-xs">
-                              {livro.disponivel ? 'DisponÃ­vel' : 'Emprestado'}
+                              {livro.disponivel ? 'Disponível' : 'Emprestado'}
                             </Badge>
                           </div>
                           <div className="flex gap-1">
@@ -4743,17 +4743,17 @@ export default function PainelAluno() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="avaliacoes">
+          <TabsContent value="avaliações">
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Minhas avaliações</CardTitle>
               </CardHeader>
               <CardContent>
-                {avaliacoes.length === 0 ? (
+                {avaliações.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">Você ainda não avaliou nenhum livro.</p>
                 ) : (
                   <div className="space-y-3">
-                    {avaliacoes.map((a) => (
+                    {avaliações.map((a) => (
                       <div key={a.id} className="p-3 border rounded-lg">
                         <div className="flex justify-between items-start">
                           <div>
@@ -4779,7 +4779,7 @@ export default function PainelAluno() {
               </CardHeader>
               <CardContent>
                 {sugestoes.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">Nenhuma sugestao recebida.</p>
+                  <p className="text-center text-muted-foreground py-8">Nenhuma sugestão recebida.</p>
                 ) : (
                   <div className="space-y-3">
                     {sugestoes.map((s) => (
@@ -5044,7 +5044,7 @@ export default function PainelAluno() {
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="dica">Dica</option>
-                  <option value="sugestao">Sugestão</option>
+                  <option value="sugestão">Sugestão</option>
                   {shareCriacaoItem?.tipo === 'imagem' && <option value="resenha">Resenha</option>}
                 </select>
               </div>
@@ -5265,3 +5265,6 @@ export default function PainelAluno() {
     </MainLayout>
   );
 }
+
+
+

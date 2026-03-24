@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { KeyRound, ShieldPlus, UnlockKeyhole } from 'lucide-react';
@@ -74,7 +74,7 @@ export default function SuperAdmins() {
     } catch (error) {
       toast({
         title: 'Erro ao carregar Super Admins',
-        description: error?.message || 'Nao foi possivel carregar as contas.',
+        description: error?.message || 'Não foi possível carregar as contas.',
         variant: 'destructive',
       });
     } finally {
@@ -125,7 +125,7 @@ export default function SuperAdmins() {
     } catch (error) {
       toast({
         title: 'Erro ao criar Super Admin',
-        description: error?.message || 'Nao foi possivel criar a conta.',
+        description: error?.message || 'Não foi possível criar a conta.',
         variant: 'destructive',
       });
     } finally {
@@ -146,7 +146,7 @@ export default function SuperAdmins() {
     } catch (error) {
       toast({
         title: 'Erro ao liberar conta',
-        description: error?.message || 'Nao foi possivel desbloquear a conta.',
+        description: error?.message || 'Não foi possível desbloquear a conta.',
         variant: 'destructive',
       });
     } finally {
@@ -297,7 +297,7 @@ export default function SuperAdmins() {
                               {unlockingId === item.id ? 'Liberando...' : 'Liberar'}
                             </Button>
                           ) : (
-                            <span className="text-sm text-muted-foreground">Gestao liberada</span>
+                            <span className="text-sm text-muted-foreground">Gestão liberada</span>
                           )}
                         </TableCell>
                       </TableRow>
@@ -312,3 +312,4 @@ export default function SuperAdmins() {
     </MainLayout>
   );
 }
+

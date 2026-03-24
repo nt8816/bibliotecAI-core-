@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { BarChart3, BookOpen, TrendingUp, Users, CalendarDays, AlertTriangle, Download } from 'lucide-react';
@@ -74,7 +74,7 @@ export default function Relatorios() {
         toast({
           variant: 'destructive',
           title: 'Erro',
-          description: 'Nao foi possivel carregar os relatorios.',
+          description: 'Não foi possível carregar os relatorios.',
         });
       } finally {
         setLoading(false);
@@ -224,7 +224,7 @@ export default function Relatorios() {
       toast({
         variant: 'destructive',
         title: 'Sem dados',
-        description: 'Nao ha registros no periodo selecionado para exportar.',
+        description: 'Não há registros no periodo selecionado para exportar.',
       });
       return;
     }
@@ -244,7 +244,7 @@ export default function Relatorios() {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: 'Nao foi possivel exportar os relatorios.',
+        description: 'Não foi possível exportar os relatorios.',
       });
     } finally {
       setExporting(false);
@@ -542,3 +542,4 @@ export default function Relatorios() {
     </MainLayout>
   );
 }
+

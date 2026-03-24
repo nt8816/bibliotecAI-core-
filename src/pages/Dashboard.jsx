@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+﻿import { useEffect, useState, useCallback, useRef } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -107,8 +107,8 @@ export default function Dashboard() {
     escolasSemTenant: 0,
     superAdminsAtivos: 0,
     superAdminsBloqueados: 0,
-    reclamacoesEmAnalise: 0,
-    reclamacoesAtrasadas: 0,
+    reclamaçõesEmAnalise: 0,
+    reclamaçõesAtrasadas: 0,
     armazenamentoConsumidoBytes: 0,
   });
 
@@ -248,13 +248,13 @@ export default function Dashboard() {
   const superAdminAttentionItems = [
     {
       title: 'Reclamacoes em analise',
-      value: superAdminStats.reclamacoesEmAnalise,
-      hint: superAdminStats.reclamacoesAtrasadas > 0
-        ? `${superAdminStats.reclamacoesAtrasadas} passaram de 4 dias`
+      value: superAdminStats.reclamaçõesEmAnalise,
+      hint: superAdminStats.reclamaçõesAtrasadas > 0
+        ? `${superAdminStats.reclamaçõesAtrasadas} passaram de 4 dias`
         : 'Nenhuma reclamacao esta atrasada',
-      tone: superAdminStats.reclamacoesAtrasadas > 0 ? 'text-amber-600' : 'text-muted-foreground',
-      action: '/reclamacoes',
-      actionLabel: 'Abrir reclamacoes',
+      tone: superAdminStats.reclamaçõesAtrasadas > 0 ? 'text-amber-600' : 'text-muted-foreground',
+      action: '/reclamações',
+      actionLabel: 'Abrir reclamações',
       icon: AlertTriangle,
     },
     {
@@ -262,7 +262,7 @@ export default function Dashboard() {
       value: superAdminStats.escolasSemTenant,
       hint: superAdminStats.escolasSemTenant > 0
         ? 'Essas escolas precisam ser vinculadas para operar isoladamente'
-        : 'Todas as escolas ja estao vinculadas',
+        : 'Todas as escolas ja estão vinculadas',
       tone: superAdminStats.escolasSemTenant > 0 ? 'text-amber-600' : 'text-muted-foreground',
       action: '/admin/tenants',
       actionLabel: 'Gerenciar tenants',
@@ -555,3 +555,4 @@ export default function Dashboard() {
     </MainLayout>
   );
 }
+

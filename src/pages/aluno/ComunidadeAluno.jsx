@@ -323,7 +323,7 @@ export default function ComunidadeAluno() {
   const [quizRespostasPorPost, setQuizRespostasPorPost] = useState({});
   const [quizResultadoPorPost, setQuizResultadoPorPost] = useState({});
   const [quizRankingByPost, setQuizRankingByPost] = useState({});
-  const [quizHistoricoByPost, setQuizHistoricoByPost] = useState({});
+  const [quizHistóricoByPost, setQuizHistóricoByPost] = useState({});
   const [quizRankingPeriodo, setQuizRankingPeriodo] = useState('geral');
   const [quizRankingEscopo, setQuizRankingEscopo] = useState('escola');
   const [postEmEdicao, setPostEmEdicao] = useState(null);
@@ -416,7 +416,7 @@ export default function ComunidadeAluno() {
         });
 
         setQuizRankingByPost((prev) => ({ ...prev, ...(response?.rankingByPost || {}) }));
-        setQuizHistoricoByPost((prev) => ({ ...prev, ...(response?.historicoByPost || {}) }));
+        setQuizHistóricoByPost((prev) => ({ ...prev, ...(response?.históricoByPost || {}) }));
       } catch (error) {
         if (error && !isMissingTableError(error)) {
           console.warn('Falha ao carregar ranking do quiz.', error);
@@ -482,7 +482,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro na comunidade',
-        description: error?.message || 'Nao foi possivel carregar a comunidade.',
+        description: error?.message || 'Não foi possível carregar a comunidade.',
       });
     } finally {
       setLoading(false);
@@ -595,7 +595,7 @@ export default function ComunidadeAluno() {
       const converted = await Promise.all(selected.map(fileToDataUrl));
       setImageDataUrls((prev) => [...prev, ...converted].slice(0, 4));
     } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel processar as imagens.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível processar as imagens.' });
     }
   };
 
@@ -617,7 +617,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Comunidade indisponivel',
-        description: 'Nao foi possivel publicar agora. Verifique se as tabelas/migrations estao atualizadas.',
+        description: 'Não foi possível publicar agora. Verifique se as tabelas/migrations estão atualizadas.',
       });
       return;
     }
@@ -747,7 +747,7 @@ export default function ComunidadeAluno() {
       const converted = await fileToDataUrl(file);
       setShareImageDataUrl(converted);
     } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel processar a imagem.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível processar a imagem.' });
     }
   };
 
@@ -807,7 +807,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro ao compartilhar',
-        description: error?.message || 'Nao foi possivel compartilhar este post.',
+        description: error?.message || 'Não foi possível compartilhar este post.',
       });
     } finally {
       setSharing(false);
@@ -852,13 +852,13 @@ export default function ComunidadeAluno() {
       await loadQuizRankingForPosts([postId]);
       toast({
         title: 'Quiz corrigido!',
-        description: `Voce acertou ${acertos} de ${total} perguntas.`,
+        description: `Você acertou ${acertos} de ${total} perguntas.`,
       });
     } catch (error) {
       if (!isMissingTableError(error)) {
         toast({
           variant: 'destructive',
-          title: 'Nao foi possivel registrar sua tentativa',
+          title: 'Não foi possível registrar sua tentativa',
           description: error?.message || 'Tente novamente em instantes.',
         });
       }
@@ -879,7 +879,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Comunidade indisponivel',
-        description: 'Nao foi possivel curtir agora.',
+        description: 'Não foi possível curtir agora.',
       });
       return;
     }
@@ -913,7 +913,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: error?.message || 'Nao foi possivel atualizar a curtida.',
+        description: error?.message || 'Não foi possível atualizar a curtida.',
       });
     } finally {
       setLikingPostIds((prev) => {
@@ -981,7 +981,7 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro ao salvar',
-        description: error?.message || 'Nao foi possivel atualizar o post.',
+        description: error?.message || 'Não foi possível atualizar o post.',
       });
     } finally {
       setSaving(false);
@@ -995,7 +995,7 @@ export default function ComunidadeAluno() {
     try {
       const response = await deleteComunidadePost(post.id, alunoId);
       if (response?.deleted === false) {
-        throw new Error('Voce so pode apagar publicacoes feitas por voce.');
+        throw new Error('Você so pode apagar publicacoes feitas por você.');
       }
       setPosts((prev) => {
         const nextList = ensureArray(prev).filter((item) => item.id !== post.id);
@@ -1009,17 +1009,17 @@ export default function ComunidadeAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro ao apagar',
-        description: error?.message || 'Nao foi possivel apagar o post.',
+        description: error?.message || 'Não foi possível apagar o post.',
       });
     } finally {
       setSaving(false);
     }
   };
 
-  const isGestao = isGestor || isBibliotecaria || isSuperAdmin;
+  const isGestão = isGestor || isBibliotecaria || isSuperAdmin;
 
   return (
-    <MainLayout title={isGestao ? 'Comunidade Escolar' : 'Comunidade do Aluno'}>
+    <MainLayout title={isGestão ? 'Comunidade Escolar' : 'Comunidade do Aluno'}>
       <div className="sr-only" aria-live="polite">{ariaLiveMessage}</div>
       <div className="space-y-4 sm:space-y-6 pb-20">
         <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/10 via-info/10 to-warning/10 p-4 sm:p-6">
@@ -1029,7 +1029,7 @@ export default function ComunidadeAluno() {
           <h2 className="text-xl sm:text-2xl font-bold">Comunidade de Leitura</h2>
           <p className="text-sm text-muted-foreground mt-1">
             Compartilhe resenhas, dicas, sugestoes e recomendacoes de audiobooks.
-            {isGestao ? ' Voce tambem pode moderar publicacoes da comunidade.' : ''}
+            {isGestão ? ' Você também pode moderar publicacoes da comunidade.' : ''}
           </p>
         </div>
 
@@ -1044,7 +1044,7 @@ export default function ComunidadeAluno() {
           </Card>
         )}
 
-        {isGestao && (
+        {isGestão && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Painel de moderacao</CardTitle>
@@ -1098,7 +1098,7 @@ export default function ComunidadeAluno() {
           <Button size="sm" variant={filtroTipo === 'dica' ? 'default' : 'outline'} onClick={() => setFiltroTipo('dica')}>
             Dicas
           </Button>
-          <Button size="sm" variant={filtroTipo === 'sugestao' ? 'default' : 'outline'} onClick={() => setFiltroTipo('sugestao')}>
+          <Button size="sm" variant={filtroTipo === 'sugestão' ? 'default' : 'outline'} onClick={() => setFiltroTipo('sugestão')}>
             Sugestoes
           </Button>
           <Button size="sm" variant={filtroTipo === 'comunicado' ? 'default' : 'outline'} onClick={() => setFiltroTipo('comunicado')}>
@@ -1130,7 +1130,7 @@ export default function ComunidadeAluno() {
                   const conteudoVisivel = quizData?.descricao || safeText(post?.conteudo, 'Conteudo indisponivel');
                   const mostrarPreviewCompleto = conteudoVisivel.length > 200;
                   const ranking = ensureArray(quizRankingByPost[post.id]);
-                  const historico = quizHistoricoByPost[post.id];
+                  const histórico = quizHistóricoByPost[post.id];
 
                   return (
                     <div key={post.id} className="p-4 rounded-xl border bg-card shadow-sm space-y-3 overflow-hidden">
@@ -1242,11 +1242,11 @@ export default function ComunidadeAluno() {
                               </>
                             )}
                           </div>
-                          {(historico || ranking.length > 0) && (
+                          {(histórico || ranking.length > 0) && (
                             <div className="text-xs text-muted-foreground space-y-1">
-                              {historico && (
+                              {histórico && (
                                 <p>
-                                  Seu melhor: {historico.acertos}/{historico.total} acertos
+                                  Seu melhor: {histórico.acertos}/{histórico.total} acertos
                                 </p>
                               )}
                               {ranking.length > 0 && (
@@ -1347,7 +1347,7 @@ export default function ComunidadeAluno() {
             <DialogDescription>
               {canPublicarComunicado
                 ? 'Compartilhe resenhas, dicas, sugestoes ou comunicados com a comunidade.'
-                : 'Compartilhe uma resenha, dica ou sugestao com a comunidade.'}
+                : 'Compartilhe uma resenha, dica ou sugestão com a comunidade.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -1362,7 +1362,7 @@ export default function ComunidadeAluno() {
                 >
                   <option value="resenha">Resenha</option>
                   <option value="dica">Dica</option>
-                  <option value="sugestao">Sugestao</option>
+                  <option value="sugestão">Sugestão</option>
                   {canPublicarComunicado && <option value="comunicado">Comunicado</option>}
                 </select>
               </div>
@@ -1419,7 +1419,7 @@ export default function ComunidadeAluno() {
                     onChange={(e) => setPostExpiraEm(e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Se voce definir uma data, o comunicado sera apagado da comunidade e das notificacoes quando ela vencer.
+                    Se você definir uma data, o comunicado será apagado da comunidade e das notificações quando ela vencer.
                     Sem data, ele continuara visivel ate ser apagado manualmente.
                   </p>
                 </div>
@@ -1433,7 +1433,7 @@ export default function ComunidadeAluno() {
                 onChange={(e) => setPostAudiobookId(e.target.value === 'none' ? '' : e.target.value)}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               >
-                <option value="none">Nao indicar audiobook</option>
+                <option value="none">Não indicar audiobook</option>
                 {audiobooks.map((audio) => (
                   <option key={audio.id} value={audio.id}>
                     {audio.titulo} {audio.autor ? `- ${audio.autor}` : ''}
@@ -1587,7 +1587,7 @@ export default function ComunidadeAluno() {
             </p>
             {deleteConfirmPost?.tipo === 'comunicado' && (
               <p className="text-xs text-muted-foreground">
-                O comunicado tambem deixara de aparecer nas notificacoes e na remocao programada.
+                O comunicado também deixará de aparecer nas notificações e na remoção programada.
               </p>
             )}
           </div>
@@ -1700,6 +1700,9 @@ export default function ComunidadeAluno() {
     </MainLayout>
   );
 }
+
+
+
 
 
 
