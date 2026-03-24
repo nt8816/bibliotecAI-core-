@@ -429,7 +429,7 @@ function escolherCriterioDesafioLegacy(metricas) {
     {
       tipo: 'avaliacoes',
       incremento: 1,
-      rotulo: 'publicar 1 nova avaliaÃ§Ã£o',
+      rotulo: 'publicar 1 nova avaliação',
     },
     {
       tipo: 'atividades_aprovadas',
@@ -1184,7 +1184,7 @@ export default function PainelAluno() {
   const persistirDesafioIA = useCallback(
     async ({ desafio, xpBonus }) => {
       if (!alunoId) {
-        throw new Error('Aluno nÃ£o identificado para salvar o desafio.');
+        throw new Error('Aluno não identificado para salvar o desafio.');
       }
       await savePainelAlunoChallenge({ desafio, xpBonus });
     },
@@ -1201,7 +1201,7 @@ export default function PainelAluno() {
         const painelData = await fetchPainelAlunoData();
         const perfil = painelData?.perfil;
 
-        if (!perfil?.id) throw new Error('Perfil do aluno nÃ£o encontrado.');
+        if (!perfil?.id) throw new Error('Perfil do aluno não encontrado.');
         setAlunoId(perfil.id);
         setEscolaId(perfil.escola_id || null);
         setAlunoTurma(perfil.turma || null);
@@ -1299,8 +1299,8 @@ export default function PainelAluno() {
         setAtividadeRespostas(entregaRespostasInicial);
       } catch (error) {
         const description = isMissingTableError(error)
-          ? 'Tabelas novas nÃ£o encontradas. Aplique a migration mais recente do Supabase.'
-          : error?.message || 'NÃ£o foi possÃ­vel carregar seus dados.';
+          ? 'Tabelas novas não encontradas. Aplique a migration mais recente do Supabase.'
+          : error?.message || 'Não foi possível carregar seus dados.';
         toast({
           variant: 'destructive',
           title: 'Erro ao carregar painel',
@@ -1923,10 +1923,30 @@ export default function PainelAluno() {
       itens.push({
         id: 'solicitacoes-pendentes',
         tipo: 'solicitacao',
-        titulo: 'SolicitaÃ§Ãµes pendentes',
-        descricao: `${solicitacoesPendentes} solicitaÃ§Ã£o(Ãµes) aguardando aprovaÃ§Ã£o.`,
+        titulo: 'Solicitações pendentes',
+        descricao: `${solicitacoesPendentes} solicitação(ões) aguardando aprovação.`,
       });
     }
+
+    solicitacoes
+      .flatMap((solicitacao) => {
+        const mensagens = ensureArray(solicitacao?.solicitacoes_emprestimo_mensagens)
+          .filter((mensagem) => String(mensagem?.autor_tipo || '').toLowerCase() === 'bibliotecaria');
+
+        return mensagens.map((mensagem) => ({
+          id: `solicitacao-chat-${solicitacao.id}-${mensagem.id}`,
+          tipo: 'solicitacao_chat',
+          titulo: 'Nova mensagem da biblioteca',
+          descricao: `A biblioteca respondeu sobre ${solicitacao?.livros?.titulo || 'sua solicitação'}.`,
+          created_at: mensagem?.created_at || solicitacao?.updated_at || solicitacao?.created_at || null,
+        }));
+      })
+      .sort((a, b) => new Date(b?.created_at || 0).getTime() - new Date(a?.created_at || 0).getTime())
+      .slice(0, 6)
+      .forEach((item) => {
+        itens.push(item);
+      });
+
     const filtradas = itens.filter((item) => !notificacoesLidas.has(item.id));
     return filtradas.slice(0, 8);
   }, [atrasos, atividadesComEntrega, comunicados, solicitacoes, classifySolicitacao, notificacoesLidas]);
@@ -1935,7 +1955,7 @@ export default function PainelAluno() {
     async (notificationId) => {
       if (!notificationId || !alunoId) return;
       setNotificacoesLidas((prev) => new Set([...prev, notificationId]));
-      setAriaLiveMessage('NotificaÃ§Ã£o marcada como lida.');
+      setAriaLiveMessage('Notificação marcada como lida.');
       try {
         await markPainelAlunoNotificationRead(notificationId);
       } catch {
@@ -1953,7 +1973,7 @@ export default function PainelAluno() {
       payload.forEach((item) => next.add(item.notification_id));
       return next;
     });
-    setAriaLiveMessage('Todas as notificaÃ§Ãµes foram marcadas como lidas.');
+    setAriaLiveMessage('Todas as notificações foram marcadas como lidas.');
     try {
       await markPainelAlunoNotificationsReadBatch(payload.map((item) => item.notification_id));
     } catch {
@@ -4501,7 +4521,7 @@ export default function PainelAluno() {
                         variant={solicitacoesView === 'pendentes' ? 'default' : 'ghost'}
                         onClick={() => setSolicitacoesView('pendentes')}
                       >
-                        Aguardando aprovacao ({solicitacoesGroups.pendentes.length})
+                        Aguardando aprovação ({solicitacoesGroups.pendentes.length})
                       </Button>
                       <Button
                         type="button"
@@ -4525,11 +4545,11 @@ export default function PainelAluno() {
                         variant={solicitacoesView === 'historico' ? 'default' : 'ghost'}
                         onClick={() => setSolicitacoesView('historico')}
                       >
-                        Historico ({solicitacoesGroups.historico.length})
+                        Histórico ({solicitacoesGroups.historico.length})
                       </Button>
                     </div>
                     {solicitacoesExibidas.length === 0 ? (
-                      <p className="text-center text-muted-foreground py-8">Voce ainda nao fez solicitacoes.</p>
+                      <p className="text-center text-muted-foreground py-8">Você ainda não fez solicitações.</p>
                     ) : (
                       <div className="space-y-3">
                         {solicitacoesExibidas.slice(0, solicitacoesLimit).map((solicitacao) => {

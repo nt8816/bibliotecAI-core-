@@ -3363,7 +3363,7 @@ const routes: Record<string, RouteHandler> = {
       });
     }
 
-    const [atrasados, solicitacoes] = await Promise.all([
+    const [atrasados, solicitacoes, notificacoesLidas, solicitacoesChat] = await Promise.all([
       supabaseAdminRequest(
         env,
         `/rest/v1/emprestimos?select=id,usuarios_biblioteca!inner(escola_id)&status=eq.ativo&data_devolucao_prevista=lt.${encodeURIComponent(new Date().toISOString())}&usuarios_biblioteca.escola_id=eq.${profile.escola_id}`,
@@ -3372,7 +3372,41 @@ const routes: Record<string, RouteHandler> = {
         env,
         `/rest/v1/solicitacoes_emprestimo?select=id,usuarios_biblioteca!inner(escola_id)&status=in.(pendente,em_andamento)&usuarios_biblioteca.escola_id=eq.${profile.escola_id}`,
       ),
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/notificacoes_lidas?${new URLSearchParams({
+          select: 'notification_id',
+          usuario_id: `eq.${profile.id}`,
+        }).toString()}`,
+      ),
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
+          select: 'id,status,updated_at,created_at,livros(titulo),usuarios_biblioteca!inner(nome,escola_id),solicitacoes_emprestimo_mensagens(id,mensagem,autor_tipo,created_at)',
+          order: 'updated_at.desc',
+          'usuarios_biblioteca.escola_id': `eq.${profile.escola_id}`,
+          limit: '30',
+        }).toString()}`,
+      ),
     ]);
+
+    const lidas = new Set((Array.isArray(notificacoesLidas) ? notificacoesLidas : []).map((item) => item.notification_id));
+    const chatNotifications = (Array.isArray(solicitacoesChat) ? solicitacoesChat : [])
+      .flatMap((item) => {
+        const mensagens = Array.isArray(item?.solicitacoes_emprestimo_mensagens) ? item.solicitacoes_emprestimo_mensagens : [];
+        return mensagens
+          .filter((mensagem) => String(mensagem?.autor_tipo || '').toLowerCase() === 'aluno')
+          .map((mensagem) => ({
+            id: `solicitacao-chat-${item.id}-${mensagem.id}`,
+            tipo: 'solicitacao_chat',
+            titulo: 'Nova mensagem em solicitação de empréstimo',
+            descricao: `${item?.usuarios_biblioteca?.nome || 'Aluno'} enviou uma mensagem sobre ${item?.livros?.titulo || 'um livro'}.`,
+            created_at: mensagem?.created_at || item?.updated_at || item?.created_at || null,
+            path: '/emprestimos?tab=solicitacoes',
+          }));
+      })
+      .filter((item) => !lidas.has(item.id))
+      .sort((a, b) => new Date(String(b.created_at || 0)).getTime() - new Date(String(a.created_at || 0)).getTime());
 
     return jsonResponse({
       success: true,
@@ -3384,7 +3418,7 @@ const routes: Record<string, RouteHandler> = {
         reclamacoesAtrasadas: 0,
         seguranca: 0,
       },
-      notifications: [],
+      notifications: chatNotifications,
       profileId: profile.id,
     });
   },
