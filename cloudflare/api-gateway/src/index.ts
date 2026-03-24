@@ -486,6 +486,184 @@ async function findAuthUserByEmail(env: Env, email: string) {
   }
 }
 
+async function listAllAuthUsers(env: Env) {
+  const users: Array<Record<string, unknown>> = [];
+  let page = 1;
+  const perPage = 1000;
+
+  while (true) {
+    const payload = await supabaseAdminAuthRequest(
+      env,
+      `/users?${new URLSearchParams({
+        page: String(page),
+        per_page: String(perPage),
+      }).toString()}`,
+    );
+
+    const pageUsers = Array.isArray(payload?.users) ? payload.users : [];
+    users.push(...pageUsers);
+
+    if (pageUsers.length < perPage) break;
+    page += 1;
+  }
+
+  return users;
+}
+
+function uniqueStrings(values: unknown[]) {
+  return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))];
+}
+
+async function buildGhostAccounts(env: Env) {
+  const [authUsersPayload, profilesPayload, rolesPayload, schoolsPayload] = await Promise.all([
+    listAllAuthUsers(env),
+    supabaseAdminRequest(
+      env,
+      `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+        select: 'id,user_id,escola_id,nome,email,tipo,cpf,matricula,created_at,updated_at',
+        order: 'updated_at.desc.nullslast,created_at.desc',
+      }).toString()}`,
+    ),
+    supabaseAdminRequest(
+      env,
+      `/rest/v1/user_roles?${new URLSearchParams({
+        select: 'user_id,role',
+      }).toString()}`,
+    ),
+    supabaseAdminRequest(
+      env,
+      `/rest/v1/escolas?${new URLSearchParams({
+        select: 'id,nome',
+        order: 'nome.asc',
+      }).toString()}`,
+    ),
+  ]);
+
+  const authUsers = Array.isArray(authUsersPayload) ? authUsersPayload : [];
+  const profiles = Array.isArray(profilesPayload) ? profilesPayload : [];
+  const roles = Array.isArray(rolesPayload) ? rolesPayload : [];
+  const schools = Array.isArray(schoolsPayload) ? schoolsPayload : [];
+
+  const authUserById = new Map<string, Record<string, unknown>>();
+  authUsers.forEach((user) => {
+    const userId = String(user?.id || '').trim();
+    if (userId) authUserById.set(userId, user);
+  });
+
+  const profilesByUserId = new Map<string, Array<Record<string, unknown>>>();
+  profiles.forEach((profile) => {
+    const userId = String(profile?.user_id || '').trim();
+    if (!userId) return;
+    const bucket = profilesByUserId.get(userId) || [];
+    bucket.push(profile);
+    profilesByUserId.set(userId, bucket);
+  });
+
+  const rolesByUserId = new Map<string, Set<string>>();
+  roles.forEach((roleItem) => {
+    const userId = String(roleItem?.user_id || '').trim();
+    const role = String(roleItem?.role || '').trim();
+    if (!userId || !role) return;
+    const bucket = rolesByUserId.get(userId) || new Set<string>();
+    bucket.add(role);
+    rolesByUserId.set(userId, bucket);
+  });
+
+  const schoolNameById = new Map<string, string>();
+  schools.forEach((school) => {
+    const schoolId = String(school?.id || '').trim();
+    if (!schoolId) return;
+    schoolNameById.set(schoolId, String(school?.nome || '').trim());
+  });
+
+  const ghosts: Array<Record<string, unknown>> = [];
+
+  authUsers.forEach((authUser) => {
+    const userId = String(authUser?.id || '').trim();
+    if (!userId) return;
+
+    const profileList = profilesByUserId.get(userId) || [];
+    const roleList = [...(rolesByUserId.get(userId) || new Set<string>())];
+    const schoolIds = uniqueStrings(profileList.map((profile) => profile?.escola_id));
+    const issues: string[] = [];
+
+    if (profileList.length === 0) issues.push('Sem perfil em usuarios_biblioteca');
+    if (roleList.length === 0) issues.push('Sem role em user_roles');
+    if (profileList.length > 1) issues.push('Multiplos perfis para a mesma conta');
+    if (schoolIds.length > 1) issues.push('Vinculada a mais de uma escola');
+    if (profileList.some((profile) => !String(profile?.escola_id || '').trim())) issues.push('Perfil sem escola');
+
+    if (issues.length === 0) return;
+
+    const primaryProfile = profileList[0] || null;
+    const schoolId = String(primaryProfile?.escola_id || schoolIds[0] || '').trim();
+
+    ghosts.push({
+      ghost_key: `auth:${userId}`,
+      source: 'auth',
+      user_id: userId,
+      profile_id: String(primaryProfile?.id || '').trim() || null,
+      nome: String(primaryProfile?.nome || pickAuthName(authUser) || '').trim() || 'Conta sem nome',
+      login: String(authUser?.email || primaryProfile?.email || '').trim() || null,
+      tipo: String(primaryProfile?.tipo || roleList[0] || '').trim() || null,
+      cpf: String(primaryProfile?.cpf || '').trim() || null,
+      matricula: String(primaryProfile?.matricula || '').trim() || null,
+      escola_id: schoolId || null,
+      escola_nome: schoolId ? schoolNameById.get(schoolId) || null : null,
+      issues,
+      created_at: authUser?.created_at || primaryProfile?.created_at || null,
+    });
+  });
+
+  profiles.forEach((profile) => {
+    const profileId = String(profile?.id || '').trim();
+    const userId = String(profile?.user_id || '').trim();
+    if (!profileId) return;
+
+    const issues: string[] = [];
+
+    if (!userId) {
+      issues.push('Perfil sem user_id');
+    } else if (!authUserById.has(userId)) {
+      issues.push('Perfil sem conta no Auth');
+    }
+
+    if (!String(profile?.escola_id || '').trim()) {
+      issues.push('Perfil sem escola');
+    }
+
+    if (issues.length === 0) return;
+
+    ghosts.push({
+      ghost_key: `profile:${profileId}`,
+      source: 'profile',
+      user_id: userId || null,
+      profile_id: profileId,
+      nome: String(profile?.nome || '').trim() || 'Perfil sem nome',
+      login: String(profile?.email || '').trim() || null,
+      tipo: String(profile?.tipo || '').trim() || null,
+      cpf: String(profile?.cpf || '').trim() || null,
+      matricula: String(profile?.matricula || '').trim() || null,
+      escola_id: String(profile?.escola_id || '').trim() || null,
+      escola_nome: schoolNameById.get(String(profile?.escola_id || '').trim()) || null,
+      issues,
+      created_at: profile?.created_at || null,
+    });
+  });
+
+  ghosts.sort((left, right) => {
+    const leftScore = Array.isArray(left?.issues) ? left.issues.length : 0;
+    const rightScore = Array.isArray(right?.issues) ? right.issues.length : 0;
+    if (rightScore !== leftScore) return rightScore - leftScore;
+
+    const leftCreated = String(left?.created_at || '');
+    const rightCreated = String(right?.created_at || '');
+    return rightCreated.localeCompare(leftCreated);
+  });
+
+  return ghosts;
+}
+
 async function resolveSuperAdminMatch(identifier: string, env: Env) {
   const normalized = normalizeIdentifier(identifier);
   const digits = normalizeDigits(identifier);
@@ -3917,7 +4095,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Sem permissao para acessar tenants.' }, 403);
     }
 
-    const [tenants, schools] = await Promise.all([
+    const [tenants, schools, ghostAccounts] = await Promise.all([
       supabaseAdminRequest(
         env,
         `/rest/v1/tenants?${new URLSearchParams({
@@ -3932,6 +4110,7 @@ const routes: Record<string, RouteHandler> = {
           order: 'nome.asc',
         }).toString()}`,
       ),
+      buildGhostAccounts(env),
     ]);
 
     const tenantItems = Array.isArray(tenants) ? tenants : [];
@@ -3942,6 +4121,7 @@ const routes: Record<string, RouteHandler> = {
       success: true,
       tenants: tenantItems,
       schoolsWithoutTenant: schoolItems.filter((school) => !schoolIdsWithTenant.has(school.id)),
+      ghostAccounts: Array.isArray(ghostAccounts) ? ghostAccounts : [],
     });
   },
   'POST /v1/admin/tenants': async (request, env) => {
@@ -4548,6 +4728,45 @@ const routes: Record<string, RouteHandler> = {
       deleted_auth_only_count: Math.max(userIdsToDelete.length - foundProfiles.filter((profile) => profile.user_id).length, 0),
       deleted_ids: foundProfiles.map((profile) => profile.id),
       deleted_user_ids: [...new Set(userIdsToDelete)],
+    });
+  },
+  'POST /v1/admin/ghost-accounts/delete': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const allowed = await isSuperAdmin(user.id, env);
+    if (!allowed) {
+      return jsonResponse({ success: false, error: 'Sem permissao para excluir contas fantasmas.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const profileId = String(body?.profile_id || '').trim();
+    const userId = String(body?.user_id || '').trim();
+    const escolaId = String(body?.escola_id || '').trim();
+
+    if (!profileId && !userId) {
+      return jsonResponse({ success: false, error: 'Informe a conta fantasma a ser excluida.' }, 400);
+    }
+
+    if (userId && userId === user.id) {
+      return jsonResponse({ success: false, error: 'Voce nao pode excluir a propria conta por esta tela.' }, 400);
+    }
+
+    const payload = await callSupabaseFunction(request, env, 'excluir-usuarios-biblioteca', {
+      ...(profileId ? { id: profileId } : {}),
+      ...(userId ? { user_id: userId } : {}),
+      ...(escolaId ? { escola_id: escolaId } : {}),
+    });
+
+    return jsonResponse({
+      success: true,
+      deleted_count: Number(payload?.deleted_count || 0),
+      deleted_auth_only_count: Number(payload?.deleted_auth_only_count || 0),
+      deleted_ids: Array.isArray(payload?.deleted_ids) ? payload.deleted_ids : [],
+      deleted_user_ids: Array.isArray(payload?.deleted_user_ids) ? payload.deleted_user_ids : [],
+      missing_ids: Array.isArray(payload?.missing_ids) ? payload.missing_ids : [],
     });
   },
 

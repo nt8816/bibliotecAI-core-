@@ -16,6 +16,7 @@ import { requestPlatformApi } from '@/lib/platformApi';
 import { uploadDataUrlToR2 } from '@/lib/r2Storage';
 import {
   createAdminAudiobook,
+  deleteAdminGhostAccount,
   createAdminTenantInvite,
   deleteAdminTenantGestor,
   deleteAdminOrphanSchool,
@@ -60,6 +61,7 @@ export default function AdminTenants() {
 
   const [tenants, setTenants] = useState([]);
   const [escolasSemTenant, setEscolasSemTenant] = useState([]);
+  const [ghostAccounts, setGhostAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [creatingInviteTenantId, setCreatingInviteTenantId] = useState(null);
@@ -78,6 +80,8 @@ export default function AdminTenants() {
   const [tenantPendingDelete, setTenantPendingDelete] = useState(null);
   const [deletingEscolaId, setDeletingEscolaId] = useState(null);
   const [escolaSemTenantPendingDelete, setEscolaSemTenantPendingDelete] = useState(null);
+  const [ghostPendingDelete, setGhostPendingDelete] = useState(null);
+  const [deletingGhostKey, setDeletingGhostKey] = useState(null);
   const [lastResetPassword, setLastResetPassword] = useState(null);
   const [latestInvite, setLatestInvite] = useState(null);
   const [massTenantId, setMassTenantId] = useState('');
@@ -113,11 +117,12 @@ export default function AdminTenants() {
       const payload = await fetchAdminTenantsDashboard();
       setTenants(payload.tenants || []);
       setEscolasSemTenant(payload.schoolsWithoutTenant || []);
+      setGhostAccounts(payload.ghostAccounts || []);
     } catch (error) {
       console.error(error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível carregar os tenants.',
+        description: 'Não foi possível carregar os dados administrativos.',
         variant: 'destructive',
       });
     } finally {
@@ -448,6 +453,40 @@ export default function AdminTenants() {
       });
     } finally {
       setDeletingEscolaId(null);
+    }
+  };
+
+  const deleteGhost = async () => {
+    const ghost = ghostPendingDelete;
+    if (!ghost?.ghost_key) return;
+
+    setDeletingGhostKey(ghost.ghost_key);
+    try {
+      const data = await deleteAdminGhostAccount({
+        profile_id: ghost.profile_id || null,
+        user_id: ghost.user_id || null,
+        escola_id: ghost.escola_id || null,
+      });
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Não foi possível excluir a conta fantasma.');
+      }
+
+      setGhostAccounts((prev) => prev.filter((item) => item.ghost_key !== ghost.ghost_key));
+      setGhostPendingDelete(null);
+
+      toast({
+        title: 'Conta fantasma excluída',
+        description: 'A conta foi removida do Auth e do banco de dados.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Falha ao excluir conta fantasma',
+        description: error?.message || 'Erro inesperado',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingGhostKey(null);
     }
   };
 
@@ -822,6 +861,84 @@ export default function AdminTenants() {
 
         <Card>
           <CardHeader>
+            <CardTitle>Contas fantasmas</CardTitle>
+            <CardDescription>
+              Contas com inconsistência entre autenticação, perfil no banco, permissões ou vínculo com escola. Ao apagar por aqui,
+              a remoção também é aplicada no banco de dados.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {ghostAccounts.length === 0 ? (
+              <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
+                Nenhuma conta fantasma foi encontrada no momento.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Login</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Escola</TableHead>
+                      <TableHead>Problemas</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {ghostAccounts.map((ghost) => (
+                      <TableRow key={ghost.ghost_key}>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{ghost.nome || 'Conta sem nome'}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {ghost.source === 'auth' ? 'Origem: Auth' : 'Origem: Perfil'}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <p>{ghost.login || ghost.cpf || ghost.matricula || '-'}</p>
+                            {(ghost.cpf || ghost.matricula) && (
+                              <p className="text-xs text-muted-foreground">
+                                {[ghost.cpf ? `CPF ${ghost.cpf}` : null, ghost.matricula ? `Matrícula ${ghost.matricula}` : null]
+                                  .filter(Boolean)
+                                  .join(' • ')}
+                              </p>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{ghost.tipo || '-'}</TableCell>
+                        <TableCell>{ghost.escola_nome || 'Sem escola'}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-2">
+                            {(Array.isArray(ghost.issues) ? ghost.issues : []).map((issue) => (
+                              <Badge key={`${ghost.ghost_key}-${issue}`} variant="secondary">{issue}</Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => setGhostPendingDelete(ghost)}
+                            disabled={deletingGhostKey === ghost.ghost_key}
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            {deletingGhostKey === ghost.ghost_key ? 'Excluindo...' : 'Apagar'}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Volume2 className="w-5 h-5" />
               Geração em Massa de Áudios
@@ -961,6 +1078,33 @@ export default function AdminTenants() {
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 {deletingEscolaId ? 'Excluindo...' : 'Apagar definitivamente'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={Boolean(ghostPendingDelete)}
+          onOpenChange={(open) => {
+            if (!open && !deletingGhostKey) setGhostPendingDelete(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Apagar conta fantasma permanentemente?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta ação remove a conta <strong>{ghostPendingDelete?.nome || '-'}</strong> da autenticação e também limpa o
+                banco de dados quando houver perfil vinculado. Use isso para eliminar cadastros órfãos e destravar novos convites.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={Boolean(deletingGhostKey)}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={deleteGhost}
+                disabled={Boolean(deletingGhostKey)}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deletingGhostKey ? 'Excluindo...' : 'Apagar conta'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

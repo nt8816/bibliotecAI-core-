@@ -5,6 +5,7 @@ export async function fetchAdminTenantsDashboard() {
   return {
     tenants: Array.isArray(payload?.tenants) ? payload.tenants : [],
     schoolsWithoutTenant: Array.isArray(payload?.schoolsWithoutTenant) ? payload.schoolsWithoutTenant : [],
+    ghostAccounts: Array.isArray(payload?.ghostAccounts) ? payload.ghostAccounts : [],
   };
 }
 
@@ -58,6 +59,13 @@ export async function resetAdminTenantGestorPassword(escolaId, gestorId, novaSen
 
 export async function deleteAdminTenantGestor(payload) {
   return requestPlatformApi('/v1/admin/gestores/delete', {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export async function deleteAdminGhostAccount(payload) {
+  return requestPlatformApi('/v1/admin/ghost-accounts/delete', {
     method: 'POST',
     body: payload,
   });
