@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+﻿import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -127,7 +127,7 @@ export default function Emprestimos() {
       setUsuarios(Array.isArray(payload?.usuarios) ? payload.usuarios : []);
       setSolicitacoes(Array.isArray(payload?.solicitacoes) ? payload.solicitacoes : []);
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N??o foi poss??vel carregar os dados.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'NÃ£o foi possÃ­vel carregar os dados.' });
     } finally {
       setLoading(false);
     }
@@ -157,7 +157,7 @@ export default function Emprestimos() {
 
   const handleCreateEmprestimo = async () => {
     if (!selectedLivro || !selectedUsuario) {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Selecione um livro e um usu??rio.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'Selecione um livro e um usuÃ¡rio.' });
       return;
     }
     setSaving(true);
@@ -170,7 +170,7 @@ export default function Emprestimos() {
         insertData.data_devolucao_prevista = dataDevolucao.toISOString();
       }
       await createEmprestimo(insertData);
-      toast({ title: 'Sucesso', description: 'Empr??stimo registrado com sucesso.' });
+      toast({ title: 'Sucesso', description: 'EmprÃ©stimo registrado com sucesso.' });
       trackEvent('emprestimo_criado', { livroId: selectedLivro, usuarioId: selectedUsuario });
       setIsDialogOpen(false);
       setSelectedLivro('');
@@ -180,7 +180,7 @@ export default function Emprestimos() {
       setSearchLivro('');
       fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N??o foi poss??vel registrar o empr??stimo.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'NÃ£o foi possÃ­vel registrar o emprÃ©stimo.' });
     } finally {
       setSaving(false);
     }
@@ -190,11 +190,11 @@ export default function Emprestimos() {
     setActionLoading({ devolucaoId: emprestimo.id, solicitacaoId: null, tipo: 'devolucao' });
     try {
       await registerEmprestimoDevolucao(emprestimo.id);
-      toast({ title: 'Sucesso', description: 'Devolu????o registrada com sucesso.' });
+      toast({ title: 'Sucesso', description: 'DevoluÃ§Ã£o registrada com sucesso.' });
       trackEvent('emprestimo_devolvido', { id: emprestimo.id });
       fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N??o foi poss??vel registrar a devolu????o.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'NÃ£o foi possÃ­vel registrar a devoluÃ§Ã£o.' });
     } finally {
       setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
     }
@@ -206,16 +206,16 @@ export default function Emprestimos() {
     setActionLoading({ devolucaoId: null, solicitacaoId: solicitacao.id, tipo: 'aprovar' });
     try {
       if (solicitacao?.livros?.disponivel === false && solicitacao.status !== 'indisponivel_em_analise') {
-        throw new Error('Este livro n??o est?? dispon??vel para empr??stimo no momento.');
+        throw new Error('Este livro nÃ£o estÃ¡ disponÃ­vel para emprÃ©stimo no momento.');
       }
-      const resposta = (respostaPorSolicitacao[solicitacao.id] || '').trim() || 'Solicita????o aprovada pela biblioteca.';
+      const resposta = (respostaPorSolicitacao[solicitacao.id] || '').trim() || 'SolicitaÃ§Ã£o aprovada pela biblioteca.';
       await approveSolicitacaoEmprestimo(solicitacao.id, resposta);
-      toast({ title: 'Solicita????o aprovada', description: 'Empr??stimo criado e aluno notificado.' });
+      toast({ title: 'SolicitaÃ§Ã£o aprovada', description: 'EmprÃ©stimo criado e aluno notificado.' });
       trackEvent('solicitacao_aprovada', { id: solicitacao.id });
       setRespostaPorSolicitacao((prev) => ({ ...prev, [solicitacao.id]: '' }));
       fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N??o foi poss??vel aprovar a solicita????o.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'NÃ£o foi possÃ­vel aprovar a solicitaÃ§Ã£o.' });
     } finally {
       setSaving(false);
       setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
@@ -227,14 +227,14 @@ export default function Emprestimos() {
     setSaving(true);
     setActionLoading({ devolucaoId: null, solicitacaoId: solicitacao.id, tipo: 'recusar' });
     try {
-      const resposta = (respostaPorSolicitacao[solicitacao.id] || '').trim() || 'Solicita????o recusada pela biblioteca.';
+      const resposta = (respostaPorSolicitacao[solicitacao.id] || '').trim() || 'SolicitaÃ§Ã£o recusada pela biblioteca.';
       await rejectSolicitacaoEmprestimo(solicitacao.id, resposta);
-      toast({ title: 'Solicita????o recusada' });
+      toast({ title: 'SolicitaÃ§Ã£o recusada' });
       trackEvent('solicitacao_recusada', { id: solicitacao.id });
       setRespostaPorSolicitacao((prev) => ({ ...prev, [solicitacao.id]: '' }));
       fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N??o foi poss??vel recusar a solicita????o.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'NÃ£o foi possÃ­vel recusar a solicitaÃ§Ã£o.' });
     } finally {
       setSaving(false);
       setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
@@ -249,8 +249,8 @@ export default function Emprestimos() {
       const resposta = (respostaPorSolicitacao[solicitacao.id] || '').trim() || 'Livro marcado como indisponivel e em analise pela biblioteca.';
       await markSolicitacaoLivroIndisponivel(solicitacao.id, resposta);
       toast({
-        title: 'Livro marcado como indisponÃ­vel',
-        description: 'O livro foi reservado no acervo para anÃ¡lise da biblioteca.',
+        title: 'Livro marcado como indisponível',
+        description: 'O livro foi reservado no acervo para análise da biblioteca.',
       });
       trackEvent('solicitacao_livro_indisponivel', { id: solicitacao.id });
       setRespostaPorSolicitacao((prev) => ({ ...prev, [solicitacao.id]: '' }));
@@ -259,7 +259,7 @@ export default function Emprestimos() {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: error?.message || 'NÃ£o foi possÃ­vel marcar o livro como indisponÃ­vel.',
+        description: error?.message || 'Não foi possível marcar o livro como indisponível.',
       });
     } finally {
       setSaving(false);
@@ -282,16 +282,16 @@ export default function Emprestimos() {
     if (!oldLoanLivro || !oldLoanUsuario || !oldLoanDataEmprestimo) {
       toast({
         variant: 'destructive',
-        title: 'Campos obrigat??rios',
-        description: 'Selecione o aluno, o livro e a data do empr??stimo.',
+        title: 'Campos obrigatórios',
+        description: 'Selecione o aluno, o livro e a data do empréstimo.',
       });
       return;
     }
     if (oldLoanStatus === 'devolvido' && !oldLoanDataDevolucao) {
       toast({
         variant: 'destructive',
-        title: 'Data obrigat??ria',
-        description: 'Informe a data de devolu????o para registrar um empr??stimo j?? devolvido.',
+        title: 'Data obrigatória',
+        description: 'Informe a data de devolução para registrar um empréstimo já devolvido.',
       });
       return;
     }
@@ -300,24 +300,24 @@ export default function Emprestimos() {
     if (effectiveOldLoanDataPrevista && effectiveOldLoanDataPrevista < oldLoanDataEmprestimo) {
       toast({
         variant: 'destructive',
-        title: 'Per??odo inv??lido',
-        description: 'A devolução prevista não pode ser anterior à data do empréstimo.',
+        title: 'Período inválido',
+        description: 'A devoluÃ§Ã£o prevista nÃ£o pode ser anterior Ã  data do emprÃ©stimo.',
       });
       return;
     }
     if (effectiveOldLoanDataPrevista && effectiveOldLoanDataPrevista > defaultOldLoanDataPrevista) {
       toast({
         variant: 'destructive',
-        title: 'Prazo inv??lido',
-        description: 'A devolu????o prevista pode ser de no m??ximo 1 m??s ap??s a data do empr??stimo.',
+        title: 'Prazo inválido',
+        description: 'A devolução prevista pode ser de no máximo 1 mês após a data do empréstimo.',
       });
       return;
     }
     if (oldLoanDataDevolucao && oldLoanDataDevolucao < oldLoanDataEmprestimo) {
       toast({
         variant: 'destructive',
-        title: 'Per??odo inv??lido',
-        description: 'A devolu????o real n??o pode ser anterior ?? data do empr??stimo.',
+        title: 'Período inválido',
+        description: 'A devolução real não pode ser anterior à data do empréstimo.',
       });
       return;
     }
@@ -325,8 +325,8 @@ export default function Emprestimos() {
     if (oldLoanStatus === 'ativo' && livroSelecionado && !livroSelecionado.disponivel) {
       toast({
         variant: 'destructive',
-        title: 'Livro indispon??vel',
-        description: 'Esse livro j?? est?? marcado como indispon??vel no acervo atual.',
+        title: 'Livro indisponível',
+        description: 'Esse livro já está marcado como indisponível no acervo atual.',
       });
       return;
     }
@@ -342,8 +342,8 @@ export default function Emprestimos() {
       };
       await createHistoricEmprestimo(insertData);
       toast({
-        title: 'Empr??stimo antigo registrado',
-        description: 'O hist??rico foi salvo com sucesso.',
+        title: 'Empréstimo antigo registrado',
+        description: 'O histórico foi salvo com sucesso.',
       });
       setIsOldLoanDialogOpen(false);
       resetOldLoanForm();
@@ -352,7 +352,7 @@ export default function Emprestimos() {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: error?.message || 'N??o foi poss??vel registrar este empr??stimo antigo.',
+        description: error?.message || 'Não foi possível registrar este empréstimo antigo.',
       });
     } finally {
       setSaving(false);
@@ -364,11 +364,11 @@ export default function Emprestimos() {
     setActionLoading({ devolucaoId: null, solicitacaoId: emprestimo.id, tipo: 'excluir_historico' });
     try {
       await deleteHistoricEmprestimo(emprestimo.id);
-      toast({ title: 'Hist??rico exclu??do', description: 'O registro foi removido com sucesso.' });
+      toast({ title: 'Histórico excluído', description: 'O registro foi removido com sucesso.' });
       setDeleteConfirmEmprestimo(null);
       fetchData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N??o foi poss??vel excluir este empr??stimo.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível excluir este empréstimo.' });
     } finally {
       setActionLoading({ devolucaoId: null, solicitacaoId: null, tipo: null });
     }
@@ -418,7 +418,7 @@ export default function Emprestimos() {
     doc.setTextColor(100);
     doc.text(`${periodLabel} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
 
-    const headers = ['Livro', 'Usuário', 'Empréstimo', 'Prev. Devolução', 'Status'];
+    const headers = ['Livro', 'Usuário', 'EmprÃ©stimo', 'Prev. DevoluÃ§Ã£o', 'Status'];
     const data = emprestimosSelecionados.map((e) => [
       e.livros?.titulo || '-',
       e.usuarios_biblioteca?.nome || '-',
@@ -476,8 +476,8 @@ export default function Emprestimos() {
   const getStatusSolicitacaoBadge = (status) => {
     if (status === 'aprovada') return <Badge>Aprovada</Badge>;
     if (status === 'recusada') return <Badge variant="destructive">Recusada</Badge>;
-    if (status === 'indisponivel_em_analise') return <Badge variant="outline">Sob AnÃ¡lise</Badge>;
-    if (status === 'indisponivel_em_analise') return <Badge variant="outline">IndisponÃ­vel em anÃ¡lise</Badge>;
+    if (status === 'indisponivel_em_analise') return <Badge variant="outline">Sob Análise</Badge>;
+    if (status === 'indisponivel_em_analise') return <Badge variant="outline">Indisponível em análise</Badge>;
     return <Badge variant="secondary">Pendente</Badge>;
   };
 
@@ -560,7 +560,7 @@ export default function Emprestimos() {
                 ) : (
                   <AlertTriangle className="w-4 h-4 mr-2" />
                 )}
-                {livroDisponivel ? 'Marcar indisponÃ­vel' : 'JÃ¡ indisponÃ­vel'}
+                {livroDisponivel ? 'Marcar indisponível' : 'Já indisponível'}
               </Button>
               <Button
                 variant="outline"
@@ -670,13 +670,13 @@ export default function Emprestimos() {
               <p className="text-right truncate">{emprestimo.usuarios_biblioteca?.nome || '-'}</p>
               <p className="text-muted-foreground">E-mail</p>
               <p className="text-right truncate">{getVisibleEmail(emprestimo.usuarios_biblioteca?.nome, emprestimo.usuarios_biblioteca?.email)}</p>
-              <p className="text-muted-foreground">Empréstimo</p>
+              <p className="text-muted-foreground">EmprÃ©stimo</p>
               <p className="text-right">{formatDateBR(emprestimo.data_emprestimo)}</p>
               <p className="text-muted-foreground">Devolução prevista</p>
               <p className="text-right">{formatDateBR(emprestimo.data_devolucao_prevista)}</p>
               {!showDevolucao && (
                 <>
-                  <p className="text-muted-foreground">Devolução real</p>
+                  <p className="text-muted-foreground">DevoluÃ§Ã£o real</p>
                   <p className="text-right">{emprestimo.data_devolucao_real ? formatDateBR(emprestimo.data_devolucao_real) : '-'}</p>
                 </>
               )}
@@ -708,7 +708,7 @@ export default function Emprestimos() {
                     ) : (
                       <Trash2 className="w-4 h-4 mr-2" />
                     )}
-                    Excluir histórico
+                    Excluir histÃ³rico
                   </Button>
                 )}
               </>
@@ -779,9 +779,9 @@ export default function Emprestimos() {
               <p className="text-right truncate">{emprestimo.usuarios_biblioteca?.nome || '-'}</p>
               <p className="text-muted-foreground">E-mail</p>
               <p className="text-right truncate">{getVisibleEmail(emprestimo.usuarios_biblioteca?.nome, emprestimo.usuarios_biblioteca?.email)}</p>
-              <p className="text-muted-foreground">Empréstimo</p>
+              <p className="text-muted-foreground">EmprÃ©stimo</p>
               <p className="text-right">{formatDateBR(emprestimo.data_emprestimo)}</p>
-              <p className="text-muted-foreground">Devolução real</p>
+              <p className="text-muted-foreground">DevoluÃ§Ã£o real</p>
               <p className="text-right">{emprestimo.data_devolucao_real ? formatDateBR(emprestimo.data_devolucao_real) : '-'}</p>
             </div>
 
@@ -797,7 +797,7 @@ export default function Emprestimos() {
               ) : (
                 <Trash2 className="w-4 h-4 mr-2" />
               )}
-              Excluir histórico
+              Excluir histÃ³rico
             </Button>
           </div>
         ))}
@@ -990,7 +990,7 @@ export default function Emprestimos() {
                         ) : searchLivro.length >= 2 ? (
                           <div className="max-h-40 overflow-y-auto border rounded-md">
                             {filteredLivrosDialog.length === 0 ? (
-                              <p className="text-sm text-muted-foreground p-3">Nenhum livro disponível encontrado</p>
+                              <p className="text-sm text-muted-foreground p-3">Nenhum livro disponÃ­vel encontrado</p>
                             ) : (
                               filteredLivrosDialog.slice(0, 10).map((l) => (
                                 <button
@@ -1132,7 +1132,7 @@ export default function Emprestimos() {
                         <div className="relative">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                           <Input
-                            placeholder={oldLoanStatus === 'ativo' ? 'Pesquisar livro disponível...' : 'Pesquisar livro...'}
+                            placeholder={oldLoanStatus === 'ativo' ? 'Pesquisar livro disponÃ­vel...' : 'Pesquisar livro...'}
                             className="pl-9"
                             value={oldSearchLivro}
                             onChange={(e) => {
@@ -1153,7 +1153,7 @@ export default function Emprestimos() {
                           <div className="max-h-40 overflow-y-auto rounded-md border">
                             {filteredOldLivrosDialog.length === 0 ? (
                               <p className="p-3 text-sm text-muted-foreground">
-                                {oldLoanStatus === 'ativo' ? 'Nenhum livro disponível encontrado' : 'Nenhum livro encontrado'}
+                                {oldLoanStatus === 'ativo' ? 'Nenhum livro disponÃ­vel encontrado' : 'Nenhum livro encontrado'}
                               </p>
                             ) : (
                               filteredOldLivrosDialog.slice(0, 10).map((l) => (
@@ -1215,7 +1215,7 @@ export default function Emprestimos() {
 
                       <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground sm:col-span-2">
                         Registros marcados como <strong>{oldLoanStatus === 'ativo' ? 'ainda emprestados' : 'já devolvidos'}</strong>{' '}
-                        entram no histórico real do sistema. Livros ativos ficam indisponíveis no acervo atual.
+                        entram no histÃ³rico real do sistema. Livros ativos ficam indisponíveis no acervo atual.
                       </div>
                     </div>
 
@@ -1224,7 +1224,7 @@ export default function Emprestimos() {
                         Cancelar
                       </Button>
                       <Button onClick={handleCreateOldEmprestimo} disabled={saving} className="w-full sm:w-auto">
-                        {saving ? 'Salvando...' : 'Registrar no histórico'}
+                        {saving ? 'Salvando...' : 'Registrar no histÃ³rico'}
                       </Button>
                     </div>
                   </DialogContent>
@@ -1239,7 +1239,7 @@ export default function Emprestimos() {
             <p className="text-center text-muted-foreground py-8">Carregando...</p>
           ) : emprestimos.length === 0 && (!canManageLoans || solicitacoes.length === 0) ? (
             <div className="py-10 text-center space-y-3">
-              <p className="text-muted-foreground">Nenhum dado de empréstimo registrado</p>
+              <p className="text-muted-foreground">Nenhum dado de emprÃ©stimo registrado</p>
               {canManageLoans && (
                 <Button onClick={() => setIsDialogOpen(true)}>
                   <Plus className="w-4 h-4 mr-2" />
@@ -1365,7 +1365,7 @@ export default function Emprestimos() {
               {canManageLoans && (
                 <TabsContent value="recusadas">
                   {solicitacoesRecusadas.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8">Nenhuma solicitaÃ§Ã£o recusada.</p>
+                    <p className="text-center text-muted-foreground py-8">Nenhuma solicitação recusada.</p>
                   ) : (
                     <div className="space-y-3">
                       {solicitacoesRecusadas.map((solicitacao) =>
@@ -1399,8 +1399,8 @@ export default function Emprestimos() {
       <ExportPeriodDialog
         open={exportDialogOpen}
         onOpenChange={setExportDialogOpen}
-        title="Exportar empréstimos"
-        description="Escolha o período para exportar os dados de empréstimos."
+        title="Exportar emprÃ©stimos"
+        description="Escolha o perÃ­odo para exportar os dados de emprÃ©stimos."
         loading={exporting}
         onConfirm={handleConfirmExport}
       />
@@ -1452,3 +1452,4 @@ export default function Emprestimos() {
     </MainLayout>
   );
 }
+
