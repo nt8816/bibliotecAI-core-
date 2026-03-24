@@ -10,8 +10,11 @@ import {
   Building2,
   Clock,
   HardDrive,
+  MessageSquareWarning,
+  School,
   ShieldAlert,
   ShieldCheck,
+  ShieldUser,
   TrendingUp,
   Users,
 } from 'lucide-react';
@@ -87,6 +90,7 @@ function estimateArquivosBytes(arquivos) {
 export default function Dashboard() {
   const { userRole, isBibliotecaria } = useAuth();
   const navigate = useNavigate();
+  const isSuperAdmin = userRole === 'super_admin';
 
   const [stats, setStats] = useState({
     totalLivros: 0,
@@ -124,7 +128,7 @@ export default function Dashboard() {
       setLivrosMaisEmprestados(Array.isArray(payload?.livrosMaisEmprestados) ? payload.livrosMaisEmprestados : []);
       setEscolasCadastradas(Array.isArray(payload?.escolasCadastradas) ? payload.escolasCadastradas : []);
 
-      if (userRole === 'super_admin' && payload?.superAdminStats) {
+      if (isSuperAdmin && payload?.superAdminStats) {
         setSuperAdminStats(payload.superAdminStats);
       }
 
@@ -139,7 +143,7 @@ export default function Dashboard() {
     });
 
     return request;
-  }, [userRole]);
+  }, [isSuperAdmin, userRole]);
 
   useEffect(() => {
     fetchData();
@@ -281,6 +285,30 @@ export default function Dashboard() {
     },
   ];
 
+  const superAdminQuickActions = [
+    {
+      title: 'Gerenciar tenants',
+      description: 'Ativar, inativar, provisionar e revisar escolas com isolamento dedicado.',
+      action: '/admin/tenants',
+      actionLabel: 'Abrir tenants',
+      icon: School,
+    },
+    {
+      title: 'Contas Super Admin',
+      description: 'Criar contas, revisar bloqueios, passkeys pendentes e ultimos acessos.',
+      action: '/admin/super-admins',
+      actionLabel: 'Abrir Super Admins',
+      icon: ShieldUser,
+    },
+    {
+      title: 'Reclamacoes criticas',
+      description: 'Acompanhar filas, tempos de resposta e tratativas que exigem decisao global.',
+      action: '/reclamacoes',
+      actionLabel: 'Abrir reclamacoes',
+      icon: MessageSquareWarning,
+    },
+  ];
+
   const handleStatCardKeyDown = (event, path) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
@@ -291,37 +319,39 @@ export default function Dashboard() {
   return (
     <MainLayout title="Dashboard">
       <div className="space-y-6">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {statCards.map((card) => (
-            <Card
-              key={card.title}
-              className="stat-card cursor-pointer transition-shadow hover:shadow-md"
-              role="button"
-              tabIndex={0}
-              onClick={() => navigate(card.path)}
-              onKeyDown={(event) => handleStatCardKeyDown(event, card.path)}
-            >
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{card.title}</p>
-                    <p className="mt-1 text-3xl font-bold">{loading ? '...' : card.value}</p>
+        {!isSuperAdmin && (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {statCards.map((card) => (
+              <Card
+                key={card.title}
+                className="stat-card cursor-pointer transition-shadow hover:shadow-md"
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate(card.path)}
+                onKeyDown={(event) => handleStatCardKeyDown(event, card.path)}
+              >
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">{card.title}</p>
+                      <p className="mt-1 text-3xl font-bold">{loading ? '...' : card.value}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className={`flex h-12 w-12 items-center justify-center rounded-lg ${card.bgColor}`}
+                      onClick={() => navigate(card.path)}
+                      aria-label={`Abrir ${card.title}`}
+                    >
+                      <card.icon className={`h-6 w-6 ${card.color}`} />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    className={`flex h-12 w-12 items-center justify-center rounded-lg ${card.bgColor}`}
-                    onClick={() => navigate(card.path)}
-                    aria-label={`Abrir ${card.title}`}
-                  >
-                    <card.icon className={`h-6 w-6 ${card.color}`} />
-                  </button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
 
-        {userRole === 'super_admin' && (
+        {isSuperAdmin && (
           <div className="space-y-6">
             <Card className="border-primary/20 bg-gradient-to-r from-primary/5 via-background to-secondary/5">
               <CardHeader>
@@ -364,6 +394,27 @@ export default function Dashboard() {
                 </div>
               </CardContent>
             </Card>
+
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+              {superAdminQuickActions.map((item) => (
+                <Card key={item.title} className="border-border/70">
+                  <CardContent className="flex h-full flex-col justify-between gap-5 p-5">
+                    <div className="space-y-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <item.icon className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <p className="text-base font-semibold">{item.title}</p>
+                        <p className="mt-2 text-sm text-muted-foreground">{item.description}</p>
+                      </div>
+                    </div>
+                    <Button variant="outline" onClick={() => navigate(item.action)}>
+                      {item.actionLabel}
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
 
             <Card>
               <CardHeader>
@@ -514,43 +565,45 @@ export default function Dashboard() {
           </div>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Atividades recentes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <p className="text-muted-foreground">Carregando...</p>
-            ) : atividades.length === 0 ? (
-              <p className="text-muted-foreground">Nenhuma atividade recente</p>
-            ) : (
-              <div className="space-y-4">
-                {atividades.map((atividade) => (
-                  <div key={atividade.id} className="flex items-center gap-4 rounded-lg bg-muted/50 p-3">
-                    <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                        atividade.tipo === 'emprestimo' ? 'bg-primary/10' : 'bg-success/10'
-                      }`}
-                    >
-                      <BookMarked
-                        className={`h-5 w-5 ${atividade.tipo === 'emprestimo' ? 'text-primary' : 'text-success'}`}
-                      />
+        {!isSuperAdmin && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Atividades recentes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <p className="text-muted-foreground">Carregando...</p>
+              ) : atividades.length === 0 ? (
+                <p className="text-muted-foreground">Nenhuma atividade recente</p>
+              ) : (
+                <div className="space-y-4">
+                  {atividades.map((atividade) => (
+                    <div key={atividade.id} className="flex items-center gap-4 rounded-lg bg-muted/50 p-3">
+                      <div
+                        className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                          atividade.tipo === 'emprestimo' ? 'bg-primary/10' : 'bg-success/10'
+                        }`}
+                      >
+                        <BookMarked
+                          className={`h-5 w-5 ${atividade.tipo === 'emprestimo' ? 'text-primary' : 'text-success'}`}
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium">{atividade.descricao}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {format(new Date(atividade.data), "dd 'de' MMMM 'as' HH:mm", { locale: ptBR })}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <p className="font-medium">{atividade.descricao}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {format(new Date(atividade.data), "dd 'de' MMMM 'as' HH:mm", { locale: ptBR })}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </MainLayout>
   );
