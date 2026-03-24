@@ -15,10 +15,12 @@ import { generateAudioWithCloudflare } from '@/lib/cloudflareAiApi';
 import { requestPlatformApi } from '@/lib/platformApi';
 import { uploadDataUrlToR2 } from '@/lib/r2Storage';
 import {
+  createAdminAudiobook,
   createAdminTenantInvite,
   deleteAdminTenantGestor,
   deleteAdminOrphanSchool,
   deleteAdminTenantSchool,
+  fetchAdminTenantMassAudioSeed,
   fetchAdminTenantsDashboard,
   listAdminTenantGestores,
   provisionAdminTenant,
@@ -462,28 +464,13 @@ export default function AdminTenants() {
     setMassSummary(null);
 
     try {
-      const { data: livros, error: livrosError } = await supabase
-        .from('livros')
-        .select('id, titulo, autor, sinopse, escola_id')
-        .eq('escola_id', tenant.escola_id)
-        .order('titulo', { ascending: true })
-        .limit(limite);
-      if (livrosError) throw livrosError;
-
-      const acervo = livros || [];
+      const seed = await fetchAdminTenantMassAudioSeed(tenant.id, { limit: limite });
+      const acervo = Array.isArray(seed?.livros) ? seed.livros : [];
       if (acervo.length === 0) {
         toast({ title: 'Acervo vazio', description: 'Não há livros nessa escola para gerar áudio.' });
         return;
       }
-
-      const { data: autoresPost, error: autoresError } = await supabase
-        .from('usuarios_biblioteca')
-        .select('id')
-        .eq('escola_id', tenant.escola_id)
-        .order('created_at', { ascending: true })
-        .limit(1);
-      if (autoresError) throw autoresError;
-      const autorComunidadeId = autoresPost?.[0]?.id || null;
+      const autorComunidadeId = seed?.autorComunidadeId || null;
 
       const success = [];
       const failed = [];
@@ -515,19 +502,14 @@ export default function AdminTenants() {
             fileName: `${livro.titulo || 'audiobook'}.mp3`,
           });
 
-          const { data: audioCriado, error: insertAudioError } = await supabase
-            .from('audiobooks_biblioteca')
-            .insert({
+          const audioCriado = await createAdminAudiobook({
               livro_id: livro.id,
               escola_id: tenant.escola_id,
               titulo: `${livro.titulo} (Audiobook IA)`,
               autor: livro.autor || null,
               audio_url: uploadedAudio.publicUrl || uploadedAudio.objectKey,
               criado_por: autorComunidadeId,
-            })
-            .select('id')
-            .single();
-          if (insertAudioError) throw insertAudioError;
+            });
 
           if (autorComunidadeId) {
             const { error: postError } = await insertCommunityPostCompat({

@@ -13,7 +13,6 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { uploadFileToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrls } from '@/lib/resolveR2Media';
 import { createReclamacao, fetchReclamacoesFeed, markReclamacaoAsRead, updateReclamacao } from '@/services/reclamacoesService';
@@ -160,32 +159,12 @@ export default function Reclamacoes() {
 
     setSaving(true);
     try {
-      let senderProfileId = null;
-      let escolaId = null;
-      let senderNome = user?.user_metadata?.nome || user?.email || null;
-      let senderEmail = user?.email || null;
-
-      if (user?.id) {
-        const { data: currentProfile } = await supabase
-          .from('usuarios_biblioteca')
-          .select('id, escola_id, nome, email')
-          .eq('user_id', user.id)
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        senderProfileId = currentProfile?.id || null;
-        escolaId = currentProfile?.escola_id || null;
-        senderNome = currentProfile?.nome || senderNome;
-        senderEmail = currentProfile?.email || senderEmail;
-      }
-
       const imageUrls = await Promise.all(
         pendingImages.map(async (image) => {
           const upload = await uploadFileToR2({
             file: image.file,
-            escolaId: escolaId || 'sem-escola',
-            ownerId: senderProfileId || user?.id || 'anonimo',
+            escolaId: 'sem-escola',
+            ownerId: user?.id || 'anonimo',
             scope: 'reclamacoes',
           });
           return upload.objectKey;
@@ -194,11 +173,7 @@ export default function Reclamacoes() {
 
       await createReclamacao({
         sender_user_id: user?.id || null,
-        sender_profile_id: senderProfileId,
         sender_role: userRole,
-        sender_nome: senderNome,
-        sender_email: senderEmail,
-        escola_id: escolaId,
         assunto,
         mensagem,
         image_urls: imageUrls,

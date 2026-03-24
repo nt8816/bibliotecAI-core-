@@ -1,8 +1,5 @@
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-
 const DEFAULT_BASE_URL = 'https://api-bibliotecai.ntn3223.workers.dev';
 const API_BASE_URL = String(import.meta.env.VITE_BIBLIOTECA_AI_API_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
-const USE_PROXY = import.meta.env.VITE_BIBLIOTECA_AI_USE_PROXY === 'true';
 
 const ensureObject = (value) => (value && typeof value === 'object' ? value : {});
 
@@ -12,7 +9,7 @@ const SECRET_PATTERNS = [
   /token/i,
   /password/i,
   /senha/i,
-  /supabase/i,
+  /backend/i,
   /database/i,
   /connection\s*string/i,
   /postgres/i,
@@ -203,32 +200,6 @@ const extractJsonFromText = (text) => {
   return null;
 };
 
-const decorateAiError = (error, routeLabel) => {
-  const message = String(error?.message || '').trim();
-  if (!message) return new Error(`Falha na rota ${routeLabel}.`);
-  return new Error(`${message} [rota: ${routeLabel}]`);
-};
-
-const callTextEdgeFunction = async ({ task, input, prompt, fallbackErrorMessage }) =>
-  await invokeEdgeFunction('gerar-texto-ia', {
-    body: {
-      task,
-      input: {
-        ...ensureObject(input),
-        ...(prompt ? { prompt } : {}),
-      },
-    },
-    requireAuth: false,
-    fallbackErrorMessage,
-  });
-
-const callImageEdgeFunction = async ({ prompt, model, provider, parameters, fallbackErrorMessage }) =>
-  await invokeEdgeFunction('gerar-imagem-ia', {
-    body: { prompt, model, provider, parameters },
-    requireAuth: false,
-    fallbackErrorMessage,
-  });
-
 const callDirect = async (path, body, fallbackErrorMessage) => {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
@@ -241,46 +212,7 @@ const callDirect = async (path, body, fallbackErrorMessage) => {
   return parsed;
 };
 
-const callViaProxy = async (path, body, fallbackErrorMessage) => {
-  const response = await invokeEdgeFunction('cloudflare-ai-proxy', {
-    body: { path, body: body || {} },
-    requireAuth: false,
-    fallbackErrorMessage,
-  });
-
-  if (typeof response === 'string') return { kind: 'text', payload: response };
-
-  if (response instanceof Blob) {
-    const dataUrl = await blobToDataUrl(response);
-    const contentType = String(response.type || '').toLowerCase();
-    return { kind: 'binary', payload: { dataUrl, contentType } };
-  }
-
-  return { kind: 'json', payload: response || {} };
-};
-
-const callBibliotecaAi = async (path, body, fallbackErrorMessage) => {
-  const attempts = USE_PROXY
-    ? [
-        { label: 'proxy', fn: () => callViaProxy(path, body, fallbackErrorMessage) },
-        { label: 'direta', fn: () => callDirect(path, body, fallbackErrorMessage) },
-      ]
-    : [
-        { label: 'direta', fn: () => callDirect(path, body, fallbackErrorMessage) },
-        { label: 'proxy', fn: () => callViaProxy(path, body, fallbackErrorMessage) },
-      ];
-
-  const errors = [];
-  for (const attempt of attempts) {
-    try {
-      return await attempt.fn();
-    } catch (error) {
-      errors.push(decorateAiError(error, attempt.label).message);
-    }
-  }
-
-  throw new Error(errors.join(' | ') || fallbackErrorMessage);
-};
+const callBibliotecaAi = async (path, body, fallbackErrorMessage) => callDirect(path, body, fallbackErrorMessage);
 
 export const generateTextWithCloudflare = async ({
   task,
@@ -293,18 +225,7 @@ export const generateTextWithCloudflare = async ({
     throw new Error('Conteudo sensivel detectado. Pedido bloqueado.');
   }
 
-  let parsed;
-  try {
-    const edgePayload = await callTextEdgeFunction({
-      task,
-      input,
-      prompt: finalPrompt,
-      fallbackErrorMessage,
-    });
-    parsed = { kind: 'json', payload: edgePayload || {} };
-  } catch {
-    parsed = await callBibliotecaAi('/text', { prompt: finalPrompt }, fallbackErrorMessage);
-  }
+  const parsed = await callBibliotecaAi('/text', { prompt: finalPrompt }, fallbackErrorMessage);
 
   if (parsed.kind === 'text') {
     const text = String(parsed.payload || '').trim();
@@ -334,19 +255,7 @@ export const generateImageWithCloudflare = async ({
     throw new Error('Conteudo sensivel detectado. Pedido bloqueado.');
   }
 
-  let parsed;
-  try {
-    const edgePayload = await callImageEdgeFunction({
-      prompt: safePrompt,
-      model,
-      provider,
-      parameters,
-      fallbackErrorMessage,
-    });
-    parsed = { kind: 'json', payload: edgePayload || {} };
-  } catch {
-    parsed = await callBibliotecaAi('/image', { prompt: safePrompt, model, provider, parameters }, fallbackErrorMessage);
-  }
+  const parsed = await callBibliotecaAi('/image', { prompt: safePrompt, model, provider, parameters }, fallbackErrorMessage);
 
   if (parsed.kind === 'binary') {
     const imageDataUrl = String(parsed.payload?.dataUrl || '');

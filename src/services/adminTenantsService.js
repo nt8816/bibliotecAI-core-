@@ -62,3 +62,17 @@ export async function deleteAdminTenantGestor(payload) {
     body: payload,
   });
 }
+
+export async function fetchAdminTenantMassAudioSeed(tenantId, { limit = 8 } = {}) {
+  return requestPlatformApi(`/v1/admin/tenants/${tenantId}/mass-audio-seed`, {
+    method: 'POST',
+    body: { limit },
+  });
+}
+
+export async function createAdminAudiobook(payload) {
+  return requestPlatformApi('/v1/admin/audiobooks', {
+    method: 'POST',
+    body: payload,
+  });
+}

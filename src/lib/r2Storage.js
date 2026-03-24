@@ -1,5 +1,5 @@
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { getPlatformAccessToken } from '@/lib/platformSession';
+import { requestPlatformApi } from '@/lib/platformApi';
 
 function sanitizeFileName(fileName) {
   return String(fileName || 'arquivo')
@@ -42,19 +42,18 @@ export async function uploadFileToR2({ file, escolaId, ownerId, scope = 'arquivo
   });
   const accessToken = await getUserAccessToken();
 
-  const payload = await invokeEdgeFunction('r2-storage', {
+  const payload = await requestPlatformApi('/v1/media/r2-storage', {
+    method: 'POST',
     body: {
       operation: 'create_upload_url',
       objectKey,
       contentType: file.type || 'application/octet-stream',
       fileName: file.name,
     },
-    requireAuth: false,
     headers: {
       'x-user-access-token': accessToken,
     },
-    transport: 'http',
-    fallbackErrorMessage: 'Nao foi possivel iniciar o upload para o Cloudflare R2.',
+    auth: false,
   });
 
   let uploadResponse;
@@ -113,18 +112,17 @@ export async function getR2DownloadUrl(objectKey, fileName) {
   const accessToken = await getUserAccessToken();
   let payload;
   try {
-    payload = await invokeEdgeFunction('r2-storage', {
+    payload = await requestPlatformApi('/v1/media/r2-storage', {
+      method: 'POST',
       body: {
         operation: 'create_download_url',
         objectKey,
         fileName,
       },
-      requireAuth: false,
       headers: {
         'x-user-access-token': accessToken,
       },
-      transport: 'http',
-      fallbackErrorMessage: 'Nao foi possivel preparar o download do arquivo.',
+      auth: false,
     });
   } catch (error) {
     throw new Error(buildR2NetworkErrorMessage(error, 'preparar o download'));
@@ -136,17 +134,16 @@ export async function getR2DownloadUrl(objectKey, fileName) {
 export async function deleteR2Object(objectKey) {
   const accessToken = await getUserAccessToken();
   try {
-    await invokeEdgeFunction('r2-storage', {
+    await requestPlatformApi('/v1/media/r2-storage', {
+      method: 'POST',
       body: {
         operation: 'delete_object',
         objectKey,
       },
-      requireAuth: false,
       headers: {
         'x-user-access-token': accessToken,
       },
-      transport: 'http',
-      fallbackErrorMessage: 'Nao foi possivel excluir o arquivo do Cloudflare R2.',
+      auth: false,
     });
   } catch (error) {
     throw new Error(buildR2NetworkErrorMessage(error, 'excluir o arquivo'));

@@ -1,40 +1,16 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Search, Users, GraduationCap } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { GraduationCap, Search, Users } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
-import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
+import { fetchProfessorPainelData } from '@/services/professorService';
 
 const isTempLoginEmail = (value) => /@temp\.bibliotecai\.com$/i.test(String(value || '').trim());
 const getVisibleEmail = (nome, email) => (isTempLoginEmail(email) ? nome : (email || '-'));
-
-function ensureArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function normalizeTurmaKey(value) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function isMissingTableError(error) {
-  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
-  return (
-    error?.code === '42P01'
-    || error?.code === 'PGRST205'
-    || message.includes('could not find the table')
-    || message.includes('does not exist')
-  );
-}
 
 export default function MeusAlunos() {
   const { user } = useAuth();
@@ -51,54 +27,14 @@ export default function MeusAlunos() {
 
     setLoading(true);
     try {
-      const { data: professorProfiles, error: professorError } = await supabase
-        .from('usuarios_biblioteca')
-        .select('id, escola_id')
-        .eq('user_id', user.id)
-        .eq('tipo', 'professor')
-        .order('updated_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(10);
-
-      const professorData = ensureArray(professorProfiles)[0] || null;
-      const professorIds = ensureArray(professorProfiles).map((item) => item?.id).filter(Boolean);
-      if (professorError || !professorData) throw professorError || new Error('Perfil de professor nÃ£o encontrado.');
-
-      const { data: turmasData, error: turmasError } = await supabase
-        .from('professor_turmas')
-        .select('turma')
-        .in('professor_id', professorIds);
-      if (turmasError) {
-        if (isMissingTableError(turmasError)) {
-          throw new Error('Tabela professor_turmas nÃ£o encontrada. Aplique as migrations do Supabase.');
-        }
-        throw turmasError;
-      }
-
-      const turmas = [...new Set(ensureArray(turmasData).map((item) => String(item?.turma || '').trim()).filter(Boolean))].sort();
-      const turmaKeySet = new Set(turmas.map(normalizeTurmaKey).filter(Boolean));
-      setTurmasPermitidas(turmas);
-
-      if (turmas.length === 0) {
-        setUsuarios([]);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('usuarios_biblioteca')
-        .select('id, nome, tipo, matricula, turma, email')
-        .eq('tipo', 'aluno')
-        .eq('escola_id', professorData.escola_id)
-        .order('nome');
-
-      if (error) throw error;
-      setUsuarios((data || []).filter((item) => turmaKeySet.has(normalizeTurmaKey(item?.turma))));
+      const data = await fetchProfessorPainelData();
+      setUsuarios(Array.isArray(data?.usuarios) ? data.usuarios : []);
+      setTurmasPermitidas(Array.isArray(data?.turmasPermitidas) ? data.turmasPermitidas : []);
     } catch (error) {
-      console.error('Error fetching users:', error);
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: error?.message || 'NÃ£o foi possÃ­vel carregar os usuÃ¡rios.',
+        description: error?.message || 'Nao foi possivel carregar os alunos.',
       });
     } finally {
       setLoading(false);
@@ -109,12 +45,17 @@ export default function MeusAlunos() {
     fetchData();
   }, [fetchData]);
 
-  const handleRealtimeChange = useCallback(() => {
-    fetchData();
+  useEffect(() => {
+    const interval = window.setInterval(fetchData, 30000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') fetchData();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [fetchData]);
-
-  useRealtimeSubscription({ table: 'usuarios_biblioteca', onChange: handleRealtimeChange });
-  useRealtimeSubscription({ table: 'professor_turmas', onChange: handleRealtimeChange });
 
   const turmas = useMemo(
     () => [...new Set([...turmasPermitidas, ...usuarios.filter((u) => u.turma).map((u) => u.turma)])].sort(),
@@ -122,9 +63,10 @@ export default function MeusAlunos() {
   );
 
   const filteredUsuarios = usuarios.filter((usuario) => {
-    const matchesSearch = usuario.nome.toLowerCase().includes(searchTerm.toLowerCase())
-      || String(usuario.email || '').toLowerCase().includes(searchTerm.toLowerCase())
-      || String(usuario.matricula || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const search = searchTerm.toLowerCase();
+    const matchesSearch = String(usuario.nome || '').toLowerCase().includes(search)
+      || String(usuario.email || '').toLowerCase().includes(search)
+      || String(usuario.matricula || '').toLowerCase().includes(search);
     const matchesTurma = !filterTurma || usuario.turma === filterTurma;
     return matchesSearch && matchesTurma;
   });
@@ -134,7 +76,7 @@ export default function MeusAlunos() {
       <div className="space-y-6">
         {turmasPermitidas.length === 0 && (
           <div className="rounded-md border border-warning/30 bg-warning/5 p-3">
-            <p className="text-sm text-warning">Nenhuma turma foi vinculada ao seu perfil. Solicite ao gestor a vinculaÃ§Ã£o.</p>
+            <p className="text-sm text-warning">Nenhuma turma foi vinculada ao seu perfil. Solicite ao gestor a vinculacao.</p>
           </div>
         )}
 
@@ -208,7 +150,7 @@ export default function MeusAlunos() {
               <p className="text-center text-muted-foreground py-8">Carregando...</p>
             ) : filteredUsuarios.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">
-                {searchTerm || filterTurma ? 'Nenhum aluno encontrado' : 'Nenhum aluno disponÃ­vel nas turmas vinculadas'}
+                {searchTerm || filterTurma ? 'Nenhum aluno encontrado' : 'Nenhum aluno disponivel nas turmas vinculadas'}
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -217,7 +159,7 @@ export default function MeusAlunos() {
                     <TableRow>
                       <TableHead>Nome</TableHead>
                       <TableHead>Email</TableHead>
-                      <TableHead>MatrÃ­cula</TableHead>
+                      <TableHead>Matricula</TableHead>
                       <TableHead>Turma</TableHead>
                     </TableRow>
                   </TableHeader>

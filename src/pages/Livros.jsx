@@ -17,10 +17,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { generateTextWithCloudflare } from '@/lib/cloudflareAiApi';
 import { ExportPeriodDialog } from '@/components/export/ExportPeriodDialog';
 import { canonicalizeBookArea } from '@/lib/bookAreas';
+import { requestPlatformApi } from '@/lib/platformApi';
 import {
   createLivroCategoria,
   deleteLivro,
@@ -580,7 +580,7 @@ export default function Livros() {
     return imported;
   };
 
-  const parsePdfViaEdgeFunction = async (file) => {
+  const parsePdfViaPlatformApi = async (file) => {
     const buffer = await file.arrayBuffer();
     const bytes = new Uint8Array(buffer);
     let binary = '';
@@ -591,13 +591,12 @@ export default function Livros() {
 
     const base64Data = btoa(binary);
 
-    const data = await invokeEdgeFunction('processar-arquivo', {
+    const data = await requestPlatformApi('/v1/livros/processar-arquivo', {
+      method: 'POST',
       body: {
         base64Data,
         tipo: 'pdf_livros',
       },
-      requireAuth: true,
-      fallbackErrorMessage: 'Erro ao processar PDF.',
     });
 
     if (!data?.success || !Array.isArray(data?.livros)) {
@@ -631,7 +630,7 @@ export default function Livros() {
       if (['xlsx', 'xls', 'csv'].includes(ext)) {
         imported = await parseExcelOrCsv(file);
       } else if (ext === 'pdf') {
-        imported = await parsePdfViaEdgeFunction(file);
+        imported = await parsePdfViaPlatformApi(file);
       } else {
         throw new Error('Formato não suportado. Use Excel, CSV ou PDF.');
       }

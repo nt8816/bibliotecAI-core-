@@ -19,6 +19,7 @@ import {
   fetchComunidadeAlunoData,
   fetchComunidadeAlunoPostsPage,
   fetchComunidadePostById as fetchComunidadePostByIdService,
+  fetchComunidadeQuizRanking,
   submitComunidadeQuizTentativa,
   toggleComunidadeLike,
   updateComunidadePost,
@@ -406,58 +407,22 @@ export default function ComunidadeAluno() {
       const ids = ensureArray(postIds).filter(Boolean);
       if (ids.length === 0) return;
       try {
-        const selectFields = quizRankingEscopo === 'turma'
-          ? 'id, post_id, aluno_id, acertos, total, created_at, usuarios_biblioteca!inner(nome, turma)'
-          : 'id, post_id, aluno_id, acertos, total, created_at, usuarios_biblioteca(nome, turma)';
-        let query = supabase
-          .from('comunidade_quiz_tentativas')
-          .select(selectFields)
-          .in('post_id', ids)
-          .order('acertos', { ascending: false })
-          .order('created_at', { ascending: true });
-        if (quizRankingFromDate) {
-          query = query.gte('created_at', quizRankingFromDate);
-        }
-        if (quizRankingEscopo === 'escola' && escolaId) {
-          query = query.eq('escola_id', escolaId);
-        }
-        if (quizRankingEscopo === 'turma' && alunoTurma) {
-          query = query.eq('escola_id', escolaId).eq('usuarios_biblioteca.turma', alunoTurma);
-        }
-        const { data, error } = await query;
-
-        if (error) {
-          if (isMissingTableError(error)) return;
-          throw error;
-        }
-
-        const rankingMap = {};
-        const historicoMap = {};
-
-        (data || []).forEach((tentativa) => {
-          if (!tentativa?.post_id) return;
-          const list = rankingMap[tentativa.post_id] || [];
-          if (list.length < 5) {
-            list.push(tentativa);
-            rankingMap[tentativa.post_id] = list;
-          }
-          if (alunoId && tentativa.aluno_id === alunoId) {
-            const prev = historicoMap[tentativa.post_id];
-            if (!prev || tentativa.acertos > prev.acertos) {
-              historicoMap[tentativa.post_id] = tentativa;
-            }
-          }
+        const response = await fetchComunidadeQuizRanking({
+          postIds: ids,
+          fromDate: quizRankingFromDate,
+          scope: quizRankingEscopo,
+          turma: alunoTurma,
         });
 
-        setQuizRankingByPost((prev) => ({ ...prev, ...rankingMap }));
-        setQuizHistoricoByPost((prev) => ({ ...prev, ...historicoMap }));
+        setQuizRankingByPost((prev) => ({ ...prev, ...(response?.rankingByPost || {}) }));
+        setQuizHistoricoByPost((prev) => ({ ...prev, ...(response?.historicoByPost || {}) }));
       } catch (error) {
         if (error && !isMissingTableError(error)) {
           console.warn('Falha ao carregar ranking do quiz.', error);
         }
       }
     },
-    [alunoId, alunoTurma, escolaId, quizRankingEscopo, quizRankingFromDate],
+    [alunoTurma, quizRankingEscopo, quizRankingFromDate],
   );
 
   const fetchData = useCallback(async () => {

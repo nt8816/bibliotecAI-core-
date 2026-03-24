@@ -793,6 +793,193 @@ function normalizeTurmaKey(value: unknown) {
     .trim();
 }
 
+function ensureArray<T = unknown>(value: unknown) {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+async function getProfessorModuleData(request: Request, env: Env) {
+  const caller = await fetchSupabaseUser(request, env);
+  if (!caller?.id) {
+    throw new Error('Nao autenticado.');
+  }
+
+  const professorProfiles = await supabaseAdminRequest(
+    env,
+    `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+      select: 'id,escola_id,nome,email,tipo',
+      user_id: `eq.${caller.id}`,
+      tipo: 'eq.professor',
+      order: 'updated_at.desc.nullslast,created_at.desc',
+      limit: '10',
+    }).toString()}`,
+  );
+
+  const profiles = ensureArray<Record<string, unknown>>(professorProfiles);
+  const professorData = profiles[0] || null;
+  const professorProfileIds = profiles.map((item) => String(item?.id || '').trim()).filter(Boolean);
+  const escolaId = String(professorData?.escola_id || '').trim();
+
+  if (!professorData || !professorProfileIds.length || !escolaId) {
+    throw new Error('Perfil de professor nao encontrado.');
+  }
+
+  let turmasRows: Array<Record<string, unknown>> = [];
+  try {
+    const payload = await supabaseAdminRequest(
+      env,
+      `/rest/v1/professor_turmas?${new URLSearchParams({
+        select: 'turma',
+        professor_id: `in.(${professorProfileIds.join(',')})`,
+      }).toString()}`,
+    );
+    turmasRows = ensureArray<Record<string, unknown>>(payload);
+  } catch (error) {
+    if (isMissingTableMessage(error)) {
+      throw new Error('Tabela professor_turmas nao encontrada. Aplique as migrations do banco.');
+    }
+    throw error;
+  }
+
+  const turmasPermitidas = [...new Set(turmasRows.map((item) => String(item?.turma || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const turmaSet = new Set(turmasPermitidas.map(normalizeTurmaKey).filter(Boolean));
+
+  const [livrosEscolaPayload, livrosLegacyPayload, usuariosPayload, sugestoesPayload, atividadesPayload] = await Promise.all([
+    supabaseAdminRequest(
+      env,
+      `/rest/v1/livros?${new URLSearchParams({
+        select: 'id,titulo,autor,area,escola_id',
+        escola_id: `eq.${escolaId}`,
+        order: 'titulo.asc',
+      }).toString()}`,
+    ),
+    supabaseAdminRequest(
+      env,
+      `/rest/v1/livros?${new URLSearchParams({
+        select: 'id,titulo,autor,area,escola_id',
+        escola_id: 'is.null',
+        order: 'titulo.asc',
+      }).toString()}`,
+    ),
+    supabaseAdminRequest(
+      env,
+      `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+        select: 'id,nome,turma,email,matricula,escola_id,tipo',
+        tipo: 'eq.aluno',
+        escola_id: `eq.${escolaId}`,
+        order: 'nome.asc',
+      }).toString()}`,
+    ),
+    supabaseAdminRequest(
+      env,
+      `/rest/v1/sugestoes_livros?${new URLSearchParams({
+        select: '*',
+        professor_id: `in.(${professorProfileIds.join(',')})`,
+        order: 'created_at.desc',
+      }).toString()}`,
+    ),
+    supabaseAdminRequest(
+      env,
+      `/rest/v1/atividades_leitura?${new URLSearchParams({
+        select: '*',
+        professor_id: `in.(${professorProfileIds.join(',')})`,
+        order: 'created_at.desc',
+      }).toString()}`,
+    ),
+  ]);
+
+  const livrosById = new Map<string, Record<string, unknown>>();
+  [...ensureArray<Record<string, unknown>>(livrosEscolaPayload), ...ensureArray<Record<string, unknown>>(livrosLegacyPayload)].forEach((livro) => {
+    const livroId = String(livro?.id || '').trim();
+    if (!livroId) return;
+    livrosById.set(livroId, livro);
+  });
+
+  const livros = Array.from(livrosById.values()).sort((a, b) => String(a?.titulo || '').localeCompare(String(b?.titulo || ''), 'pt-BR'));
+  const usuarios = ensureArray<Record<string, unknown>>(usuariosPayload)
+    .filter((item) => turmaSet.has(normalizeTurmaKey(item?.turma)))
+    .sort((a, b) => String(a?.nome || '').localeCompare(String(b?.nome || ''), 'pt-BR'));
+  const usuariosById = new Map(usuarios.map((item) => [String(item?.id || '').trim(), item]));
+
+  const sugestoes = ensureArray<Record<string, unknown>>(sugestoesPayload)
+    .map((item) => ({
+      ...item,
+      livros: livrosById.get(String(item?.livro_id || '').trim()) || null,
+      usuarios_biblioteca: usuariosById.get(String(item?.aluno_id || '').trim()) || null,
+    }))
+    .filter((item) => turmaSet.has(normalizeTurmaKey(item?.usuarios_biblioteca?.turma)));
+
+  const atividades = ensureArray<Record<string, unknown>>(atividadesPayload)
+    .map((item) => ({
+      ...item,
+      livros: livrosById.get(String(item?.livro_id || '').trim()) || null,
+      usuarios_biblioteca: usuariosById.get(String(item?.aluno_id || '').trim()) || null,
+    }))
+    .filter((item) => turmaSet.has(normalizeTurmaKey(item?.usuarios_biblioteca?.turma)));
+
+  const atividadeIds = atividades.map((item) => String(item?.id || '').trim()).filter(Boolean);
+  const atividadesById = new Map(atividades.map((item) => [String(item?.id || '').trim(), item]));
+  const usuarioIds = usuarios.map((item) => String(item?.id || '').trim()).filter(Boolean);
+
+  let submissionFeaturesEnabled = true;
+  let entregas: Array<Record<string, unknown>> = [];
+
+  if (atividadeIds.length > 0) {
+    try {
+      const entregasPayload = await supabaseAdminRequest(
+        env,
+        `/rest/v1/atividades_entregas?${new URLSearchParams({
+          select: '*',
+          atividade_id: `in.(${atividadeIds.join(',')})`,
+          order: 'updated_at.desc',
+        }).toString()}`,
+      );
+
+      entregas = ensureArray<Record<string, unknown>>(entregasPayload)
+        .map((item) => ({
+          ...item,
+          atividades_leitura: atividadesById.get(String(item?.atividade_id || '').trim()) || null,
+          usuarios_biblioteca: usuariosById.get(String(item?.aluno_id || '').trim()) || null,
+        }))
+        .filter((item) => turmaSet.has(normalizeTurmaKey(item?.usuarios_biblioteca?.turma)));
+    } catch (error) {
+      if (isMissingTableMessage(error)) {
+        submissionFeaturesEnabled = false;
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  const emprestimos = usuarioIds.length > 0
+    ? ensureArray<Record<string, unknown>>(await supabaseAdminRequest(
+      env,
+      `/rest/v1/emprestimos?${new URLSearchParams({
+        select: 'id,usuario_id,livro_id,data_emprestimo,data_devolucao_real,status',
+        usuario_id: `in.(${usuarioIds.join(',')})`,
+        order: 'data_emprestimo.desc',
+      }).toString()}`,
+    )).map((item) => ({
+      ...item,
+      livros: livrosById.get(String(item?.livro_id || '').trim()) || null,
+      usuarios_biblioteca: usuariosById.get(String(item?.usuario_id || '').trim()) || null,
+    }))
+    : [];
+
+  return {
+    caller,
+    escolaId,
+    professorProfileIds,
+    turmasPermitidas,
+    livros,
+    usuarios,
+    sugestoes,
+    atividades,
+    entregas,
+    emprestimos,
+    submissionFeaturesEnabled,
+  };
+}
+
 function isExpiredComunicado(item: Record<string, unknown> | null | undefined) {
   if (!item?.expires_at) return false;
   const expiresAt = new Date(String(item.expires_at));
@@ -859,7 +1046,8 @@ const routes: Record<string, RouteHandler> = {
         painel_aluno: 'write_ready',
         arquivos_aula: 'write_ready',
         convites_publicos: 'write_ready',
-        media: 'planned',
+        professor: 'write_ready',
+        media: 'write_ready',
       },
     }),
   'POST /v1/system-logs': async (request, env) => {
@@ -876,6 +1064,343 @@ const routes: Record<string, RouteHandler> = {
       escola_id: body?.escolaId ? String(body.escolaId) : null,
     });
     return jsonResponse({ success: true });
+  },
+  'POST /v1/media/r2-storage': async (request, env) => {
+    try {
+      const body = await request.json().catch(() => ({}));
+      const payload = await callSupabaseFunction(request, env, 'r2-storage', body);
+      return jsonResponse(payload);
+    } catch (error) {
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao acessar o R2.' }, 400);
+    }
+  },
+  'POST /v1/livros/processar-arquivo': async (request, env) => {
+    try {
+      const body = await request.json().catch(() => ({}));
+      const payload = await callSupabaseFunction(request, env, 'processar-arquivo', body);
+      return jsonResponse(payload);
+    } catch (error) {
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao processar arquivo.' }, 400);
+    }
+  },
+  'GET /v1/public/tenant': async (request, env) => {
+    const url = new URL(request.url);
+    const subdomain = String(url.searchParams.get('subdomain') || '').trim().toLowerCase();
+    if (!subdomain) return jsonResponse({ success: true, tenant: null });
+    try {
+      const payload = await supabaseAdminRequest(
+        env,
+        `/rest/v1/tenants?${new URLSearchParams({
+          select: 'id,nome,escola_id,subdominio,schema_name,plano,ativo',
+          subdominio: `eq.${subdomain}`,
+          ativo: 'eq.true',
+          limit: '1',
+        }).toString()}`,
+      );
+      return jsonResponse({ success: true, tenant: ensureArray(payload)[0] || null });
+    } catch (error) {
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao resolver tenant.' }, 400);
+    }
+  },
+  'GET /v1/admin/logs': async (request, env) => {
+    const caller = await fetchSupabaseUser(request, env);
+    if (!caller?.id || !(await isSuperAdmin(caller.id, env))) {
+      return jsonResponse({ success: false, error: 'Sem permissao.' }, 403);
+    }
+    try {
+      const url = new URL(request.url);
+      const page = Math.max(0, Number(url.searchParams.get('page') || 0));
+      const pageSize = Math.max(1, Math.min(100, Number(url.searchParams.get('pageSize') || 50)));
+      const params = new URLSearchParams({
+        select: 'id,created_at,user_id,level,event,message,path,ip,user_agent,input,output,context',
+        event: `in.(${[
+          'super_admin_login_snapshot',
+          'super_admin_login_failed',
+          'super_admin_account_locked',
+          'super_admin_account_unlocked',
+          'super_admin_account_created',
+        ].join(',')})`,
+        order: 'created_at.desc',
+        offset: String(page * pageSize),
+        limit: String(pageSize),
+      });
+      const level = String(url.searchParams.get('level') || 'all');
+      const days = String(url.searchParams.get('range') || '7');
+      const search = String(url.searchParams.get('search') || '').trim();
+      if (level !== 'all') params.set('level', `eq.${level}`);
+      if (days !== 'all') {
+        const daysNumber = Number(days);
+        if (!Number.isNaN(daysNumber) && daysNumber > 0) {
+          const from = new Date();
+          from.setDate(from.getDate() - daysNumber);
+          params.set('created_at', `gte.${from.toISOString()}`);
+        }
+      }
+      if (search) {
+        const term = search.replace(/%/g, '\\%').replace(/_/g, '\\_');
+        params.set('or', `(event.ilike.%${term}%,message.ilike.%${term}%,path.ilike.%${term}%,ip.ilike.%${term}%)`);
+      }
+      const logs = await supabaseAdminRequest(env, `/rest/v1/system_logs?${params.toString()}`);
+      return jsonResponse({ success: true, items: ensureArray(logs) });
+    } catch (error) {
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao carregar logs.' }, 400);
+    }
+  },
+  'GET /v1/relatorios': async (request, env) => {
+    try {
+      const [livros, livrosDisponiveis, usuarios, emprestimos] = await Promise.all([
+        supabaseAdminRequest(env, '/rest/v1/livros?select=id,titulo&limit=5000'),
+        supabaseAdminRequest(env, '/rest/v1/livros?select=id&disponivel=eq.true&limit=5000'),
+        supabaseAdminRequest(env, '/rest/v1/usuarios_biblioteca?select=id&limit=5000'),
+        supabaseAdminRequest(env, '/rest/v1/emprestimos?select=id,livro_id,data_emprestimo&order=data_emprestimo.desc&limit=5000'),
+      ]);
+      const emprestimosArray = ensureArray<Record<string, unknown>>(emprestimos);
+      const livrosArray = ensureArray<Record<string, unknown>>(livros);
+      const livroTituloById = new Map(livrosArray.map((item) => [String(item?.id || '').trim(), String(item?.titulo || 'Desconhecido')]));
+      const livroCount: Record<string, { titulo: string; count: number }> = {};
+      emprestimosArray.forEach((emp) => {
+        const livroId = String(emp?.livro_id || '').trim();
+        const titulo = livroTituloById.get(livroId) || 'Desconhecido';
+        if (!livroCount[livroId]) livroCount[livroId] = { titulo, count: 0 };
+        livroCount[livroId].count += 1;
+      });
+      const livrosMaisEmprestados = Object.values(livroCount).sort((a, b) => b.count - a.count).slice(0, 5).map((item) => ({ titulo: item.titulo, emprestimos: item.count }));
+      const emprestimosPorMesMap: Record<string, number> = {};
+      emprestimosArray.forEach((item) => {
+        const date = new Date(String(item?.data_emprestimo || ''));
+        if (Number.isNaN(date.getTime())) return;
+        const key = date.toLocaleDateString('pt-BR', { month: 'short' });
+        emprestimosPorMesMap[key] = (emprestimosPorMesMap[key] || 0) + 1;
+      });
+      const emprestimosPorMes = Object.entries(emprestimosPorMesMap).map(([mes, total]) => ({ mes, emprestimos: total }));
+      return jsonResponse({
+        success: true,
+        stats: {
+          totalLivros: ensureArray(livros).length,
+          livrosDisponiveis: ensureArray(livrosDisponiveis).length,
+          totalUsuarios: ensureArray(usuarios).length,
+          totalEmprestimos: emprestimosArray.length,
+        },
+        livrosMaisEmprestados,
+        emprestimosPorMes,
+      });
+    } catch (error) {
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao carregar relatorios.' }, 400);
+    }
+  },
+  'GET /v1/professor/painel': async (request, env) => {
+    try {
+      const data = await getProfessorModuleData(request, env);
+      return jsonResponse({ success: true, ...data });
+    } catch (error) {
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao carregar painel do professor.' }, 400);
+    }
+  },
+  'POST /v1/professor/sugestoes': async (request, env) => {
+    try {
+      const context = await getProfessorModuleData(request, env);
+      const body = await request.json().catch(() => ({}));
+      const alunoId = String(body?.aluno_id || '').trim();
+      const livroId = String(body?.livro_id || '').trim();
+      const mensagem = String(body?.mensagem || '').trim() || null;
+
+      if (!alunoId || !livroId) {
+        return jsonResponse({ success: false, error: 'Aluno e livro sao obrigatorios.' }, 400);
+      }
+
+      if (!context.usuarios.some((item) => String(item?.id || '').trim() === alunoId)) {
+        return jsonResponse({ success: false, error: 'Aluno nao permitido para este professor.' }, 403);
+      }
+
+      await supabaseAdminRequest(env, '/rest/v1/sugestoes_livros', {
+        method: 'POST',
+        body: {
+          professor_id: context.professorProfileIds[0],
+          aluno_id: alunoId,
+          livro_id: livroId,
+          mensagem,
+        },
+        headers: { Prefer: 'return=minimal' },
+      });
+
+      return jsonResponse({ success: true });
+    } catch (error) {
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao salvar sugestao.' }, 400);
+    }
+  },
+  'POST /v1/professor/sugestoes/:id/delete': async (request, env) => {
+    try {
+      const context = await getProfessorModuleData(request, env);
+      const id = getPathParam(request, /^\/v1\/professor\/sugestoes\/([^/]+)\/delete$/i);
+      const suggestion = await supabaseAdminRequest(env, `/rest/v1/sugestoes_livros?${new URLSearchParams({ select: 'id,professor_id', id: `eq.${id}`, limit: '1' }).toString()}`);
+      const record = ensureArray<Record<string, unknown>>(suggestion)[0] || null;
+      if (!record?.id || !context.professorProfileIds.includes(String(record?.professor_id || '').trim())) {
+        return jsonResponse({ success: false, error: 'Sugestao nao encontrada.' }, 404);
+      }
+      await supabaseAdminRequest(env, `/rest/v1/sugestoes_livros?${new URLSearchParams({ id: `eq.${id}` }).toString()}`, {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+      });
+      return jsonResponse({ success: true });
+    } catch (error) {
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao excluir sugestao.' }, 400);
+    }
+  },
+  'POST /v1/professor/atividades': async (request, env) => {
+    try {
+      const context = await getProfessorModuleData(request, env);
+      const body = await request.json().catch(() => ({}));
+      const titulo = String(body?.titulo || '').trim();
+      const descricao = body?.descricao ? String(body.descricao) : null;
+      const alunoId = String(body?.aluno_id || '').trim();
+      const targetMode = String(body?.target_mode || 'aluno').trim();
+      const turma = String(body?.turma || '').trim();
+      const dataBase = {
+        titulo,
+        descricao,
+        pontos_extras: Number(body?.pontos_extras || 0),
+        data_entrega: body?.data_entrega ? String(body.data_entrega) : null,
+        livro_id: body?.livro_id ? String(body.livro_id) : null,
+        professor_id: context.professorProfileIds[0],
+      };
+
+      if (!titulo) {
+        return jsonResponse({ success: false, error: 'Titulo obrigatorio.' }, 400);
+      }
+
+      if (targetMode === 'turma') {
+        const alunosAlvo = context.usuarios.filter((item) => String(item?.turma || '').trim() === turma);
+        if (!alunosAlvo.length) {
+          return jsonResponse({ success: false, error: 'Nenhum aluno encontrado para a turma selecionada.' }, 400);
+        }
+        await supabaseAdminRequest(env, '/rest/v1/atividades_leitura', {
+          method: 'POST',
+          body: alunosAlvo.map((item) => ({
+            ...dataBase,
+            aluno_id: String(item?.id || '').trim(),
+          })),
+          headers: { Prefer: 'return=minimal' },
+        });
+        return jsonResponse({ success: true, count: alunosAlvo.length });
+      }
+
+      if (!alunoId) {
+        return jsonResponse({ success: false, error: 'Aluno obrigatorio.' }, 400);
+      }
+
+      await supabaseAdminRequest(env, '/rest/v1/atividades_leitura', {
+        method: 'POST',
+        body: {
+          ...dataBase,
+          aluno_id: alunoId,
+        },
+        headers: { Prefer: 'return=minimal' },
+      });
+      return jsonResponse({ success: true });
+    } catch (error) {
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao criar atividade.' }, 400);
+    }
+  },
+  'PATCH /v1/professor/atividades/:id': async (request, env) => {
+    try {
+      const context = await getProfessorModuleData(request, env);
+      const id = getPathParam(request, /^\/v1\/professor\/atividades\/([^/]+)$/i);
+      const body = await request.json().catch(() => ({}));
+      const record = await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: 'id,professor_id', id: `eq.${id}`, limit: '1' }).toString()}`);
+      const atividade = ensureArray<Record<string, unknown>>(record)[0] || null;
+      if (!atividade?.id || !context.professorProfileIds.includes(String(atividade?.professor_id || '').trim())) {
+        return jsonResponse({ success: false, error: 'Atividade nao encontrada.' }, 404);
+      }
+      await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ id: `eq.${id}` }).toString()}`, {
+        method: 'PATCH',
+        body: {
+          titulo: String(body?.titulo || '').trim(),
+          descricao: body?.descricao ? String(body.descricao) : null,
+          pontos_extras: Number(body?.pontos_extras || 0),
+          data_entrega: body?.data_entrega ? String(body.data_entrega) : null,
+          livro_id: body?.livro_id ? String(body.livro_id) : null,
+          aluno_id: body?.aluno_id ? String(body.aluno_id) : null,
+        },
+        headers: { Prefer: 'return=minimal' },
+      });
+      return jsonResponse({ success: true });
+    } catch (error) {
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao atualizar atividade.' }, 400);
+    }
+  },
+  'POST /v1/professor/atividades/:id/delete': async (request, env) => {
+    try {
+      const context = await getProfessorModuleData(request, env);
+      const id = getPathParam(request, /^\/v1\/professor\/atividades\/([^/]+)\/delete$/i);
+      const record = await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: 'id,professor_id', id: `eq.${id}`, limit: '1' }).toString()}`);
+      const atividade = ensureArray<Record<string, unknown>>(record)[0] || null;
+      if (!atividade?.id || !context.professorProfileIds.includes(String(atividade?.professor_id || '').trim())) {
+        return jsonResponse({ success: false, error: 'Atividade nao encontrada.' }, 404);
+      }
+      await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ id: `eq.${id}` }).toString()}`, {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+      });
+      return jsonResponse({ success: true });
+    } catch (error) {
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao excluir atividade.' }, 400);
+    }
+  },
+  'POST /v1/professor/atividades/:id/status': async (request, env) => {
+    try {
+      const context = await getProfessorModuleData(request, env);
+      const id = getPathParam(request, /^\/v1\/professor\/atividades\/([^/]+)\/status$/i);
+      const body = await request.json().catch(() => ({}));
+      const record = await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: 'id,professor_id', id: `eq.${id}`, limit: '1' }).toString()}`);
+      const atividade = ensureArray<Record<string, unknown>>(record)[0] || null;
+      if (!atividade?.id || !context.professorProfileIds.includes(String(atividade?.professor_id || '').trim())) {
+        return jsonResponse({ success: false, error: 'Atividade nao encontrada.' }, 404);
+      }
+      await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ id: `eq.${id}` }).toString()}`, {
+        method: 'PATCH',
+        body: { status: String(body?.status || 'pendente') },
+        headers: { Prefer: 'return=minimal' },
+      });
+      return jsonResponse({ success: true });
+    } catch (error) {
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao atualizar status da atividade.' }, 400);
+    }
+  },
+  'POST /v1/professor/entregas/:id/avaliar': async (request, env) => {
+    try {
+      const context = await getProfessorModuleData(request, env);
+      const id = getPathParam(request, /^\/v1\/professor\/entregas\/([^/]+)\/avaliar$/i);
+      const body = await request.json().catch(() => ({}));
+      const entregaPayload = await supabaseAdminRequest(env, `/rest/v1/atividades_entregas?${new URLSearchParams({ select: 'id,atividade_id', id: `eq.${id}`, limit: '1' }).toString()}`);
+      const entrega = ensureArray<Record<string, unknown>>(entregaPayload)[0] || null;
+      if (!entrega?.id) {
+        return jsonResponse({ success: false, error: 'Entrega nao encontrada.' }, 404);
+      }
+      const atividadePayload = await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: 'id,professor_id', id: `eq.${String(entrega?.atividade_id || '')}`, limit: '1' }).toString()}`);
+      const atividade = ensureArray<Record<string, unknown>>(atividadePayload)[0] || null;
+      if (!atividade?.id || !context.professorProfileIds.includes(String(atividade?.professor_id || '').trim())) {
+        return jsonResponse({ success: false, error: 'Entrega nao permitida para este professor.' }, 403);
+      }
+      const status = String(body?.status || 'enviada');
+      await supabaseAdminRequest(env, `/rest/v1/atividades_entregas?${new URLSearchParams({ id: `eq.${id}` }).toString()}`, {
+        method: 'PATCH',
+        body: {
+          status,
+          pontos_ganhos: Number(body?.pontos_ganhos || 0),
+          feedback_professor: body?.feedback_professor ? String(body.feedback_professor) : null,
+          avaliado_em: new Date().toISOString(),
+        },
+        headers: { Prefer: 'return=minimal' },
+      });
+      await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ id: `eq.${String(atividade?.id || '')}` }).toString()}`, {
+        method: 'PATCH',
+        body: { status: status === 'aprovada' ? 'concluido' : 'em_andamento' },
+        headers: { Prefer: 'return=minimal' },
+      });
+      return jsonResponse({ success: true });
+    } catch (error) {
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao avaliar entrega.' }, 400);
+    }
   },
 
   'POST /v1/auth/login': async (request, env) => {
@@ -2627,6 +3152,71 @@ const routes: Record<string, RouteHandler> = {
 
     return jsonResponse({ success: true, tenantId, ativo });
   },
+  'POST /v1/admin/tenants/:id/mass-audio-seed': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const allowed = await isSuperAdmin(user.id, env);
+    if (!allowed) {
+      return jsonResponse({ success: false, error: 'Sem permissao para gerar audios em massa.' }, 403);
+    }
+
+    const tenantId = getPathParam(request, /^\/v1\/admin\/tenants\/([^/]+)\/mass-audio-seed$/);
+    if (!tenantId) {
+      return jsonResponse({ success: false, error: 'ID do tenant ausente.' }, 400);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const limit = Math.min(30, Math.max(1, Number(body?.limit || 8) || 8));
+
+    const tenantPayload = await supabaseAdminRequest(
+      env,
+      `/rest/v1/tenants?${new URLSearchParams({
+        select: 'id,escola_id,nome',
+        id: `eq.${tenantId}`,
+        limit: '1',
+      }).toString()}`,
+    );
+    const tenant = Array.isArray(tenantPayload) ? (tenantPayload[0] || null) : null;
+
+    if (!tenant?.id || !tenant?.escola_id) {
+      return jsonResponse({ success: false, error: 'Tenant com escola vinculada nao encontrado.' }, 404);
+    }
+
+    const [livros, autores] = await Promise.all([
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/livros?${new URLSearchParams({
+          select: 'id,titulo,autor,sinopse,escola_id',
+          escola_id: `eq.${String(tenant.escola_id)}`,
+          order: 'titulo.asc',
+          limit: String(limit),
+        }).toString()}`,
+      ),
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+          select: 'id',
+          escola_id: `eq.${String(tenant.escola_id)}`,
+          order: 'created_at.asc',
+          limit: '1',
+        }).toString()}`,
+      ),
+    ]);
+
+    return jsonResponse({
+      success: true,
+      tenant: {
+        id: tenant.id,
+        nome: tenant.nome || null,
+        escola_id: tenant.escola_id,
+      },
+      autorComunidadeId: Array.isArray(autores) ? autores?.[0]?.id || null : null,
+      livros: Array.isArray(livros) ? livros : [],
+    });
+  },
   'POST /v1/admin/tenants/:id/invite': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);
     if (!user?.id) {
@@ -2836,6 +3426,26 @@ const routes: Record<string, RouteHandler> = {
       auth_skipped_current_user: authUserIds.includes(user.id),
       auth_delete_failures: authDeleteFailures,
     });
+  },
+  'POST /v1/admin/audiobooks': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const allowed = await isSuperAdmin(user.id, env);
+    if (!allowed) {
+      return jsonResponse({ success: false, error: 'Sem permissao para criar audiobook administrativo.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const created = await supabaseAdminRequest(env, '/rest/v1/audiobooks_biblioteca?select=id', {
+      method: 'POST',
+      body,
+      headers: { Prefer: 'return=representation' },
+    }) as Array<Record<string, unknown>>;
+
+    return jsonResponse({ success: true, id: created?.[0]?.id || null });
   },
   'POST /v1/admin/gestores/list': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);
@@ -4509,6 +5119,60 @@ const routes: Record<string, RouteHandler> = {
     });
     return jsonResponse({ success: true });
   },
+  'POST /v1/aluno/comunidade/quiz-ranking': async (request, env) => {
+    const { alunoId, escolaId } = await getCommunityModuleContext(request, env);
+    const body = await request.json().catch(() => ({}));
+    const postIds = ensureArray<string>(body?.postIds).map((item) => String(item || '').trim()).filter(Boolean);
+    const scope = String(body?.scope || 'escola').trim().toLowerCase();
+    const turma = normalizeTurmaKey(body?.turma);
+    const fromDate = body?.fromDate ? String(body.fromDate) : null;
+
+    if (postIds.length === 0) {
+      return jsonResponse({ success: true, rankingByPost: {}, historicoByPost: {} });
+    }
+
+    const params = new URLSearchParams();
+    params.set('select', 'id,post_id,aluno_id,acertos,total,created_at,escola_id,usuarios_biblioteca(nome,turma)');
+    params.set('post_id', `in.(${postIds.join(',')})`);
+    if (escolaId) params.set('escola_id', `eq.${escolaId}`);
+    if (fromDate) params.set('created_at', `gte.${fromDate}`);
+    params.append('order', 'acertos.desc');
+    params.append('order', 'created_at.asc');
+
+    const rows = await supabaseAdminRequest(
+      env,
+      `/rest/v1/comunidade_quiz_tentativas?${params.toString()}`,
+    ).catch(() => []);
+
+    const rankingByPost: Record<string, unknown[]> = {};
+    const historicoByPost: Record<string, unknown> = {};
+
+    ensureArray<Record<string, unknown>>(rows)
+      .filter((tentativa) => {
+        if (scope !== 'turma') return true;
+        const dadosAluno = tentativa?.usuarios_biblioteca as Record<string, unknown> | null;
+        const nomeTurma = normalizeTurmaKey(dadosAluno?.turma);
+        return !turma || nomeTurma === turma;
+      })
+      .forEach((tentativa) => {
+        const postId = String(tentativa?.post_id || '').trim();
+        if (!postId) return;
+
+        const currentRanking = ensureArray(rankingByPost[postId]);
+        if (currentRanking.length < 5) {
+          rankingByPost[postId] = [...currentRanking, tentativa];
+        }
+
+        if (alunoId && String(tentativa?.aluno_id || '') === String(alunoId)) {
+          const previous = historicoByPost[postId] as Record<string, unknown> | undefined;
+          if (!previous || Number(tentativa?.acertos || 0) > Number(previous?.acertos || 0)) {
+            historicoByPost[postId] = tentativa;
+          }
+        }
+      });
+
+    return jsonResponse({ success: true, rankingByPost, historicoByPost });
+  },
 
   'POST /v1/media/sign-upload': async () => notImplemented('Assinatura de upload pela API propria'),
   'POST /v1/media/sign-download': async () => notImplemented('Assinatura de download pela API propria'),
@@ -4521,6 +5185,7 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/admin\/tenants\/[^/]+\/invite$/, '/v1/admin/tenants/:id/invite')
     .replace(/\/v1\/admin\/tenants\/[^/]+\/delete$/, '/v1/admin/tenants/:id/delete')
     .replace(/\/v1\/admin\/tenants\/[^/]+\/status$/, '/v1/admin/tenants/:id/status')
+    .replace(/\/v1\/admin\/tenants\/[^/]+\/mass-audio-seed$/, '/v1/admin/tenants/:id/mass-audio-seed')
     .replace(/\/v1\/admin\/schools\/[^/]+\/delete$/, '/v1/admin/schools/:id/delete')
     .replace(/\/v1\/admin\/super-admins\/[^/]+\/unlock$/, '/v1/admin/super-admins/:id/unlock')
     .replace(/\/v1\/emprestimos\/[^/]+\/devolucao$/, '/v1/emprestimos/:id/devolucao')

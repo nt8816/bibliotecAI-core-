@@ -56,3 +56,15 @@ export async function deleteComunidadePost(postId, autorId) {
 export async function submitComunidadeQuizTentativa(payload) {
   return requestPlatformApi('/v1/aluno/comunidade/quiz-tentativas', { method: 'POST', body: payload });
 }
+
+export async function fetchComunidadeQuizRanking(payload) {
+  const response = await requestPlatformApi('/v1/aluno/comunidade/quiz-ranking', {
+    method: 'POST',
+    body: payload,
+  });
+
+  return {
+    rankingByPost: response?.rankingByPost || {},
+    historicoByPost: response?.historicoByPost || {},
+  };
+}
