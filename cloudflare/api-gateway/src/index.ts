@@ -2011,7 +2011,7 @@ const routes: Record<string, RouteHandler> = {
         attestation: 'none',
         authenticatorSelection: {
           authenticatorAttachment: 'platform',
-          residentKey: 'preferred',
+          residentKey: 'required',
           userVerification: 'required',
         },
         hints: ['client-device'],

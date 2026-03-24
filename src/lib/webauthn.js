@@ -50,23 +50,15 @@ function buildCreateOptions(publicKeyOptions, mode = 'strict') {
         ...item,
         id: base64UrlToArrayBuffer(item.id),
       };
+
       if (mode === 'strict') {
         return { ...normalized, transports: ['internal'] };
       }
-      if (mode === 'compat') {
-        const { transports, ...rest } = normalized;
-        return rest;
-      }
-      return normalized;
+
+      const { transports, ...rest } = normalized;
+      return rest;
     })
     : [];
-
-  const authenticatorSelection = {
-    ...(publicKeyOptions.authenticatorSelection || {}),
-  };
-  if (mode === 'loose') {
-    delete authenticatorSelection.authenticatorAttachment;
-  }
 
   const next = {
     ...publicKeyOptions,
@@ -76,7 +68,12 @@ function buildCreateOptions(publicKeyOptions, mode = 'strict') {
       id: base64UrlToArrayBuffer(publicKeyOptions.user.id),
     },
     excludeCredentials,
-    authenticatorSelection,
+    authenticatorSelection: {
+      ...(publicKeyOptions.authenticatorSelection || {}),
+      authenticatorAttachment: 'platform',
+      residentKey: 'required',
+      userVerification: 'required',
+    },
   };
 
   if (mode !== 'strict') {
@@ -93,14 +90,13 @@ function buildGetOptions(publicKeyOptions, mode = 'strict') {
         ...item,
         id: base64UrlToArrayBuffer(item.id),
       };
+
       if (mode === 'strict') {
         return { ...normalized, transports: ['internal'] };
       }
-      if (mode === 'compat') {
-        const { transports, ...rest } = normalized;
-        return rest;
-      }
-      return normalized;
+
+      const { transports, ...rest } = normalized;
+      return rest;
     })
     : [];
 
@@ -123,12 +119,18 @@ function normalizePasskeyError(error, actionLabel) {
 
   if (normalized.includes('unknown error occurred while talking to the credential manager')) {
     return new Error(
-      `O gerenciador de credenciais do celular falhou ao ${actionLabel} a passkey. Ative bloqueio de tela/biometria do aparelho e tente novamente no Chrome atualizado.`,
+      `O gerenciador de credenciais do celular falhou ao ${actionLabel} a passkey. Ative o bloqueio de tela, cadastre biometria no aparelho e tente novamente no Chrome atualizado.`,
     );
   }
 
   if (normalized.includes('the operation either timed out or was not allowed')) {
     return new Error(`A confirmação biométrica foi cancelada ou expirou ao ${actionLabel} a passkey.`);
+  }
+
+  if (normalized.includes('notallowederror') || normalized.includes('not supported')) {
+    return new Error(
+      `O celular não ofereceu a biometria local para ${actionLabel} a passkey. Verifique se há bloqueio de tela ativo, biometria cadastrada e o gerenciador de senhas do Google habilitado no Chrome.`,
+    );
   }
 
   return error instanceof Error ? error : new Error(rawMessage || 'Falha ao processar a passkey.');
@@ -146,15 +148,9 @@ export async function createPlatformPasskey(publicKeyOptions) {
         publicKey: buildCreateOptions(publicKeyOptions, 'strict'),
       });
     } catch (strictError) {
-      try {
-        credential = await navigator.credentials.create({
-          publicKey: buildCreateOptions(publicKeyOptions, 'compat'),
-        });
-      } catch (compatError) {
-        credential = await navigator.credentials.create({
-          publicKey: buildCreateOptions(publicKeyOptions, 'loose'),
-        });
-      }
+      credential = await navigator.credentials.create({
+        publicKey: buildCreateOptions(publicKeyOptions, 'compat'),
+      });
     }
 
     return normalizeCredential(credential);
