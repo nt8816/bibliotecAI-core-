@@ -78,6 +78,7 @@ export async function createPlatformPasskey(publicKeyOptions) {
           ? publicKeyOptions.excludeCredentials.map((item) => ({
             ...item,
             id: base64UrlToArrayBuffer(item.id),
+            transports: ['internal'],
           }))
           : [],
       },
@@ -103,6 +104,7 @@ export async function getPlatformPasskeyAssertion(publicKeyOptions) {
           ? publicKeyOptions.allowCredentials.map((item) => ({
             ...item,
             id: base64UrlToArrayBuffer(item.id),
+            transports: ['internal'],
           }))
           : [],
       },

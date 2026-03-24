@@ -2010,6 +2010,7 @@ const routes: Record<string, RouteHandler> = {
         timeout: 60000,
         attestation: 'none',
         authenticatorSelection: {
+          authenticatorAttachment: 'platform',
           residentKey: 'preferred',
           userVerification: 'required',
         },
@@ -2146,10 +2147,11 @@ const routes: Record<string, RouteHandler> = {
         rpId,
         timeout: 60000,
         userVerification: 'required',
+        hints: ['client-device'],
         allowCredentials: passkeys.map((item) => ({
           id: item.credential_id,
           type: 'public-key',
-          transports: Array.isArray(item.transports) ? item.transports : [],
+          transports: ['internal'],
         })),
       },
     });
