@@ -4532,8 +4532,8 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const solicitacaoId = getPathParam(request, /^\/v1\/solicitacoes-emprestimo\/([^/]+)\/aprovar$/i);
-    const body = await request.json().catch(() => ({} as Record<string, unknown>));
-    const resposta = String(body?.resposta || 'Solicitacao aprovada pela biblioteca.').trim();
+      const body = await request.json().catch(() => ({} as Record<string, unknown>));
+      const resposta = String(body?.resposta || 'Solicitacao aprovada pela biblioteca.').trim();
 
     const [solicitacao] = await supabaseAdminRequest(
       env,
@@ -4550,12 +4550,12 @@ const routes: Record<string, RouteHandler> = {
     if (!solicitacao?.id || !sameSchool) {
       return jsonResponse({ success: false, error: 'Solicitacao nao encontrada para esta escola.' }, 404);
     }
-    if (String(solicitacao.status || '') !== 'pendente') {
-      return jsonResponse({ success: false, error: 'A solicitacao ja foi processada.' }, 400);
-    }
-    if (solicitacao?.livros?.disponivel === false) {
-      return jsonResponse({ success: false, error: 'Este livro nao esta disponivel para emprestimo no momento.' }, 400);
-    }
+      if (!['pendente', 'indisponivel_em_analise'].includes(String(solicitacao.status || ''))) {
+        return jsonResponse({ success: false, error: 'A solicitacao ja foi processada.' }, 400);
+      }
+      if (solicitacao?.livros?.disponivel === false && String(solicitacao.status || '') !== 'indisponivel_em_analise') {
+        return jsonResponse({ success: false, error: 'Este livro nao esta disponivel para emprestimo no momento.' }, 400);
+      }
 
     const emprestimoCriado = await supabaseAdminRequest(env, '/rest/v1/emprestimos', {
       method: 'POST',
@@ -4595,8 +4595,8 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const solicitacaoId = getPathParam(request, /^\/v1\/solicitacoes-emprestimo\/([^/]+)\/recusar$/i);
-    const body = await request.json().catch(() => ({} as Record<string, unknown>));
-    const resposta = String(body?.resposta || 'Solicitacao recusada pela biblioteca.').trim();
+      const body = await request.json().catch(() => ({} as Record<string, unknown>));
+      const resposta = String(body?.resposta || 'Solicitacao recusada pela biblioteca.').trim();
 
     const [solicitacao] = await supabaseAdminRequest(
       env,
@@ -4614,11 +4614,15 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Solicitacao nao encontrada para esta escola.' }, 404);
     }
 
-    await supabaseAdminRequest(env, `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({ id: `eq.${solicitacaoId}` }).toString()}`, {
-      method: 'PATCH',
-      body: { status: 'recusada', resposta },
-      headers: { Prefer: 'return=minimal' },
-    });
+      if (!['pendente', 'indisponivel_em_analise'].includes(String(solicitacao.status || ''))) {
+        return jsonResponse({ success: false, error: 'A solicitacao ja foi processada.' }, 400);
+      }
+
+      await supabaseAdminRequest(env, `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({ id: `eq.${solicitacaoId}` }).toString()}`, {
+        method: 'PATCH',
+        body: { status: 'recusada', resposta },
+        headers: { Prefer: 'return=minimal' },
+      });
 
     return jsonResponse({ success: true });
   },
@@ -4629,14 +4633,16 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Sem permissao para atualizar a disponibilidade.' }, 403);
     }
 
-    const solicitacaoId = getPathParam(request, /^\/v1\/solicitacoes-emprestimo\/([^/]+)\/indisponivel$/i);
-    const [solicitacao] = await supabaseAdminRequest(
-      env,
-      `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
-        select: 'id,status,livro_id,livros(disponivel,escola_id),usuarios_biblioteca(escola_id)',
-        id: `eq.${solicitacaoId}`,
-        limit: '1',
-      }).toString()}`,
+      const solicitacaoId = getPathParam(request, /^\/v1\/solicitacoes-emprestimo\/([^/]+)\/indisponivel$/i);
+      const body = await request.json().catch(() => ({} as Record<string, unknown>));
+      const resposta = String(body?.resposta || 'Livro marcado como indisponivel e em analise pela biblioteca.').trim();
+      const [solicitacao] = await supabaseAdminRequest(
+        env,
+        `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
+          select: 'id,status,livro_id,livros(disponivel,escola_id),usuarios_biblioteca(escola_id)',
+          id: `eq.${solicitacaoId}`,
+          limit: '1',
+        }).toString()}`,
     ) as Array<Record<string, unknown>>;
 
     const sameSchool =
@@ -4662,6 +4668,12 @@ const routes: Record<string, RouteHandler> = {
         headers: { Prefer: 'return=minimal' },
       },
     );
+
+    await supabaseAdminRequest(env, `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({ id: `eq.${solicitacaoId}` }).toString()}`, {
+      method: 'PATCH',
+      body: { status: 'indisponivel_em_analise', resposta },
+      headers: { Prefer: 'return=minimal' },
+    });
 
     return jsonResponse({ success: true });
   },

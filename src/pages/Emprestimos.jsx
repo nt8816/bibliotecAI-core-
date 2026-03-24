@@ -205,7 +205,7 @@ export default function Emprestimos() {
     setSaving(true);
     setActionLoading({ devolucaoId: null, solicitacaoId: solicitacao.id, tipo: 'aprovar' });
     try {
-      if (!solicitacao?.livros?.disponivel) {
+      if (solicitacao?.livros?.disponivel === false && solicitacao.status !== 'indisponivel_em_analise') {
         throw new Error('Este livro n??o est?? dispon??vel para empr??stimo no momento.');
       }
       const resposta = (respostaPorSolicitacao[solicitacao.id] || '').trim() || 'Solicita????o aprovada pela biblioteca.';
@@ -242,16 +242,18 @@ export default function Emprestimos() {
   };
 
   const handleMarcarSolicitacaoIndisponivel = async (solicitacao) => {
-    if (!canManageLoans || solicitacao.status !== 'pendente') return;
+    if (!canManageLoans || !['pendente', 'indisponivel_em_analise'].includes(String(solicitacao.status || ''))) return;
     setSaving(true);
     setActionLoading({ devolucaoId: null, solicitacaoId: solicitacao.id, tipo: 'indisponivel' });
     try {
-      await markSolicitacaoLivroIndisponivel(solicitacao.id);
+      const resposta = (respostaPorSolicitacao[solicitacao.id] || '').trim() || 'Livro marcado como indisponivel e em analise pela biblioteca.';
+      await markSolicitacaoLivroIndisponivel(solicitacao.id, resposta);
       toast({
         title: 'Livro marcado como indisponÃ­vel',
         description: 'O livro foi reservado no acervo para anÃ¡lise da biblioteca.',
       });
       trackEvent('solicitacao_livro_indisponivel', { id: solicitacao.id });
+      setRespostaPorSolicitacao((prev) => ({ ...prev, [solicitacao.id]: '' }));
       fetchData();
     } catch (error) {
       toast({
@@ -474,11 +476,14 @@ export default function Emprestimos() {
   const getStatusSolicitacaoBadge = (status) => {
     if (status === 'aprovada') return <Badge>Aprovada</Badge>;
     if (status === 'recusada') return <Badge variant="destructive">Recusada</Badge>;
+    if (status === 'indisponivel_em_analise') return <Badge variant="outline">IndisponÃ­vel em anÃ¡lise</Badge>;
     return <Badge variant="secondary">Pendente</Badge>;
   };
 
   const renderSolicitacaoCard = (solicitacao, { readOnly = false } = {}) => {
       const isPendente = solicitacao.status === 'pendente';
+      const isEmAnalise = solicitacao.status === 'indisponivel_em_analise';
+      const isProcessavel = isPendente || isEmAnalise;
       const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
       const livroDisponivel = solicitacao?.livros?.disponivel !== false;
 
@@ -534,19 +539,19 @@ export default function Emprestimos() {
                       [solicitacao.id]: e.target.value,
                     }))
                   }
-                  disabled={!isPendente || saving}
+                  disabled={!isProcessavel || saving}
                 />
               </>
             )}
           </div>
         </div>
 
-          {!readOnly && isPendente ? (
+          {!readOnly && isProcessavel ? (
             <div className="flex flex-col sm:flex-row sm:flex-wrap sm:justify-end gap-2">
               <Button
                 variant="secondary"
                 className="w-full sm:w-auto"
-                disabled={saving || !livroDisponivel || (actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo !== 'indisponivel')}
+                disabled={saving || !isPendente || !livroDisponivel || (actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo !== 'indisponivel')}
                 onClick={() => handleMarcarSolicitacaoIndisponivel(solicitacao)}
               >
                 {actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'indisponivel' ? (
@@ -604,7 +609,7 @@ export default function Emprestimos() {
     ? emprestimosAtivos.filter((emprestimo) => isAtrasado(emprestimo))
     : emprestimosAtivos;
   const solicitacoesPendentes = useMemo(
-    () => solicitacoes.filter((s) => s.status === 'pendente'),
+    () => solicitacoes.filter((s) => ['pendente', 'indisponivel_em_analise'].includes(String(s?.status || '').toLowerCase())),
     [solicitacoes],
   );
   const solicitacoesRecusadas = useMemo(
@@ -615,7 +620,7 @@ export default function Emprestimos() {
   useEffect(() => {
     const defaultTab = canManageLoans ? 'solicitacoes' : 'ativos';
     const nextTab = requestedTab || defaultTab;
-    const isValidTab = ['ativos', 'historico', ...(canManageLoans ? ['solicitacoes'] : [])].includes(nextTab);
+    const isValidTab = ['ativos', 'historico', ...(canManageLoans ? ['solicitacoes', 'recusadas'] : [])].includes(nextTab);
     setActiveTab(isValidTab ? nextTab : defaultTab);
   }, [canManageLoans, requestedTab]);
 

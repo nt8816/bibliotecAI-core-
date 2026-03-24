@@ -34,9 +34,10 @@ export async function rejectSolicitacaoEmprestimo(solicitacaoId, resposta) {
   });
 }
 
-export async function markSolicitacaoLivroIndisponivel(solicitacaoId) {
+export async function markSolicitacaoLivroIndisponivel(solicitacaoId, resposta) {
   return requestPlatformApi(`/v1/solicitacoes-emprestimo/${solicitacaoId}/indisponivel`, {
     method: 'POST',
+    body: { resposta },
   });
 }
 
