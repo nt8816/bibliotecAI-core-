@@ -1337,41 +1337,133 @@ const routes: Record<string, RouteHandler> = {
   },
   'GET /v1/relatorios': async (request, env) => {
     try {
-      const [livros, livrosDisponiveis, usuarios, emprestimos] = await Promise.all([
-        supabaseAdminRequest(env, '/rest/v1/livros?select=id,titulo&limit=5000'),
-        supabaseAdminRequest(env, '/rest/v1/livros?select=id&disponivel=eq.true&limit=5000'),
-        supabaseAdminRequest(env, '/rest/v1/usuarios_biblioteca?select=id&limit=5000'),
-        supabaseAdminRequest(env, '/rest/v1/emprestimos?select=id,livro_id,data_emprestimo&order=data_emprestimo.desc&limit=5000'),
+      const { profile, canManageLoans } = await getLoanModuleContext(request, env);
+      if (!canManageLoans) {
+        return jsonResponse({ success: false, error: 'Sem permissao para acessar relatorios.' }, 403);
+      }
+
+      const [livros, usuarios, emprestimos] = await Promise.all([
+        supabaseAdminRequest(
+          env,
+          `/rest/v1/livros?${new URLSearchParams({
+            select: 'id,titulo,autor,disponivel,escola_id',
+            escola_id: `eq.${profile.escola_id}`,
+            order: 'titulo.asc',
+            limit: '5000',
+          }).toString()}`,
+        ),
+        supabaseAdminRequest(
+          env,
+          `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+            select: 'id,nome,email,turma,tipo,escola_id',
+            escola_id: `eq.${profile.escola_id}`,
+            order: 'nome.asc',
+            limit: '5000',
+          }).toString()}`,
+        ),
+        supabaseAdminRequest(
+          env,
+          `/rest/v1/emprestimos?${new URLSearchParams({
+            select: 'id,livro_id,usuario_id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livros(id,titulo,autor,escola_id),usuarios_biblioteca(id,nome,email,turma,tipo,escola_id)',
+            order: 'data_emprestimo.desc',
+            limit: '5000',
+          }).toString()}`,
+        ),
       ]);
-      const emprestimosArray = ensureArray<Record<string, unknown>>(emprestimos);
+
+      const sameSchool = (candidateEscolaId: unknown) => String(candidateEscolaId || '') === String(profile.escola_id || '');
       const livrosArray = ensureArray<Record<string, unknown>>(livros);
+      const usuariosArray = ensureArray<Record<string, unknown>>(usuarios);
+      const emprestimosArray = ensureArray<Record<string, unknown>>(emprestimos).filter(
+        (item) => sameSchool(item?.livros?.escola_id) || sameSchool(item?.usuarios_biblioteca?.escola_id),
+      );
+
+      const livrosDisponiveisArray = livrosArray.filter((item) => Boolean(item?.disponivel));
       const livroTituloById = new Map(livrosArray.map((item) => [String(item?.id || '').trim(), String(item?.titulo || 'Desconhecido')]));
       const livroCount: Record<string, { titulo: string; count: number }> = {};
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+      const previousMonthDate = new Date(currentYear, currentMonth - 1, 1);
+      const previousMonth = previousMonthDate.getMonth();
+      const previousYear = previousMonthDate.getFullYear();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+      let emprestimosMesAtual = 0;
+      let emprestimosMesAnterior = 0;
+      let atrasadosAtuais = 0;
+      const monthlyMap = new Map<string, { mes: string; emprestimos: number; devolucoes: number; sortKey: string }>();
+
       emprestimosArray.forEach((emp) => {
         const livroId = String(emp?.livro_id || '').trim();
         const titulo = livroTituloById.get(livroId) || 'Desconhecido';
         if (!livroCount[livroId]) livroCount[livroId] = { titulo, count: 0 };
         livroCount[livroId].count += 1;
+
+        const emprestimoDate = new Date(String(emp?.data_emprestimo || emp?.created_at || ''));
+        if (!Number.isNaN(emprestimoDate.getTime())) {
+          const month = emprestimoDate.getMonth();
+          const year = emprestimoDate.getFullYear();
+          if (month === currentMonth && year === currentYear) emprestimosMesAtual += 1;
+          if (month === previousMonth && year === previousYear) emprestimosMesAnterior += 1;
+
+          const key = `${year}-${String(month + 1).padStart(2, '0')}`;
+          const current = monthlyMap.get(key) || {
+            mes: emprestimoDate.toLocaleDateString('pt-BR', { month: 'short' }),
+            emprestimos: 0,
+            devolucoes: 0,
+            sortKey: key,
+          };
+          current.emprestimos += 1;
+          monthlyMap.set(key, current);
+        }
+
+        const devolucaoRealDate = emp?.data_devolucao_real ? new Date(String(emp.data_devolucao_real)) : null;
+        if (devolucaoRealDate && !Number.isNaN(devolucaoRealDate.getTime())) {
+          const key = `${devolucaoRealDate.getFullYear()}-${String(devolucaoRealDate.getMonth() + 1).padStart(2, '0')}`;
+          const current = monthlyMap.get(key) || {
+            mes: devolucaoRealDate.toLocaleDateString('pt-BR', { month: 'short' }),
+            emprestimos: 0,
+            devolucoes: 0,
+            sortKey: key,
+          };
+          current.devolucoes += 1;
+          monthlyMap.set(key, current);
+        }
+
+        const dueDate = emp?.data_devolucao_prevista ? new Date(String(emp.data_devolucao_prevista)) : null;
+        const status = String(emp?.status || '').trim().toLowerCase();
+        const isReturned = Boolean(emp?.data_devolucao_real) || status === 'devolvido';
+        if (dueDate && !Number.isNaN(dueDate.getTime()) && !isReturned && dueDate < todayStart) {
+          atrasadosAtuais += 1;
+        }
       });
-      const livrosMaisEmprestados = Object.values(livroCount).sort((a, b) => b.count - a.count).slice(0, 5).map((item) => ({ titulo: item.titulo, emprestimos: item.count }));
-      const emprestimosPorMesMap: Record<string, number> = {};
-      emprestimosArray.forEach((item) => {
-        const date = new Date(String(item?.data_emprestimo || ''));
-        if (Number.isNaN(date.getTime())) return;
-        const key = date.toLocaleDateString('pt-BR', { month: 'short' });
-        emprestimosPorMesMap[key] = (emprestimosPorMesMap[key] || 0) + 1;
-      });
-      const emprestimosPorMes = Object.entries(emprestimosPorMesMap).map(([mes, total]) => ({ mes, emprestimos: total }));
+
+      const livrosMaisEmprestados = Object.values(livroCount)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5)
+        .map((item) => ({ titulo: item.titulo, emprestimos: item.count }));
+
+      const emprestimosPorMes = Array.from(monthlyMap.values())
+        .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+        .slice(-6)
+        .map(({ sortKey: _sortKey, ...item }) => item);
+
       return jsonResponse({
         success: true,
+        escolaId: profile.escola_id,
         stats: {
-          totalLivros: ensureArray(livros).length,
-          livrosDisponiveis: ensureArray(livrosDisponiveis).length,
-          totalUsuarios: ensureArray(usuarios).length,
+          totalLivros: livrosArray.length,
+          livrosDisponiveis: livrosDisponiveisArray.length,
+          totalUsuarios: usuariosArray.length,
           totalEmprestimos: emprestimosArray.length,
+          emprestimosMesAtual,
+          emprestimosMesAnterior,
+          atrasadosAtuais,
         },
         livrosMaisEmprestados,
         emprestimosPorMes,
+        emprestimosDetalhados: emprestimosArray,
       });
     } catch (error) {
       return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao carregar relatorios.' }, 400);

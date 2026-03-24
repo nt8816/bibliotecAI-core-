@@ -1,4 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
+import { useCallback } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { BarChart3, BookOpen, TrendingUp, Users, CalendarDays, AlertTriangle, Download } from 'lucide-react';
@@ -27,6 +28,15 @@ import { useToast } from '@/hooks/use-toast';
 import { fetchReportsData } from '@/services/reportsService';
 
 const PIE_COLORS = ['hsl(122, 46%, 34%)', 'hsl(43, 96%, 56%)'];
+const defaultStats = {
+  totalLivros: 0,
+  livrosDisponiveis: 0,
+  totalUsuarios: 0,
+  totalEmprestimos: 0,
+  emprestimosMesAtual: 0,
+  emprestimosMesAnterior: 0,
+  atrasadosAtuais: 0,
+};
 const loadXlsx = async () => import('xlsx');
 const loadPdf = async () => {
   const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
@@ -39,15 +49,7 @@ const loadPdf = async () => {
 export default function Relatorios() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    totalLivros: 0,
-    livrosDisponiveis: 0,
-    totalUsuarios: 0,
-    totalEmprestimos: 0,
-    emprestimosMesAtual: 0,
-    emprestimosMesAnterior: 0,
-    atrasadosAtuais: 0,
-  });
+  const [stats, setStats] = useState(defaultStats);
   const [livrosMaisEmprestados, setLivrosMaisEmprestados] = useState([]);
   const [emprestimosPorMes, setEmprestimosPorMes] = useState([]);
   const [emprestimosDetalhados, setEmprestimosDetalhados] = useState([]);
@@ -60,29 +62,41 @@ export default function Relatorios() {
   const [exportFormat, setExportFormat] = useState('xlsx');
   const [exporting, setExporting] = useState(false);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const data = await fetchReportsData();
-        setStats(data?.stats || {});
-        setEmprestimosDetalhados(data?.emprestimosDetalhados || []);
-        setEmprestimosPorMes(data?.emprestimosPorMes || []);
-        setLivrosMaisEmprestados(data?.livrosMaisEmprestados || []);
-      } catch (error) {
-        console.error('Erro ao carregar relatorios:', error);
-        toast({
-          variant: 'destructive',
-          title: 'Erro',
-          description: 'Não foi possível carregar os relatorios.',
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchReportsData();
+      setStats({ ...defaultStats, ...(data?.stats || {}) });
+      setEmprestimosDetalhados(Array.isArray(data?.emprestimosDetalhados) ? data.emprestimosDetalhados : []);
+      setEmprestimosPorMes(Array.isArray(data?.emprestimosPorMes) ? data.emprestimosPorMes : []);
+      setLivrosMaisEmprestados(Array.isArray(data?.livrosMaisEmprestados) ? data.livrosMaisEmprestados : []);
+    } catch (error) {
+      console.error('Erro ao carregar relatorios:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'Não foi possível carregar os relatorios.',
+      });
+    } finally {
+      setLoading(false);
+    }
   }, [toast]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    const interval = window.setInterval(fetchData, 30000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') fetchData();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchData]);
 
   const variacaoMes = useMemo(() => {
     const anterior = stats.emprestimosMesAnterior;
