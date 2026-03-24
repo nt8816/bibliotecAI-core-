@@ -749,6 +749,16 @@ export default function Livros() {
       }));
   }, [preCategorias, areaOptions, preCategoriaSearch]);
 
+  const areaSuggestions = useMemo(() => {
+    const term = String(formData.area || '').trim().toLowerCase();
+    if (!term) return [];
+    return [...new Set([...preCategorias, ...areaOptions])]
+      .filter((categoria) => categoria.toLowerCase().includes(term))
+      .filter((categoria) => categoria.toLowerCase() !== term)
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+      .slice(0, 6);
+  }, [formData.area, preCategorias, areaOptions]);
+
   const filteredLivros = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     return livros.filter((livro) => {
@@ -915,6 +925,25 @@ export default function Livros() {
                       <div className="space-y-2">
                         <Label htmlFor="area">Área</Label>
                         <Input id="area" value={formData.area} onChange={(e) => setFormData({ ...formData, area: e.target.value })} />
+                        {areaSuggestions.length > 0 && (
+                          <div className="rounded-md border bg-muted/20 p-2">
+                            <p className="mb-2 text-xs text-muted-foreground">Categorias sugeridas</p>
+                            <div className="flex flex-wrap gap-2">
+                              {areaSuggestions.map((categoria) => (
+                                <Button
+                                  key={categoria}
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8"
+                                  onClick={() => setFormData((prev) => ({ ...prev, area: categoria }))}
+                                >
+                                  {categoria}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         <div className="space-y-2 pt-1">
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-xs text-muted-foreground">Pré-categorias rápidas</p>
