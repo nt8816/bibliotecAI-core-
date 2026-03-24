@@ -1842,10 +1842,13 @@ const routes: Record<string, RouteHandler> = {
       if (!record?.id || !context.professorProfileIds.includes(String(record?.professor_id || '').trim())) {
         return jsonResponse({ success: false, error: 'Sugestao nao encontrada.' }, 404);
       }
-      await supabaseAdminRequest(env, `/rest/v1/sugestoes_livros?${new URLSearchParams({ id: `eq.${id}` }).toString()}`, {
+      const deleted = await supabaseAdminRequest(env, `/rest/v1/sugestoes_livros?${new URLSearchParams({ select: 'id', id: `eq.${id}` }).toString()}`, {
         method: 'DELETE',
-        headers: { Prefer: 'return=minimal' },
-      });
+        headers: { Prefer: 'return=representation' },
+      }) as Array<Record<string, unknown>>;
+      if (!Array.isArray(deleted) || !deleted[0]?.id) {
+        return jsonResponse({ success: false, error: 'Sugestao nao encontrada para exclusao.' }, 404);
+      }
       return jsonResponse({ success: true });
     } catch (error) {
       return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao excluir sugestao.' }, 400);
@@ -1942,10 +1945,13 @@ const routes: Record<string, RouteHandler> = {
       if (!atividade?.id || !context.professorProfileIds.includes(String(atividade?.professor_id || '').trim())) {
         return jsonResponse({ success: false, error: 'Atividade nao encontrada.' }, 404);
       }
-      await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ id: `eq.${id}` }).toString()}`, {
+      const deleted = await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: 'id', id: `eq.${id}` }).toString()}`, {
         method: 'DELETE',
-        headers: { Prefer: 'return=minimal' },
-      });
+        headers: { Prefer: 'return=representation' },
+      }) as Array<Record<string, unknown>>;
+      if (!Array.isArray(deleted) || !deleted[0]?.id) {
+        return jsonResponse({ success: false, error: 'Atividade nao encontrada para exclusao.' }, 404);
+      }
       return jsonResponse({ success: true });
     } catch (error) {
       return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao excluir atividade.' }, 400);
@@ -5495,10 +5501,13 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Apenas registros devolvidos podem ser excluidos.' }, 400);
     }
 
-    await supabaseAdminRequest(env, `/rest/v1/emprestimos?${new URLSearchParams({ id: `eq.${emprestimoId}` }).toString()}`, {
+    const deleted = await supabaseAdminRequest(env, `/rest/v1/emprestimos?${new URLSearchParams({ select: 'id', id: `eq.${emprestimoId}` }).toString()}`, {
       method: 'DELETE',
-      headers: { Prefer: 'return=minimal' },
-    });
+      headers: { Prefer: 'return=representation' },
+    }) as Array<Record<string, unknown>>;
+    if (!Array.isArray(deleted) || !deleted[0]?.id) {
+      return jsonResponse({ success: false, error: 'Emprestimo nao encontrado para exclusao.' }, 404);
+    }
 
     return jsonResponse({ success: true });
   },
@@ -5707,10 +5716,13 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Livro nao encontrado para esta escola.' }, 404);
     }
 
-    await supabaseAdminRequest(env, `/rest/v1/livros?${new URLSearchParams({ id: `eq.${livroId}` }).toString()}`, {
+    const deleted = await supabaseAdminRequest(env, `/rest/v1/livros?${new URLSearchParams({ select: 'id', id: `eq.${livroId}` }).toString()}`, {
       method: 'DELETE',
-      headers: { Prefer: 'return=minimal' },
-    });
+      headers: { Prefer: 'return=representation' },
+    }) as Array<Record<string, unknown>>;
+    if (!Array.isArray(deleted) || !deleted[0]?.id) {
+      return jsonResponse({ success: false, error: 'Livro nao encontrado para exclusao.' }, 404);
+    }
 
     return jsonResponse({ success: true });
   },
@@ -5761,17 +5773,21 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nome da categoria obrigatorio.' }, 400);
     }
 
-    await supabaseAdminRequest(
+    const deleted = await supabaseAdminRequest(
       env,
       `/rest/v1/categorias_livros?${new URLSearchParams({
+        select: 'id',
         escola_id: `eq.${escolaId}`,
         nome: `eq.${nome}`,
       }).toString()}`,
       {
         method: 'DELETE',
-        headers: { Prefer: 'return=minimal' },
+        headers: { Prefer: 'return=representation' },
       },
-    );
+    ) as Array<Record<string, unknown>>;
+    if (!Array.isArray(deleted) || deleted.length === 0) {
+      return jsonResponse({ success: false, error: 'Categoria nao encontrada para exclusao.' }, 404);
+    }
 
     return jsonResponse({ success: true });
   },
@@ -5923,17 +5939,21 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Token nao informado.' }, 400);
     }
 
-    await supabaseAdminRequest(
+    const deleted = await supabaseAdminRequest(
       env,
       `/rest/v1/tokens_convite?${new URLSearchParams({
+        select: 'id',
         id: `eq.${tokenId}`,
         escola_id: `eq.${currentEscolaId}`,
       }).toString()}`,
       {
         method: 'DELETE',
-        headers: { Prefer: 'return=minimal' },
+        headers: { Prefer: 'return=representation' },
       },
-    );
+    ) as Array<Record<string, unknown>>;
+    if (!Array.isArray(deleted) || !deleted[0]?.id) {
+      return jsonResponse({ success: false, error: 'Token nao encontrado para exclusao.' }, 404);
+    }
 
     return jsonResponse({ success: true });
   },
@@ -6187,17 +6207,21 @@ const routes: Record<string, RouteHandler> = {
     ).catch(() => null);
 
     if (salaId) {
-      await supabaseAdminRequest(
+      const deletedSala = await supabaseAdminRequest(
         env,
         `/rest/v1/salas_cursos?${new URLSearchParams({
+          select: 'id',
           id: `eq.${salaId}`,
           escola_id: `eq.${currentEscolaId}`,
         }).toString()}`,
         {
           method: 'DELETE',
-          headers: { Prefer: 'return=minimal' },
+          headers: { Prefer: 'return=representation' },
         },
-      );
+      ) as Array<Record<string, unknown>>;
+      if (!Array.isArray(deletedSala) || !deletedSala[0]?.id) {
+        return jsonResponse({ success: false, error: 'Sala nao encontrada para exclusao.' }, 404);
+      }
     }
 
     return jsonResponse({ success: true });
@@ -7033,15 +7057,18 @@ const routes: Record<string, RouteHandler> = {
     }
     const postIdToDelete = comunidadePostId || String(criacao?.comunidade_post_id || '').trim();
     if (postIdToDelete) {
-      await supabaseAdminRequest(env, `/rest/v1/comunidade_posts?${new URLSearchParams({ id: `eq.${postIdToDelete}` }).toString()}`, {
+      await supabaseAdminRequest(env, `/rest/v1/comunidade_posts?${new URLSearchParams({ select: 'id', id: `eq.${postIdToDelete}` }).toString()}`, {
         method: 'DELETE',
-        headers: { Prefer: 'return=minimal' },
+        headers: { Prefer: 'return=representation' },
       }).catch(() => null);
     }
-    await supabaseAdminRequest(env, `/rest/v1/laboratorio_criacoes?${new URLSearchParams({ id: `eq.${criacaoId}` }).toString()}`, {
+    const deleted = await supabaseAdminRequest(env, `/rest/v1/laboratorio_criacoes?${new URLSearchParams({ select: 'id', id: `eq.${criacaoId}` }).toString()}`, {
       method: 'DELETE',
-      headers: { Prefer: 'return=minimal' },
-    });
+      headers: { Prefer: 'return=representation' },
+    }) as Array<Record<string, unknown>>;
+    if (!Array.isArray(deleted) || !deleted[0]?.id) {
+      return jsonResponse({ success: false, error: 'Criacao nao encontrada para exclusao.' }, 404);
+    }
     return jsonResponse({ success: true });
   },
 

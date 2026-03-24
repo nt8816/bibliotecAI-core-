@@ -296,11 +296,7 @@ export default function ArquivosAula() {
       const filePath = safeText(arquivo?.object_key || arquivo?.path, '');
       if (filePath) {
         if (String(arquivo?.provider || '').toLowerCase() === 'r2' || String(filePath).startsWith('escolas/')) {
-          try {
-            await deleteR2Object(filePath);
-          } catch (storageError) {
-            console.warn('Falha ao remover arquivo do Cloudflare R2.', storageError);
-          }
+          await deleteR2Object(filePath);
         }
       }
 
