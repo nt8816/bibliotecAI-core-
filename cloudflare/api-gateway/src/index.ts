@@ -4635,7 +4635,7 @@ const routes: Record<string, RouteHandler> = {
     const [solicitacao] = await supabaseAdminRequest(
       env,
       `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
-        select: 'id,status,livros(escola_id),usuarios_biblioteca(escola_id)',
+        select: 'id,status,livro_id,livros(escola_id),usuarios_biblioteca(escola_id)',
         id: `eq.${solicitacaoId}`,
         limit: '1',
       }).toString()}`,
@@ -4657,6 +4657,18 @@ const routes: Record<string, RouteHandler> = {
         body: { status: 'recusada', resposta },
         headers: { Prefer: 'return=minimal' },
       });
+
+      if (String(solicitacao.status || '') === 'indisponivel_em_analise' && String(solicitacao.livro_id || '').trim()) {
+        await supabaseAdminRequest(
+          env,
+          `/rest/v1/livros?${new URLSearchParams({ id: `eq.${String(solicitacao.livro_id || '').trim()}` }).toString()}`,
+          {
+            method: 'PATCH',
+            body: { disponivel: true },
+            headers: { Prefer: 'return=minimal' },
+          },
+        );
+      }
 
     return jsonResponse({ success: true });
   },
