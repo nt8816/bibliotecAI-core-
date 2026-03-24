@@ -5154,6 +5154,117 @@ const routes: Record<string, RouteHandler> = {
     return jsonResponse({ success: true, livros: resultados });
   },
 
+  'GET /v1/tokens-convite': async (request, env) => {
+    const { canManageUsers, currentEscolaId } = await getUsersModuleContext(request, env);
+    if (!canManageUsers || !currentEscolaId) {
+      return jsonResponse({ success: false, error: 'Sem permissao para listar tokens de convite.' }, 403);
+    }
+
+    const tokens = await supabaseAdminRequest(
+      env,
+      `/rest/v1/tokens_convite?${new URLSearchParams({
+        select: 'id,token,role_destino,criado_por,usado_por,ativo,created_at,expira_em,escola_id',
+        escola_id: `eq.${currentEscolaId}`,
+        order: 'created_at.desc',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    const profileIds = [...new Set(
+      (Array.isArray(tokens) ? tokens : [])
+        .flatMap((item) => [String(item?.criado_por || '').trim(), String(item?.usado_por || '').trim()])
+        .filter(Boolean),
+    )];
+
+    let profilesById: Record<string, { nome: string; role: string }> = {};
+    if (profileIds.length > 0) {
+      const profiles = await supabaseAdminRequest(
+        env,
+        `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+          select: 'id,nome,tipo',
+          id: `in.(${profileIds.join(',')})`,
+        }).toString()}`,
+      ) as Array<Record<string, unknown>>;
+
+      profilesById = (Array.isArray(profiles) ? profiles : []).reduce((acc, item) => {
+        const id = String(item?.id || '').trim();
+        if (!id) return acc;
+        acc[id] = {
+          nome: String(item?.nome || '').trim() || 'Usuario',
+          role: String(item?.tipo || '').trim() || '',
+        };
+        return acc;
+      }, {} as Record<string, { nome: string; role: string }>);
+    }
+
+    return jsonResponse({
+      success: true,
+      tokens: Array.isArray(tokens) ? tokens : [],
+      criadoresInfo: Object.fromEntries(
+        Object.entries(profilesById).map(([id, item]) => [id, { nome: item.nome }]),
+      ),
+      utilizadoresInfo: profilesById,
+    });
+  },
+
+  'POST /v1/tokens-convite': async (request, env) => {
+    const { canManageUsers, currentEscolaId, profile } = await getUsersModuleContext(request, env);
+    if (!canManageUsers || !currentEscolaId || !profile?.id) {
+      return jsonResponse({ success: false, error: 'Sem permissao para gerar token de convite.' }, 403);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const roleDestino = String(body?.roleDestino || '').trim().toLowerCase();
+    const allowedRoles = ['professor', 'bibliotecaria', 'aluno'];
+    if (!allowedRoles.includes(roleDestino)) {
+      return jsonResponse({ success: false, error: 'Cargo de convite invalido.' }, 400);
+    }
+
+    const expiresAt = new Date(Date.now() + (7 * 24 * 60 * 60 * 1000)).toISOString();
+    const created = await supabaseAdminRequest(env, '/rest/v1/tokens_convite?select=*', {
+      method: 'POST',
+      body: [{
+        role_destino: roleDestino,
+        criado_por: profile.id,
+        escola_id: currentEscolaId,
+        ativo: true,
+        expira_em: expiresAt,
+      }],
+      headers: { Prefer: 'return=representation' },
+    }) as Array<Record<string, unknown>>;
+
+    return jsonResponse({
+      success: true,
+      token: created?.[0] || null,
+      criadoresInfo: profile?.id ? { [String(profile.id)]: { nome: String(profile.nome || 'Usuario') } } : {},
+    });
+  },
+
+  'POST /v1/tokens-convite/:id/delete': async (request, env) => {
+    const { canManageUsers, currentEscolaId } = await getUsersModuleContext(request, env);
+    if (!canManageUsers || !currentEscolaId) {
+      return jsonResponse({ success: false, error: 'Sem permissao para apagar token de convite.' }, 403);
+    }
+
+    const tokenId = getPathParam(request, /^\/v1\/tokens-convite\/([^/]+)\/delete$/i);
+    if (!tokenId) {
+      return jsonResponse({ success: false, error: 'Token nao informado.' }, 400);
+    }
+
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/tokens_convite?${new URLSearchParams({
+        id: `eq.${tokenId}`,
+        escola_id: `eq.${currentEscolaId}`,
+      }).toString()}`,
+      {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+      },
+    );
+
+    return jsonResponse({ success: true });
+  },
+
   'GET /v1/usuarios': async (request, env) => {
     const { currentEscolaId } = await getUsersModuleContext(request, env);
 
@@ -6181,6 +6292,7 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/admin\/tenants\/[^/]+\/mass-audio-seed$/, '/v1/admin/tenants/:id/mass-audio-seed')
     .replace(/\/v1\/admin\/schools\/[^/]+\/delete$/, '/v1/admin/schools/:id/delete')
     .replace(/\/v1\/admin\/super-admins\/[^/]+\/unlock$/, '/v1/admin/super-admins/:id/unlock')
+    .replace(/\/v1\/tokens-convite\/[^/]+\/delete$/, '/v1/tokens-convite/:id/delete')
     .replace(/\/v1\/emprestimos\/[^/]+\/devolucao$/, '/v1/emprestimos/:id/devolucao')
     .replace(/\/v1\/emprestimos\/[^/]+\/delete$/, '/v1/emprestimos/:id/delete')
     .replace(/\/v1\/solicitacoes-emprestimo\/[^/]+\/aprovar$/, '/v1/solicitacoes-emprestimo/:id/aprovar')
