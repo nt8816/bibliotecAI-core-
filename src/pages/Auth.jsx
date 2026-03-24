@@ -37,6 +37,7 @@ import {
 
 const EXACT_LOCATION_MAX_ACCURACY_METERS = 100;
 const DESKTOP_LOCATION_MAX_ACCURACY_METERS = 10000;
+const SUPER_ADMIN_DESKTOP_RESUME_KEY = 'super_admin_desktop_resume';
 
 const loginSchema = z.object({
   login: z.string().trim().min(2, 'Informe seu CPF ou matrícula'),
@@ -168,6 +169,28 @@ function getDesktopApprovalToken() {
   return new URLSearchParams(window.location.search).get('desktopApproval') || '';
 }
 
+function saveDesktopResumeState(value) {
+  try {
+    if (!value) {
+      window.sessionStorage.removeItem(SUPER_ADMIN_DESKTOP_RESUME_KEY);
+      return;
+    }
+    window.sessionStorage.setItem(SUPER_ADMIN_DESKTOP_RESUME_KEY, JSON.stringify(value));
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function readDesktopResumeState() {
+  try {
+    const raw = window.sessionStorage.getItem(SUPER_ADMIN_DESKTOP_RESUME_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -187,6 +210,14 @@ export default function Auth() {
   const { toast } = useToast();
 
   useEffect(() => {
+    if (user || pendingSecurity) return;
+    const stored = readDesktopResumeState();
+    if (!stored?.desktopToken || !stored?.pendingSession) return;
+    setPendingSecurity(stored);
+    setSecurityStep(stored?.approved ? 'desktop_resuming' : 'desktop_waiting');
+  }, [pendingSecurity, user]);
+
+  useEffect(() => {
     if (user && !pendingSecurity) {
       fetchPlatformCurrentRoles()
         .then((roles) => {
@@ -203,6 +234,58 @@ export default function Auth() {
   }, [navigate, pendingSecurity, user]);
 
   useEffect(() => {
+    if (!pendingSecurity?.desktopToken || !pendingSecurity?.pendingSession) return;
+    saveDesktopResumeState({
+      ...pendingSecurity,
+      securityStep,
+    });
+  }, [pendingSecurity, securityStep]);
+
+  useEffect(() => {
+    if (!pendingSecurity?.desktopToken || !pendingSecurity?.approved || securityStep !== 'desktop_resuming' || finalizingDesktop) {
+      return undefined;
+    }
+
+    let active = true;
+    const resumeLogin = async () => {
+      try {
+        setFinalizingDesktop(true);
+        await finalizePlatformSession(pendingSecurity.pendingSession);
+        await registerPlatformSuperAdminLoginSuccess(pendingSecurity.email, {
+          desktopChallengeToken: pendingSecurity.desktopToken,
+          context: pendingSecurity.context,
+        });
+        if (!active) return;
+        saveDesktopResumeState(null);
+        setPendingSecurity(null);
+        setSecurityStep('login');
+        toast({
+          title: 'Acesso liberado',
+          description: 'O computador retomou o login apos a aprovacao no celular.',
+        });
+        navigate('/admin/tenants', { replace: true });
+      } catch (error) {
+        if (!active) return;
+        setFinalizingDesktop(false);
+        saveDesktopResumeState({
+          ...pendingSecurity,
+          approved: false,
+        });
+        setSecurityStep('desktop_waiting');
+        setAuthAlert({
+          title: 'ERRO AO RETOMAR O LOGIN',
+          description: error?.message || 'Não foi possível concluir o login do computador após a aprovação no celular.',
+        });
+      }
+    };
+
+    resumeLogin();
+    return () => {
+      active = false;
+    };
+  }, [finalizingDesktop, navigate, pendingSecurity, securityStep, toast]);
+
+  useEffect(() => {
     if (!pendingSecurity?.desktopToken || securityStep !== 'desktop_waiting') return undefined;
 
     let active = true;
@@ -213,19 +296,12 @@ export default function Auth() {
         setDesktopStatus(status);
 
         if (status?.approved && !finalizingDesktop) {
-          setFinalizingDesktop(true);
-          await finalizePlatformSession(pendingSecurity.pendingSession);
-          await registerPlatformSuperAdminLoginSuccess(pendingSecurity.email, {
-            desktopChallengeToken: pendingSecurity.desktopToken,
-            context: pendingSecurity.context,
+          saveDesktopResumeState({
+            ...pendingSecurity,
+            approved: true,
           });
-          setPendingSecurity(null);
-          setSecurityStep('login');
-          toast({
-            title: 'Acesso liberado',
-            description: 'O computador foi liberado apos a aprovacao biometrica no celular.',
-          });
-          navigate('/admin/tenants', { replace: true });
+          window.location.reload();
+          return;
         }
       } catch (error) {
         if (!active) return;
@@ -242,7 +318,7 @@ export default function Auth() {
       active = false;
       window.clearInterval(interval);
     };
-  }, [finalizingDesktop, navigate, pendingSecurity, securityStep, toast]);
+  }, [finalizingDesktop, pendingSecurity, securityStep]);
 
   const finishSuperAdminLogin = async ({ pendingSession, email, context, mfaChallengeId, desktopChallengeToken }) => {
     await finalizePlatformSession(pendingSession);
@@ -295,6 +371,7 @@ export default function Auth() {
         desktopApprovalTokenRef.current,
         verification.challengeId,
       );
+      saveDesktopResumeState(null);
       setPendingSecurity(null);
       setSecurityStep('mobile_approved');
       toast({
@@ -407,6 +484,7 @@ export default function Auth() {
         desktopQrCodeUrl: desktopChallenge.qrCodeUrl,
         desktopApprovalUrl: desktopChallenge.approvalUrl,
         desktopExpiresAt: desktopChallenge.expiresAt,
+        approved: false,
       });
       setDesktopStatus(null);
       setSecurityStep('desktop_waiting');
