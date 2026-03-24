@@ -94,7 +94,13 @@ function readDesktopResumeState() {
   try {
     const raw = window.sessionStorage.getItem(SUPER_ADMIN_DESKTOP_RESUME_KEY);
     if (!raw) return null;
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    const expiresAt = String(parsed?.desktopExpiresAt || '').trim();
+    if (expiresAt && !Number.isNaN(Date.parse(expiresAt)) && new Date(expiresAt).getTime() <= Date.now()) {
+      window.sessionStorage.removeItem(SUPER_ADMIN_DESKTOP_RESUME_KEY);
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -125,6 +131,14 @@ export default function Auth() {
     if (!stored?.desktopToken || !stored?.pendingSession) return;
     setPendingSecurity(stored);
     setSecurityStep(stored?.approved ? 'desktop_resuming' : 'desktop_waiting');
+  }, [pendingSecurity, user]);
+
+  useEffect(() => {
+    if (user && pendingSecurity) {
+      saveDesktopResumeState(null);
+      setPendingSecurity(null);
+      setSecurityStep('login');
+    }
   }, [pendingSecurity, user]);
 
   useEffect(() => {
@@ -165,14 +179,14 @@ export default function Auth() {
       try {
         setFinalizingDesktop(true);
         await finalizePlatformSession(pendingSecurity.pendingSession);
-        await registerPlatformSuperAdminLoginSuccess(pendingSecurity.email, {
-          desktopChallengeToken: pendingSecurity.desktopToken,
-          context: pendingSecurity.context,
-        });
         if (!active) return;
         saveDesktopResumeState(null);
         setPendingSecurity(null);
         setSecurityStep('login');
+        await registerPlatformSuperAdminLoginSuccess(pendingSecurity.email, {
+          desktopChallengeToken: pendingSecurity.desktopToken,
+          context: pendingSecurity.context,
+        }).catch(() => null);
         toast({
           title: 'Acesso liberado',
           description: 'O computador retomou o login apos a aprovacao no celular.',
@@ -181,14 +195,28 @@ export default function Auth() {
       } catch (error) {
         if (!active) return;
         setFinalizingDesktop(false);
-        saveDesktopResumeState({
-          ...pendingSecurity,
-          approved: false,
-        });
-        setSecurityStep('desktop_waiting');
+        const currentMessage = String(error?.message || '').toLowerCase();
+        const sessionInvalid =
+          currentMessage.includes('sessao temporaria invalida')
+          || currentMessage.includes('jwt')
+          || currentMessage.includes('token')
+          || currentMessage.includes('refresh');
+        if (sessionInvalid) {
+          saveDesktopResumeState(null);
+          setPendingSecurity(null);
+          setSecurityStep('login');
+        } else {
+          saveDesktopResumeState({
+            ...pendingSecurity,
+            approved: false,
+          });
+          setSecurityStep('desktop_waiting');
+        }
         setAuthAlert({
           title: 'ERRO AO RETOMAR O LOGIN',
-          description: error?.message || 'Não foi possível concluir o login do computador após a aprovação no celular.',
+          description: sessionInvalid
+            ? 'A aprovacao expirou ou a sessao temporaria nao e mais valida. Entre novamente para gerar uma nova liberacao.'
+            : (error?.message || 'Não foi possível concluir o login do computador após a aprovação no celular.'),
         });
       }
     };
@@ -205,6 +233,19 @@ export default function Auth() {
     let active = true;
     const poll = async () => {
       try {
+        const expiresAt = String(pendingSecurity?.desktopExpiresAt || '').trim();
+        if (expiresAt && !Number.isNaN(Date.parse(expiresAt)) && new Date(expiresAt).getTime() <= Date.now()) {
+          saveDesktopResumeState(null);
+          setPendingSecurity(null);
+          setSecurityStep('login');
+          setDesktopStatus(null);
+          setAuthAlert({
+            title: 'APROVACAO EXPIRADA',
+            description: 'O QR Code expirou. Faça login novamente para gerar uma nova aprovacao no celular.',
+          });
+          return;
+        }
+
         const status = await fetchSuperAdminDesktopApprovalStatus(pendingSecurity.desktopToken);
         if (!active) return;
         setDesktopStatus(status);
@@ -219,6 +260,23 @@ export default function Auth() {
         }
       } catch (error) {
         if (!active) return;
+        const message = String(error?.message || '').toLowerCase();
+        const expired =
+          message.includes('expir')
+          || message.includes('challenge')
+          || message.includes('not found')
+          || message.includes('404');
+        if (expired) {
+          saveDesktopResumeState(null);
+          setPendingSecurity(null);
+          setSecurityStep('login');
+          setDesktopStatus(null);
+          setAuthAlert({
+            title: 'APROVACAO INDISPONIVEL',
+            description: 'Essa aprovacao do computador nao esta mais disponivel. Faça login novamente para gerar outra.',
+          });
+          return;
+        }
         setAuthAlert({
           title: 'ERRO NA LIBERACAO DO COMPUTADOR',
           description: error?.message || 'Não foi possível consultar o status da aprovacao.',
@@ -243,11 +301,12 @@ export default function Auth() {
 
   const finishSuperAdminLogin = async ({ pendingSession, email, context, mfaChallengeId, desktopChallengeToken }) => {
     await finalizePlatformSession(pendingSession);
+    saveDesktopResumeState(null);
     await registerPlatformSuperAdminLoginSuccess(email, {
       context,
       mfaChallengeId,
       desktopChallengeToken,
-    });
+    }).catch(() => null);
     setPendingSecurity(null);
     setSecurityStep('login');
     toast({
