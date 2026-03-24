@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+Ôªøimport { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -60,6 +60,7 @@ import {
   updatePainelAlunoPassword,
   updatePainelAlunoLabCreation,
 } from '@/services/painelAlunoService';
+import { getBrowserNotificationPermission, showBrowserNotification } from '@/lib/browserNotifications';
 import { createComunidadePost } from '@/services/comunidadeAlunoService';
 import {
   generateAudioWithCloudflare,
@@ -140,7 +141,7 @@ function sortByTitulo(list) {
 
 function repairMojibakeText(value) {
   const text = String(value || '');
-  if (!text || !/[√¬]/.test(text)) return text;
+  if (!text || !/[√É√Ç]/.test(text)) return text;
   try {
     return decodeURIComponent(escape(text));
   } catch {
@@ -151,15 +152,15 @@ function repairMojibakeText(value) {
 const ALUNO_ONBOARDING_CARDS = [
   {
     title: 'Bem-vindo ao BibliotecAI',
-    description: 'VocÍ vai ver um resumo r·pido de como usar a plataforma.',
+    description: 'Voc√™ vai ver um resumo r√°pido de como usar a plataforma.',
   },
   {
-    title: 'Cat·logo e emprÈstimos',
-    description: 'Use a Biblioteca para solicitar livros e acompanhe seus emprÈstimos em Meus livros.',
+    title: 'Cat√°logo e empr√©stimos',
+    description: 'Use a Biblioteca para solicitar livros e acompanhe seus empr√©stimos em Meus livros.',
   },
   {
-    title: 'LaboratÛrio e comunidade',
-    description: 'Quizzes, resumos e publicaÁıes sÛ podem usar livros que j· estejam nos seus emprÈstimos ativos.',
+    title: 'Laborat√≥rio e comunidade',
+    description: 'Quizzes, resumos e publica√ß√µes s√≥ podem usar livros que j√° estejam nos seus empr√©stimos ativos.',
   },
 ];
 
@@ -167,7 +168,7 @@ function normalizeCriacaoShareTipo(criacao) {
   const tipo = String(criacao?.tipo || '');
   if (tipo === 'quiz') return 'quiz';
   if (tipo === 'resenha') return 'resenha';
-  if (tipo === 'resumo') return 'sugest„o';
+  if (tipo === 'resumo') return 'sugest√£o';
   return 'dica';
 }
 
@@ -390,7 +391,7 @@ function getDesafioPerfilPorNivel(nivel) {
         {
           tipo: 'avaliacoes',
           incremento: 1,
-          rotulo: 'publicar 1 nova avaliaÁ„o',
+          rotulo: 'publicar 1 nova avalia√ß√£o',
         },
       ],
     };
@@ -403,7 +404,7 @@ function getDesafioPerfilPorNivel(nivel) {
       {
         tipo: 'avaliacoes',
         incremento: 1,
-        rotulo: 'publicar 1 nova avaliaÁ„o',
+        rotulo: 'publicar 1 nova avalia√ß√£o',
       },
       {
         tipo: 'atividades_aprovadas',
@@ -429,7 +430,7 @@ function escolherCriterioDesafioLegacy(metricas) {
     {
       tipo: 'avaliacoes',
       incremento: 1,
-      rotulo: 'publicar 1 nova avaliaÁ„o',
+      rotulo: 'publicar 1 nova avalia√ß√£o',
     },
     {
       tipo: 'atividades_aprovadas',
@@ -750,7 +751,7 @@ async function resolveLabCriacaoRecord(record) {
 async function generateImageWithIA(prompt) {
   const data = await generateImageWithCloudflare({
     prompt,
-    fallbackErrorMessage: 'N„o foi possÌvel gerar imagem no momento.',
+    fallbackErrorMessage: 'N√£o foi poss√≠vel gerar imagem no momento.',
   });
 
   const imageDataUrl = data?.imageDataUrl;
@@ -765,7 +766,7 @@ async function generateTextWithIA(task, input, fallbackErrorMessage) {
   const data = await generateTextWithCloudflare({
     task,
     input,
-    fallbackErrorMessage: fallbackErrorMessage || 'N„o foi possÌvel gerar texto com IA no momento.',
+    fallbackErrorMessage: fallbackErrorMessage || 'N√£o foi poss√≠vel gerar texto com IA no momento.',
   });
 
   return data;
@@ -1118,6 +1119,8 @@ export default function PainelAluno() {
   const audioPlayerRef = useRef(null);
   const speechRequestRef = useRef(0);
   const speakingLivroIdRef = useRef(null);
+  const seenAlunoNotificationIdsRef = useRef(new Set());
+  const alunoNotificationsReadyRef = useRef(false);
   const desafioCacheKey = useMemo(
     () => (user?.id ? `aluno:desafio-ia:${user.id}` : ''),
     [user?.id],
@@ -1184,7 +1187,7 @@ export default function PainelAluno() {
   const persistirDesafioIA = useCallback(
     async ({ desafio, xpBonus }) => {
       if (!alunoId) {
-        throw new Error('Aluno n„o identificado para salvar o desafio.');
+        throw new Error('Aluno n√£o identificado para salvar o desafio.');
       }
       await savePainelAlunoChallenge({ desafio, xpBonus });
     },
@@ -1201,7 +1204,7 @@ export default function PainelAluno() {
         const painelData = await fetchPainelAlunoData();
         const perfil = painelData?.perfil;
 
-        if (!perfil?.id) throw new Error('Perfil do aluno n„o encontrado.');
+        if (!perfil?.id) throw new Error('Perfil do aluno n√£o encontrado.');
         setAlunoId(perfil.id);
         setEscolaId(perfil.escola_id || null);
         setAlunoTurma(perfil.turma || null);
@@ -1299,8 +1302,8 @@ export default function PainelAluno() {
         setAtividadeRespostas(entregaRespostasInicial);
       } catch (error) {
         const description = isMissingTableError(error)
-          ? 'Tabelas novas n„o encontradas. Aplique a migration mais recente do Supabase.'
-          : error?.message || 'N„o foi possÌvel carregar seus dados.';
+          ? 'Tabelas novas n√£o encontradas. Aplique a migration mais recente do Supabase.'
+          : error?.message || 'N√£o foi poss√≠vel carregar seus dados.';
         toast({
           variant: 'destructive',
           title: 'Erro ao carregar painel',
@@ -1359,7 +1362,7 @@ export default function PainelAluno() {
     if (novaSenha !== confirmarSenha) {
       toast({
         title: 'Confirmacao invalida',
-        description: 'A confirmacao da nova senha n„o confere.',
+        description: 'A confirmacao da nova senha n√£o confere.',
         variant: 'destructive',
       });
       return;
@@ -1385,12 +1388,12 @@ export default function PainelAluno() {
       setOnboardingStep(1);
       toast({
         title: 'Senha criada',
-        description: 'Sua nova senha foi salva e a senha inicial n„o funciona mais.',
+        description: 'Sua nova senha foi salva e a senha inicial n√£o funciona mais.',
       });
     } catch (error) {
       toast({
         title: 'Erro ao criar senha',
-        description: error?.message || 'N„o foi possÌvel definir sua nova senha agora.',
+        description: error?.message || 'N√£o foi poss√≠vel definir sua nova senha agora.',
         variant: 'destructive',
       });
     } finally {
@@ -1570,7 +1573,7 @@ export default function PainelAluno() {
       {
         id: 'autor-da-comunidade',
         nome: 'Autor da Comunidade',
-        descricao: 'Publicou sua primeira avaliaÁ„o.',
+        descricao: 'Publicou sua primeira avalia√ß√£o.',
         desbloqueado: avaliacoes.length >= 1,
         icon: Sparkles,
       },
@@ -1664,7 +1667,7 @@ export default function PainelAluno() {
       if (livroId && meusLivrosIds.has(livroId)) return true;
       toast({
         variant: 'destructive',
-        title: 'Livro n„o permitido',
+        title: 'Livro n√£o permitido',
         description: `Para ${acao}, escolha apenas um livro que esteja em "Meus livros".`,
       });
       return false;
@@ -1780,12 +1783,12 @@ export default function PainelAluno() {
       if (isExtension) {
         const statusExt = String(solicitacao?.status || '').toLowerCase();
         if (statusExt === 'aprovada' || statusExt === 'aceita') {
-          return { label: 'ProrrogaÁ„o aprovada', variant: 'default', icon: <CheckCircle2 className="w-3 h-3 mr-1" /> };
+          return { label: 'Prorroga√ß√£o aprovada', variant: 'default', icon: <CheckCircle2 className="w-3 h-3 mr-1" /> };
         }
         if (statusExt === 'recusada' || statusExt === 'negada' || statusExt === 'cancelada') {
-          return { label: 'ProrrogaÁ„o recusada', variant: 'destructive', icon: <AlertTriangle className="w-3 h-3 mr-1" /> };
+          return { label: 'Prorroga√ß√£o recusada', variant: 'destructive', icon: <AlertTriangle className="w-3 h-3 mr-1" /> };
         }
-        return { label: 'ProrrogaÁ„o pendente', variant: 'secondary', icon: <Clock className="w-3 h-3 mr-1" /> };
+        return { label: 'Prorroga√ß√£o pendente', variant: 'secondary', icon: <Clock className="w-3 h-3 mr-1" /> };
       }
       const emprestimo = latestEmprestimoByLivro.get(solicitacao?.livro_id);
       if (emprestimo?.status === 'devolvido') {
@@ -1802,7 +1805,7 @@ export default function PainelAluno() {
         return { label: 'Recusado', variant: 'destructive', icon: <AlertTriangle className="w-3 h-3 mr-1" /> };
       }
       if (status === 'indisponivel_em_analise') {
-        return { label: 'Sob An·lise', variant: 'outline', icon: <Clock className="w-3 h-3 mr-1" /> };
+        return { label: 'Sob An√°lise', variant: 'outline', icon: <Clock className="w-3 h-3 mr-1" /> };
       }
       return { label: 'Pendente', variant: 'secondary', icon: <Clock className="w-3 h-3 mr-1" /> };
     },
@@ -1815,7 +1818,7 @@ export default function PainelAluno() {
       if (!mensagem) {
         toast({
           variant: 'destructive',
-          title: 'Mensagem obrigatÛria',
+          title: 'Mensagem obrigat√≥ria',
           description: 'Escreva uma mensagem para conversar com a biblioteca.',
         });
         return;
@@ -1834,7 +1837,7 @@ export default function PainelAluno() {
         toast({
           variant: 'destructive',
           title: 'Erro',
-          description: error?.message || 'N„o foi possÌvel enviar sua mensagem.',
+          description: error?.message || 'N√£o foi poss√≠vel enviar sua mensagem.',
         });
       } finally {
         setSaving(false);
@@ -1847,11 +1850,11 @@ export default function PainelAluno() {
     (solicitacao) => {
       const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
       if (isExtension) {
-        const timeline = [{ label: 'ProrrogaÁ„o solicitada', date: solicitacao?.created_at }];
+        const timeline = [{ label: 'Prorroga√ß√£o solicitada', date: solicitacao?.created_at }];
         const statusExt = String(solicitacao?.status || '').toLowerCase();
         if (statusExt !== 'pendente') {
           timeline.push({
-            label: statusExt === 'recusada' || statusExt === 'negada' ? 'ProrrogaÁ„o recusada' : 'ProrrogaÁ„o aprovada',
+            label: statusExt === 'recusada' || statusExt === 'negada' ? 'Prorroga√ß√£o recusada' : 'Prorroga√ß√£o aprovada',
             date: solicitacao?.respondido_em || solicitacao?.updated_at,
           });
         }
@@ -1901,7 +1904,7 @@ export default function PainelAluno() {
       itens.push({
         id: `atraso-${emp.id}`,
         tipo: 'atraso',
-        titulo: 'Livro com devoluÁ„o em atraso',
+        titulo: 'Livro com devolu√ß√£o em atraso',
         descricao: `${emp.livros?.titulo || 'Livro'} deveria ter sido devolvido em ${formatDateBR(emp.data_devolucao_prevista)}.`,
       });
     });
@@ -1923,8 +1926,8 @@ export default function PainelAluno() {
       itens.push({
         id: 'solicitacoes-pendentes',
         tipo: 'solicitacao',
-        titulo: 'SolicitaÁıes pendentes',
-        descricao: `${solicitacoesPendentes} solicitaÁ„o(ıes) aguardando aprovaÁ„o.`,
+        titulo: 'Solicita√ß√µes pendentes',
+        descricao: `${solicitacoesPendentes} solicita√ß√£o(√µes) aguardando aprova√ß√£o.`,
       });
     }
 
@@ -1937,7 +1940,7 @@ export default function PainelAluno() {
           id: `solicitacao-chat-${solicitacao.id}-${mensagem.id}`,
           tipo: 'solicitacao_chat',
           titulo: 'Nova mensagem da biblioteca',
-          descricao: `A biblioteca respondeu sobre ${solicitacao?.livros?.titulo || 'sua solicitaÁ„o'}.`,
+          descricao: `A biblioteca respondeu sobre ${solicitacao?.livros?.titulo || 'sua solicita√ß√£o'}.`,
           created_at: mensagem?.created_at || solicitacao?.updated_at || solicitacao?.created_at || null,
         }));
       })
@@ -1951,15 +1954,37 @@ export default function PainelAluno() {
     return filtradas.slice(0, 8);
   }, [atrasos, atividadesComEntrega, comunicados, solicitacoes, classifySolicitacao, notificacoesLidas]);
 
+  useEffect(() => {
+    const nextIds = new Set(ensureArray(notificacoes).map((item) => item?.id).filter(Boolean));
+    if (!alunoNotificationsReadyRef.current) {
+      seenAlunoNotificationIdsRef.current = nextIds;
+      alunoNotificationsReadyRef.current = true;
+      return;
+    }
+    if (getBrowserNotificationPermission() === 'granted') {
+      ensureArray(notificacoes)
+        .filter((item) => item?.id && !seenAlunoNotificationIdsRef.current.has(item.id))
+        .filter((item) => item.tipo === 'solicitacao_chat')
+        .forEach((item) => {
+          showBrowserNotification({
+            title: item.titulo || 'Nova mensagem da biblioteca',
+            body: item.descricao || 'A biblioteca enviou uma nova mensagem.',
+            tag: item.id,
+            path: '/aluno/atividades',
+          });
+        });
+    }
+    seenAlunoNotificationIdsRef.current = nextIds;
+  }, [notificacoes]);
   const markNotificationRead = useCallback(
     async (notificationId) => {
       if (!notificationId || !alunoId) return;
       setNotificacoesLidas((prev) => new Set([...prev, notificationId]));
-      setAriaLiveMessage('NotificaÁ„o marcada como lida.');
+      setAriaLiveMessage('Notifica√ß√£o marcada como lida.');
       try {
         await markPainelAlunoNotificationRead(notificationId);
       } catch {
-        // fallback silencioso: mantÈm estado local
+        // fallback silencioso: mant√©m estado local
       }
     },
     [alunoId],
@@ -2054,7 +2079,7 @@ export default function PainelAluno() {
       const { audioDataUrl } = await generateAudioWithCloudflare({
         text: normalizedText,
         language: 'pt-BR',
-        fallbackErrorMessage: 'N„o foi possÌvel gerar ·udio da sinopse no momento.',
+        fallbackErrorMessage: 'N√£o foi poss√≠vel gerar √°udio da sinopse no momento.',
       });
       if (requestId !== speechRequestRef.current) return;
 
@@ -2117,7 +2142,7 @@ export default function PainelAluno() {
 
   const salvarCriacaoLaboratorio = async (payload) => {
     if (labCriacoesMissingTable) {
-      throw new Error('Tabela laboratorio_criacoes n„o encontrada. Aplique as migrations do Supabase.');
+      throw new Error('Tabela laboratorio_criacoes n√£o encontrada. Aplique as migrations do Supabase.');
     }
 
     try {
@@ -2126,7 +2151,7 @@ export default function PainelAluno() {
     } catch (error) {
       if (isMissingTableError(error)) {
         setLabCriacoesMissingTable(true);
-        throw new Error('Tabela laboratorio_criacoes n„o encontrada. Aplique as migrations do Supabase.');
+        throw new Error('Tabela laboratorio_criacoes n√£o encontrada. Aplique as migrations do Supabase.');
       }
 
       throw error;
@@ -2138,7 +2163,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Perfil incompleto',
-        description: 'N„o foi possÌvel identificar seu vÌnculo com a escola para salvar a resenha.',
+        description: 'N√£o foi poss√≠vel identificar seu v√≠nculo com a escola para salvar a resenha.',
       });
       return;
     }
@@ -2186,13 +2211,13 @@ export default function PainelAluno() {
         comunidade_post_id: comunidadePostId,
       });
 
-      toast({ title: 'AvaliaÁ„o salva!' });
+      toast({ title: 'Avalia√ß√£o salva!' });
       setReviewDialog(false);
       setReviewLivro(null);
       setReviewTexto('');
       setShareReviewToCommunity(false);
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N„o foi possÌvel salvar.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N√£o foi poss√≠vel salvar.' });
     } finally {
       setSaving(false);
     }
@@ -2204,16 +2229,16 @@ export default function PainelAluno() {
     if (hasSolicitacaoEmAndamento(requestLivro.id)) {
       toast({
         variant: 'destructive',
-        title: 'SolicitaÁ„o j· enviada',
-        description: 'Aguarde a aprovaÁ„o da bibliotec·ria antes de solicitar novamente este livro.',
+        title: 'Solicita√ß√£o j√° enviada',
+        description: 'Aguarde a aprova√ß√£o da bibliotec√°ria antes de solicitar novamente este livro.',
       });
       return;
     }
     if (hasEmprestimoAtivo(requestLivro.id)) {
       toast({
         variant: 'destructive',
-        title: 'Livro j· emprestado',
-        description: 'Este livro j· est· emprestado para vocÍ. Confira em "Meus livros".',
+        title: 'Livro j√° emprestado',
+        description: 'Este livro j√° est√° emprestado para voc√™. Confira em "Meus livros".',
       });
       return;
     }
@@ -2225,12 +2250,12 @@ export default function PainelAluno() {
         mensagem: requestMsg || null,
       });
 
-      toast({ title: 'SolicitaÁ„o enviada!' });
+      toast({ title: 'Solicita√ß√£o enviada!' });
       setRequestDialog(false);
       setRequestLivro(null);
       setRequestMsg('');
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Falha ao solicitar emprÈstimo.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Falha ao solicitar empr√©stimo.' });
     } finally {
       setSaving(false);
     }
@@ -2249,8 +2274,8 @@ export default function PainelAluno() {
     if (!extensionRequestedDate) {
       toast({
         variant: 'destructive',
-        title: 'Nova data obrigatÛria',
-        description: 'Escolha a nova data desejada para devoluÁ„o.',
+        title: 'Nova data obrigat√≥ria',
+        description: 'Escolha a nova data desejada para devolu√ß√£o.',
       });
       return;
     }
@@ -2259,8 +2284,8 @@ export default function PainelAluno() {
     if (!currentDate || extensionRequestedDate <= currentDate) {
       toast({
         variant: 'destructive',
-        title: 'Data inv·lida',
-        description: 'A nova data precisa ser posterior ‡ data de devoluÁ„o atual.',
+        title: 'Data inv√°lida',
+        description: 'A nova data precisa ser posterior √† data de devolu√ß√£o atual.',
       });
       return;
     }
@@ -2270,14 +2295,14 @@ export default function PainelAluno() {
       await createPainelAlunoLoanExtensionRequest({
         livroId: extensionEmprestimo.livro_id,
         emprestimoId: extensionEmprestimo.id,
-        mensagem: extensionMessage?.trim() || 'Pedido de extens„o de prazo para devoluÁ„o.',
+        mensagem: extensionMessage?.trim() || 'Pedido de extens√£o de prazo para devolu√ß√£o.',
         dataDevolucaoAtual: extensionEmprestimo.data_devolucao_prevista,
         novaDataDevolucaoSolicitada: new Date(`${extensionRequestedDate}T12:00:00`).toISOString(),
       });
 
       toast({
         title: 'Pedido enviado',
-        description: 'A bibliotec·ria vai analisar a prorrogaÁ„o da data de devoluÁ„o.',
+        description: 'A bibliotec√°ria vai analisar a prorroga√ß√£o da data de devolu√ß√£o.',
       });
       setExtensionDialogOpen(false);
       setExtensionEmprestimo(null);
@@ -2286,8 +2311,8 @@ export default function PainelAluno() {
     } catch (error) {
       toast({
         variant: 'destructive',
-        title: 'Erro ao pedir extens„o',
-        description: error?.message || 'N„o foi possÌvel enviar o pedido de extens„o agora.',
+        title: 'Erro ao pedir extens√£o',
+        description: error?.message || 'N√£o foi poss√≠vel enviar o pedido de extens√£o agora.',
       });
     } finally {
       setSaving(false);
@@ -2299,7 +2324,7 @@ export default function PainelAluno() {
     if (!optionalFeaturesEnabled) {
       toast({
         variant: 'destructive',
-        title: 'Recurso indisponÌvel',
+        title: 'Recurso indispon√≠vel',
         description: 'Entrega de atividades desativada neste ambiente.',
       });
       return;
@@ -2320,8 +2345,8 @@ export default function PainelAluno() {
         variant: 'destructive',
         title: 'Informe sua resposta',
         description: temFormulario
-          ? 'Preencha o formul·rio, escreva uma resposta ou envie imagens.'
-          : 'Escreva o conte˙do da entrega ou envie imagens.',
+          ? 'Preencha o formul√°rio, escreva uma resposta ou envie imagens.'
+          : 'Escreva o conte√∫do da entrega ou envie imagens.',
       });
       return;
     }
@@ -2363,13 +2388,13 @@ export default function PainelAluno() {
         enviadoEm: payload.enviado_em,
       });
 
-      toast({ title: 'Entrega enviada', description: 'Seu professor j· pode avaliar e liberar pontos.' });
+      toast({ title: 'Entrega enviada', description: 'Seu professor j√° pode avaliar e liberar pontos.' });
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Erro',
         description: isMissingTableError(error)
-          ? 'Entrega de atividade indisponÌvel: aplique a migration do banco.'
+          ? 'Entrega de atividade indispon√≠vel: aplique a migration do banco.'
           : error?.message || 'Falha ao enviar atividade.',
       });
     } finally {
@@ -2387,7 +2412,7 @@ export default function PainelAluno() {
         [atividadeId]: [...ensureArray(prev[atividadeId]), ...converted].slice(0, 4),
       }));
     } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'N„o foi possÌvel processar as imagens da atividade.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'N√£o foi poss√≠vel processar as imagens da atividade.' });
     }
   };
 
@@ -2396,15 +2421,15 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Perfil incompleto',
-        description: 'N„o foi possÌvel identificar sua escola para criar audiobook.',
+        description: 'N√£o foi poss√≠vel identificar sua escola para criar audiobook.',
       });
       return;
     }
     if (!optionalFeaturesEnabled) {
       toast({
         variant: 'destructive',
-        title: 'Recurso indisponÌvel',
-        description: 'Audiobooks est„o desativados neste ambiente.',
+        title: 'Recurso indispon√≠vel',
+        description: 'Audiobooks est√£o desativados neste ambiente.',
       });
       return;
     }
@@ -2414,7 +2439,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Dados incompletos',
-        description: 'Selecione um livro e envie um arquivo de ·udio (atÈ 50MB).',
+        description: 'Selecione um livro e envie um arquivo de √°udio (at√© 50MB).',
       });
       return;
     }
@@ -2441,7 +2466,7 @@ export default function PainelAluno() {
 
       await createPainelAlunoAudiobook(payload);
 
-      toast({ title: 'Audiobook adicionado ao cat·logo!' });
+      toast({ title: 'Audiobook adicionado ao cat√°logo!' });
       setAudiobookForm({ livro_id: '', titulo: '', autor: '', duracao_minutos: '' });
       setAudiobookFileDataUrl('');
       setAudiobookFileNome('');
@@ -2450,7 +2475,7 @@ export default function PainelAluno() {
         variant: 'destructive',
         title: 'Erro',
         description: isMissingTableError(error)
-          ? 'Audiobooks indisponÌveis: aplique a migration do banco.'
+          ? 'Audiobooks indispon√≠veis: aplique a migration do banco.'
           : error?.message || 'Falha ao criar audiobook.',
       });
     } finally {
@@ -2463,8 +2488,8 @@ export default function PainelAluno() {
     if (!optionalFeaturesEnabled) {
       toast({
         variant: 'destructive',
-        title: 'Recurso indisponÌvel',
-        description: 'Audiobooks est„o desativados neste ambiente.',
+        title: 'Recurso indispon√≠vel',
+        description: 'Audiobooks est√£o desativados neste ambiente.',
       });
       return;
     }
@@ -2481,7 +2506,7 @@ export default function PainelAluno() {
         variant: 'destructive',
         title: 'Erro',
         description: isMissingTableError(error)
-          ? 'Audiobooks indisponÌveis: aplique a migration do banco.'
+          ? 'Audiobooks indispon√≠veis: aplique a migration do banco.'
           : error?.message || 'Falha ao atualizar seus audiobooks.',
       });
     }
@@ -2494,7 +2519,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Arquivo muito grande',
-        description: 'O limite para audiobook È 50MB.',
+        description: 'O limite para audiobook √© 50MB.',
       });
       return;
     }
@@ -2504,7 +2529,7 @@ export default function PainelAluno() {
       setAudiobookFileDataUrl(dataUrl);
       setAudiobookFileNome(file.name);
     } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'N„o foi possÌvel ler o arquivo.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'N√£o foi poss√≠vel ler o arquivo.' });
     }
   };
 
@@ -2547,7 +2572,7 @@ export default function PainelAluno() {
       return;
     }
     if (studioSlides.length >= 8) {
-      toast({ variant: 'destructive', title: 'Limite atingido', description: 'Use no m·ximo 8 imagens por animaÁ„o.' });
+      toast({ variant: 'destructive', title: 'Limite atingido', description: 'Use no m√°ximo 8 imagens por anima√ß√£o.' });
       return;
     }
 
@@ -2567,7 +2592,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Falha ao gerar imagem',
-        description: error?.message || 'N„o foi possÌvel gerar imagem no momento.',
+        description: error?.message || 'N√£o foi poss√≠vel gerar imagem no momento.',
       });
     } finally {
       setGerandoImagemIA(false);
@@ -2578,14 +2603,14 @@ export default function PainelAluno() {
     const file = files?.[0];
     if (!file) return;
     if (file.size > 50 * 1024 * 1024) {
-      toast({ variant: 'destructive', title: 'Arquivo muito grande', description: 'O ·udio de fundo aceita atÈ 50MB.' });
+      toast({ variant: 'destructive', title: 'Arquivo muito grande', description: 'O √°udio de fundo aceita at√© 50MB.' });
       return;
     }
     try {
       const dataUrl = await fileToDataUrl(file);
       setStudioAudioFundoUrl(dataUrl);
     } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'N„o foi possÌvel ler o ·udio de fundo.' });
+      toast({ variant: 'destructive', title: 'Erro', description: 'N√£o foi poss√≠vel ler o √°udio de fundo.' });
     }
   };
 
@@ -2593,8 +2618,8 @@ export default function PainelAluno() {
     if (!optionalFeaturesEnabled || !alunoId || !escolaId) {
       toast({
         variant: 'destructive',
-        title: 'LaboratÛrio indisponÌvel',
-        description: 'N„o foi possÌvel publicar agora. Verifique se as migrations do banco foram aplicadas.',
+        title: 'Laborat√≥rio indispon√≠vel',
+        description: 'N√£o foi poss√≠vel publicar agora. Verifique se as migrations do banco foram aplicadas.',
       });
       return;
     }
@@ -2612,7 +2637,7 @@ export default function PainelAluno() {
       const titulo = studioTitulo.trim() || 'Projeto criativo do aluno';
       const conteudo =
         studioDescricao.trim() ||
-        'CriaÁ„o de mÌdia com imagens em sequÍncia e ·udio de fundo feita no est˙dio do aluno.';
+        'Cria√ß√£o de m√≠dia com imagens em sequ√™ncia e √°udio de fundo feita no est√∫dio do aluno.';
       const imagemUrls = await persistStudioSlidesToR2({
         slides: studioSlides,
         escolaId,
@@ -2663,7 +2688,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: error?.message || 'N„o foi possÌvel compartilhar o projeto criativo.',
+        description: error?.message || 'N√£o foi poss√≠vel compartilhar o projeto criativo.',
       });
     } finally {
       setSaving(false);
@@ -2674,8 +2699,8 @@ export default function PainelAluno() {
     if (!optionalFeaturesEnabled || !alunoId || !escolaId) {
       toast({
         variant: 'destructive',
-        title: 'LaboratÛrio indisponÌvel',
-        description: 'N„o foi possÌvel salvar agora. Verifique as configuraÁıes do banco.',
+        title: 'Laborat√≥rio indispon√≠vel',
+        description: 'N√£o foi poss√≠vel salvar agora. Verifique as configura√ß√µes do banco.',
       });
       return;
     }
@@ -2701,7 +2726,7 @@ export default function PainelAluno() {
         tipo: 'imagem',
         titulo: studioTitulo.trim() || 'Projeto criativo do aluno',
         descricao:
-          studioDescricao.trim() || 'Projeto salvo no laboratÛrio do aluno para ediÁ„o/compartilhamento posterior.',
+          studioDescricao.trim() || 'Projeto salvo no laborat√≥rio do aluno para edi√ß√£o/compartilhamento posterior.',
         conteudo_json: {
           prompt: studioPrompt.trim() || null,
           audiobook_id: studioAudiobookId || null,
@@ -2710,9 +2735,9 @@ export default function PainelAluno() {
         tags,
       });
 
-      toast({ title: 'Projeto salvo no laboratÛrio!' });
+      toast({ title: 'Projeto salvo no laborat√≥rio!' });
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N„o foi possÌvel salvar o projeto.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N√£o foi poss√≠vel salvar o projeto.' });
     } finally {
       setSaving(false);
     }
@@ -2725,7 +2750,7 @@ export default function PainelAluno() {
       return;
     }
     if (!alunoPodeUsarLivroEmprestado(quizLivroId, 'gerar o quiz')) return;
-    const tema = quizTema.trim() || 'compreens„o da leitura';
+    const tema = quizTema.trim() || 'compreens√£o da leitura';
 
     setGerandoQuizIA(true);
     try {
@@ -2741,12 +2766,12 @@ export default function PainelAluno() {
           quantidade: 3,
           alternativas: 4,
         },
-        'N„o foi possÌvel gerar quiz com IA no momento.',
+        'N√£o foi poss√≠vel gerar quiz com IA no momento.',
       );
 
       const perguntas = extractQuizPerguntasFromIAResponse(data);
 
-      if (perguntas.length === 0) throw new Error('A IA respondeu sem perguntas v·lidas.');
+      if (perguntas.length === 0) throw new Error('A IA respondeu sem perguntas v√°lidas.');
 
       setQuiz(perguntas);
       setQuizRespostas({});
@@ -2756,7 +2781,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro ao gerar quiz',
-        description: error?.message || 'N„o foi possÌvel gerar quiz com IA.',
+        description: error?.message || 'N√£o foi poss√≠vel gerar quiz com IA.',
       });
     } finally {
       setGerandoQuizIA(false);
@@ -2825,9 +2850,9 @@ export default function PainelAluno() {
   );
 
   const quizNivel = useMemo(() => {
-    if (quiz.length <= 3) return 'B·sico';
-    if (quiz.length <= 5) return 'Intermedi·rio';
-    return 'AvanÁado';
+    if (quiz.length <= 3) return 'B√°sico';
+    if (quiz.length <= 5) return 'Intermedi√°rio';
+    return 'Avan√ßado';
   }, [quiz.length]);
 
   const quizHistoryKeyAtual = useMemo(() => {
@@ -2841,8 +2866,8 @@ export default function PainelAluno() {
     if (!optionalFeaturesEnabled || !alunoId || !escolaId) {
       toast({
         variant: 'destructive',
-        title: 'LaboratÛrio indisponÌvel',
-        description: 'N„o foi possÌvel salvar o quiz agora. Verifique as migrations do banco.',
+        title: 'Laborat√≥rio indispon√≠vel',
+        description: 'N√£o foi poss√≠vel salvar o quiz agora. Verifique as migrations do banco.',
       });
       return;
     }
@@ -2855,7 +2880,7 @@ export default function PainelAluno() {
     if (!alunoPodeUsarLivroEmprestado(quizLivroId, publicarNaComunidade ? 'publicar este quiz' : 'salvar este quiz')) return;
     let postId = null;
     const titulo = livro?.titulo ? `Quiz IA: ${livro.titulo}` : 'Quiz IA do aluno';
-    const descricao = quizTema.trim() || 'compreens„o da leitura';
+    const descricao = quizTema.trim() || 'compreens√£o da leitura';
 
     setSaving(true);
     try {
@@ -2905,12 +2930,12 @@ export default function PainelAluno() {
         comunidade_post_id: postId,
       });
 
-      toast({ title: publicarNaComunidade ? 'Quiz salvo e compartilhado!' : 'Quiz salvo no laboratÛrio!' });
+      toast({ title: publicarNaComunidade ? 'Quiz salvo e compartilhado!' : 'Quiz salvo no laborat√≥rio!' });
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Erro ao salvar quiz',
-        description: error?.message || 'N„o foi possÌvel salvar o quiz.',
+        description: error?.message || 'N√£o foi poss√≠vel salvar o quiz.',
       });
     } finally {
       setSaving(false);
@@ -2920,11 +2945,11 @@ export default function PainelAluno() {
   const abrirCompartilhamentoCriacao = (criacao) => {
     if (!criacao?.id) return;
     if (criacao.publicado_comunidade || criacao.comunidade_post_id) {
-      toast({ title: 'CriaÁ„o j· compartilhada', description: 'Essa criaÁ„o j· foi enviada para a comunidade.' });
+      toast({ title: 'Cria√ß√£o j√° compartilhada', description: 'Essa cria√ß√£o j√° foi enviada para a comunidade.' });
       return;
     }
     setShareCriacaoItem(criacao);
-    setShareCriacaoTitulo(repairMojibakeText(criacao.titulo) || 'CriaÁ„o do aluno');
+    setShareCriacaoTitulo(repairMojibakeText(criacao.titulo) || 'Cria√ß√£o do aluno');
     setShareCriacaoDescricao(
       repairMojibakeText(
         criacao.tipo === 'resumo'
@@ -2940,36 +2965,36 @@ export default function PainelAluno() {
     if (!optionalFeaturesEnabled || !alunoId || !escolaId) {
       toast({
         variant: 'destructive',
-        title: 'LaboratÛrio indisponÌvel',
-        description: 'N„o foi possÌvel compartilhar agora. Verifique se as migrations do banco foram aplicadas.',
+        title: 'Laborat√≥rio indispon√≠vel',
+        description: 'N√£o foi poss√≠vel compartilhar agora. Verifique se as migrations do banco foram aplicadas.',
       });
       return;
     }
     if (!criacao?.id) return;
     if (criacao.publicado_comunidade || criacao.comunidade_post_id) {
-      toast({ title: 'CriaÁ„o j· compartilhada', description: 'Essa criaÁ„o j· foi enviada para a comunidade.' });
+      toast({ title: 'Cria√ß√£o j√° compartilhada', description: 'Essa cria√ß√£o j√° foi enviada para a comunidade.' });
       return;
     }
 
     setSaving(true);
     try {
       const criacaoImagemUrls = ensureArray(criacao.imagem_urls_r2_keys || criacao.imagem_urls);
-      const tituloBase = String(customizacao.titulo || repairMojibakeText(criacao.titulo) || 'CriaÁ„o do aluno').trim();
+      const tituloBase = String(customizacao.titulo || repairMojibakeText(criacao.titulo) || 'Cria√ß√£o do aluno').trim();
       const descricaoBase = String(customizacao.descricao || repairMojibakeText(criacao.descricao) || '').trim();
       const tipoPersonalizado = String(customizacao.tipo || normalizeCriacaoShareTipo(criacao)).trim();
       const conteudoJson = extractQuizFromCriacao(criacao) || {};
       let payload = null;
 
-      if (criacao.livro_id && !alunoPodeUsarLivroEmprestado(criacao.livro_id, 'publicar esta criaÁ„o')) {
-        throw new Error('Somente livros presentes em "Meus livros" podem ser usados em publicaÁıes.');
+      if (criacao.livro_id && !alunoPodeUsarLivroEmprestado(criacao.livro_id, 'publicar esta cria√ß√£o')) {
+        throw new Error('Somente livros presentes em "Meus livros" podem ser usados em publica√ß√µes.');
       }
 
       if (criacao.tipo === 'quiz') {
         const perguntas = ensureArray(conteudoJson?.perguntas);
         if (perguntas.length === 0) {
-          throw new Error('N„o foi possÌvel compartilhar este quiz porque ele n„o tem perguntas v·lidas.');
+          throw new Error('N√£o foi poss√≠vel compartilhar este quiz porque ele n√£o tem perguntas v√°lidas.');
         }
-        const descricaoQuiz = repairMojibakeText(criacao.descricao) || 'compreens„o da leitura';
+        const descricaoQuiz = repairMojibakeText(criacao.descricao) || 'compreens√£o da leitura';
         const resumoQuestoes = perguntas.map((pergunta, index) => `${index + 1}) ${pergunta.enunciado}`).join('\n');
         const quizPayload = {
           perguntas,
@@ -3005,7 +3030,7 @@ export default function PainelAluno() {
           autor_id: alunoId,
           escola_id: escolaId,
           livro_id: criacao.livro_id || null,
-          tipo: ['dica', 'sugest„o'].includes(tipoPersonalizado) ? tipoPersonalizado : 'sugest„o',
+          tipo: ['dica', 'sugest√£o'].includes(tipoPersonalizado) ? tipoPersonalizado : 'sugest√£o',
           titulo: tituloBase,
           conteudo: descricaoBase || extractResumoTextoFromCriacao(criacao) || 'Resumo compartilhado pelo aluno.',
           imagem_urls: criacaoImagemUrls,
@@ -3017,7 +3042,7 @@ export default function PainelAluno() {
           escola_id: escolaId,
           livro_id: criacao.livro_id || null,
           audiobook_id: conteudoJson?.audiobook_id || null,
-          tipo: ['dica', 'sugest„o', 'resenha'].includes(tipoPersonalizado) ? tipoPersonalizado : 'dica',
+          tipo: ['dica', 'sugest√£o', 'resenha'].includes(tipoPersonalizado) ? tipoPersonalizado : 'dica',
           titulo: tituloBase,
           conteudo: descricaoBase || 'Projeto criativo compartilhado pelo aluno.',
           imagem_urls: criacaoImagemUrls,
@@ -3043,12 +3068,12 @@ export default function PainelAluno() {
 
       setShareCriacaoDialogOpen(false);
       setShareCriacaoItem(null);
-      toast({ title: 'CriaÁ„o compartilhada na comunidade!' });
+      toast({ title: 'Cria√ß√£o compartilhada na comunidade!' });
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: error?.message || 'N„o foi possÌvel compartilhar a criaÁ„o salva.',
+        description: error?.message || 'N√£o foi poss√≠vel compartilhar a cria√ß√£o salva.',
       });
     } finally {
       setSaving(false);
@@ -3067,7 +3092,7 @@ export default function PainelAluno() {
     setSaving(true);
     try {
       if (labCriacoesMissingTable) {
-        throw new Error('Tabela laboratorio_criacoes n„o encontrada. Aplique as migrations do Supabase.');
+        throw new Error('Tabela laboratorio_criacoes n√£o encontrada. Aplique as migrations do Supabase.');
       }
 
       try {
@@ -3078,16 +3103,16 @@ export default function PainelAluno() {
       } catch (error) {
         if (isMissingTableError(error)) {
           setLabCriacoesMissingTable(true);
-          throw new Error('Tabela laboratorio_criacoes n„o encontrada. Aplique as migrations do Supabase.');
+          throw new Error('Tabela laboratorio_criacoes n√£o encontrada. Aplique as migrations do Supabase.');
         }
         throw error;
       }
 
       setDeleteCriacaoDialogOpen(false);
       setDeleteCriacaoItem(null);
-      toast({ title: 'CriaÁ„o removida.' });
+      toast({ title: 'Cria√ß√£o removida.' });
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro ao apagar', description: error?.message || 'N„o foi possÌvel apagar.' });
+      toast({ variant: 'destructive', title: 'Erro ao apagar', description: error?.message || 'N√£o foi poss√≠vel apagar.' });
     } finally {
       setSaving(false);
     }
@@ -3116,7 +3141,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Perfil incompleto',
-        description: 'N„o foi possÌvel identificar sua escola para gerar o resumo.',
+        description: 'N√£o foi poss√≠vel identificar sua escola para gerar o resumo.',
       });
       return;
     }
@@ -3135,7 +3160,7 @@ export default function PainelAluno() {
           autor: livro.autor,
           sinopse: livro.sinopse || '',
         },
-        'N„o foi possÌvel gerar resumo com IA no momento.',
+        'N√£o foi poss√≠vel gerar resumo com IA no momento.',
       );
 
       const texto = extractResumoTextoFromIAResponse(data);
@@ -3146,7 +3171,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro ao gerar resumo',
-        description: error?.message || 'N„o foi possÌvel gerar resumo com IA.',
+        description: error?.message || 'N√£o foi poss√≠vel gerar resumo com IA.',
       });
     } finally {
       setGerandoResumoIA(false);
@@ -3158,7 +3183,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Perfil incompleto',
-        description: 'N„o foi possÌvel identificar seu perfil para salvar o desafio.',
+        description: 'N√£o foi poss√≠vel identificar seu perfil para salvar o desafio.',
       });
       return;
     }
@@ -3184,7 +3209,7 @@ export default function PainelAluno() {
           criterio_rotulo: criterio.rotulo,
           livros_sugeridos: livrosSugeriveisDesafio,
         },
-        'N„o foi possÌvel gerar desafio de gamificaÁ„o no momento.',
+        'N√£o foi poss√≠vel gerar desafio de gamifica√ß√£o no momento.',
       );
       const desafio = normalizeDesafioIA({
         ...(data?.data || {}),
@@ -3194,16 +3219,16 @@ export default function PainelAluno() {
           [criterio.tipo]: criterio.valor_inicial,
         }, nivelAtual),
       });
-      if (!desafio?.titulo || !desafio?.desafio) throw new Error('A IA respondeu sem desafio v·lido.');
+      if (!desafio?.titulo || !desafio?.desafio) throw new Error('A IA respondeu sem desafio v√°lido.');
       await persistirDesafioIA({ desafio, xpBonus: desafioXpBonus });
       setDesafioIA(desafio);
       if (desafioCacheKey) writeCache(desafioCacheKey, desafio);
-      toast({ title: 'Desafio de gamificaÁ„o gerado!' });
+      toast({ title: 'Desafio de gamifica√ß√£o gerado!' });
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Erro no desafio IA',
-        description: error?.message || 'N„o foi possÌvel gerar desafio agora.',
+        description: error?.message || 'N√£o foi poss√≠vel gerar desafio agora.',
       });
     } finally {
       setGerandoDesafioIA(false);
@@ -3214,7 +3239,7 @@ export default function PainelAluno() {
     if (!desafioIA) return;
     if (desafioIA.concluido_em && origem === 'silenciosa') return;
     if (desafioIA.concluido_em) {
-      toast({ title: 'Desafio j· concluÌdo', description: 'A recompensa deste desafio j· foi adicionada ao seu perfil.' });
+      toast({ title: 'Desafio j√° conclu√≠do', description: 'A recompensa deste desafio j√° foi adicionada ao seu perfil.' });
       return;
     }
 
@@ -3234,15 +3259,15 @@ export default function PainelAluno() {
       if (desafioCacheKey) writeCache(desafioCacheKey, desafioConcluido);
 
       toast({
-        title: 'Desafio concluÌdo',
-        description: xpRecompensa > 0 ? `VocÍ recebeu ${xpRecompensa} XP pelo desafio do dia.` : 'Sua conclus„o foi registrada.',
+        title: 'Desafio conclu√≠do',
+        description: xpRecompensa > 0 ? `Voc√™ recebeu ${xpRecompensa} XP pelo desafio do dia.` : 'Sua conclus√£o foi registrada.',
       });
       navigate('/aluno');
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Erro ao concluir desafio',
-        description: error?.message || 'N„o foi possÌvel registrar a conclus„o do desafio.',
+        description: error?.message || 'N√£o foi poss√≠vel registrar a conclus√£o do desafio.',
       });
     } finally {
       setSalvandoDesafioIA(false);
@@ -3291,10 +3316,10 @@ export default function PainelAluno() {
         },
         ...prev,
       ]);
-      toast({ title: 'Resumo salvo no laboratÛrio' });
+      toast({ title: 'Resumo salvo no laborat√≥rio' });
       setResumoTexto('');
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N„o foi possÌvel salvar o resumo.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'N√£o foi poss√≠vel salvar o resumo.' });
     }
   };
 
@@ -3321,7 +3346,7 @@ export default function PainelAluno() {
           autor: livro.autor,
           sinopse: livro.sinopse || '',
         },
-        'N„o foi possÌvel gerar o resumo r·pido agora.',
+        'N√£o foi poss√≠vel gerar o resumo r√°pido agora.',
       );
       const texto = extractResumoTextoFromIAResponse(data);
       if (!texto) throw new Error('A IA respondeu sem resumo.');
@@ -3331,7 +3356,7 @@ export default function PainelAluno() {
       toast({
         variant: 'destructive',
         title: 'Erro ao gerar resumo',
-        description: error?.message || 'N„o foi possÌvel gerar o resumo r·pido.',
+        description: error?.message || 'N√£o foi poss√≠vel gerar o resumo r√°pido.',
       });
     } finally {
       setResumoRapidoLoadingId('');
@@ -3343,15 +3368,15 @@ export default function PainelAluno() {
     const payload = extractQuizFromCriacao(criacao);
     const perguntas = ensureArray(payload?.perguntas);
     if (perguntas.length === 0) {
-      toast({ variant: 'destructive', title: 'Quiz inv·lido', description: 'N„o foi possÌvel carregar este quiz.' });
+      toast({ variant: 'destructive', title: 'Quiz inv√°lido', description: 'N√£o foi poss√≠vel carregar este quiz.' });
       return;
     }
     setQuizLivroId(criacao.livro_id || '');
-    setQuizTema(criacao.descricao || 'compreens„o da leitura');
+    setQuizTema(criacao.descricao || 'compreens√£o da leitura');
     setQuiz(perguntas);
     setQuizRespostas({});
     setQuizResultado(null);
-    toast({ title: 'Quiz carregado', description: 'VocÍ pode jogar novamente.' });
+    toast({ title: 'Quiz carregado', description: 'Voc√™ pode jogar novamente.' });
   };
 
   if (loading) {
@@ -3687,7 +3712,7 @@ export default function PainelAluno() {
                             <Label>Minha entrega</Label>
                             <Textarea
                               rows={3}
-                              placeholder="Escreva sua resposta, resumo ou reflex„o..."
+                              placeholder="Escreva sua resposta, resumo ou reflex√£o..."
                               value={atividadeTexto[atividade.id] ?? parseEntregaPayload(atividade.entrega?.texto_entrega).texto ?? ''}
                               onChange={(e) =>
                                 setAtividadeTexto((prev) => ({
@@ -3756,7 +3781,7 @@ export default function PainelAluno() {
                           )}
 
                           <div className="space-y-2">
-                            <Label>Imagens da atividade (opcional, atÈ 4)</Label>
+                            <Label>Imagens da atividade (opcional, at√© 4)</Label>
                             <Input
                               type="file"
                               accept="image/*"
@@ -3810,7 +3835,7 @@ export default function PainelAluno() {
                                   </span>
                                 </>
                               ) : (
-                                <Badge variant="outline">Ainda n„o enviado</Badge>
+                                <Badge variant="outline">Ainda n√£o enviado</Badge>
                               )}
                             </div>
 
@@ -3839,7 +3864,7 @@ export default function PainelAluno() {
                 </CardHeader>
                 <CardContent>
                   {sugestoes.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8">Nenhuma sugest„o recebida.</p>
+                    <p className="text-center text-muted-foreground py-8">Nenhuma sugest√£o recebida.</p>
                   ) : (
                     <div className="space-y-3">
                       {sugestoes.map((s) => (
@@ -3971,7 +3996,7 @@ export default function PainelAluno() {
                     <div className="rounded-md border bg-muted/20 p-3 text-sm">
                       <p className="font-medium">Fonte do quiz</p>
                       <p className="text-xs text-muted-foreground">
-                        Livro: {livrosById.get(quizLivroId)?.titulo || '-'} - Tema: {quizTema.trim() || 'compreens„o da leitura'}
+                        Livro: {livrosById.get(quizLivroId)?.titulo || '-'} - Tema: {quizTema.trim() || 'compreens√£o da leitura'}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         Questoes: {quiz.length} - Nivel: {quizNivel}
@@ -4113,7 +4138,7 @@ export default function PainelAluno() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">CriaÁıes salvas no laboratÛrio</CardTitle>
+                <CardTitle className="text-base">Cria√ß√µes salvas no laborat√≥rio</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex flex-wrap gap-2 rounded-lg border p-1 bg-muted/20">
@@ -4152,7 +4177,7 @@ export default function PainelAluno() {
                 </div>
 
                 {criacoesLaboratorioFiltradas.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nenhuma criaÁ„o salva ainda.</p>
+                  <p className="text-sm text-muted-foreground">Nenhuma cria√ß√£o salva ainda.</p>
                 ) : (
                   <div className="space-y-3">
                     {criacoesLaboratorioFiltradas.slice(0, criacoesLimit).map((criacao) => {
@@ -4161,9 +4186,9 @@ export default function PainelAluno() {
                         <div key={criacao.id} className="rounded-md border p-3 space-y-2">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
-                              <p className="font-medium">{repairMojibakeText(criacao.titulo) || 'CriaÁ„o sem tÌtulo'}</p>
+                              <p className="font-medium">{repairMojibakeText(criacao.titulo) || 'Cria√ß√£o sem t√≠tulo'}</p>
                               <p className="text-xs text-muted-foreground">
-                                {criacao.tipo} ï {formatDateBR(criacao.created_at)}
+                                {criacao.tipo} ‚Ä¢ {formatDateBR(criacao.created_at)}
                               </p>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
@@ -4187,7 +4212,7 @@ export default function PainelAluno() {
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                               {ensureArray(criacao.imagem_urls).slice(0, 4).map((img, index) => (
                                 <button type="button" key={`${criacao.id}-${index}`} onClick={() => setSelectedStudioImageUrl(img)}>
-                                  <img src={img} alt={`CriaÁ„o ${index + 1}`} className="h-20 w-full rounded-md border object-cover cursor-zoom-in" />
+                                  <img src={img} alt={`Cria√ß√£o ${index + 1}`} className="h-20 w-full rounded-md border object-cover cursor-zoom-in" />
                                 </button>
                               ))}
                             </div>
@@ -4289,7 +4314,7 @@ export default function PainelAluno() {
                   <div className="space-y-3">
                     <p className="text-sm font-semibold">Meus livros</p>
                     {filteredMeusLivros.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">VocÍ ainda nao tem livros aprovados/emprestados.</p>
+                      <p className="text-sm text-muted-foreground">Voc√™ ainda nao tem livros aprovados/emprestados.</p>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                         {filteredMeusLivros.map((item) => (
@@ -4303,14 +4328,14 @@ export default function PainelAluno() {
                               <p className="text-sm font-semibold line-clamp-2">{item.livros?.titulo || 'Livro'}</p>
                               <p className="text-xs text-muted-foreground line-clamp-1">{item.livros?.autor || '-'}</p>
                               <p className="text-xs text-muted-foreground">
-                                EmprÈstimo: {formatDateBR(item.data_emprestimo)}
+                                Empr√©stimo: {formatDateBR(item.data_emprestimo)}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                DevoluÁ„o prevista: {item.data_devolucao_prevista ? formatDateBR(item.data_devolucao_prevista) : 'N„o informada'}
+                                Devolu√ß√£o prevista: {item.data_devolucao_prevista ? formatDateBR(item.data_devolucao_prevista) : 'N√£o informada'}
                               </p>
                               {pendingExtensionRequestsByLoanId.has(item.id) ? (
                                 <div className="pt-1">
-                                  <Badge variant="secondary">ProrrogaÁ„o em an·lise</Badge>
+                                  <Badge variant="secondary">Prorroga√ß√£o em an√°lise</Badge>
                                 </div>
                               ) : canRequestLoanExtension(item) ? (
                                 <Button
@@ -4320,7 +4345,7 @@ export default function PainelAluno() {
                                   className="mt-2 w-full"
                                   onClick={() => openLoanExtensionDialog(item)}
                                 >
-                                  Pedir extens„o de prazo
+                                  Pedir extens√£o de prazo
                                 </Button>
                               ) : null}
                             </div>
@@ -4478,7 +4503,7 @@ export default function PainelAluno() {
                                       ? 'Livro ja emprestado'
                                       : hasSolicitacaoEmAndamento(livro.id)
                                         ? 'Solicitacao ja enviada'
-                                        : 'Solicitar emprÈstimo'
+                                        : 'Solicitar empr√©stimo'
                                 }
                                 onClick={() => {
                                   setRequestLivro(livro);
@@ -4521,7 +4546,7 @@ export default function PainelAluno() {
                         variant={solicitacoesView === 'pendentes' ? 'default' : 'ghost'}
                         onClick={() => setSolicitacoesView('pendentes')}
                       >
-                        Aguardando aprovaÁ„o ({solicitacoesGroups.pendentes.length})
+                        Aguardando aprova√ß√£o ({solicitacoesGroups.pendentes.length})
                       </Button>
                       <Button
                         type="button"
@@ -4545,11 +4570,11 @@ export default function PainelAluno() {
                         variant={solicitacoesView === 'historico' ? 'default' : 'ghost'}
                         onClick={() => setSolicitacoesView('historico')}
                       >
-                        HistÛrico ({solicitacoesGroups.historico.length})
+                        Hist√≥rico ({solicitacoesGroups.historico.length})
                       </Button>
                     </div>
                     {solicitacoesExibidas.length === 0 ? (
-                      <p className="text-center text-muted-foreground py-8">VocÍ ainda n„o fez solicitacoes.</p>
+                      <p className="text-center text-muted-foreground py-8">Voc√™ ainda n√£o fez solicitacoes.</p>
                     ) : (
                       <div className="space-y-3">
                         {solicitacoesExibidas.slice(0, solicitacoesLimit).map((solicitacao) => {
@@ -4569,7 +4594,7 @@ export default function PainelAluno() {
                                 <p className="font-medium">{solicitacao.livros?.titulo || 'Livro'}</p>
                                 <p className="text-xs text-muted-foreground">{solicitacao.livros?.autor || '-'}</p>
                                 <p className="text-xs text-muted-foreground">
-                                  {isExtension ? 'Tipo: pedido de prorrogaÁ„o' : 'Tipo: solicitaÁ„o de emprÈstimo'}
+                                  {isExtension ? 'Tipo: pedido de prorroga√ß√£o' : 'Tipo: solicita√ß√£o de empr√©stimo'}
                                 </p>
                               </div>
                               <Badge
@@ -4617,7 +4642,7 @@ export default function PainelAluno() {
                             )}
 
                             <div className="rounded-md border bg-muted/20 p-3 space-y-2">
-                              <p className="text-xs text-muted-foreground">Conversa sobre a solicitaÁ„o</p>
+                              <p className="text-xs text-muted-foreground">Conversa sobre a solicita√ß√£o</p>
                               {chatMensagens.length === 0 ? (
                                 <p className="text-sm text-muted-foreground">Nenhuma mensagem registrada ainda.</p>
                               ) : (
@@ -4632,7 +4657,7 @@ export default function PainelAluno() {
                                         }`}
                                       >
                                         <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                                          <span>{isBiblioteca ? 'Biblioteca' : 'VocÍ'}</span>
+                                          <span>{isBiblioteca ? 'Biblioteca' : 'Voc√™'}</span>
                                           <span>{formatDateBR(mensagem.created_at)}</span>
                                         </div>
                                         <p className="mt-1 whitespace-pre-wrap">{mensagem.mensagem}</p>
@@ -4701,7 +4726,7 @@ export default function PainelAluno() {
               </CardHeader>
               <CardContent>
                 {wishlist.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">Sua lista est· vazia.</p>
+                  <p className="text-center text-muted-foreground py-8">Sua lista est√° vazia.</p>
                 ) : (
                   <div className="space-y-3">
                     {wishlist.map((livroId) => {
@@ -4714,7 +4739,7 @@ export default function PainelAluno() {
                             <p className="font-medium">{livro.titulo}</p>
                             <p className="text-xs text-muted-foreground">{livro.autor}</p>
                             <Badge variant={livro.disponivel ? 'default' : 'secondary'} className="mt-1 text-xs">
-                              {livro.disponivel ? 'DisponÌvel' : 'Emprestado'}
+                              {livro.disponivel ? 'Dispon√≠vel' : 'Emprestado'}
                             </Badge>
                           </div>
                           <div className="flex gap-1">
@@ -4750,7 +4775,7 @@ export default function PainelAluno() {
               </CardHeader>
               <CardContent>
                 {avaliacoes.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">VocÍ ainda n„o avaliou nenhum livro.</p>
+                  <p className="text-center text-muted-foreground py-8">Voc√™ ainda n√£o avaliou nenhum livro.</p>
                 ) : (
                   <div className="space-y-3">
                     {avaliacoes.map((a) => (
@@ -4779,7 +4804,7 @@ export default function PainelAluno() {
               </CardHeader>
               <CardContent>
                 {sugestoes.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">Nenhuma sugest„o recebida.</p>
+                  <p className="text-center text-muted-foreground py-8">Nenhuma sugest√£o recebida.</p>
                 ) : (
                   <div className="space-y-3">
                     {sugestoes.map((s) => (
@@ -4804,7 +4829,7 @@ export default function PainelAluno() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Avaliar: {reviewLivro?.titulo}</DialogTitle>
-            <DialogDescription>DÍ uma nota e escreva sua resenha.</DialogDescription>
+            <DialogDescription>D√™ uma nota e escreva sua resenha.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
@@ -4817,7 +4842,7 @@ export default function PainelAluno() {
               <Textarea
                 value={reviewTexto}
                 onChange={(e) => setReviewTexto(e.target.value)}
-                placeholder="O que vocÍ achou do livro?"
+                placeholder="O que voc√™ achou do livro?"
                 rows={4}
               />
             </div>
@@ -4846,19 +4871,19 @@ export default function PainelAluno() {
       <Dialog open={requestDialog} onOpenChange={setRequestDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Solicitar emprÈstimo</DialogTitle>
+            <DialogTitle>Solicitar empr√©stimo</DialogTitle>
             <DialogDescription>Solicitar: {requestLivro?.titulo}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             {requestLivro && hasSolicitacaoEmAndamento(requestLivro.id) && (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                VocÍ j· solicitou este livro. Aguarde a aprovaÁ„o da bibliotec·ria para solicitar novamente.
+                Voc√™ j√° solicitou este livro. Aguarde a aprova√ß√£o da bibliotec√°ria para solicitar novamente.
               </div>
             )}
             {requestLivro && hasEmprestimoAtivo(requestLivro.id) && (
               <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
-                Este livro j· est· emprestado para vocÍ. Acompanhe em "Meus livros".
+                Este livro j√° est√° emprestado para voc√™. Acompanhe em "Meus livros".
               </div>
             )}
             <div className="space-y-2">
@@ -4866,7 +4891,7 @@ export default function PainelAluno() {
               <Textarea
                 value={requestMsg}
                 onChange={(e) => setRequestMsg(e.target.value)}
-                placeholder="Motivo ou observaÁıes..."
+                placeholder="Motivo ou observa√ß√µes..."
                 rows={3}
               />
             </div>
@@ -4883,7 +4908,7 @@ export default function PainelAluno() {
                 || (requestLivro && (hasSolicitacaoEmAndamento(requestLivro.id) || hasEmprestimoAtivo(requestLivro.id)))
               }
             >
-              {saving ? 'Enviando...' : 'Enviar solicitaÁ„o'}
+              {saving ? 'Enviando...' : 'Enviar solicita√ß√£o'}
             </Button>
           </div>
         </DialogContent>
@@ -4902,15 +4927,15 @@ export default function PainelAluno() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Pedir extens„o de prazo</DialogTitle>
+            <DialogTitle>Pedir extens√£o de prazo</DialogTitle>
             <DialogDescription>
-              {extensionEmprestimo?.livros?.titulo || 'Livro'}: solicite uma nova data para a bibliotec·ria avaliar.
+              {extensionEmprestimo?.livros?.titulo || 'Livro'}: solicite uma nova data para a bibliotec√°ria avaliar.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-              Data atual de devoluÁ„o: {formatDateBR(extensionEmprestimo?.data_devolucao_prevista)}
+              Data atual de devolu√ß√£o: {formatDateBR(extensionEmprestimo?.data_devolucao_prevista)}
             </div>
             <div className="space-y-2">
               <Label htmlFor="extensionRequestedDate">Nova data desejada</Label>
@@ -4929,7 +4954,7 @@ export default function PainelAluno() {
                 rows={3}
                 value={extensionMessage}
                 onChange={(e) => setExtensionMessage(e.target.value)}
-                placeholder="Explique por que vocÍ precisa de mais prazo."
+                placeholder="Explique por que voc√™ precisa de mais prazo."
               />
             </div>
           </div>
@@ -5019,43 +5044,43 @@ export default function PainelAluno() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Compartilhar criaÁ„o na comunidade</DialogTitle>
+            <DialogTitle>Compartilhar cria√ß√£o na comunidade</DialogTitle>
             <DialogDescription>
-              Personalize o tÌtulo, a descriÁ„o e o tipo da postagem antes de publicar.
+              Personalize o t√≠tulo, a descri√ß√£o e o tipo da postagem antes de publicar.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>TÌtulo</Label>
+              <Label>T√≠tulo</Label>
               <Input
                 value={shareCriacaoTitulo}
                 onChange={(e) => setShareCriacaoTitulo(e.target.value)}
-                placeholder="TÌtulo da publicaÁ„o"
+                placeholder="T√≠tulo da publica√ß√£o"
               />
             </div>
 
             {shareCriacaoItem?.tipo !== 'quiz' && shareCriacaoItem?.tipo !== 'resenha' && (
               <div className="space-y-2">
-                <Label>Tipo da publicaÁ„o</Label>
+                <Label>Tipo da publica√ß√£o</Label>
                 <select
                   value={shareCriacaoTipo}
                   onChange={(e) => setShareCriacaoTipo(e.target.value)}
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="dica">Dica</option>
-                  <option value="sugest„o">Sugest„o</option>
+                  <option value="sugest√£o">Sugest√£o</option>
                   {shareCriacaoItem?.tipo === 'imagem' && <option value="resenha">Resenha</option>}
                 </select>
               </div>
             )}
 
             <div className="space-y-2">
-              <Label>{shareCriacaoItem?.tipo === 'quiz' ? 'Resumo do quiz' : 'DescriÁ„o'}</Label>
+              <Label>{shareCriacaoItem?.tipo === 'quiz' ? 'Resumo do quiz' : 'Descri√ß√£o'}</Label>
               <Textarea
                 value={shareCriacaoDescricao}
                 onChange={(e) => setShareCriacaoDescricao(e.target.value)}
-                placeholder="Escreva o texto que ser· publicado"
+                placeholder="Escreva o texto que ser√° publicado"
                 rows={5}
               />
             </div>
@@ -5065,7 +5090,7 @@ export default function PainelAluno() {
                 {ensureArray(shareCriacaoItem?.imagem_urls)
                   .slice(0, 4)
                   .map((img, index) => (
-                    <img key={`${shareCriacaoItem?.id || 'share'}-${index}`} src={img} alt={`PrÈvia ${index + 1}`} className="h-24 w-full rounded-md object-cover border" />
+                    <img key={`${shareCriacaoItem?.id || 'share'}-${index}`} src={img} alt={`Pr√©via ${index + 1}`} className="h-24 w-full rounded-md object-cover border" />
                   ))}
               </div>
             )}
@@ -5102,19 +5127,19 @@ export default function PainelAluno() {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Excluir criaÁ„o salva</DialogTitle>
+            <DialogTitle>Excluir cria√ß√£o salva</DialogTitle>
             <DialogDescription>
-              Esta aÁ„o remove a criaÁ„o do laboratÛrio
-              {deleteCriacaoItem?.comunidade_post_id ? ' e tambÈm a publicaÁ„o vinculada na comunidade' : ''}.
+              Esta a√ß√£o remove a cria√ß√£o do laborat√≥rio
+              {deleteCriacaoItem?.comunidade_post_id ? ' e tamb√©m a publica√ß√£o vinculada na comunidade' : ''}.
             </DialogDescription>
           </DialogHeader>
 
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-muted-foreground">
             <p className="font-medium text-foreground">
-              {repairMojibakeText(deleteCriacaoItem?.titulo) || 'CriaÁ„o sem tÌtulo'}
+              {repairMojibakeText(deleteCriacaoItem?.titulo) || 'Cria√ß√£o sem t√≠tulo'}
             </p>
             <p className="mt-1">
-              Deseja apagar esta criaÁ„o do laboratÛrio? Essa aÁ„o n„o poder· ser desfeita.
+              Deseja apagar esta cria√ß√£o do laborat√≥rio? Essa a√ß√£o n√£o poder√° ser desfeita.
             </p>
           </div>
 
@@ -5127,7 +5152,7 @@ export default function PainelAluno() {
               onClick={() => apagarCriacaoLaboratorio(deleteCriacaoItem)}
               disabled={saving || !deleteCriacaoItem}
             >
-              {saving ? 'Apagando...' : 'Confirmar exclus„o'}
+              {saving ? 'Apagando...' : 'Confirmar exclus√£o'}
             </Button>
           </div>
         </DialogContent>
@@ -5151,7 +5176,7 @@ export default function PainelAluno() {
           </DialogHeader>
 
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-muted-foreground">
-            Essa imagem ser· removida da montagem atual antes de salvar ou compartilhar.
+            Essa imagem ser√° removida da montagem atual antes de salvar ou compartilhar.
           </div>
 
           <div className="flex justify-end gap-2">
@@ -5168,13 +5193,13 @@ export default function PainelAluno() {
       <Dialog open={Boolean(selectedStudioImageUrl)} onOpenChange={(open) => !open && setSelectedStudioImageUrl('')}>
         <DialogContent className="max-w-5xl">
           <DialogHeader>
-            <DialogTitle>VisualizaÁ„o ampliada</DialogTitle>
+            <DialogTitle>Visualiza√ß√£o ampliada</DialogTitle>
             <DialogDescription>Clique fora para fechar. Use a imagem em tamanho maior para analisar detalhes.</DialogDescription>
           </DialogHeader>
           {selectedStudioImageUrl && (
             <img
               src={selectedStudioImageUrl}
-              alt="Imagem ampliada do laboratÛrio"
+              alt="Imagem ampliada do laborat√≥rio"
               className="w-full max-h-[75vh] object-contain rounded-md border"
             />
           )}
@@ -5197,11 +5222,11 @@ export default function PainelAluno() {
               <DialogHeader>
                 <DialogTitle>Acesso do aluno</DialogTitle>
                 <DialogDescription>
-                  No primeiro acesso, È obrigatÛrio criar uma nova senha para continuar usando a conta.
+                  No primeiro acesso, √© obrigat√≥rio criar uma nova senha para continuar usando a conta.
                 </DialogDescription>
               </DialogHeader>
               <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
-                Sua matrÌcula continua como login. Assim que a nova senha for salva, a senha inicial deixa de funcionar.
+                Sua matr√≠cula continua como login. Assim que a nova senha for salva, a senha inicial deixa de funcionar.
               </div>
               <div className="space-y-3">
                 <div className="space-y-1.5">
@@ -5250,7 +5275,7 @@ export default function PainelAluno() {
               <div className="flex justify-end gap-2">
                 {onboardingStep < ALUNO_ONBOARDING_CARDS.length ? (
                   <Button type="button" onClick={() => setOnboardingStep((prev) => prev + 1)}>
-                    PrÛximo
+                    Pr√≥ximo
                   </Button>
                 ) : (
                   <Button type="button" onClick={finalizeAlunoOnboarding}>
