@@ -139,6 +139,10 @@ function isMobileDevice() {
   return /android|iphone|ipad|ipod|mobile/i.test(String(navigator?.userAgent || '').toLowerCase());
 }
 
+function isAndroidDevice() {
+  return String(navigator?.userAgent || '').toLowerCase().includes('android');
+}
+
 function isAndroidChromeFamily() {
   const userAgent = String(navigator?.userAgent || '').toLowerCase();
   const isAndroid = userAgent.includes('android');
@@ -316,6 +320,12 @@ export default function Auth() {
   const enrollPasskey = async (nextPending) => {
     if (!isPlatformPasskeySupported()) {
       throw new Error('Este dispositivo nao suporta passkey biometrica. Use um celular com Android/iPhone e bloqueio biometrico ativo.');
+    }
+
+    if (isAndroidDevice() && !isAndroidChromeFamily()) {
+      throw new Error(
+        'No Android, a passkey biometrica local deve ser aberta pelo Chrome com o Gerenciador de senhas do Google. Neste navegador o celular pode oferecer apenas chave USB ou outro dispositivo.',
+      );
     }
 
     const localAuthenticatorAvailable = await isLocalPlatformAuthenticatorAvailable();
@@ -580,6 +590,12 @@ export default function Auth() {
     if (!pendingSecurity) return;
     setLoading(true);
     try {
+      if (isAndroidDevice() && !isAndroidChromeFamily()) {
+        throw new Error(
+          'O navegador atual do Android nao esta oferecendo a biometria local. Abra o login no Chrome do celular para que ele use a digital, o PIN ou a senha do proprio aparelho.',
+        );
+      }
+
       const localAuthenticatorAvailable = await isLocalPlatformAuthenticatorAvailable();
       if (!localAuthenticatorAvailable && isMobileDevice()) {
         throw new Error(
