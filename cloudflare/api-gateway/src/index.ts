@@ -514,7 +514,7 @@ async function getSuperAdminAccountById(accountId: string, env: Env) {
   const payload = await supabaseAdminRequest(
     env,
     `/rest/v1/super_admin_accounts?${new URLSearchParams({
-      select: 'id,nome,email,ativo,bloqueado,passkey_required,passkey_enrolled_at,ultimo_ip,ultima_regiao,ultimo_dispositivo,ultimo_mfa_em,ultimo_email_verificado_em,created_at',
+      select: 'id,nome,email,ativo,bloqueado,passkey_required,passkey_enrolled_at,ultimo_dispositivo,ultimo_mfa_em,ultimo_email_verificado_em,created_at',
       id: `eq.${accountId}`,
       limit: '1',
     }).toString()}`,
@@ -527,7 +527,7 @@ async function getSuperAdminAccountByAuthUserId(userId: string, env: Env) {
   const payload = await supabaseAdminRequest(
     env,
     `/rest/v1/super_admin_accounts?${new URLSearchParams({
-      select: 'id,nome,email,ativo,bloqueado,passkey_required,passkey_enrolled_at,ultimo_ip,ultima_regiao,ultimo_dispositivo,ultimo_mfa_em,ultimo_email_verificado_em,created_at',
+      select: 'id,nome,email,ativo,bloqueado,passkey_required,passkey_enrolled_at,ultimo_dispositivo,ultimo_mfa_em,ultimo_email_verificado_em,created_at',
       auth_user_id: `eq.${userId}`,
       limit: '1',
     }).toString()}`,
@@ -585,7 +585,7 @@ async function getSuperAdminChallengeByToken(token: string, env: Env) {
   const payload = await supabaseAdminRequest(
     env,
     `/rest/v1/super_admin_access_challenges?${new URLSearchParams({
-      select: 'id,account_id,kind,challenge_hash,token_hash,device_type,origin_ip,origin_region,origin_city,user_agent,requires_email_verification,email_code_hash,email_code_expires_at,email_verified_at,approved_at,approved_by_account_id,consumed_at,expires_at,metadata,created_at',
+      select: 'id,account_id,kind,challenge_hash,token_hash,device_type,origin_ip,user_agent,requires_email_verification,email_code_hash,email_code_expires_at,email_verified_at,approved_at,approved_by_account_id,consumed_at,expires_at,metadata,created_at',
       token_hash: `eq.${tokenHash}`,
       limit: '1',
     }).toString()}`,
@@ -598,7 +598,7 @@ async function getSuperAdminChallengeByHash(accountId: string, kind: string, cha
   const payload = await supabaseAdminRequest(
     env,
     `/rest/v1/super_admin_access_challenges?${new URLSearchParams({
-      select: 'id,account_id,kind,challenge_hash,token_hash,device_type,origin_ip,origin_region,origin_city,user_agent,requires_email_verification,email_code_hash,email_code_expires_at,email_verified_at,approved_at,approved_by_account_id,consumed_at,expires_at,metadata,created_at',
+      select: 'id,account_id,kind,challenge_hash,token_hash,device_type,origin_ip,user_agent,requires_email_verification,email_code_hash,email_code_expires_at,email_verified_at,approved_at,approved_by_account_id,consumed_at,expires_at,metadata,created_at',
       account_id: `eq.${accountId}`,
       kind: `eq.${kind}`,
       challenge_hash: `eq.${challengeHash}`,
@@ -614,7 +614,7 @@ async function getSuperAdminChallengeById(challengeId: string, env: Env) {
   const payload = await supabaseAdminRequest(
     env,
     `/rest/v1/super_admin_access_challenges?${new URLSearchParams({
-      select: 'id,account_id,kind,challenge_hash,token_hash,device_type,origin_ip,origin_region,origin_city,user_agent,requires_email_verification,email_code_hash,email_code_expires_at,email_verified_at,approved_at,approved_by_account_id,consumed_at,expires_at,metadata,created_at',
+      select: 'id,account_id,kind,challenge_hash,token_hash,device_type,origin_ip,user_agent,requires_email_verification,email_code_hash,email_code_expires_at,email_verified_at,approved_at,approved_by_account_id,consumed_at,expires_at,metadata,created_at',
       id: `eq.${challengeId}`,
       limit: '1',
     }).toString()}`,
@@ -1269,50 +1269,6 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao resolver tenant.' }, 400);
     }
   },
-  'GET /v1/admin/logs': async (request, env) => {
-    const caller = await fetchSupabaseUser(request, env);
-    if (!caller?.id || !(await isSuperAdmin(caller.id, env))) {
-      return jsonResponse({ success: false, error: 'Sem permissao.' }, 403);
-    }
-    try {
-      const url = new URL(request.url);
-      const page = Math.max(0, Number(url.searchParams.get('page') || 0));
-      const pageSize = Math.max(1, Math.min(100, Number(url.searchParams.get('pageSize') || 50)));
-      const params = new URLSearchParams({
-        select: 'id,created_at,user_id,level,event,message,path,ip,user_agent,input,output,context',
-        event: `in.(${[
-          'super_admin_login_snapshot',
-          'super_admin_login_failed',
-          'super_admin_account_locked',
-          'super_admin_account_unlocked',
-          'super_admin_account_created',
-        ].join(',')})`,
-        order: 'created_at.desc',
-        offset: String(page * pageSize),
-        limit: String(pageSize),
-      });
-      const level = String(url.searchParams.get('level') || 'all');
-      const days = String(url.searchParams.get('range') || '7');
-      const search = String(url.searchParams.get('search') || '').trim();
-      if (level !== 'all') params.set('level', `eq.${level}`);
-      if (days !== 'all') {
-        const daysNumber = Number(days);
-        if (!Number.isNaN(daysNumber) && daysNumber > 0) {
-          const from = new Date();
-          from.setDate(from.getDate() - daysNumber);
-          params.set('created_at', `gte.${from.toISOString()}`);
-        }
-      }
-      if (search) {
-        const term = search.replace(/%/g, '\\%').replace(/_/g, '\\_');
-        params.set('or', `(event.ilike.%${term}%,message.ilike.%${term}%,path.ilike.%${term}%,ip.ilike.%${term}%)`);
-      }
-      const logs = await supabaseAdminRequest(env, `/rest/v1/system_logs?${params.toString()}`);
-      return jsonResponse({ success: true, items: ensureArray(logs) });
-    } catch (error) {
-      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao carregar logs.' }, 400);
-    }
-  },
   'GET /v1/relatorios': async (request, env) => {
     try {
       const [livros, livrosDisponiveis, usuarios, emprestimos] = await Promise.all([
@@ -1948,7 +1904,7 @@ const routes: Record<string, RouteHandler> = {
       },
       passkeysCount: passkeys.length,
       needsPasskeyEnrollment: passkeys.length === 0,
-      requiresEmailVerification: risk.outsideNordeste,
+      requiresEmailVerification: false,
       deviceType: risk.deviceType,
       risk,
     });
@@ -1978,14 +1934,11 @@ const routes: Record<string, RouteHandler> = {
       challenge_hash: await sha256Base64Url(challenge),
       device_type: risk.deviceType,
       origin_ip: risk.ip,
-      origin_region: risk.region,
-      origin_city: risk.city,
       user_agent: risk.userAgent,
       expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
       metadata: {
         origin,
         rpId,
-        outsideNordeste: risk.outsideNordeste,
       },
     });
 
@@ -2125,22 +2078,19 @@ const routes: Record<string, RouteHandler> = {
       challenge_hash: await sha256Base64Url(challenge),
       device_type: risk.deviceType,
       origin_ip: risk.ip,
-      origin_region: risk.region,
-      origin_city: risk.city,
       user_agent: risk.userAgent,
-      requires_email_verification: risk.outsideNordeste,
+      requires_email_verification: false,
       expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
       metadata: {
         origin,
         rpId,
-        outsideNordeste: risk.outsideNordeste,
       },
     });
 
     return jsonResponse({
       success: true,
       challengeId: challengeRow?.id || null,
-      requiresEmailVerification: risk.outsideNordeste,
+      requiresEmailVerification: false,
       publicKey: {
         challenge,
         rpId,
@@ -2325,10 +2275,8 @@ const routes: Record<string, RouteHandler> = {
       token_hash: await sha256Base64Url(token),
       device_type: 'desktop',
       origin_ip: risk.ip,
-      origin_region: risk.region,
-      origin_city: risk.city,
       user_agent: risk.userAgent,
-      requires_email_verification: risk.outsideNordeste,
+      requires_email_verification: false,
       expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
       metadata: {
         origin,
@@ -2345,7 +2293,7 @@ const routes: Record<string, RouteHandler> = {
       approvalUrl,
       qrCodeUrl: `https://quickchart.io/qr?text=${encodeURIComponent(approvalUrl)}&size=260`,
       expiresAt: challenge?.expires_at || null,
-      requiresEmailVerification: risk.outsideNordeste,
+      requiresEmailVerification: false,
     });
   },
   'GET /v1/auth/super-admin/desktop/challenges/:token': async (request, env) => {
@@ -2564,8 +2512,6 @@ const routes: Record<string, RouteHandler> = {
           ativo: true,
           bloqueado: false,
           bloqueado_em: null,
-          ultimo_ip: risk.ip,
-          ultima_regiao: risk.region,
           ultimo_dispositivo: risk.deviceType,
           ultimo_mfa_em: nowIso,
           ultimo_email_verificado_em: emailVerified ? nowIso : null,
@@ -3253,7 +3199,7 @@ const routes: Record<string, RouteHandler> = {
         titulo: item?.event === 'super_admin_account_locked' ? 'Conta bloqueada' : 'Tentativa de invasao',
         descricao: item?.message || 'Alerta de seguranca para Super Admin.',
         created_at: item?.created_at || null,
-        path: '/admin/logs',
+        path: '/admin/super-admins',
       }));
 
       return jsonResponse({
@@ -3555,26 +3501,15 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const accountsParams = new URLSearchParams({
-      select: 'id,nome,email,cpf,ativo,bloqueado,tentativas_falhas,ultima_tentativa_em,ultimo_login_em,bloqueado_em,passkey_enrolled_at,ultimo_mfa_em,ultimo_ip,ultima_regiao,ultimo_dispositivo,created_at',
+      select: 'id,nome,email,cpf,ativo,bloqueado,tentativas_falhas,ultima_tentativa_em,ultimo_login_em,bloqueado_em,passkey_enrolled_at,ultimo_mfa_em,ultimo_dispositivo,created_at',
       order: 'created_at.asc',
     });
 
-    const logsParams = new URLSearchParams({
-      select: 'id,event,message,ip,created_at,context',
-      event: 'in.(super_admin_login_failed,super_admin_account_locked)',
-      order: 'created_at.desc',
-      limit: '1',
-    });
-
-    const [items, alerts] = await Promise.all([
-      supabaseAdminRequest(env, `/rest/v1/super_admin_accounts?${accountsParams.toString()}`),
-      supabaseAdminRequest(env, `/rest/v1/system_logs?${logsParams.toString()}`),
-    ]);
+    const items = await supabaseAdminRequest(env, `/rest/v1/super_admin_accounts?${accountsParams.toString()}`);
 
     return jsonResponse({
       success: true,
       items: Array.isArray(items) ? items : [],
-      securityAlert: Array.isArray(alerts) ? (alerts[0] || null) : null,
     });
   },
   'POST /v1/admin/super-admins': async (request, env) => {

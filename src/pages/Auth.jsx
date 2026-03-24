@@ -35,106 +35,12 @@ import {
   isPlatformPasskeySupported,
 } from '@/lib/webauthn';
 
-const EXACT_LOCATION_MAX_ACCURACY_METERS = 100;
-const DESKTOP_LOCATION_MAX_ACCURACY_METERS = 10000;
 const SUPER_ADMIN_DESKTOP_RESUME_KEY = 'super_admin_desktop_resume';
 
 const loginSchema = z.object({
   login: z.string().trim().min(2, 'Informe seu CPF ou matrícula'),
   password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
 });
-
-function getCurrentPosition() {
-  if (!navigator?.geolocation?.getCurrentPosition) {
-    return Promise.reject(new Error('Geolocalizacao nao suportada'));
-  }
-
-  return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      timeout: 30000,
-      maximumAge: 0,
-    });
-  });
-}
-
-async function reverseGeocodeCity(latitude, longitude) {
-  const params = new URLSearchParams({
-    latitude: String(latitude),
-    longitude: String(longitude),
-    localityLanguage: 'pt',
-  });
-
-  const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?${params.toString()}`);
-  if (!response.ok) {
-    throw new Error(`Falha ao resolver cidade (${response.status})`);
-  }
-
-  const data = await response.json();
-  return {
-    city: data.city || data.locality || data.principalSubdivision || null,
-    principalSubdivision: data.principalSubdivision || null,
-    countryName: data.countryName || null,
-    locality: data.locality || null,
-  };
-}
-
-async function captureSecurityLocationContext() {
-  const baseContext = {
-    app_origin: window?.location?.origin || null,
-    user_agent: navigator?.userAgent || null,
-    language: navigator?.language || null,
-    requested_high_accuracy: true,
-  };
-
-  try {
-    const position = await getCurrentPosition();
-    const latitude = Number(position.coords?.latitude);
-    const longitude = Number(position.coords?.longitude);
-    const accuracy = Number(position.coords?.accuracy);
-
-    let cityData = {
-      city: null,
-      principalSubdivision: null,
-      countryName: null,
-      locality: null,
-      error: null,
-    };
-
-    try {
-      cityData = {
-        ...(await reverseGeocodeCity(latitude, longitude)),
-        error: null,
-      };
-    } catch (error) {
-      cityData = {
-        ...cityData,
-        error: error?.message || 'Falha ao resolver cidade',
-      };
-    }
-
-    return {
-      ...baseContext,
-      geolocation_status: 'captured',
-      city: cityData.city,
-      locality: cityData.locality,
-      state: cityData.principalSubdivision,
-      country: cityData.countryName,
-      reverse_geocode_error: cityData.error,
-      coordinates: {
-        latitude: Number.isFinite(latitude) ? latitude : null,
-        longitude: Number.isFinite(longitude) ? longitude : null,
-        accuracy_meters: Number.isFinite(accuracy) ? accuracy : null,
-      },
-    };
-  } catch (error) {
-    return {
-      ...baseContext,
-      geolocation_status: 'unavailable',
-      geolocation_error: error?.message || 'Falha ao capturar geolocalizacao',
-    };
-  }
-}
 
 function isMobileDevice() {
   return /android|iphone|ipad|ipod|mobile/i.test(String(navigator?.userAgent || '').toLowerCase());
@@ -151,14 +57,12 @@ function isAndroidChromeFamily() {
   return isAndroid && isChromeFamily;
 }
 
-function hasExactLocation(context) {
-  const accuracy = Number(context?.coordinates?.accuracy_meters);
-  const maxAccuracy = isMobileDevice() ? EXACT_LOCATION_MAX_ACCURACY_METERS : DESKTOP_LOCATION_MAX_ACCURACY_METERS;
-
-  return context?.geolocation_status === 'captured'
-    && Number.isFinite(accuracy)
-    && accuracy > 0
-    && accuracy <= maxAccuracy;
+function buildSecurityContext() {
+  return {
+    app_origin: window?.location?.origin || null,
+    user_agent: navigator?.userAgent || null,
+    language: navigator?.language || null,
+  };
 }
 
 function maskIdentifier(value) {
@@ -438,16 +342,6 @@ export default function Auth() {
   };
 
   const handleSuperAdminPasswordFlow = async (superAdminEmail, identifier) => {
-    const locationContext = await captureSecurityLocationContext();
-    if (!hasExactLocation(locationContext)) {
-      return {
-        error: {
-          message: 'O Super Admin precisa compartilhar a localizacao exata do dispositivo para entrar.',
-          exactLocationRequired: true,
-        },
-      };
-    }
-
     const passwordPayload = await authenticatePlatformCredentials(superAdminEmail, formData.password);
     const pendingAccessToken = passwordPayload?.session?.access_token;
     if (!pendingAccessToken) {
@@ -459,7 +353,7 @@ export default function Auth() {
     }
 
     const context = {
-      ...locationContext,
+      ...buildSecurityContext(),
       device_type: isMobileDevice() ? 'mobile' : 'desktop',
       desktop_approval_token: desktopApprovalTokenRef.current || null,
     };
@@ -520,9 +414,8 @@ export default function Auth() {
         return await handleSuperAdminPasswordFlow(String(superAdminMatch.email || '').trim().toLowerCase(), normalized);
       } catch (error) {
         if (String(error?.message || '').includes('Invalid login credentials')) {
-          const securityContext = await captureSecurityLocationContext();
           const failedAttemptData = await registerPlatformSuperAdminFailedAttempt(normalized, {
-            ...securityContext,
+            ...buildSecurityContext(),
             device_type: isMobileDevice() ? 'mobile' : 'desktop',
           });
 
@@ -638,11 +531,6 @@ export default function Auth() {
           setAuthAlert({
             title: 'USUARIO BLOQUEADO',
             description: 'Fale com seu parceiro ou superior para solicitar a liberacao da conta.',
-          });
-        } else if (error.exactLocationRequired) {
-          setAuthAlert({
-            title: 'LOCALIZACAO EXATA OBRIGATORIA',
-            description: 'Para proteger a plataforma, o acesso de Super Admin exige localizacao precisa do dispositivo.',
           });
         }
 

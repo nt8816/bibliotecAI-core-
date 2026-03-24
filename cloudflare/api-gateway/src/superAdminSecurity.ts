@@ -8,29 +8,12 @@ export interface SecurityEnv {
 
 export interface RiskContext {
   ip: string | null;
-  city: string | null;
-  region: string | null;
-  country: string | null;
   userAgent: string | null;
   deviceType: string;
-  outsideNordeste: boolean;
 }
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
-const NORDESTE_STATES = new Set([
-  'AL', 'BA', 'CE', 'MA', 'PB', 'PE', 'PI', 'RN', 'SE',
-  'ALAGOAS', 'BAHIA', 'CEARA', 'MARANHAO', 'PARAIBA', 'PERNAMBUCO', 'PIAUI', 'RIO GRANDE DO NORTE', 'SERGIPE',
-]);
-
-function normalizeRegion(value: unknown) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toUpperCase();
-}
-
 export function base64UrlEncode(input: ArrayBuffer | Uint8Array) {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   let binary = '';
@@ -100,29 +83,16 @@ export function buildRiskContext(
   request: Request,
   bodyContext?: Record<string, unknown> | null,
 ) {
-  const cf = ((request as Request & { cf?: Record<string, unknown> }).cf || {}) as Record<string, unknown>;
   const ip =
     request.headers.get('cf-connecting-ip') ||
     request.headers.get('x-real-ip') ||
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     null;
 
-  const region = normalizeRegion(
-    bodyContext?.state ||
-    bodyContext?.region ||
-    cf.regionCode ||
-    cf.region ||
-    cf.metroCode,
-  );
-
   return {
     ip,
-    city: String(bodyContext?.city || bodyContext?.locality || cf.city || '').trim() || null,
-    region: region || null,
-    country: String(bodyContext?.country || cf.country || '').trim() || null,
     userAgent: request.headers.get('user-agent') || null,
     deviceType: detectDeviceType(request.headers.get('user-agent') || '', String(bodyContext?.device_type || '')),
-    outsideNordeste: !NORDESTE_STATES.has(region),
   } satisfies RiskContext;
 }
 

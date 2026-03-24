@@ -4,7 +4,6 @@ export async function fetchSuperAdminsDashboard() {
   const payload = await requestPlatformApi('/v1/admin/super-admins');
   return {
     items: Array.isArray(payload?.items) ? payload.items : [],
-    securityAlert: payload?.securityAlert || null,
   };
 }
 

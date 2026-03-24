@@ -59,7 +59,6 @@ function isValidCpf(value) {
 export default function SuperAdmins() {
   const { toast } = useToast();
   const [items, setItems] = useState([]);
-  const [securityAlert, setSecurityAlert] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [unlockingId, setUnlockingId] = useState('');
@@ -70,7 +69,6 @@ export default function SuperAdmins() {
     try {
       const payload = await fetchSuperAdminsDashboard();
       setItems(payload.items || []);
-      setSecurityAlert(payload.securityAlert || null);
     } catch (error) {
       toast({
         title: 'Erro ao carregar Super Admins',
@@ -157,18 +155,6 @@ export default function SuperAdmins() {
   return (
     <MainLayout title="Super Admins">
       <div className="space-y-4">
-        {securityAlert && (
-          <Card className="border-destructive bg-destructive/10 shadow-[0_0_0_1px_rgba(220,38,38,0.4)]">
-            <CardContent className="flex flex-col gap-2 p-5">
-              <p className="text-lg font-black tracking-wide text-destructive">TENTATIVA DE INVASAO !!!</p>
-              <p className="text-sm text-destructive/90">{securityAlert.message || 'Tentativa suspeita detectada em conta de Super Admin.'}</p>
-              <p className="text-xs text-destructive/80">
-                IP: {securityAlert.ip || '-'} • Cidade: {securityAlert?.context?.city || securityAlert?.context?.locality || '-'} • Data: {formatDate(securityAlert.created_at)}
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -252,7 +238,7 @@ export default function SuperAdmins() {
                       <TableHead>Tentativas</TableHead>
                       <TableHead>Passkey</TableHead>
                       <TableHead>Ultimo MFA</TableHead>
-                      <TableHead>IP / regiao</TableHead>
+                      <TableHead>Dispositivo</TableHead>
                       <TableHead>Ultimo login</TableHead>
                       <TableHead>Bloqueado em</TableHead>
                       <TableHead className="text-right">Acao</TableHead>
@@ -276,12 +262,7 @@ export default function SuperAdmins() {
                         <TableCell>{item.tentativas_falhas || 0}</TableCell>
                         <TableCell>{item.passkey_enrolled_at ? 'Cadastrada' : 'Pendente'}</TableCell>
                         <TableCell>{formatDate(item.ultimo_mfa_em)}</TableCell>
-                        <TableCell>
-                          <div className="text-xs">
-                            <p>{item.ultimo_ip || '-'}</p>
-                            <p className="text-muted-foreground">{[item.ultima_regiao, item.ultimo_dispositivo].filter(Boolean).join(' • ') || '-'}</p>
-                          </div>
-                        </TableCell>
+                        <TableCell>{item.ultimo_dispositivo || '-'}</TableCell>
                         <TableCell>{formatDate(item.ultimo_login_em)}</TableCell>
                         <TableCell>{formatDate(item.bloqueado_em)}</TableCell>
                         <TableCell className="text-right">

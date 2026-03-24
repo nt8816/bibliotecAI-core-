@@ -3,7 +3,6 @@
   BookOpen,
   Users,
   BookMarked,
-  ClipboardList,
   FlaskConical,
   BarChart3,
   Trophy,
@@ -79,7 +78,6 @@ export function AppSidebar() {
         ...commonItems,
         { title: 'Tenants', url: '/admin/tenants', icon: Building2 },
         { title: 'Super Admins', url: '/admin/super-admins', icon: ShieldCheck },
-        { title: 'Logs', url: '/admin/logs', icon: ClipboardList },
         { title: 'Reclamacoes', url: '/reclamacoes', icon: Bell },
       ];
     }
@@ -299,16 +297,6 @@ export function AppSidebar() {
                             </button>
                           ))}
                         </>
-                      )}
-                      {isSuperAdmin && counts.seguranca > 0 && (
-                        <button
-                          type="button"
-                          className="w-full rounded-md border p-2 text-sm flex items-center justify-between gap-2 text-left hover:bg-accent transition-colors"
-                          onClick={() => navigate('/admin/logs')}
-                        >
-                          <span>Alertas de seguranca</span>
-                          <Badge variant="destructive">{counts.seguranca}</Badge>
-                        </button>
                       )}
                       {isSuperAdmin && counts.reclamacoes > 0 && (
                         <button
