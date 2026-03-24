@@ -47,7 +47,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const { signOut, user, userRole, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
   const { counts, notifications, canViewNotifications, markNotificationRead } = useSystemNotifications();
-  const totalPendencias = counts.atrasados + counts.solicitaçõesPendentes + counts.comunicados + (counts.reclamações || 0) + (counts.seguranca || 0);
+  const totalPendencias = counts.atrasados + counts.solicitacoesPendentes + counts.comunicados + (counts.reclamacoes || 0) + (counts.seguranca || 0);
   const hasPendencias = totalPendencias > 0;
   const hasUnreadComunicados = counts.comunicados > 0 || (counts.seguranca || 0) > 0;
   const settingsPath = '/configuracoes';
@@ -80,7 +80,7 @@ export function AppSidebar() {
         { title: 'Tenants', url: '/admin/tenants', icon: Building2 },
         { title: 'Super Admins', url: '/admin/super-admins', icon: ShieldCheck },
         { title: 'Logs', url: '/admin/logs', icon: ClipboardList },
-        { title: 'Reclamacoes', url: '/reclamações', icon: Bell },
+        { title: 'Reclamacoes', url: '/reclamacoes', icon: Bell },
       ];
     }
 
@@ -198,9 +198,9 @@ export function AppSidebar() {
                       {!collapsed && (
                         <div className="flex w-full items-center justify-between gap-2">
                           <span className="font-medium text-[15px] leading-none">{item.title}</span>
-                          {item.url === '/emprestimos' && canViewNotifications && (counts.atrasados > 0 || counts.solicitaçõesPendentes > 0) && (
+                          {item.url === '/emprestimos' && canViewNotifications && (counts.atrasados > 0 || counts.solicitacoesPendentes > 0) && (
                             <Badge className="h-5 min-w-5 px-1.5 text-[10px] leading-none">
-                              {counts.atrasados + counts.solicitaçõesPendentes}
+                              {counts.atrasados + counts.solicitacoesPendentes}
                             </Badge>
                           )}
                         </div>
@@ -310,24 +310,24 @@ export function AppSidebar() {
                           <Badge variant="destructive">{counts.seguranca}</Badge>
                         </button>
                       )}
-                      {isSuperAdmin && counts.reclamações > 0 && (
+                      {isSuperAdmin && counts.reclamacoes > 0 && (
                         <button
                           type="button"
                           className="w-full rounded-md border p-2 text-sm flex items-center justify-between gap-2 text-left hover:bg-accent transition-colors"
-                          onClick={() => navigate('/reclamações')}
+                          onClick={() => navigate('/reclamacoes')}
                         >
                           <span>Reclamacoes novas</span>
-                          <Badge>{counts.reclamações}</Badge>
+                          <Badge>{counts.reclamacoes}</Badge>
                         </button>
                       )}
-                      {counts.solicitaçõesPendentes > 0 && (
+                      {counts.solicitacoesPendentes > 0 && (
                         <button
                           type="button"
                           className="w-full rounded-md border p-2 text-sm flex items-center justify-between gap-2 text-left hover:bg-accent transition-colors"
-                          onClick={() => navigate(userRole === 'aluno' ? '/aluno/atividades' : '/emprestimos?tab=solicitações')}
+                          onClick={() => navigate(userRole === 'aluno' ? '/aluno/atividades' : '/emprestimos?tab=solicitacoes')}
                         >
                           <span>Solicitações pendentes</span>
-                          <Badge>{counts.solicitaçõesPendentes}</Badge>
+                          <Badge>{counts.solicitacoesPendentes}</Badge>
                         </button>
                       )}
                       {counts.atrasados > 0 && (

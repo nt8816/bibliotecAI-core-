@@ -107,8 +107,8 @@ export default function Dashboard() {
     escolasSemTenant: 0,
     superAdminsAtivos: 0,
     superAdminsBloqueados: 0,
-    reclamaçõesEmAnalise: 0,
-    reclamaçõesAtrasadas: 0,
+    reclamacoesEmAnalise: 0,
+    reclamacoesAtrasadas: 0,
     armazenamentoConsumidoBytes: 0,
   });
 
@@ -248,12 +248,12 @@ export default function Dashboard() {
   const superAdminAttentionItems = [
     {
       title: 'Reclamacoes em analise',
-      value: superAdminStats.reclamaçõesEmAnalise,
-      hint: superAdminStats.reclamaçõesAtrasadas > 0
-        ? `${superAdminStats.reclamaçõesAtrasadas} passaram de 4 dias`
+      value: superAdminStats.reclamacoesEmAnalise,
+      hint: superAdminStats.reclamacoesAtrasadas > 0
+        ? `${superAdminStats.reclamacoesAtrasadas} passaram de 4 dias`
         : 'Nenhuma reclamacao esta atrasada',
-      tone: superAdminStats.reclamaçõesAtrasadas > 0 ? 'text-amber-600' : 'text-muted-foreground',
-      action: '/reclamações',
+      tone: superAdminStats.reclamacoesAtrasadas > 0 ? 'text-amber-600' : 'text-muted-foreground',
+      action: '/reclamacoes',
       actionLabel: 'Abrir reclamações',
       icon: AlertTriangle,
     },

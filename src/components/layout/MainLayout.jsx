@@ -16,7 +16,7 @@ export function MainLayout({ children, title }) {
     () => (isAluno || isProfessor || isGestor || isBibliotecaria) && !isSuperAdmin,
     [isAluno, isBibliotecaria, isGestor, isProfessor, isSuperAdmin],
   );
-  const isComplaintsPage = location.pathname === '/reclamações';
+  const isComplaintsPage = location.pathname === '/reclamacoes';
 
   return (
     <SidebarProvider>
@@ -40,7 +40,7 @@ export function MainLayout({ children, title }) {
                   variant="outline"
                   size="sm"
                   className="h-9 gap-2 rounded-full px-3 text-xs sm:text-sm"
-                  onClick={() => navigate('/reclamações')}
+                  onClick={() => navigate('/reclamacoes')}
                 >
                   <MessageSquareWarning className="h-4 w-4" />
                   <span className="hidden sm:inline">Faça uma reclamação</span>

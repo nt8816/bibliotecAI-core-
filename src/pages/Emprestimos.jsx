@@ -80,7 +80,7 @@ function getVisibleEmail(nome, email) {
 export default function Emprestimos() {
   const [searchParams] = useSearchParams();
   const [emprestimos, setEmprestimos] = useState([]);
-  const [solicitações, setSolicitacoes] = useState([]);
+  const [solicitacoes, setSolicitacoes] = useState([]);
   const [livrosDisponiveis, setLivrosDisponiveis] = useState([]);
   const [livrosCatalogo, setLivrosCatalogo] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
@@ -399,9 +399,9 @@ export default function Emprestimos() {
     }
   };
 
-  const handleExcluirHistórico = async (emprestimo) => {
+  const handleExcluirHistorico = async (emprestimo) => {
     if (!canManageLoans || !emprestimo?.id || emprestimo?.status !== 'devolvido') return;
-    setActionLoading({ devolucaoId: null, solicitacaoId: emprestimo.id, tipo: 'excluir_histórico' });
+    setActionLoading({ devolucaoId: null, solicitacaoId: emprestimo.id, tipo: 'excluir_historico' });
     try {
       await deleteHistoricEmprestimo(emprestimo.id);
       toast({ title: 'Histórico excluído', description: 'O registro foi removido com sucesso.' });
@@ -526,7 +526,7 @@ export default function Emprestimos() {
       const isProcessavel = isPendente || isEmAnalise;
       const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
       const livroDisponivel = solicitacao?.livros?.disponivel !== false;
-      const chatMensagens = [...(Array.isArray(solicitacao?.solicitações_emprestimo_mensagens) ? solicitacao.solicitações_emprestimo_mensagens : [])]
+      const chatMensagens = [...(Array.isArray(solicitacao?.solicitacoes_emprestimo_mensagens) ? solicitacao.solicitacoes_emprestimo_mensagens : [])]
         .sort((a, b) => new Date(a?.created_at || 0).getTime() - new Date(b?.created_at || 0).getTime());
 
     return (
@@ -692,23 +692,23 @@ export default function Emprestimos() {
     });
 
   const emprestimosAtivos = sortEmprestimos(emprestimos.filter((e) => e.status === 'ativo'));
-  const emprestimosHistórico = sortEmprestimos(emprestimos.filter((e) => e.status === 'devolvido'));
+  const emprestimosHistorico = sortEmprestimos(emprestimos.filter((e) => e.status === 'devolvido'));
   const emprestimosAtivosFiltrados = requestedStatus === 'atrasados'
     ? emprestimosAtivos.filter((emprestimo) => isAtrasado(emprestimo))
     : emprestimosAtivos;
-  const solicitaçõesPendentes = useMemo(
-    () => solicitações.filter((s) => ['pendente', 'indisponivel_em_analise'].includes(String(s?.status || '').toLowerCase())),
-    [solicitações],
+  const solicitacoesPendentes = useMemo(
+    () => solicitacoes.filter((s) => ['pendente', 'indisponivel_em_analise'].includes(String(s?.status || '').toLowerCase())),
+    [solicitacoes],
   );
-  const solicitaçõesRecusadas = useMemo(
-    () => solicitações.filter((s) => ['recusada', 'negada', 'cancelada'].includes(String(s?.status || '').toLowerCase())),
-    [solicitações],
+  const solicitacoesRecusadas = useMemo(
+    () => solicitacoes.filter((s) => ['recusada', 'negada', 'cancelada'].includes(String(s?.status || '').toLowerCase())),
+    [solicitacoes],
   );
 
   useEffect(() => {
-    const defaultTab = canManageLoans ? 'solicitações' : 'ativos';
+    const defaultTab = canManageLoans ? 'solicitacoes' : 'ativos';
     const nextTab = requestedTab || defaultTab;
-    const isValidTab = ['ativos', 'histórico', ...(canManageLoans ? ['solicitações', 'recusadas'] : [])].includes(nextTab);
+    const isValidTab = ['ativos', 'historico', ...(canManageLoans ? ['solicitacoes', 'recusadas'] : [])].includes(nextTab);
     setActiveTab(isValidTab ? nextTab : defaultTab);
   }, [canManageLoans, requestedTab]);
 
@@ -788,9 +788,9 @@ export default function Emprestimos() {
                     variant="destructive"
                     className="mt-3 w-full"
                     onClick={() => setDeleteConfirmEmprestimo(emprestimo)}
-                    disabled={actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_histórico'}
+                    disabled={actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico'}
                   >
-                    {actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_histórico' ? (
+                    {actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico' ? (
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     ) : (
                       <Trash2 className="w-4 h-4 mr-2" />
@@ -848,7 +848,7 @@ export default function Emprestimos() {
     </>
   );
 
-  const renderHistóricoTable = (data) => (
+  const renderHistoricoTable = (data) => (
     <>
       <div className="space-y-3 md:hidden">
         {data.map((emprestimo) => (
@@ -877,9 +877,9 @@ export default function Emprestimos() {
               variant="destructive"
               className="mt-3 w-full"
               onClick={() => setDeleteConfirmEmprestimo(emprestimo)}
-              disabled={actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_histórico'}
+              disabled={actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico'}
             >
-              {actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_histórico' ? (
+              {actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico' ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
                 <Trash2 className="w-4 h-4 mr-2" />
@@ -923,9 +923,9 @@ export default function Emprestimos() {
                     size="sm"
                     variant="destructive"
                     onClick={() => setDeleteConfirmEmprestimo(emprestimo)}
-                    disabled={actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_histórico'}
+                    disabled={actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico'}
                   >
-                    {actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_histórico' ? (
+                    {actionLoading.solicitacaoId === emprestimo.id && actionLoading.tipo === 'excluir_historico' ? (
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     ) : (
                       <Trash2 className="w-4 h-4 mr-2" />
@@ -1324,7 +1324,7 @@ export default function Emprestimos() {
         <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
           {loading ? (
             <p className="text-center text-muted-foreground py-8">Carregando...</p>
-          ) : emprestimos.length === 0 && (!canManageLoans || solicitações.length === 0) ? (
+          ) : emprestimos.length === 0 && (!canManageLoans || solicitacoes.length === 0) ? (
             <div className="py-10 text-center space-y-3">
               <p className="text-muted-foreground">Nenhum dado de empréstimo registrado</p>
               {canManageLoans && (
@@ -1338,31 +1338,31 @@ export default function Emprestimos() {
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="mb-4 h-auto w-full justify-start gap-1 overflow-x-auto whitespace-nowrap pb-1 sm:gap-2">
                 {canManageLoans && (
-                  <TabsTrigger value="solicitações" className="gap-2 shrink-0">
-                    <Inbox className="w-4 h-4" /> Solicitações ({solicitaçõesPendentes.length})
+                  <TabsTrigger value="solicitacoes" className="gap-2 shrink-0">
+                    <Inbox className="w-4 h-4" /> Solicitações ({solicitacoesPendentes.length})
                   </TabsTrigger>
                 )}
                 {canManageLoans && (
                   <TabsTrigger value="recusadas" className="gap-2 shrink-0">
-                    <XCircle className="w-4 h-4" /> Recusadas ({solicitaçõesRecusadas.length})
+                    <XCircle className="w-4 h-4" /> Recusadas ({solicitacoesRecusadas.length})
                   </TabsTrigger>
                 )}
                 <TabsTrigger value="ativos" className="gap-2 shrink-0">
                   <AlertTriangle className="w-4 h-4" /> Ativos ({emprestimosAtivos.length})
                 </TabsTrigger>
-                <TabsTrigger value="histórico" className="gap-2 shrink-0">
-                  <CheckCircle className="w-4 h-4" /> Histórico ({emprestimosHistórico.length})
+                <TabsTrigger value="historico" className="gap-2 shrink-0">
+                  <CheckCircle className="w-4 h-4" /> Histórico ({emprestimosHistorico.length})
                 </TabsTrigger>
               </TabsList>
 
               {canManageLoans && (
-                <TabsContent value="solicitações">
-                  {solicitaçõesPendentes.length === 0 ? (
+                <TabsContent value="solicitacoes">
+                  {solicitacoesPendentes.length === 0 ? (
                     <p className="text-center text-muted-foreground py-8">Nenhuma solicitação de aluno no momento.</p>
                   ) : (
                     <div className="space-y-3">
-                      {solicitaçõesPendentes.map((solicitacao) => renderSolicitacaoCard(solicitacao))}
-                      {false && solicitaçõesPendentes.map((solicitacao) => {
+                      {solicitacoesPendentes.map((solicitacao) => renderSolicitacaoCard(solicitacao))}
+                      {false && solicitacoesPendentes.map((solicitacao) => {
                         const isPendente = solicitacao.status === 'pendente';
                         const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
                         return (
@@ -1451,11 +1451,11 @@ export default function Emprestimos() {
 
               {canManageLoans && (
                 <TabsContent value="recusadas">
-                  {solicitaçõesRecusadas.length === 0 ? (
+                  {solicitacoesRecusadas.length === 0 ? (
                     <p className="text-center text-muted-foreground py-8">Nenhuma solicitação recusada.</p>
                   ) : (
                     <div className="space-y-3">
-                      {solicitaçõesRecusadas.map((solicitacao) =>
+                      {solicitacoesRecusadas.map((solicitacao) =>
                         renderSolicitacaoCard(solicitacao, { readOnly: true }),
                       )}
                     </div>
@@ -1471,11 +1471,11 @@ export default function Emprestimos() {
                 )}
               </TabsContent>
 
-              <TabsContent value="histórico">
-                {emprestimosHistórico.length === 0 ? (
+              <TabsContent value="historico">
+                {emprestimosHistorico.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">Nenhum empréstimo no histórico</p>
                 ) : (
-                  renderHistóricoTable(emprestimosHistórico)
+                  renderHistoricoTable(emprestimosHistorico)
                 )}
               </TabsContent>
             </Tabs>
@@ -1523,10 +1523,10 @@ export default function Emprestimos() {
             </Button>
             <Button
               variant="destructive"
-              onClick={() => handleExcluirHistórico(deleteConfirmEmprestimo)}
-              disabled={!deleteConfirmEmprestimo || (actionLoading.solicitacaoId === deleteConfirmEmprestimo?.id && actionLoading.tipo === 'excluir_histórico')}
+              onClick={() => handleExcluirHistorico(deleteConfirmEmprestimo)}
+              disabled={!deleteConfirmEmprestimo || (actionLoading.solicitacaoId === deleteConfirmEmprestimo?.id && actionLoading.tipo === 'excluir_historico')}
             >
-              {actionLoading.solicitacaoId === deleteConfirmEmprestimo?.id && actionLoading.tipo === 'excluir_histórico' ? (
+              {actionLoading.solicitacaoId === deleteConfirmEmprestimo?.id && actionLoading.tipo === 'excluir_historico' ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
                 <Trash2 className="w-4 h-4 mr-2" />

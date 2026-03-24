@@ -33,7 +33,7 @@ const AdminLogs = lazy(() => import('./pages/AdminLogs'));
 const SuperAdmins = lazy(() => import('./pages/SuperAdmins'));
 const AdminAcesso = lazy(() => import('./pages/AdminAcesso'));
 const OnboardingGestor = lazy(() => import('./pages/OnboardingGestor'));
-const Configurações = lazy(() => import('./pages/Configurações'));
+const Configuracoes = lazy(() => import('./pages/Configuracoes'));
 const Reclamacoes = lazy(() => import('./pages/Reclamacoes'));
 const ComunidadeAluno = lazy(() => import('./pages/aluno/ComunidadeAluno'));
 const ArquivosAula = lazy(() => import('./pages/ArquivosAula'));
@@ -79,7 +79,7 @@ function AppRoutes() {
       <Route path="/convite/:token" element={<Convite />} />
       <Route path="/onboarding/:token" element={<OnboardingGestor />} />
       <Route
-        path="/reclamações"
+        path="/reclamacoes"
         element={(
           <ProtectedRoute>
             <Reclamacoes />
@@ -208,7 +208,7 @@ function AppRoutes() {
         path="/configuracoes"
         element={
           <ProtectedRoute>
-            <Configurações />
+            <Configuracoes />
           </ProtectedRoute>
         }
       />
