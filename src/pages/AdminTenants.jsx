@@ -900,7 +900,11 @@ export default function AdminTenants() {
                           <div>
                             <p className="font-medium">{ghost.nome || 'Conta sem nome'}</p>
                             <p className="text-xs text-muted-foreground">
-                              {ghost.source === 'auth' ? 'Origem: Auth' : 'Origem: Perfil'}
+                              {ghost.source === 'auth'
+                                ? 'Origem: Auth'
+                                : ghost.source === 'profile'
+                                  ? 'Origem: Perfil'
+                                  : 'Origem: Auth + Perfil'}
                             </p>
                           </div>
                         </TableCell>

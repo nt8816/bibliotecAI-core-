@@ -515,7 +515,7 @@ function uniqueStrings(values: unknown[]) {
 }
 
 async function buildGhostAccounts(env: Env) {
-  const [authUsersPayload, profilesPayload, rolesPayload, schoolsPayload] = await Promise.all([
+  const [authUsersPayload, profilesPayload, rolesPayload, schoolsPayload, superAdminAccountsPayload] = await Promise.all([
     listAllAuthUsers(env),
     supabaseAdminRequest(
       env,
@@ -535,6 +535,12 @@ async function buildGhostAccounts(env: Env) {
       `/rest/v1/escolas?${new URLSearchParams({
         select: 'id,nome',
         order: 'nome.asc',
+        }).toString()}`,
+    ),
+    supabaseAdminRequest(
+      env,
+      `/rest/v1/super_admin_accounts?${new URLSearchParams({
+        select: 'id,auth_user_id,email,cpf,nome',
       }).toString()}`,
     ),
   ]);
@@ -543,6 +549,7 @@ async function buildGhostAccounts(env: Env) {
   const profiles = Array.isArray(profilesPayload) ? profilesPayload : [];
   const roles = Array.isArray(rolesPayload) ? rolesPayload : [];
   const schools = Array.isArray(schoolsPayload) ? schoolsPayload : [];
+  const superAdminAccounts = Array.isArray(superAdminAccountsPayload) ? superAdminAccountsPayload : [];
 
   const authUserById = new Map<string, Record<string, unknown>>();
   authUsers.forEach((user) => {
@@ -577,8 +584,98 @@ async function buildGhostAccounts(env: Env) {
   });
 
   const protectedRoles = new Set(['super_admin', 'gestor', 'bibliotecaria']);
+  const superAdminByUserId = new Map<string, Record<string, unknown>>();
+  const superAdminByEmail = new Map<string, Record<string, unknown>>();
+  const superAdminByCpf = new Map<string, Record<string, unknown>>();
 
-  const ghosts: Array<Record<string, unknown>> = [];
+  superAdminAccounts.forEach((account) => {
+    const authUserId = String(account?.auth_user_id || '').trim();
+    const email = normalizeIdentifier(String(account?.email || ''));
+    const cpf = normalizeDigits(String(account?.cpf || ''));
+    if (authUserId) superAdminByUserId.set(authUserId, account);
+    if (email) superAdminByEmail.set(email, account);
+    if (cpf) superAdminByCpf.set(cpf, account);
+  });
+
+  const resolveAdminAccount = ({
+    userId,
+    email,
+    cpf,
+  }: {
+    userId?: unknown;
+    email?: unknown;
+    cpf?: unknown;
+  }) => {
+    const normalizedUserId = String(userId || '').trim();
+    const normalizedEmail = normalizeIdentifier(String(email || ''));
+    const normalizedCpf = normalizeDigits(String(cpf || ''));
+    return (
+      (normalizedUserId ? superAdminByUserId.get(normalizedUserId) : null)
+      || (normalizedEmail ? superAdminByEmail.get(normalizedEmail) : null)
+      || (normalizedCpf ? superAdminByCpf.get(normalizedCpf) : null)
+      || null
+    );
+  };
+
+  const describeGhostType = (roleList: string[], fallbackType: unknown, adminAccount: Record<string, unknown> | null) => {
+    if (adminAccount || roleList.includes('super_admin')) return 'SuperAdmin';
+    if (roleList.includes('gestor') || String(fallbackType || '').trim() === 'gestor') return 'Gestor';
+    if (roleList.includes('bibliotecaria') || String(fallbackType || '').trim() === 'bibliotecaria') return 'Bibliotecária';
+    if (roleList.includes('professor') || String(fallbackType || '').trim() === 'professor') return 'Professor';
+    if (roleList.includes('aluno') || String(fallbackType || '').trim() === 'aluno') return 'Aluno';
+    return String(fallbackType || roleList[0] || '').trim() || null;
+  };
+
+  const ghostByCanonicalKey = new Map<string, Record<string, unknown>>();
+  const queueGhost = (ghost: Record<string, unknown>) => {
+    const canonicalKey = [
+      String(ghost.user_id || '').trim(),
+      String(ghost.profile_id || '').trim(),
+      normalizeIdentifier(String(ghost.login || '')),
+    ].find(Boolean) || String(ghost.ghost_key || '').trim();
+
+    const existing = ghostByCanonicalKey.get(canonicalKey);
+    if (!existing) {
+      ghostByCanonicalKey.set(canonicalKey, {
+        ...ghost,
+        issues: Array.isArray(ghost.issues) ? [...new Set(ghost.issues as string[])] : [],
+        roles: Array.isArray(ghost.roles) ? [...new Set(ghost.roles as string[])] : [],
+      });
+      return;
+    }
+
+    const mergedIssues = [
+      ...(Array.isArray(existing.issues) ? existing.issues as string[] : []),
+      ...(Array.isArray(ghost.issues) ? ghost.issues as string[] : []),
+    ];
+    const mergedRoles = [
+      ...(Array.isArray(existing.roles) ? existing.roles as string[] : []),
+      ...(Array.isArray(ghost.roles) ? ghost.roles as string[] : []),
+    ];
+    const existingCreated = String(existing.created_at || '');
+    const incomingCreated = String(ghost.created_at || '');
+    const keepNewest = incomingCreated.localeCompare(existingCreated) > 0;
+
+    ghostByCanonicalKey.set(canonicalKey, {
+      ...existing,
+      ...(keepNewest ? ghost : {}),
+      ghost_key: String(existing.ghost_key || ghost.ghost_key || '').trim(),
+      source: existing.source === ghost.source ? existing.source : 'mixed',
+      user_id: existing.user_id || ghost.user_id || null,
+      profile_id: existing.profile_id || ghost.profile_id || null,
+      nome: existing.nome || ghost.nome || 'Conta sem nome',
+      login: existing.login || ghost.login || null,
+      cpf: existing.cpf || ghost.cpf || null,
+      matricula: existing.matricula || ghost.matricula || null,
+      escola_id: existing.escola_id || ghost.escola_id || null,
+      escola_nome: existing.escola_nome || ghost.escola_nome || null,
+      issues: [...new Set(mergedIssues)],
+      roles: [...new Set(mergedRoles)],
+      can_delete: existing.can_delete !== false && ghost.can_delete !== false,
+      protected_reason: existing.protected_reason || ghost.protected_reason || null,
+      created_at: keepNewest ? ghost.created_at : existing.created_at,
+    });
+  };
 
   authUsers.forEach((authUser) => {
     const userId = String(authUser?.id || '').trim();
@@ -588,32 +685,41 @@ async function buildGhostAccounts(env: Env) {
     const roleList = [...(rolesByUserId.get(userId) || new Set<string>())];
     const schoolIds = uniqueStrings(profileList.map((profile) => profile?.escola_id));
     const issues: string[] = [];
-    const isProtectedAdmin = roleList.some((role) => protectedRoles.has(role));
+    const primaryProfile = profileList[0] || null;
+    const adminAccount = resolveAdminAccount({
+      userId,
+      email: authUser?.email || primaryProfile?.email,
+      cpf: primaryProfile?.cpf,
+    });
+    const normalizedRoles = [...new Set([
+      ...roleList,
+      ...(adminAccount ? ['super_admin'] : []),
+    ])];
+    const isProtectedAdmin = normalizedRoles.some((role) => protectedRoles.has(role));
 
     if (profileList.length === 0) issues.push('Sem perfil em usuarios_biblioteca');
-    if (roleList.length === 0) issues.push('Sem role em user_roles');
+    if (normalizedRoles.length === 0) issues.push('Sem role em user_roles');
     if (profileList.length > 1) issues.push('Multiplos perfis para a mesma conta');
     if (schoolIds.length > 1) issues.push('Vinculada a mais de uma escola');
     if (profileList.some((profile) => !String(profile?.escola_id || '').trim())) issues.push('Perfil sem escola');
 
     if (issues.length === 0) return;
 
-    const primaryProfile = profileList[0] || null;
     const schoolId = String(primaryProfile?.escola_id || schoolIds[0] || '').trim();
 
-    ghosts.push({
+    queueGhost({
       ghost_key: `auth:${userId}`,
       source: 'auth',
       user_id: userId,
       profile_id: String(primaryProfile?.id || '').trim() || null,
-      nome: String(primaryProfile?.nome || pickAuthName(authUser) || '').trim() || 'Conta sem nome',
+      nome: String(primaryProfile?.nome || adminAccount?.nome || pickAuthName(authUser) || '').trim() || 'Conta sem nome',
       login: String(authUser?.email || primaryProfile?.email || '').trim() || null,
-      tipo: String(primaryProfile?.tipo || roleList[0] || '').trim() || null,
+      tipo: describeGhostType(normalizedRoles, primaryProfile?.tipo, adminAccount),
       cpf: String(primaryProfile?.cpf || '').trim() || null,
       matricula: String(primaryProfile?.matricula || '').trim() || null,
       escola_id: schoolId || null,
       escola_nome: schoolId ? schoolNameById.get(schoolId) || null : null,
-      roles: roleList,
+      roles: normalizedRoles,
       can_delete: !isProtectedAdmin,
       protected_reason: isProtectedAdmin ? 'Conta administrativa deve ser removida por um fluxo dedicado.' : null,
       issues,
@@ -627,8 +733,18 @@ async function buildGhostAccounts(env: Env) {
     if (!profileId) return;
 
     const issues: string[] = [];
+    const adminAccount = resolveAdminAccount({
+      userId,
+      email: profile?.email,
+      cpf: profile?.cpf,
+    });
+    const normalizedRoles = [...new Set([
+      String(profile?.tipo || '').trim(),
+      ...(adminAccount ? ['super_admin'] : []),
+      ...(userId ? [...(rolesByUserId.get(userId) || new Set<string>())] : []),
+    ].filter(Boolean))];
     const profileType = String(profile?.tipo || '').trim();
-    const isProtectedAdmin = protectedRoles.has(profileType);
+    const isProtectedAdmin = normalizedRoles.some((role) => protectedRoles.has(role));
 
     if (!userId) {
       issues.push('Perfil sem user_id');
@@ -642,25 +758,27 @@ async function buildGhostAccounts(env: Env) {
 
     if (issues.length === 0) return;
 
-    ghosts.push({
+    queueGhost({
       ghost_key: `profile:${profileId}`,
       source: 'profile',
       user_id: userId || null,
       profile_id: profileId,
-      nome: String(profile?.nome || '').trim() || 'Perfil sem nome',
+      nome: String(profile?.nome || adminAccount?.nome || '').trim() || 'Perfil sem nome',
       login: String(profile?.email || '').trim() || null,
-      tipo: String(profile?.tipo || '').trim() || null,
+      tipo: describeGhostType(normalizedRoles, profileType, adminAccount),
       cpf: String(profile?.cpf || '').trim() || null,
       matricula: String(profile?.matricula || '').trim() || null,
       escola_id: String(profile?.escola_id || '').trim() || null,
       escola_nome: schoolNameById.get(String(profile?.escola_id || '').trim()) || null,
-      roles: profileType ? [profileType] : [],
+      roles: normalizedRoles,
       can_delete: !isProtectedAdmin,
       protected_reason: isProtectedAdmin ? 'Conta administrativa deve ser removida por um fluxo dedicado.' : null,
       issues,
       created_at: profile?.created_at || null,
     });
   });
+
+  const ghosts = Array.from(ghostByCanonicalKey.values());
 
   ghosts.sort((left, right) => {
     const leftScore = Array.isArray(left?.issues) ? left.issues.length : 0;
