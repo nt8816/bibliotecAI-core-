@@ -65,6 +65,20 @@ function buildSecurityContext() {
   };
 }
 
+function supportsBrowserNotifications() {
+  return typeof window !== 'undefined' && 'Notification' in window;
+}
+
+function getNotificationPermissionState() {
+  if (!supportsBrowserNotifications()) return 'unsupported';
+  return Notification.permission || 'default';
+}
+
+async function requestBrowserNotificationsPermission() {
+  if (!supportsBrowserNotifications()) return 'unsupported';
+  return Notification.requestPermission();
+}
+
 function maskIdentifier(value) {
   return String(value || '').replace(/(^.).*(@.*$)/, '$1***$2');
 }
@@ -107,6 +121,7 @@ export default function Auth() {
   const [otpMeta, setOtpMeta] = useState(null);
   const [desktopStatus, setDesktopStatus] = useState(null);
   const [finalizingDesktop, setFinalizingDesktop] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState(getNotificationPermissionState);
 
   const desktopApprovalTokenRef = useRef(getDesktopApprovalToken());
   const { signIn, user } = useAuth();
@@ -144,6 +159,10 @@ export default function Auth() {
       securityStep,
     });
   }, [pendingSecurity, securityStep]);
+
+  useEffect(() => {
+    setNotificationPermission(getNotificationPermissionState());
+  }, []);
 
   useEffect(() => {
     if (!pendingSecurity?.desktopToken || !pendingSecurity?.approved || securityStep !== 'desktop_resuming' || finalizingDesktop) {
@@ -542,6 +561,11 @@ export default function Auth() {
         return;
       }
 
+      if (supportsBrowserNotifications() && getNotificationPermissionState() === 'default') {
+        const nextPermission = await requestBrowserNotificationsPermission().catch(() => 'default');
+        setNotificationPermission(nextPermission || getNotificationPermissionState());
+      }
+
       if (securityStep === 'login') {
         toast({
           title: 'Bem-vindo!',
@@ -734,6 +758,27 @@ export default function Auth() {
     return null;
   };
 
+  const handleEnableNotifications = async () => {
+    const nextPermission = await requestBrowserNotificationsPermission().catch(() => 'default');
+    setNotificationPermission(nextPermission || getNotificationPermissionState());
+
+    if (nextPermission === 'granted') {
+      toast({
+        title: 'Notificações ativadas',
+        description: 'Agora a plataforma pode avisar você sobre novidades e mensagens.',
+      });
+      return;
+    }
+
+    if (nextPermission === 'denied') {
+      toast({
+        variant: 'destructive',
+        title: 'Notificações bloqueadas',
+        description: 'Libere as notificações nas permissões do navegador para receber os avisos da plataforma.',
+      });
+    }
+  };
+
   return (
     <div className="auth-login-page min-h-screen flex items-center justify-center p-3 sm:p-4 overflow-hidden">
       <div className="auth-bg-grid" aria-hidden="true" />
@@ -753,6 +798,22 @@ export default function Auth() {
         </CardHeader>
 
         <CardContent className="space-y-4 px-4 pb-5 pt-0 sm:px-6 sm:pb-6">
+          {notificationPermission !== 'granted' && notificationPermission !== 'unsupported' && (
+            <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-left">
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-semibold">Ative as notificações</p>
+                  <p className="text-sm text-muted-foreground">
+                    Permita as notificações para receber avisos de mensagens, empréstimos e atualizações da plataforma.
+                  </p>
+                </div>
+                <Button type="button" variant="outline" onClick={handleEnableNotifications} disabled={loading}>
+                  Permitir notificações
+                </Button>
+              </div>
+            </div>
+          )}
+
           {authAlert && (
             <div className="rounded-lg border border-destructive/60 bg-destructive/10 px-4 py-3 text-left">
               <p className="text-sm font-bold text-destructive">{authAlert.title}</p>
