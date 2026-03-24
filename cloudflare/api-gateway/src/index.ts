@@ -979,7 +979,7 @@ async function getProfessorModuleData(request: Request, env: Env) {
   const professorProfiles = await supabaseAdminRequest(
     env,
     `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
-      select: 'id,escola_id,nome,email,tipo',
+      select: 'id,escola_id,nome,email,tipo,turma',
       user_id: `eq.${caller.id}`,
       tipo: 'eq.professor',
       order: 'updated_at.desc.nullslast,created_at.desc',
@@ -1014,7 +1014,6 @@ async function getProfessorModuleData(request: Request, env: Env) {
   }
 
   const turmasPermitidas = [...new Set(turmasRows.map((item) => String(item?.turma || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  const turmaSet = new Set(turmasPermitidas.map(normalizeTurmaKey).filter(Boolean));
 
   const [livrosEscolaPayload, livrosLegacyPayload, usuariosPayload, sugestoesPayload, atividadesPayload] = await Promise.all([
     supabaseAdminRequest(
@@ -1068,33 +1067,29 @@ async function getProfessorModuleData(request: Request, env: Env) {
   });
 
   const livros = Array.from(livrosById.values()).sort((a, b) => String(a?.titulo || '').localeCompare(String(b?.titulo || ''), 'pt-BR'));
-  const usuarios = ensureArray<Record<string, unknown>>(usuariosPayload)
-    .filter((item) => turmaSet.has(normalizeTurmaKey(item?.turma)))
+  const usuariosEscola = ensureArray<Record<string, unknown>>(usuariosPayload)
     .sort((a, b) => String(a?.nome || '').localeCompare(String(b?.nome || ''), 'pt-BR'));
-  const usuariosById = new Map(usuarios.map((item) => [String(item?.id || '').trim(), item]));
+  const usuariosEscolaById = new Map(usuariosEscola.map((item) => [String(item?.id || '').trim(), item]));
 
-  const sugestoes = ensureArray<Record<string, unknown>>(sugestoesPayload)
+  const sugestoesRaw = ensureArray<Record<string, unknown>>(sugestoesPayload)
     .map((item) => ({
       ...item,
       livros: livrosById.get(String(item?.livro_id || '').trim()) || null,
-      usuarios_biblioteca: usuariosById.get(String(item?.aluno_id || '').trim()) || null,
-    }))
-    .filter((item) => turmaSet.has(normalizeTurmaKey(item?.usuarios_biblioteca?.turma)));
+      usuarios_biblioteca: usuariosEscolaById.get(String(item?.aluno_id || '').trim()) || null,
+    }));
 
-  const atividades = ensureArray<Record<string, unknown>>(atividadesPayload)
+  const atividadesRaw = ensureArray<Record<string, unknown>>(atividadesPayload)
     .map((item) => ({
       ...item,
       livros: livrosById.get(String(item?.livro_id || '').trim()) || null,
-      usuarios_biblioteca: usuariosById.get(String(item?.aluno_id || '').trim()) || null,
-    }))
-    .filter((item) => turmaSet.has(normalizeTurmaKey(item?.usuarios_biblioteca?.turma)));
+      usuarios_biblioteca: usuariosEscolaById.get(String(item?.aluno_id || '').trim()) || null,
+    }));
 
-  const atividadeIds = atividades.map((item) => String(item?.id || '').trim()).filter(Boolean);
-  const atividadesById = new Map(atividades.map((item) => [String(item?.id || '').trim(), item]));
-  const usuarioIds = usuarios.map((item) => String(item?.id || '').trim()).filter(Boolean);
+  const atividadeIds = atividadesRaw.map((item) => String(item?.id || '').trim()).filter(Boolean);
+  const atividadesById = new Map(atividadesRaw.map((item) => [String(item?.id || '').trim(), item]));
 
   let submissionFeaturesEnabled = true;
-  let entregas: Array<Record<string, unknown>> = [];
+  let entregasRaw: Array<Record<string, unknown>> = [];
 
   if (atividadeIds.length > 0) {
     try {
@@ -1107,13 +1102,12 @@ async function getProfessorModuleData(request: Request, env: Env) {
         }).toString()}`,
       );
 
-      entregas = ensureArray<Record<string, unknown>>(entregasPayload)
+      entregasRaw = ensureArray<Record<string, unknown>>(entregasPayload)
         .map((item) => ({
           ...item,
           atividades_leitura: atividadesById.get(String(item?.atividade_id || '').trim()) || null,
-          usuarios_biblioteca: usuariosById.get(String(item?.aluno_id || '').trim()) || null,
-        }))
-        .filter((item) => turmaSet.has(normalizeTurmaKey(item?.usuarios_biblioteca?.turma)));
+          usuarios_biblioteca: usuariosEscolaById.get(String(item?.aluno_id || '').trim()) || null,
+        }));
     } catch (error) {
       if (isMissingTableMessage(error)) {
         submissionFeaturesEnabled = false;
@@ -1122,6 +1116,72 @@ async function getProfessorModuleData(request: Request, env: Env) {
       }
     }
   }
+
+  const turmaNames = new Set<string>(turmasPermitidas);
+  const addTurmaName = (value: unknown) => {
+    const turma = String(value || '').trim();
+    if (turma) turmaNames.add(turma);
+  };
+
+  addTurmaName(professorData?.turma);
+  sugestoesRaw.forEach((item) => addTurmaName(item?.usuarios_biblioteca?.turma));
+  atividadesRaw.forEach((item) => addTurmaName(item?.usuarios_biblioteca?.turma));
+  entregasRaw.forEach((item) => addTurmaName(item?.usuarios_biblioteca?.turma));
+
+  const turmasVisiveis = [...turmaNames].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const turmaSet = new Set(turmasVisiveis.map(normalizeTurmaKey).filter(Boolean));
+
+  const userIdsPermitidos = new Set<string>();
+  const addAllowedUserId = (value: unknown) => {
+    const userId = String(value || '').trim();
+    if (userId) userIdsPermitidos.add(userId);
+  };
+
+  sugestoesRaw.forEach((item) => addAllowedUserId(item?.aluno_id));
+  atividadesRaw.forEach((item) => addAllowedUserId(item?.aluno_id));
+  entregasRaw.forEach((item) => addAllowedUserId(item?.aluno_id));
+
+  const isAlunoPermitido = (item: Record<string, unknown> | null | undefined) => {
+    const userId = String(item?.id || '').trim();
+    if (userId && userIdsPermitidos.has(userId)) return true;
+    const turmaNormalizada = normalizeTurmaKey(item?.turma);
+    if (!turmaNormalizada) return userIdsPermitidos.size > 0 && userIdsPermitidos.has(userId);
+    return turmaSet.has(turmaNormalizada);
+  };
+
+  const usuarios = usuariosEscola.filter((item) => isAlunoPermitido(item));
+  const usuariosById = new Map(usuarios.map((item) => [String(item?.id || '').trim(), item]));
+  const isRegistroPermitido = (item: Record<string, unknown> | null | undefined) => {
+    const alunoId = String(item?.aluno_id || item?.usuarios_biblioteca?.id || '').trim();
+    if (alunoId && usuariosById.has(alunoId)) return true;
+    const turmaNormalizada = normalizeTurmaKey(item?.usuarios_biblioteca?.turma);
+    if (!turmaNormalizada) return false;
+    return turmaSet.has(turmaNormalizada);
+  };
+
+  const sugestoes = sugestoesRaw
+    .map((item) => ({
+      ...item,
+      usuarios_biblioteca: usuariosById.get(String(item?.aluno_id || '').trim()) || item?.usuarios_biblioteca || null,
+    }))
+    .filter((item) => isRegistroPermitido(item));
+
+  const atividades = atividadesRaw
+    .map((item) => ({
+      ...item,
+      usuarios_biblioteca: usuariosById.get(String(item?.aluno_id || '').trim()) || item?.usuarios_biblioteca || null,
+    }))
+    .filter((item) => isRegistroPermitido(item));
+
+  const entregas = entregasRaw
+    .map((item) => ({
+      ...item,
+      atividades_leitura: atividadesById.get(String(item?.atividade_id || '').trim()) || item?.atividades_leitura || null,
+      usuarios_biblioteca: usuariosById.get(String(item?.aluno_id || '').trim()) || item?.usuarios_biblioteca || null,
+    }))
+    .filter((item) => isRegistroPermitido(item));
+
+  const usuarioIds = usuarios.map((item) => String(item?.id || '').trim()).filter(Boolean);
 
   const emprestimos = usuarioIds.length > 0
     ? ensureArray<Record<string, unknown>>(await supabaseAdminRequest(
@@ -1142,7 +1202,7 @@ async function getProfessorModuleData(request: Request, env: Env) {
     caller,
     escolaId,
     professorProfileIds,
-    turmasPermitidas,
+    turmasPermitidas: turmasVisiveis,
     livros,
     usuarios,
     sugestoes,
