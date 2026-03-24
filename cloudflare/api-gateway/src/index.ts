@@ -2005,14 +2005,15 @@ const routes: Record<string, RouteHandler> = {
         },
         pubKeyCredParams: [
           { type: 'public-key', alg: -7 },
+          { type: 'public-key', alg: -257 },
         ],
         timeout: 60000,
         attestation: 'none',
         authenticatorSelection: {
-          authenticatorAttachment: 'platform',
-          residentKey: 'required',
+          residentKey: 'preferred',
           userVerification: 'required',
         },
+        hints: ['client-device'],
         excludeCredentials: existingPasskeys.map((item) => ({
           id: item.credential_id,
           type: 'public-key',
