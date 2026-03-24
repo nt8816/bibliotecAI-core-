@@ -452,6 +452,106 @@ export default function Emprestimos() {
     return <Badge variant="secondary">Pendente</Badge>;
   };
 
+  const renderSolicitacaoCard = (solicitacao, { readOnly = false } = {}) => {
+    const isPendente = solicitacao.status === 'pendente';
+    const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
+
+    return (
+      <div
+        key={solicitacao.id}
+        className={cn('border rounded-lg p-4 space-y-3', readOnly && 'bg-destructive/5')}
+      >
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+          <div>
+            <p className="font-medium">{solicitacao.livros?.titulo || 'Livro'}</p>
+            <p className="text-sm text-muted-foreground">{solicitacao.livros?.autor || '-'}</p>
+            <p className="text-xs text-muted-foreground">
+              Aluno: {solicitacao.usuarios_biblioteca?.nome || '-'} • {formatDateBR(solicitacao.created_at)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {isExtension ? 'Tipo: pedido de prorrogação' : 'Tipo: solicitação de empréstimo'}
+            </p>
+          </div>
+          <div>{getStatusSolicitacaoBadge(solicitacao.status)}</div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Mensagem do aluno</p>
+            <p className="text-sm rounded-md border p-2 min-h-[52px] bg-muted/30">{solicitacao.mensagem || 'Sem mensagem.'}</p>
+            {isExtension && (
+              <div className="mt-2 rounded-md border bg-background p-2 text-xs text-muted-foreground">
+                <p>Data atual: {formatDateBR(solicitacao.data_devolucao_atual)}</p>
+                <p>Nova data pedida: {formatDateBR(solicitacao.nova_data_devolucao_solicitada)}</p>
+              </div>
+            )}
+          </div>
+          <div>
+            {readOnly ? (
+              <>
+                <p className="text-xs text-muted-foreground mb-1">Resposta da biblioteca</p>
+                <p className="text-sm rounded-md border p-2 min-h-[52px] bg-background">
+                  {solicitacao.resposta || respostaPorSolicitacao[solicitacao.id] || 'Sem resposta registrada.'}
+                </p>
+              </>
+            ) : (
+              <>
+                <Label htmlFor={`resposta-${solicitacao.id}`}>Resposta da biblioteca</Label>
+                <Textarea
+                  id={`resposta-${solicitacao.id}`}
+                  rows={2}
+                  placeholder="Escreva uma resposta para o aluno..."
+                  value={respostaPorSolicitacao[solicitacao.id] ?? solicitacao.resposta ?? ''}
+                  onChange={(e) =>
+                    setRespostaPorSolicitacao((prev) => ({
+                      ...prev,
+                      [solicitacao.id]: e.target.value,
+                    }))
+                  }
+                  disabled={!isPendente || saving}
+                />
+              </>
+            )}
+          </div>
+        </div>
+
+        {!readOnly && isPendente ? (
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:justify-end gap-2">
+            <Button
+              variant="outline"
+              className="w-full sm:w-auto"
+              disabled={saving || (actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'aprovar')}
+              onClick={() => handleRecusarSolicitacao(solicitacao)}
+            >
+              {actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'recusar' ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <XCircle className="w-4 h-4 mr-2" />
+              )}
+              Recusar
+            </Button>
+            <Button
+              className="w-full sm:w-auto"
+              disabled={saving || (actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'recusar')}
+              onClick={() => handleAprovarSolicitacao(solicitacao)}
+            >
+              {actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'aprovar' ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <CheckCircle className="w-4 h-4 mr-2" />
+              )}
+              {isExtension ? 'Aprovar prorrogação' : 'Aprovar e gerar empréstimo'}
+            </Button>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {readOnly ? 'Solicitação movida para a área de recusadas.' : 'Solicitação finalizada.'}
+          </p>
+        )}
+      </div>
+    );
+  };
+
   const sortEmprestimos = (list) =>
     [...list].sort((a, b) => {
       const dateA = new Date(a?.data_emprestimo || a?.created_at || 0).getTime();
@@ -466,6 +566,10 @@ export default function Emprestimos() {
     : emprestimosAtivos;
   const solicitacoesPendentes = useMemo(
     () => solicitacoes.filter((s) => s.status === 'pendente'),
+    [solicitacoes],
+  );
+  const solicitacoesRecusadas = useMemo(
+    () => solicitacoes.filter((s) => ['recusada', 'negada', 'cancelada'].includes(String(s?.status || '').toLowerCase())),
     [solicitacoes],
   );
 
@@ -1106,6 +1210,11 @@ export default function Emprestimos() {
                     <Inbox className="w-4 h-4" /> Solicitações ({solicitacoesPendentes.length})
                   </TabsTrigger>
                 )}
+                {canManageLoans && (
+                  <TabsTrigger value="recusadas" className="gap-2 shrink-0">
+                    <XCircle className="w-4 h-4" /> Recusadas ({solicitacoesRecusadas.length})
+                  </TabsTrigger>
+                )}
                 <TabsTrigger value="ativos" className="gap-2 shrink-0">
                   <AlertTriangle className="w-4 h-4" /> Ativos ({emprestimosAtivos.length})
                 </TabsTrigger>
@@ -1116,11 +1225,11 @@ export default function Emprestimos() {
 
               {canManageLoans && (
                 <TabsContent value="solicitacoes">
-                  {solicitacoes.length === 0 ? (
+                  {solicitacoesPendentes.length === 0 ? (
                     <p className="text-center text-muted-foreground py-8">Nenhuma solicitação de aluno no momento.</p>
                   ) : (
                     <div className="space-y-3">
-                      {solicitacoes.map((solicitacao) => {
+                      {solicitacoesPendentes.map((solicitacao) => {
                         const isPendente = solicitacao.status === 'pendente';
                         const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
                         return (
@@ -1202,6 +1311,20 @@ export default function Emprestimos() {
                           </div>
                         );
                       })}
+                    </div>
+                  )}
+                </TabsContent>
+              )}
+
+              {canManageLoans && (
+                <TabsContent value="recusadas">
+                  {solicitacoesRecusadas.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">Nenhuma solicitaÃ§Ã£o recusada.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {solicitacoesRecusadas.map((solicitacao) =>
+                        renderSolicitacaoCard(solicitacao, { readOnly: true }),
+                      )}
                     </div>
                   )}
                 </TabsContent>
