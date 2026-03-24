@@ -28,7 +28,12 @@ import {
   startSuperAdminDesktopApproval,
   verifySuperAdminEmailCode,
 } from '@/services/authService';
-import { createPlatformPasskey, getPlatformPasskeyAssertion, isPlatformPasskeySupported } from '@/lib/webauthn';
+import {
+  createPlatformPasskey,
+  getPlatformPasskeyAssertion,
+  isLocalPlatformAuthenticatorAvailable,
+  isPlatformPasskeySupported,
+} from '@/lib/webauthn';
 
 const EXACT_LOCATION_MAX_ACCURACY_METERS = 100;
 const DESKTOP_LOCATION_MAX_ACCURACY_METERS = 10000;
@@ -132,6 +137,13 @@ async function captureSecurityLocationContext() {
 
 function isMobileDevice() {
   return /android|iphone|ipad|ipod|mobile/i.test(String(navigator?.userAgent || '').toLowerCase());
+}
+
+function isAndroidChromeFamily() {
+  const userAgent = String(navigator?.userAgent || '').toLowerCase();
+  const isAndroid = userAgent.includes('android');
+  const isChromeFamily = userAgent.includes('chrome') || userAgent.includes('crios');
+  return isAndroid && isChromeFamily;
 }
 
 function hasExactLocation(context) {
@@ -304,6 +316,15 @@ export default function Auth() {
   const enrollPasskey = async (nextPending) => {
     if (!isPlatformPasskeySupported()) {
       throw new Error('Este dispositivo nao suporta passkey biometrica. Use um celular com Android/iPhone e bloqueio biometrico ativo.');
+    }
+
+    const localAuthenticatorAvailable = await isLocalPlatformAuthenticatorAvailable();
+    if (!localAuthenticatorAvailable) {
+      throw new Error(
+        isAndroidChromeFamily()
+          ? 'O Android não liberou a biometria local deste aparelho para a passkey. Verifique se o bloqueio de tela e a digital estão ativos e se o Gerenciador de senhas do Google está habilitado no Chrome.'
+          : 'Este navegador não liberou a biometria local do aparelho para a passkey. Tente no Chrome do celular com bloqueio de tela e digital ativos.',
+      );
     }
 
     const registerOptions = await beginSuperAdminPasskeyRegistration(nextPending.pendingAccessToken, nextPending.context);
@@ -559,6 +580,15 @@ export default function Auth() {
     if (!pendingSecurity) return;
     setLoading(true);
     try {
+      const localAuthenticatorAvailable = await isLocalPlatformAuthenticatorAvailable();
+      if (!localAuthenticatorAvailable && isMobileDevice()) {
+        throw new Error(
+          isAndroidChromeFamily()
+            ? 'O celular não disponibilizou o autenticador interno. Ative bloqueio de tela, digital e o Gerenciador de senhas do Google no Chrome para usar a biometria do próprio aparelho.'
+            : 'O navegador atual não disponibilizou a biometria local do aparelho. Use o Chrome no celular com biometria e bloqueio de tela ativos.',
+        );
+      }
+
       if (securityStep === 'passkey_enrollment') {
         await enrollPasskey(pendingSecurity);
       } else {

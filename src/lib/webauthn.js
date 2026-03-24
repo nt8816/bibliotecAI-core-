@@ -43,6 +43,22 @@ export function isPlatformPasskeySupported() {
   return Boolean(window.PublicKeyCredential && navigator?.credentials);
 }
 
+export async function isLocalPlatformAuthenticatorAvailable() {
+  if (!isPlatformPasskeySupported()) {
+    return false;
+  }
+
+  if (typeof window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable !== 'function') {
+    return false;
+  }
+
+  try {
+    return await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+  } catch {
+    return false;
+  }
+}
+
 function buildCreateOptions(publicKeyOptions, mode = 'strict') {
   const excludeCredentials = Array.isArray(publicKeyOptions.excludeCredentials)
     ? publicKeyOptions.excludeCredentials.map((item) => {
