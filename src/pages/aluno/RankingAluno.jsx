@@ -14,13 +14,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { fetchRankingData } from '@/services/rankingService';
 
 function repairMojibakeText(value) {
   const text = String(value || '');
-  if (!text || !/[ÃƒÃ‚]/.test(text)) return text;
+  if (!text || !/[ÃƒÆ’Ãƒâ€š]/.test(text)) return text;
   try {
     return decodeURIComponent(escape(text));
   } catch {
@@ -59,7 +59,7 @@ function RankingList({ items, currentStudentId }) {
     return (
       <Card>
         <CardContent className="py-10 text-sm text-muted-foreground">
-          Nenhum aluno disponível neste ranking.
+          Nenhum aluno disponivel neste ranking.
         </CardContent>
       </Card>
     );
@@ -86,11 +86,11 @@ function RankingList({ items, currentStudentId }) {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm text-muted-foreground">#{position}</span>
                     <p className="font-semibold">{repairMojibakeText(aluno.nome) || 'Aluno sem nome'}</p>
-                    {isCurrentStudent && <Badge variant="default">Você</Badge>}
+                    {isCurrentStudent && <Badge variant="default">Voce</Badge>}
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                     <span>Turma: {repairMojibakeText(aluno.turma) || 'Sem turma'}</span>
-                    <span>Nível {aluno.nivel}</span>
+                    <span>Nivel {aluno.nivel}</span>
                     <span>{aluno.livrosLidos} livros com XP</span>
                   </div>
                 </div>
@@ -101,7 +101,7 @@ function RankingList({ items, currentStudentId }) {
                   {aluno.xpTotal} XP
                 </Badge>
                 <Badge variant="secondary" className="text-sm">
-                  Nível {aluno.nivel}
+                  Nivel {aluno.nivel}
                 </Badge>
               </div>
             </CardContent>
@@ -135,45 +135,26 @@ export default function RankingAluno() {
     const loadRanking = async () => {
       setLoading(true);
       try {
-        const { data: perfil, error: perfilError } = await supabase
-          .from('usuarios_biblioteca')
-          .select('id, escola_id, turma')
-          .eq('user_id', user.id)
-          .order('updated_at', { ascending: false, nullsFirst: false })
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (perfilError || !perfil) {
-          throw perfilError || new Error('Perfil do usuário não encontrado.');
-        }
-
-        const rankingRequest = isAluno
-          ? supabase.rpc('get_aluno_rankings')
-          : supabase.rpc('get_school_rankings');
-
-        const { data: rankingData, error: rankingError } = await rankingRequest;
-        if (rankingError) throw rankingError;
-
-        const rankingCalculado = (rankingData || []).map((aluno) => ({
+        const payload = await fetchRankingData();
+        const rankingCalculado = (payload?.ranking || []).map((aluno) => ({
           ...aluno,
           nome: repairMojibakeText(aluno.nome),
           turma: repairMojibakeText(aluno.turma),
-          xpTotal: Number(aluno.xp_total || 0),
-          nivel: Number(aluno.nivel || getNivelFromXp(aluno.xp_total || 0)),
-          livrosLidos: Number(aluno.livros_lidos || 0),
+          xpTotal: Number(aluno.xp_total || aluno.xpTotal || 0),
+          nivel: Number(aluno.nivel || getNivelFromXp(aluno.xp_total || aluno.xpTotal || 0)),
+          livrosLidos: Number(aluno.livros_lidos || aluno.livrosLidos || 0),
         }));
 
         if (!active) return;
-        setCurrentStudentId(isAluno ? perfil.id : null);
-        setCurrentTurma(perfil.turma || null);
+        setCurrentStudentId(isAluno ? payload?.currentStudentId || null : null);
+        setCurrentTurma(payload?.currentTurma || null);
         setRankingEscola(rankingCalculado);
       } catch (error) {
         if (!active) return;
         toast({
           variant: 'destructive',
           title: 'Erro ao carregar ranking',
-          description: error?.message || 'Não foi possível montar o ranking agora.',
+          description: error?.message || 'Nao foi possivel montar o ranking agora.',
         });
       } finally {
         if (active) setLoading(false);
@@ -234,7 +215,7 @@ export default function RankingAluno() {
       <MainLayout title="Ranking">
         <Card>
           <CardContent className="py-10 text-sm text-muted-foreground">
-            Esta área está disponível apenas para alunos, professores, gestão e bibliotecária.
+            Esta area esta disponivel apenas para alunos, professores, gestao e bibliotecaria.
           </CardContent>
         </Card>
       </MainLayout>
@@ -255,9 +236,9 @@ export default function RankingAluno() {
               </CardHeader>
               <CardContent className="space-y-2 text-sm text-muted-foreground">
                 <p>
-                  Posição atual: <span className="font-semibold text-foreground">#{minhaPosicaoSala || '-'}</span>
+                  Posicao atual: <span className="font-semibold text-foreground">#{minhaPosicaoSala || '-'}</span>
                 </p>
-                <p>Comparação com os alunos da sua turma usando XP total e nível.</p>
+                <p>Comparacao com os alunos da sua turma usando XP total e nivel.</p>
               </CardContent>
             </Card>
 
@@ -270,9 +251,9 @@ export default function RankingAluno() {
               </CardHeader>
               <CardContent className="space-y-2 text-sm text-muted-foreground">
                 <p>
-                  Posição atual: <span className="font-semibold text-foreground">#{minhaPosicaoEscola || '-'}</span>
+                  Posicao atual: <span className="font-semibold text-foreground">#{minhaPosicaoEscola || '-'}</span>
                 </p>
-                <p>Comparação geral entre todos os alunos da escola.</p>
+                <p>Comparacao geral entre todos os alunos da escola.</p>
               </CardContent>
             </Card>
           </div>
@@ -311,7 +292,7 @@ export default function RankingAluno() {
               <p>
                 Total de alunos no ranking: <span className="font-semibold text-foreground">{rankingEscola.length}</span>
               </p>
-              <p>O ranking usa XP total e nível real dos alunos da escola.</p>
+              <p>O ranking usa XP total e nivel real dos alunos da escola.</p>
             </CardContent>
           </Card>
 
@@ -337,7 +318,7 @@ export default function RankingAluno() {
                 </SelectContent>
               </Select>
               <p className="text-sm text-muted-foreground">
-                Professores, gestão e bibliotecária visualizam o ranking escolar e podem filtrar por turma.
+                Professores, gestao e bibliotecaria visualizam o ranking escolar e podem filtrar por turma.
               </p>
             </CardContent>
           </Card>

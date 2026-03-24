@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AccessibilityControls } from '@/components/accessibility/AccessibilityControls';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { fetchMyProfile, updateMyPassword, updateMyProfile } from '@/services/meService';
 
 const emptyProfile = {
   id: null,
@@ -83,16 +83,7 @@ export default function Configuracoes() {
 
     setLoadingProfile(true);
     try {
-      const { data, error } = await supabase
-        .from('usuarios_biblioteca')
-        .select('id, nome, telefone, cpf, turma, matricula')
-        .eq('user_id', user.id)
-        .order('updated_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) throw error;
+      const data = await fetchMyProfile();
 
       setProfile({
         id: data?.id || null,
@@ -140,15 +131,7 @@ export default function Configuracoes() {
         payload.turma = profile.turma.trim() || null;
       }
 
-      if (profile.id) {
-        const { error } = await supabase.from('usuarios_biblioteca').update(payload).eq('id', profile.id);
-        if (error) throw error;
-      }
-
-      const { error: authError } = await supabase.auth.updateUser({
-        data: { nome: payload.nome },
-      });
-      if (authError) throw authError;
+      await updateMyProfile(payload);
 
       toast({
         title: 'Dados atualizados',
@@ -187,15 +170,14 @@ export default function Configuracoes() {
 
     setUpdatingPassword(true);
     try {
-      const { error } = await supabase.auth.updateUser({
+      await updateMyPassword({
         password: passwordForm.newPassword,
-        data: {
+        metadata: {
           ...(user?.user_metadata || {}),
           senha_definida: true,
           senha_alterada_em: new Date().toISOString(),
         },
       });
-      if (error) throw error;
 
       if (alunoOnboardingKey) {
         localStorage.setItem(alunoOnboardingKey, 'done');

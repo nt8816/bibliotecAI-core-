@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { signInWithPlatform } from '@/services/authService';
 
 export default function Convite() {
   const { token } = useParams();
@@ -131,10 +131,7 @@ export default function Convite() {
         : email.trim().toLowerCase();
       const authPassword = isAlunoInvite ? matricula.trim() : senha;
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: authEmail,
-        password: authPassword,
-      });
+      const { error: signInError } = await signInWithPlatform(authEmail, authPassword);
 
       if (signInError) {
         toast({

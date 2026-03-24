@@ -1,6 +1,6 @@
-import { supabase } from '@/integrations/supabase/client';
+import { clearPlatformSession, getPlatformAccessToken, refreshPlatformSession } from '@/lib/platformSession';
 
-const DEFAULT_ERROR_MESSAGE = 'Não foi possível concluir a operação.';
+const DEFAULT_ERROR_MESSAGE = 'Nao foi possivel concluir a operacao.';
 const PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || (PROJECT_ID ? `https://${PROJECT_ID}.supabase.co` : '');
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -51,37 +51,31 @@ export const invokeEdgeFunction = async (
     retryOnUnauthorized = true,
     fallbackErrorMessage = DEFAULT_ERROR_MESSAGE,
     signOutOnAuthFailure = false,
-    transport = 'sdk',
+    transport: _transport = 'sdk',
   } = {},
 ) => {
+  void _transport;
+
   const getAccessToken = async ({ forceRefresh = false } = {}) => {
     if (forceRefresh) {
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError) throw refreshError;
-      const refreshedToken = refreshData?.session?.access_token;
-      if (!refreshedToken) throw new Error('Sessão inválida. Faça login novamente.');
+      const refreshData = await refreshPlatformSession();
+      const refreshedToken = refreshData?.access_token;
+      if (!refreshedToken) throw new Error('Sessao invalida. Faca login novamente.');
       return refreshedToken;
     }
 
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) throw sessionError;
-    const accessToken = sessionData?.session?.access_token;
-    if (!accessToken) throw new Error('Sessão inválida. Faça login novamente.');
+    const accessToken = getPlatformAccessToken();
+    if (!accessToken) throw new Error('Sessao invalida. Faca login novamente.');
     return accessToken;
   };
 
   const invokeOnce = async ({ forceRefresh = false } = {}) => {
     const finalHeaders = { ...(headers || {}) };
-    const shouldUseHttpTransport = transport === 'http';
 
     if (requireAuth) {
       const accessToken = await getAccessToken({ forceRefresh });
       finalHeaders.Authorization = `Bearer ${accessToken}`;
       finalHeaders['x-user-access-token'] = accessToken;
-
-      if (!shouldUseHttpTransport) {
-        return supabase.functions.invoke(functionName, { body, headers: finalHeaders });
-      }
 
       if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
         return {
@@ -123,50 +117,50 @@ export const invokeEdgeFunction = async (
 
       const payload = await parseResponsePayload(response);
       return { data: payload, error: null };
-    } else {
-      delete finalHeaders.Authorization;
-      delete finalHeaders.authorization;
-
-      if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-        return {
-          data: null,
-          error: new Error('Supabase env ausente. Configure VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY.'),
-        };
-      }
-
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/${functionName}`, {
-        method: 'POST',
-        headers: {
-          apikey: SUPABASE_PUBLISHABLE_KEY,
-          Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
-          'Content-Type': 'application/json',
-          ...finalHeaders,
-        },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        let message = fallbackErrorMessage;
-        try {
-          const payload = await parseResponsePayload(response.clone());
-          message =
-            (typeof payload === 'string' && payload.trim()) ||
-            payload?.error ||
-            payload?.message ||
-            `${fallbackErrorMessage} (HTTP ${response.status})`;
-        } catch {
-          message = `${fallbackErrorMessage} (HTTP ${response.status})`;
-        }
-
-        return {
-          data: null,
-          error: { message, context: response },
-        };
-      }
-
-      const payload = await parseResponsePayload(response);
-      return { data: payload, error: null };
     }
+
+    delete finalHeaders.Authorization;
+    delete finalHeaders.authorization;
+
+    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+      return {
+        data: null,
+        error: new Error('Supabase env ausente. Configure VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY.'),
+      };
+    }
+
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/${functionName}`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+        'Content-Type': 'application/json',
+        ...finalHeaders,
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      let message = fallbackErrorMessage;
+      try {
+        const payload = await parseResponsePayload(response.clone());
+        message =
+          (typeof payload === 'string' && payload.trim()) ||
+          payload?.error ||
+          payload?.message ||
+          `${fallbackErrorMessage} (HTTP ${response.status})`;
+      } catch {
+        message = `${fallbackErrorMessage} (HTTP ${response.status})`;
+      }
+
+      return {
+        data: null,
+        error: { message, context: response },
+      };
+    }
+
+    const payload = await parseResponsePayload(response);
+    return { data: payload, error: null };
   };
 
   let result = await invokeOnce();
@@ -175,14 +169,14 @@ export const invokeEdgeFunction = async (
     try {
       result = await invokeOnce({ forceRefresh: true });
     } catch {
-      if (signOutOnAuthFailure) await supabase.auth.signOut();
-      throw new Error('Sua sessão expirou. Faça login novamente.');
+      if (signOutOnAuthFailure) clearPlatformSession();
+      throw new Error('Sua sessao expirou. Faca login novamente.');
     }
   }
 
   if (result.error && requireAuth && isUnauthorized(result.error) && signOutOnAuthFailure) {
-    await supabase.auth.signOut();
-    throw new Error('Sua sessão expirou. Faça login novamente.');
+    clearPlatformSession();
+    throw new Error('Sua sessao expirou. Faca login novamente.');
   }
 
   if (result.error) {

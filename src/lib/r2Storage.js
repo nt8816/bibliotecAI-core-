@@ -1,5 +1,5 @@
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-import { supabase } from '@/integrations/supabase/client';
+import { getPlatformAccessToken } from '@/lib/platformSession';
 
 function sanitizeFileName(fileName) {
   return String(fileName || 'arquivo')
@@ -15,9 +15,7 @@ export function buildR2ObjectKey({ escolaId, ownerId, scope = 'arquivos-aula', f
 }
 
 async function getUserAccessToken() {
-  const { data, error } = await supabase.auth.getSession();
-  if (error) throw error;
-  const accessToken = data?.session?.access_token;
+  const accessToken = getPlatformAccessToken();
   if (!accessToken) {
     throw new Error('Sessao invalida. Faca login novamente.');
   }

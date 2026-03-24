@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { signInWithPlatform } from '@/services/authService';
 
 export default function OnboardingGestor() {
   const { token } = useParams();
@@ -98,10 +99,10 @@ export default function OnboardingGestor() {
         throw new Error(data?.error || 'Falha no cadastro');
       }
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: data?.login_email || `${cpfDigits}@temp.bibliotecai.com`,
-        password: senha,
-      });
+      const { error: signInError } = await signInWithPlatform(
+        data?.login_email || `${cpfDigits}@temp.bibliotecai.com`,
+        senha,
+      );
 
       if (signInError) {
         toast({ title: 'Conta criada', description: 'Faça login para continuar.' });

@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { getPlatformAccessToken, refreshPlatformSession } from '@/lib/platformSession';
 
 const PLATFORM_API_BASE_URL = String(import.meta.env.VITE_PLATFORM_API_BASE_URL || '').trim().replace(/\/+$/, '');
 
@@ -8,12 +8,6 @@ function buildUrl(routePath) {
     throw new Error('A rota da Platform API deve comecar com "/".');
   }
   return `${PLATFORM_API_BASE_URL}${safePath}`;
-}
-
-async function getAccessToken() {
-  const { data, error } = await supabase.auth.getSession();
-  if (error) throw error;
-  return data?.session?.access_token || '';
 }
 
 async function parseResponse(response) {
@@ -30,23 +24,44 @@ export function isPlatformApiUnavailableError(error) {
   return Boolean(error?.platformUnavailable);
 }
 
-export async function requestPlatformApi(routePath, { method = 'GET', body, headers } = {}) {
+export async function requestPlatformApi(routePath, {
+  method = 'GET',
+  body,
+  headers,
+  auth = true,
+  retryOnUnauthorized = true,
+} = {}) {
   if (!isPlatformApiConfigured()) {
     const error = new Error('Platform API nao configurada.');
     error.platformUnavailable = true;
     throw error;
   }
 
-  const accessToken = await getAccessToken();
-  const response = await fetch(buildUrl(routePath), {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}`, 'x-user-access-token': accessToken } : {}),
-      ...(headers || {}),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const executeRequest = async () => {
+    const accessToken = auth ? getPlatformAccessToken() : '';
+    return fetch(buildUrl(routePath), {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}`, 'x-user-access-token': accessToken } : {}),
+        ...(headers || {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  };
+
+  let response = await executeRequest();
+
+  if (response.status === 401 && auth && retryOnUnauthorized) {
+    try {
+      await refreshPlatformSession();
+      response = await executeRequest();
+    } catch (refreshError) {
+      const error = new Error(refreshError?.message || 'Sessao invalida. Faca login novamente.');
+      error.status = 401;
+      throw error;
+    }
+  }
 
   const payload = await parseResponse(response);
 

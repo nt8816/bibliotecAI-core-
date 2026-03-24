@@ -228,7 +228,7 @@ async function isSuperAdmin(userId: string, env: Env) {
 
 async function getLatestUserProfile(userId: string, env: Env) {
   const params = new URLSearchParams({
-    select: 'id,escola_id,nome,email,tipo',
+    select: 'id,user_id,escola_id,nome,email,telefone,cpf,turma,matricula,tipo',
     user_id: `eq.${userId}`,
     order: 'updated_at.desc.nullslast,created_at.desc',
     limit: '1',
@@ -778,6 +778,56 @@ const routes: Record<string, RouteHandler> = {
       user: authPayload?.user || null,
     });
   },
+  'POST /v1/auth/signup': async (request, env) => {
+    const body = await request.json().catch(() => ({}));
+    const email = String(body?.email || '').trim().toLowerCase();
+    const password = String(body?.password || '');
+    const nome = String(body?.nome || '').trim();
+    const redirectUrl = String(body?.redirectUrl || '').trim() || undefined;
+
+    if (!email || !password) {
+      return jsonResponse({ success: false, error: 'Email e senha sao obrigatorios.' }, 400);
+    }
+
+    const { supabaseUrl, publishableKey } = getSupabaseConfig(env);
+    const signupResponse = await fetch(`${supabaseUrl}/auth/v1/signup`, {
+      method: 'POST',
+      headers: {
+        apikey: publishableKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email,
+        password,
+        options: {
+          ...(redirectUrl ? { emailRedirectTo: redirectUrl } : {}),
+          data: nome ? { nome } : {},
+        },
+      }),
+    });
+
+    const signupPayload = await parseResponse(signupResponse);
+    if (!signupResponse.ok) {
+      return jsonResponse(
+        {
+          success: false,
+          error:
+            (typeof signupPayload === 'string' && signupPayload.trim()) ||
+            signupPayload?.msg ||
+            signupPayload?.error_description ||
+            signupPayload?.error ||
+            'Falha ao criar a conta.',
+        },
+        signupResponse.status,
+      );
+    }
+
+    return jsonResponse({
+      success: true,
+      session: signupPayload,
+      user: signupPayload?.user || null,
+    });
+  },
   'POST /v1/auth/resolve-login': async (request, env) => {
     const body = await request.json().catch(() => ({}));
     const identifier = String(body?.identifier || '').trim();
@@ -833,6 +883,46 @@ const routes: Record<string, RouteHandler> = {
     }
 
     return jsonResponse({ success: true });
+  },
+  'POST /v1/auth/refresh': async (request, env) => {
+    const body = await request.json().catch(() => ({}));
+    const refreshToken = String(body?.refreshToken || '').trim();
+
+    if (!refreshToken) {
+      return jsonResponse({ success: false, error: 'Refresh token ausente.' }, 400);
+    }
+
+    const { supabaseUrl, publishableKey } = getSupabaseConfig(env);
+    const refreshResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: {
+        apikey: publishableKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+
+    const refreshPayload = await parseResponse(refreshResponse);
+    if (!refreshResponse.ok) {
+      return jsonResponse(
+        {
+          success: false,
+          error:
+            (typeof refreshPayload === 'string' && refreshPayload.trim()) ||
+            refreshPayload?.msg ||
+            refreshPayload?.error_description ||
+            refreshPayload?.error ||
+            'Falha ao renovar a sessao.',
+        },
+        refreshResponse.status,
+      );
+    }
+
+    return jsonResponse({
+      success: true,
+      session: refreshPayload,
+      user: refreshPayload?.user || null,
+    });
   },
   'POST /v1/auth/super-admin/login-success': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);
@@ -1110,6 +1200,104 @@ const routes: Record<string, RouteHandler> = {
       roles: Array.isArray(roleRows) ? [...new Set(roleRows.map((item) => String(item?.role || '')).filter(Boolean))] : [],
     });
   },
+  'GET /v1/me/profile': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const profile = await getLatestUserProfile(user.id, env);
+    return jsonResponse({
+      success: true,
+      profile: profile || {
+        id: null,
+        nome: pickAuthName(user) || '',
+        email: String(user?.email || '').trim() || null,
+        telefone: null,
+        cpf: null,
+        turma: null,
+        matricula: null,
+      },
+    });
+  },
+  'PATCH /v1/me/profile': async (request, env) => {
+    const token = getUserToken(request);
+    const user = await fetchSupabaseUser(request, env);
+    if (!token || !user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const profile = await getLatestUserProfile(user.id, env);
+    const body = await request.json().catch(() => ({} as Record<string, unknown>));
+    const nextNome = String(body?.nome || '').trim();
+    const payload = {
+      nome: nextNome || null,
+      telefone: String(body?.telefone || '').trim() || null,
+      cpf: normalizeDigits(body?.cpf) || null,
+      turma: String(body?.turma || '').trim() || null,
+    };
+
+    if (profile?.id) {
+      await supabaseAdminRequest(
+        env,
+        `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ id: `eq.${profile.id}` }).toString()}`,
+        {
+          method: 'PATCH',
+          body: payload,
+          headers: {
+            Prefer: 'return=minimal',
+          },
+        },
+      );
+    }
+
+    const { supabaseUrl, publishableKey } = getSupabaseConfig(env);
+    const authUpdateResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      method: 'PUT',
+      headers: {
+        apikey: publishableKey,
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        data: {
+          ...(user?.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {}),
+          ...(nextNome ? { nome: nextNome } : {}),
+        },
+      }),
+    });
+
+    const authUpdatePayload = await parseResponse(authUpdateResponse);
+    if (!authUpdateResponse.ok) {
+      return jsonResponse(
+        {
+          success: false,
+          error:
+            (typeof authUpdatePayload === 'string' && authUpdatePayload.trim()) ||
+            authUpdatePayload?.msg ||
+            authUpdatePayload?.error_description ||
+            authUpdatePayload?.error ||
+            'Falha ao atualizar o perfil.',
+        },
+        authUpdateResponse.status,
+      );
+    }
+
+    const updatedProfile = profile?.id ? await getLatestUserProfile(user.id, env) : null;
+    return jsonResponse({
+      success: true,
+      profile: updatedProfile || {
+        id: null,
+        nome: nextNome || pickAuthName(authUpdatePayload) || '',
+        email: String(authUpdatePayload?.email || user?.email || '').trim() || null,
+        telefone: payload.telefone,
+        cpf: payload.cpf,
+        turma: payload.turma,
+        matricula: null,
+      },
+      user: authUpdatePayload,
+    });
+  },
   'POST /v1/auth/password': async (request, env) => {
     const token = getUserToken(request);
     if (!token) {
@@ -1161,6 +1349,35 @@ const routes: Record<string, RouteHandler> = {
     }
 
     return jsonResponse({ success: true, user: payload || null });
+  },
+  'GET /v1/rankings': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const profile = await getLatestUserProfile(user.id, env);
+    if (!profile?.id) {
+      return jsonResponse({ success: false, error: 'Perfil do usuario nao encontrado.' }, 404);
+    }
+
+    const tipo = String(profile.tipo || '').trim().toLowerCase();
+    if (!['aluno', 'professor', 'gestor', 'bibliotecaria'].includes(tipo)) {
+      return jsonResponse({ success: false, error: 'Perfil sem acesso ao ranking.' }, 403);
+    }
+
+    const ranking = await supabaseUserRpc(
+      request,
+      env,
+      tipo === 'aluno' ? 'get_aluno_rankings' : 'get_school_rankings',
+    );
+
+    return jsonResponse({
+      success: true,
+      currentStudentId: tipo === 'aluno' ? String(profile.id || '') : null,
+      currentTurma: String(profile.turma || '').trim() || null,
+      ranking: Array.isArray(ranking) ? ranking : [],
+    });
   },
   'GET /v1/dashboard': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);
