@@ -5319,6 +5319,19 @@ const routes: Record<string, RouteHandler> = {
     return jsonResponse(payload);
   },
 
+  'POST /v1/usuarios/:id/delete': async (request, env) => {
+    const { canManageUsers } = await getUsersModuleContext(request, env);
+    if (!canManageUsers) {
+      return jsonResponse({ success: false, error: 'Sem permissao para excluir usuarios.' }, 403);
+    }
+
+    const usuarioId = getPathParam(request, /^\/v1\/usuarios\/([^/]+)\/delete$/i);
+    const payload = await callSupabaseFunction(request, env, 'excluir-usuarios-biblioteca', {
+      ids: usuarioId ? [usuarioId] : [],
+    });
+    return jsonResponse(payload);
+  },
+
   'POST /v1/usuarios/import': async (request, env) => {
     const { canManageUsers, currentEscolaId } = await getUsersModuleContext(request, env);
     if (!canManageUsers) {
@@ -6183,6 +6196,7 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/aluno\/laboratorio\/criacoes\/[^/]+$/, '/v1/aluno/laboratorio/criacoes/:id')
     .replace(/\/v1\/arquivos-aula\/[^/]+\/arquivos$/, '/v1/arquivos-aula/:id/arquivos')
     .replace(/\/v1\/livros\/[^/]+\/delete$/, '/v1/livros/:id/delete')
+    .replace(/\/v1\/usuarios\/[^/]+\/delete$/, '/v1/usuarios/:id/delete')
     .replace(/\/v1\/livros\/[^/]+$/, '/v1/livros/:id')
     .replace(/\/v1\/usuarios\/[^/]+$/, '/v1/usuarios/:id');
 }

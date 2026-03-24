@@ -31,10 +31,40 @@ export async function saveUsuario(payload, editingUsuarioId) {
 }
 
 export async function excluirUsuarios(ids) {
-  return requestPlatformApi('/v1/usuarios/delete-batch', {
-    method: 'POST',
-    body: { ids },
-  });
+  const normalizedIds = Array.isArray(ids)
+    ? ids.map((item) => String(item || '').trim()).filter(Boolean)
+    : [];
+
+  if (normalizedIds.length === 0) {
+    throw new Error('Nenhum usuario informado para exclusao.');
+  }
+
+  try {
+    return await requestPlatformApi('/v1/usuarios/delete-batch', {
+      method: 'POST',
+      body: { ids: normalizedIds },
+    });
+  } catch (error) {
+    const routeNotFound = error?.status === 404 || String(error?.message || '').toLowerCase().includes('rota nao encontrada');
+    if (!routeNotFound) {
+      throw error;
+    }
+
+    const results = [];
+    for (const id of normalizedIds) {
+      const payload = await requestPlatformApi(`/v1/usuarios/${id}/delete`, {
+        method: 'POST',
+      });
+      results.push(payload);
+    }
+
+    return {
+      success: true,
+      deleted_count: results.reduce((total, item) => total + Number(item?.deleted_count || 0), 0),
+      deleted_ids: results.flatMap((item) => Array.isArray(item?.deleted_ids) ? item.deleted_ids : []),
+      deleted_user_ids: results.flatMap((item) => Array.isArray(item?.deleted_user_ids) ? item.deleted_user_ids : []),
+    };
+  }
 }
 
 export async function importUsuariosBatch({ usuarios, tipoUsuarioImport, currentEscolaId, userId }) {
