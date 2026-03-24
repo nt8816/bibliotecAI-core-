@@ -2240,7 +2240,6 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const nowIso = new Date().toISOString();
-    const resolvedDeviceType = formatSuperAdminDeviceType(risk.deviceType, Boolean(desktopChallengeToken));
     await patchSuperAdminChallenge(String(challenge.id), env, {
       email_verified_at: nowIso,
     });
