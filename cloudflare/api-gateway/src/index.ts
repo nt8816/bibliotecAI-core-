@@ -1835,6 +1835,39 @@ const routes: Record<string, RouteHandler> = {
     }
 
     let userId = '';
+    const duplicateEmailMarkers = ['already been registered', 'already exists', 'already registered'];
+    const existingProfileLookup = isAluno
+      ? await supabaseAdminRequest(
+          env,
+          `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+            select: 'id,user_id',
+            matricula: `eq.${normalizedMatricula}`,
+            limit: '1',
+          }).toString()}`,
+        )
+      : usesCpfAsLogin
+        ? await supabaseAdminRequest(
+            env,
+            `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+              select: 'id,user_id',
+              escola_id: `eq.${tokenInfo.escola_id}`,
+              tipo: `eq.${tokenInfo.role_destino}`,
+              cpf: `eq.${cpf}`,
+              limit: '1',
+            }).toString()}`,
+          )
+        : await supabaseAdminRequest(
+            env,
+            `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+              select: 'id,user_id',
+              escola_id: `eq.${tokenInfo.escola_id}`,
+              tipo: `eq.${tokenInfo.role_destino}`,
+              email: `eq.${authEmail}`,
+              limit: '1',
+            }).toString()}`,
+          );
+    const existingProfile = Array.isArray(existingProfileLookup) ? (existingProfileLookup[0] || null) : null;
+
     try {
       const authData = await supabaseAdminAuthRequest(env, '/users', {
         method: 'POST',
@@ -1847,8 +1880,41 @@ const routes: Record<string, RouteHandler> = {
       });
       userId = String(authData?.user?.id || '');
     } catch (error) {
-      await releasePublicInviteReservation(env, String(tokenInfo.id));
-      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao criar usuario.' }, 400);
+      const authErrorMessage = String(error instanceof Error ? error.message : '').toLowerCase();
+      if (!duplicateEmailMarkers.some((marker) => authErrorMessage.includes(marker))) {
+        await releasePublicInviteReservation(env, String(tokenInfo.id));
+        return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao criar usuario.' }, 400);
+      }
+
+      const existingAuthUser = await findAuthUserByEmail(env, authEmail);
+      if (!existingAuthUser?.id) {
+        await releasePublicInviteReservation(env, String(tokenInfo.id));
+        return jsonResponse({ success: false, error: 'Esta conta ja esta cadastrada. Verifique seus dados ou faca login.' }, 409);
+      }
+
+      if (existingProfile?.user_id && String(existingProfile.user_id) !== String(existingAuthUser.id)) {
+        await releasePublicInviteReservation(env, String(tokenInfo.id));
+        return jsonResponse({ success: false, error: 'Este cadastro ja esta vinculado a outra conta. Faca login ou solicite suporte.' }, 409);
+      }
+
+      if (!existingProfile?.id) {
+        await releasePublicInviteReservation(env, String(tokenInfo.id));
+        return jsonResponse({ success: false, error: 'Esta conta ja esta cadastrada. Verifique seus dados ou faca login.' }, 409);
+      }
+
+      await supabaseAdminAuthRequest(env, `/users/${existingAuthUser.id}`, {
+        method: 'PUT',
+        body: {
+          password: authPassword,
+          email_confirm: true,
+          user_metadata: {
+            ...(existingAuthUser.user_metadata && typeof existingAuthUser.user_metadata === 'object' ? existingAuthUser.user_metadata : {}),
+            nome,
+          },
+        },
+      });
+
+      userId = String(existingAuthUser.id);
     }
 
     try {
@@ -1868,54 +1934,12 @@ const routes: Record<string, RouteHandler> = {
         matricula: isAluno ? normalizedMatricula : null,
       };
 
-      if (isAluno && normalizedMatricula) {
-        const existingAluno = await supabaseAdminRequest(
-          env,
-          `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
-            select: 'id,user_id',
-            matricula: `eq.${normalizedMatricula}`,
-            limit: '1',
-          }).toString()}`,
-        );
-        const alunoProfile = Array.isArray(existingAluno) ? (existingAluno[0] || null) : null;
-        if (alunoProfile?.id) {
-          await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ id: `eq.${alunoProfile.id}` }).toString()}`, {
-            method: 'PATCH',
-            body: profilePayload,
-            headers: { Prefer: 'return=minimal' },
-          });
-        } else {
-          await supabaseAdminRequest(env, '/rest/v1/usuarios_biblioteca', {
-            method: 'POST',
-            body: profilePayload,
-            headers: { Prefer: 'return=minimal' },
-          });
-        }
-      } else if (usesCpfAsLogin) {
-        const existingProfessor = await supabaseAdminRequest(
-          env,
-          `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
-            select: 'id,user_id',
-            escola_id: `eq.${tokenInfo.escola_id}`,
-            tipo: `eq.${tokenInfo.role_destino}`,
-            cpf: `eq.${cpf}`,
-            limit: '1',
-          }).toString()}`,
-        );
-        const professorProfile = Array.isArray(existingProfessor) ? (existingProfessor[0] || null) : null;
-        if (professorProfile?.id) {
-          await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ id: `eq.${professorProfile.id}` }).toString()}`, {
-            method: 'PATCH',
-            body: profilePayload,
-            headers: { Prefer: 'return=minimal' },
-          });
-        } else {
-          await supabaseAdminRequest(env, '/rest/v1/usuarios_biblioteca', {
-            method: 'POST',
-            body: profilePayload,
-            headers: { Prefer: 'return=minimal' },
-          });
-        }
+      if (existingProfile?.id) {
+        await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ id: `eq.${existingProfile.id}` }).toString()}`, {
+          method: 'PATCH',
+          body: profilePayload,
+          headers: { Prefer: 'return=minimal' },
+        });
       } else {
         await supabaseAdminRequest(env, '/rest/v1/usuarios_biblioteca', {
           method: 'POST',
