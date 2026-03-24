@@ -1,6 +1,7 @@
-﻿import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/hooks/useAuth';
+import { getBrowserNotificationPermission, showBrowserNotification } from '@/lib/browserNotifications';
 import { fetchSystemNotificationsData, markSystemNotificationAsRead } from '@/services/notificationsService';
 
 const EMPTY_COUNTS = {
@@ -45,6 +46,8 @@ export function useSystemNotifications() {
   const [counts, setCounts] = useState(EMPTY_COUNTS);
   const [notifications, setNotifications] = useState([]);
   const [profileId, setProfileId] = useState(null);
+  const seenNotificationIdsRef = useRef(new Set());
+  const notificationsReadyRef = useRef(false);
 
   const canView = isGestor || isBibliotecaria || isAluno || isSuperAdmin;
 
@@ -116,6 +119,11 @@ export function useSystemNotifications() {
   }, [fetchCounts]);
 
   useEffect(() => {
+    seenNotificationIdsRef.current = new Set();
+    notificationsReadyRef.current = false;
+  }, [user?.id]);
+
+  useEffect(() => {
     if (!canView || !user?.id) return undefined;
 
     const interval = window.setInterval(() => {
@@ -126,6 +134,32 @@ export function useSystemNotifications() {
       window.clearInterval(interval);
     };
   }, [canView, fetchCounts, user?.id]);
+
+  useEffect(() => {
+    const nextIds = new Set(ensureArray(notifications).map((item) => item?.id).filter(Boolean));
+
+    if (!notificationsReadyRef.current) {
+      seenNotificationIdsRef.current = nextIds;
+      notificationsReadyRef.current = true;
+      return;
+    }
+
+    if (getBrowserNotificationPermission() === 'granted') {
+      ensureArray(notifications)
+        .filter((item) => item?.id && !seenNotificationIdsRef.current.has(item.id))
+        .filter((item) => item.tipo === 'solicitacao_chat')
+        .forEach((item) => {
+          showBrowserNotification({
+            title: item.titulo || 'Nova mensagem',
+            body: item.descricao || 'Você recebeu uma nova mensagem.',
+            tag: item.id,
+            path: item.path || '/emprestimos?tab=solicitacoes',
+          });
+        });
+    }
+
+    seenNotificationIdsRef.current = nextIds;
+  }, [notifications]);
 
   const markNotificationRead = useCallback(async (notificationId) => {
     if (!notificationId) return;
@@ -185,4 +219,3 @@ export function useSystemNotifications() {
     markNotificationRead,
   };
 }
-

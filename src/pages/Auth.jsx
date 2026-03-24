@@ -34,6 +34,11 @@ import {
   isLocalPlatformAuthenticatorAvailable,
   isPlatformPasskeySupported,
 } from '@/lib/webauthn';
+import {
+  getBrowserNotificationPermission,
+  requestBrowserNotificationPermission,
+  supportsBrowserNotifications,
+} from '@/lib/browserNotifications';
 
 const SUPER_ADMIN_DESKTOP_RESUME_KEY = 'super_admin_desktop_resume';
 
@@ -63,20 +68,6 @@ function buildSecurityContext() {
     user_agent: navigator?.userAgent || null,
     language: navigator?.language || null,
   };
-}
-
-function supportsBrowserNotifications() {
-  return typeof window !== 'undefined' && 'Notification' in window;
-}
-
-function getNotificationPermissionState() {
-  if (!supportsBrowserNotifications()) return 'unsupported';
-  return Notification.permission || 'default';
-}
-
-async function requestBrowserNotificationsPermission() {
-  if (!supportsBrowserNotifications()) return 'unsupported';
-  return Notification.requestPermission();
 }
 
 function maskIdentifier(value) {
@@ -121,7 +112,7 @@ export default function Auth() {
   const [otpMeta, setOtpMeta] = useState(null);
   const [desktopStatus, setDesktopStatus] = useState(null);
   const [finalizingDesktop, setFinalizingDesktop] = useState(false);
-  const [notificationPermission, setNotificationPermission] = useState(getNotificationPermissionState);
+  const [notificationPermission, setNotificationPermission] = useState(getBrowserNotificationPermission);
 
   const desktopApprovalTokenRef = useRef(getDesktopApprovalToken());
   const { signIn, user } = useAuth();
@@ -161,7 +152,7 @@ export default function Auth() {
   }, [pendingSecurity, securityStep]);
 
   useEffect(() => {
-    setNotificationPermission(getNotificationPermissionState());
+    setNotificationPermission(getBrowserNotificationPermission());
   }, []);
 
   useEffect(() => {
@@ -561,9 +552,9 @@ export default function Auth() {
         return;
       }
 
-      if (supportsBrowserNotifications() && getNotificationPermissionState() === 'default') {
-        const nextPermission = await requestBrowserNotificationsPermission().catch(() => 'default');
-        setNotificationPermission(nextPermission || getNotificationPermissionState());
+      if (supportsBrowserNotifications() && getBrowserNotificationPermission() === 'default') {
+        const nextPermission = await requestBrowserNotificationPermission().catch(() => 'default');
+        setNotificationPermission(nextPermission || getBrowserNotificationPermission());
       }
 
       if (securityStep === 'login') {
@@ -759,8 +750,8 @@ export default function Auth() {
   };
 
   const handleEnableNotifications = async () => {
-    const nextPermission = await requestBrowserNotificationsPermission().catch(() => 'default');
-    setNotificationPermission(nextPermission || getNotificationPermissionState());
+    const nextPermission = await requestBrowserNotificationPermission().catch(() => 'default');
+    setNotificationPermission(nextPermission || getBrowserNotificationPermission());
 
     if (nextPermission === 'granted') {
       toast({
