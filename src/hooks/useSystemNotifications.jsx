@@ -17,6 +17,26 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function shouldShowBrowserNotification(item) {
+  return item?.tipo === 'solicitacao_chat' || item?.tipo === 'comunicado';
+}
+
+function buildBrowserNotificationPayload(item) {
+  if (item?.tipo === 'comunicado') {
+    return {
+      title: item.titulo || 'Novo comunicado',
+      body: item.descricao || 'Confira o novo comunicado publicado para a sua turma.',
+      path: item.path || '/aluno/comunidade',
+    };
+  }
+
+  return {
+    title: item?.titulo || 'Nova mensagem',
+    body: item?.descricao || 'Voce recebeu uma nova mensagem.',
+    path: item?.path || '/emprestimos?tab=solicitacoes',
+  };
+}
+
 function getSuperAdminReadStorageKeys(userId) {
   return {
     reclamacoes: `notificacoes:reclamacoes:lidas:${userId}`,
@@ -126,14 +146,25 @@ export function useSystemNotifications() {
   useEffect(() => {
     if (!canView || !user?.id) return undefined;
 
+    const intervalMs = isAluno ? 10000 : 30000;
+
     const interval = window.setInterval(() => {
       fetchCounts();
-    }, 30000);
+    }, intervalMs);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchCounts();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [canView, fetchCounts, user?.id]);
+  }, [canView, fetchCounts, isAluno, user?.id]);
 
   useEffect(() => {
     const nextIds = new Set(ensureArray(notifications).map((item) => item?.id).filter(Boolean));
@@ -147,13 +178,14 @@ export function useSystemNotifications() {
     if (getBrowserNotificationPermission() === 'granted') {
       ensureArray(notifications)
         .filter((item) => item?.id && !seenNotificationIdsRef.current.has(item.id))
-        .filter((item) => item.tipo === 'solicitacao_chat')
+        .filter(shouldShowBrowserNotification)
         .forEach((item) => {
+          const payload = buildBrowserNotificationPayload(item);
           showBrowserNotification({
-            title: item.titulo || 'Nova mensagem',
-            body: item.descricao || 'Você recebeu uma nova mensagem.',
+            title: payload.title,
+            body: payload.body,
             tag: item.id,
-            path: item.path || '/emprestimos?tab=solicitacoes',
+            path: payload.path,
           });
         });
     }
