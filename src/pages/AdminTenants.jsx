@@ -462,7 +462,7 @@ export default function AdminTenants() {
     if (ghost.can_delete === false) {
       toast({
         title: 'Exclusão bloqueada',
-        description: ghost.protected_reason || 'Contas administrativas não podem ser apagadas por esta tela.',
+        description: ghost.protected_reason || 'Contas SuperAdmin não podem ser apagadas por esta tela.',
         variant: 'destructive',
       });
       return;
@@ -904,7 +904,7 @@ export default function AdminTenants() {
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="font-medium">{ghost.nome || 'Conta sem nome'}</p>
                               {ghost.is_admin ? (
-                                <Badge className="bg-amber-600 text-white hover:bg-amber-600">Conta administrativa</Badge>
+                                <Badge className="bg-amber-600 text-white hover:bg-amber-600">SuperAdmin</Badge>
                               ) : null}
                             </div>
                             <p className="text-xs text-muted-foreground">
@@ -943,7 +943,7 @@ export default function AdminTenants() {
                             size="sm"
                             onClick={() => setGhostPendingDelete(ghost)}
                             disabled={deletingGhostKey === ghost.ghost_key || ghost.can_delete === false}
-                            title={ghost.can_delete === false ? (ghost.protected_reason || 'Conta administrativa protegida.') : undefined}
+                            title={ghost.can_delete === false ? (ghost.protected_reason || 'Conta SuperAdmin protegida.') : undefined}
                           >
                             <Trash2 className="w-4 h-4 mr-1" />
                             {ghost.can_delete === false
@@ -1120,7 +1120,7 @@ export default function AdminTenants() {
               <AlertDialogDescription>
                 Esta ação remove a conta <strong>{ghostPendingDelete?.nome || '-'}</strong> da autenticação e também limpa o
                 banco de dados quando houver perfil vinculado. Use isso para eliminar cadastros órfãos e destravar novos convites.
-                {ghostPendingDelete?.can_delete === false ? ` ${ghostPendingDelete?.protected_reason || 'Contas administrativas não podem ser apagadas por esta tela.'}` : ''}
+                {ghostPendingDelete?.can_delete === false ? ` ${ghostPendingDelete?.protected_reason || 'Contas SuperAdmin não podem ser apagadas por esta tela.'}` : ''}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

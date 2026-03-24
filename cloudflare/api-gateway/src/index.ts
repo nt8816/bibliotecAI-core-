@@ -583,7 +583,7 @@ async function buildGhostAccounts(env: Env) {
     schoolNameById.set(schoolId, String(school?.nome || '').trim());
   });
 
-  const protectedRoles = new Set(['super_admin', 'gestor', 'bibliotecaria']);
+  const protectedRoles = new Set(['super_admin']);
   const superAdminByUserId = new Map<string, Record<string, unknown>>();
   const superAdminByEmail = new Map<string, Record<string, unknown>>();
   const superAdminByCpf = new Map<string, Record<string, unknown>>();
@@ -704,7 +704,7 @@ async function buildGhostAccounts(env: Env) {
       ...roleList,
       ...(adminAccount ? ['super_admin'] : []),
     ])];
-    const isProtectedAdmin = normalizedRoles.some((role) => protectedRoles.has(role));
+    const isProtectedAdmin = Boolean(adminAccount) || normalizedRoles.some((role) => protectedRoles.has(role));
 
     if (profileList.length === 0) issues.push('Sem perfil em usuarios_biblioteca');
     if (normalizedRoles.length === 0) issues.push('Sem role em user_roles');
@@ -729,10 +729,10 @@ async function buildGhostAccounts(env: Env) {
       escola_id: schoolId || null,
       escola_nome: schoolId ? schoolNameById.get(schoolId) || null : null,
       admin_account_id: String(adminAccount?.id || '').trim() || null,
-      is_admin: isProtectedAdmin,
+      is_admin: Boolean(adminAccount) || normalizedRoles.includes('super_admin'),
       roles: normalizedRoles,
       can_delete: !isProtectedAdmin,
-      protected_reason: isProtectedAdmin ? 'Conta administrativa deve ser removida por um fluxo dedicado.' : null,
+      protected_reason: isProtectedAdmin ? 'Conta SuperAdmin deve ser removida por um fluxo dedicado.' : null,
       issues,
       created_at: authUser?.created_at || primaryProfile?.created_at || null,
     });
@@ -755,7 +755,7 @@ async function buildGhostAccounts(env: Env) {
       ...(userId ? [...(rolesByUserId.get(userId) || new Set<string>())] : []),
     ].filter(Boolean))];
     const profileType = String(profile?.tipo || '').trim();
-    const isProtectedAdmin = normalizedRoles.some((role) => protectedRoles.has(role));
+    const isProtectedAdmin = Boolean(adminAccount) || normalizedRoles.some((role) => protectedRoles.has(role));
 
     if (!userId) {
       issues.push('Perfil sem user_id');
@@ -782,10 +782,10 @@ async function buildGhostAccounts(env: Env) {
       escola_id: String(profile?.escola_id || '').trim() || null,
       escola_nome: schoolNameById.get(String(profile?.escola_id || '').trim()) || null,
       admin_account_id: String(adminAccount?.id || '').trim() || null,
-      is_admin: isProtectedAdmin,
+      is_admin: Boolean(adminAccount) || normalizedRoles.includes('super_admin'),
       roles: normalizedRoles,
       can_delete: !isProtectedAdmin,
-      protected_reason: isProtectedAdmin ? 'Conta administrativa deve ser removida por um fluxo dedicado.' : null,
+      protected_reason: isProtectedAdmin ? 'Conta SuperAdmin deve ser removida por um fluxo dedicado.' : null,
       issues,
       created_at: profile?.created_at || null,
     });

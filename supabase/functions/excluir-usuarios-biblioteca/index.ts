@@ -194,10 +194,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    const protectedRoles = new Set(['super_admin', 'gestor', 'bibliotecaria']);
+    const protectedRoles = new Set(['super_admin']);
     const protectedProfile = foundProfiles.find((profile) => protectedRoles.has(String(profile.tipo || '').trim()));
     if (protectedProfile) {
-      return jsonResponse({ success: false, error: 'Contas administrativas nao podem ser excluidas por esta tela.' }, 403);
+      return jsonResponse({ success: false, error: 'Contas SuperAdmin nao podem ser excluidas por esta tela.' }, 403);
     }
 
     const targetUserIds = [...new Set(userIdsToDelete)];
@@ -213,7 +213,7 @@ Deno.serve(async (req) => {
 
       const hasProtectedRole = (targetRoles || []).some((item) => protectedRoles.has(String(item.role || '').trim()));
       if (hasProtectedRole) {
-        return jsonResponse({ success: false, error: 'Contas administrativas nao podem ser excluidas por esta tela.' }, 403);
+        return jsonResponse({ success: false, error: 'Contas SuperAdmin nao podem ser excluidas por esta tela.' }, 403);
       }
     }
 
