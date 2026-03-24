@@ -4654,6 +4654,12 @@ export default function PainelAluno() {
                                         [solicitacao.id]: e.target.value,
                                       }))
                                     }
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleEnviarMensagemSolicitacao(solicitacao.id);
+                                      }
+                                    }}
                                     disabled={saving}
                                   />
                                   <div className="flex justify-end">

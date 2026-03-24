@@ -608,6 +608,12 @@ export default function Emprestimos() {
                       [solicitacao.id]: e.target.value,
                     }))
                   }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleEnviarMensagemSolicitacao(solicitacao);
+                    }
+                  }}
                   disabled={!isProcessavel || saving}
                 />
               </>
