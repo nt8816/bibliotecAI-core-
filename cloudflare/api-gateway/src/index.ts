@@ -2359,7 +2359,7 @@ const routes: Record<string, RouteHandler> = {
     const existingProfileLookup = await supabaseAdminRequest(
       env,
       `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
-        select: 'id,user_id',
+        select: 'id,user_id,escola_id,tipo,cpf',
         escola_id: `eq.${inviteEscolaId}`,
         tipo: 'eq.gestor',
         cpf: `eq.${cpf}`,
@@ -2367,6 +2367,8 @@ const routes: Record<string, RouteHandler> = {
       }).toString()}`,
     );
     const existingProfile = Array.isArray(existingProfileLookup) ? (existingProfileLookup[0] || null) : null;
+    let targetProfile = existingProfile;
+    let duplicateProfileIdsToDelete: string[] = [];
 
     try {
       const authData = await supabaseAdminAuthRequest(env, '/users', {
@@ -2418,6 +2420,27 @@ const routes: Record<string, RouteHandler> = {
       ).catch(() => []);
       const linkedRoles = Array.isArray(linkedRolesPayload) ? linkedRolesPayload : [];
       const hasProtectedRole = linkedRoles.some((item) => String(item?.role || '').trim() === 'super_admin');
+      const reusableLinkedProfiles = linkedProfiles.filter((profile) => {
+        const tipo = String(profile?.tipo || '').trim();
+        const escolaId = String(profile?.escola_id || '').trim();
+        const profileCpf = normalizeCpf(profile?.cpf);
+
+        if (tipo && tipo !== 'gestor') {
+          return false;
+        }
+
+        if (escolaId && escolaId !== inviteEscolaId) {
+          return false;
+        }
+
+        if (profileCpf && profileCpf !== cpf) {
+          return false;
+        }
+
+        return true;
+      });
+      const conflictingLinkedProfile = linkedProfiles.find((profile) => !reusableLinkedProfiles.includes(profile));
+      const profileToReuse = existingProfile?.id ? existingProfile : (reusableLinkedProfiles[0] || null);
 
       if (hasProtectedRole) {
         await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
@@ -2437,7 +2460,7 @@ const routes: Record<string, RouteHandler> = {
         return jsonResponse({ success: false, error: 'Este cadastro ja esta vinculado a outra conta. Faca login ou solicite suporte.' }, 409);
       }
 
-      if (!existingProfile?.id && linkedProfiles.length > 0) {
+      if (conflictingLinkedProfile) {
         await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
           method: 'PATCH',
           body: { usado_em: null, usado_por: null },
@@ -2457,6 +2480,13 @@ const routes: Record<string, RouteHandler> = {
           },
         },
       });
+
+      if (!existingProfile?.id && profileToReuse?.id) {
+        targetProfile = profileToReuse;
+      }
+      duplicateProfileIdsToDelete = reusableLinkedProfiles
+        .map((profile) => String(profile?.id || '').trim())
+        .filter((id, index, list) => id && id !== String(targetProfile?.id || '').trim() && list.indexOf(id) === index);
       userId = String(existingAuthUser.id);
     }
 
@@ -2477,8 +2507,8 @@ const routes: Record<string, RouteHandler> = {
         matricula: null,
       };
 
-      if (existingProfile?.id) {
-        await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ id: `eq.${existingProfile.id}` }).toString()}`, {
+      if (targetProfile?.id) {
+        await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ id: `eq.${targetProfile.id}` }).toString()}`, {
           method: 'PATCH',
           body: profilePayload,
           headers: { Prefer: 'return=minimal' },
@@ -2489,6 +2519,19 @@ const routes: Record<string, RouteHandler> = {
           body: profilePayload,
           headers: { Prefer: 'return=minimal' },
         });
+      }
+
+      if (duplicateProfileIdsToDelete.length > 0) {
+        await supabaseAdminRequest(
+          env,
+          `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+            id: `in.(${duplicateProfileIdsToDelete.join(',')})`,
+          }).toString()}`,
+          {
+            method: 'DELETE',
+            headers: { Prefer: 'return=minimal' },
+          },
+        ).catch(() => null);
       }
 
       await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
