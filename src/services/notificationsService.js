@@ -24,3 +24,17 @@ export async function markSystemNotificationAsRead({ notificationId }) {
   });
 }
 
+export async function registerPushDeviceToken(payload) {
+  return requestPlatformApi('/v1/notifications/push/register', {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export async function unregisterPushDeviceToken(payload) {
+  return requestPlatformApi('/v1/notifications/push/unregister', {
+    method: 'POST',
+    body: payload,
+  });
+}
+

@@ -14,6 +14,7 @@ dist-ssr
 android/keystore.properties
 android/app/*.keystore
 android/app/*.jks
+android/app/google-services.json
 
 # Editor directories and files
 .vscode/*

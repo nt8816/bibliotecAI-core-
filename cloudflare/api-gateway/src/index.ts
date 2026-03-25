@@ -384,6 +384,66 @@ async function getCommunityModuleContext(request: Request, env: Env) {
   };
 }
 
+const ALLOWED_PUSH_CHANNELS = ['comunicados', 'mensagens', 'atividades'] as const;
+
+function normalizePushChannels(value: unknown) {
+  const selected = Array.isArray(value) ? value : [];
+  const unique = new Set<string>();
+
+  selected.forEach((item) => {
+    const channel = String(item || '').trim().toLowerCase();
+    if ((ALLOWED_PUSH_CHANNELS as readonly string[]).includes(channel)) {
+      unique.add(channel);
+    }
+  });
+
+  return Array.from(unique);
+}
+
+async function upsertPushDeviceToken(
+  env: Env,
+  {
+    callerId,
+    profile,
+    token,
+    provider,
+    platform,
+    deviceLabel,
+    appVersion,
+    channels,
+  }: {
+    callerId: string;
+    profile: Record<string, unknown>;
+    token: string;
+    provider: string;
+    platform: string;
+    deviceLabel: string | null;
+    appVersion: string | null;
+    channels: string[];
+  },
+) {
+  await supabaseAdminRequest(env, '/rest/v1/push_device_tokens?on_conflict=token', {
+    method: 'POST',
+    body: [{
+      user_id: callerId,
+      profile_id: String(profile?.id || '').trim() || null,
+      escola_id: String(profile?.escola_id || '').trim() || null,
+      role: String(profile?.tipo || '').trim() || null,
+      token,
+      provider,
+      platform,
+      device_label: deviceLabel,
+      app_version: appVersion,
+      channels,
+      active: true,
+      last_seen_at: new Date().toISOString(),
+    }],
+    headers: {
+      Prefer: 'return=minimal,resolution=merge-duplicates',
+    },
+  });
+}
+
 function normalizeIdentifier(value: unknown) {
   return String(value || '').trim().toLowerCase();
 }
@@ -4040,6 +4100,68 @@ const routes: Record<string, RouteHandler> = {
         throw error;
       }
     }
+    return jsonResponse({ success: true });
+  },
+  'POST /v1/notifications/push/register': async (request, env) => {
+    const caller = await fetchSupabaseUser(request, env);
+    if (!caller?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const profile = await getLatestUserProfile(caller.id, env);
+    if (!profile?.id) {
+      return jsonResponse({ success: false, error: 'Perfil do usuario nao encontrado.' }, 400);
+    }
+
+    const body = await request.json().catch(() => ({} as Record<string, unknown>));
+    const token = String(body?.token || '').trim();
+    const provider = String(body?.provider || 'fcm').trim().toLowerCase();
+    const platform = String(body?.platform || 'android').trim().toLowerCase();
+    const deviceLabel = String(body?.device_label || '').trim() || null;
+    const appVersion = String(body?.app_version || '').trim() || null;
+    const channels = normalizePushChannels(body?.channels);
+
+    if (!token) {
+      return jsonResponse({ success: false, error: 'Token push obrigatorio.' }, 400);
+    }
+
+    await upsertPushDeviceToken(env, {
+      callerId: caller.id,
+      profile,
+      token,
+      provider,
+      platform,
+      deviceLabel,
+      appVersion,
+      channels,
+    });
+
+    return jsonResponse({ success: true });
+  },
+  'POST /v1/notifications/push/unregister': async (request, env) => {
+    const caller = await fetchSupabaseUser(request, env);
+    if (!caller?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const body = await request.json().catch(() => ({} as Record<string, unknown>));
+    const token = String(body?.token || '').trim();
+    if (!token) {
+      return jsonResponse({ success: false, error: 'Token push obrigatorio.' }, 400);
+    }
+
+    await supabaseAdminRequest(
+      env,
+      `/rest/v1/push_device_tokens?${new URLSearchParams({
+        token: `eq.${token}`,
+        user_id: `eq.${caller.id}`,
+      }).toString()}`,
+      {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+      },
+    );
+
     return jsonResponse({ success: true });
   },
   'GET /v1/notifications/system': async (request, env) => {

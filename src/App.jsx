@@ -15,6 +15,7 @@ import { PrivateTelemetryTracker } from '@/components/PrivateTelemetryTracker';
 import { SystemLogObserver } from '@/components/SystemLogObserver';
 import { AppShellState } from '@/components/AppShellState';
 import { ConnectivityStatus } from '@/components/ConnectivityStatus';
+import { NativePushBridge } from '@/components/NativePushBridge';
 
 const Auth = lazy(() => import('./pages/Auth'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -363,6 +364,7 @@ const App = () => (
               <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
                 <PrivateTelemetryTracker />
                 <SystemLogObserver />
+                <NativePushBridge />
                 <Suspense
                   fallback={(
                     <AppShellState

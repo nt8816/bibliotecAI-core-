@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
+import { getSupabaseRealtimeClient } from '@/integrations/supabase/client';
 import { getBrowserNotificationPermission, showBrowserNotification } from '@/lib/browserNotifications';
 import { fetchSystemNotificationsData, markSystemNotificationAsRead } from '@/services/notificationsService';
 
@@ -63,11 +65,13 @@ function persistStoredIds(storageKey, ids) {
 
 export function useSystemNotifications() {
   const { isGestor, isBibliotecaria, isAluno, isSuperAdmin, user } = useAuth();
+  const { toast } = useToast();
   const [counts, setCounts] = useState(EMPTY_COUNTS);
   const [notifications, setNotifications] = useState([]);
   const [profileId, setProfileId] = useState(null);
   const seenNotificationIdsRef = useRef(new Set());
   const notificationsReadyRef = useRef(false);
+  const realtimeRefreshTimeoutRef = useRef(null);
 
   const canView = isGestor || isBibliotecaria || isAluno || isSuperAdmin;
 
@@ -143,6 +147,24 @@ export function useSystemNotifications() {
     notificationsReadyRef.current = false;
   }, [user?.id]);
 
+  const scheduleRealtimeRefresh = useCallback(() => {
+    if (realtimeRefreshTimeoutRef.current) {
+      window.clearTimeout(realtimeRefreshTimeoutRef.current);
+    }
+
+    realtimeRefreshTimeoutRef.current = window.setTimeout(() => {
+      fetchCounts();
+      realtimeRefreshTimeoutRef.current = null;
+    }, 250);
+  }, [fetchCounts]);
+
+  useEffect(() => () => {
+    if (realtimeRefreshTimeoutRef.current) {
+      window.clearTimeout(realtimeRefreshTimeoutRef.current);
+      realtimeRefreshTimeoutRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     if (!canView || !user?.id) return undefined;
 
@@ -167,6 +189,37 @@ export function useSystemNotifications() {
   }, [canView, fetchCounts, isAluno, user?.id]);
 
   useEffect(() => {
+    if (!canView || !user?.id) return undefined;
+
+    const supabase = getSupabaseRealtimeClient();
+    if (!supabase) return undefined;
+
+    const watchedTables = isSuperAdmin
+      ? ['reclamacoes_super_admin', 'system_logs']
+      : isAluno
+        ? ['emprestimos', 'solicitacoes_emprestimo', 'comunidade_posts', 'notificacoes_lidas']
+        : ['emprestimos', 'solicitacoes_emprestimo', 'solicitacoes_emprestimo_mensagens', 'notificacoes_lidas'];
+
+    const channel = supabase.channel(`system-notifications-${user.id}-${profileId || 'global'}`);
+
+    watchedTables.forEach((table) => {
+      channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table },
+        () => {
+          scheduleRealtimeRefresh();
+        },
+      );
+    });
+
+    channel.subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [canView, isAluno, isSuperAdmin, profileId, scheduleRealtimeRefresh, user?.id]);
+
+  useEffect(() => {
     const nextIds = new Set(ensureArray(notifications).map((item) => item?.id).filter(Boolean));
 
     if (!notificationsReadyRef.current) {
@@ -175,23 +228,30 @@ export function useSystemNotifications() {
       return;
     }
 
-    if (getBrowserNotificationPermission() === 'granted') {
-      ensureArray(notifications)
-        .filter((item) => item?.id && !seenNotificationIdsRef.current.has(item.id))
-        .filter(shouldShowBrowserNotification)
-        .forEach((item) => {
-          const payload = buildBrowserNotificationPayload(item);
-          showBrowserNotification({
-            title: payload.title,
-            body: payload.body,
-            tag: item.id,
-            path: payload.path,
-          });
+    const freshNotifications = ensureArray(notifications)
+      .filter((item) => item?.id && !seenNotificationIdsRef.current.has(item.id))
+      .filter(shouldShowBrowserNotification);
+
+    freshNotifications.forEach((item) => {
+      const payload = buildBrowserNotificationPayload(item);
+
+      toast({
+        title: payload.title,
+        description: payload.body,
+      });
+
+      if (getBrowserNotificationPermission() === 'granted') {
+        showBrowserNotification({
+          title: payload.title,
+          body: payload.body,
+          tag: item.id,
+          path: payload.path,
         });
-    }
+      }
+    });
 
     seenNotificationIdsRef.current = nextIds;
-  }, [notifications]);
+  }, [notifications, toast]);
 
   const markNotificationRead = useCallback(async (notificationId) => {
     if (!notificationId) return;
