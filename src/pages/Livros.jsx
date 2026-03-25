@@ -32,6 +32,7 @@ import {
   saveLivro,
   updateLivroCategoria,
 } from '@/services/livrosService';
+import { createPainelAlunoLoanRequest } from '@/services/painelAlunoService';
 
 const emptyLivro = {
   area: '',
@@ -108,6 +109,21 @@ async function buscarSinopseOpenLibrary(titulo, autor) {
   }
 }
 
+function extractResumoTextoFromIAResponse(data) {
+  const direct = String(data?.data?.texto || data?.data?.resumo || '').trim();
+  if (direct) return direct;
+
+  const raw = String(data?.text || '').trim();
+  if (!raw) return '';
+
+  try {
+    const parsed = JSON.parse(raw);
+    return String(parsed?.texto || parsed?.resumo || '').trim();
+  } catch {
+    return raw;
+  }
+}
+
 export default function Livros() {
   const [livros, setLivros] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -124,6 +140,13 @@ export default function Livros() {
   const [buscandoSinopse, setBuscandoSinopse] = useState(false);
   const [sinopseExpandida, setSinopseExpandida] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [requestDialogOpen, setRequestDialogOpen] = useState(false);
+  const [requestLivro, setRequestLivro] = useState(null);
+  const [requestMsg, setRequestMsg] = useState('');
+  const [requestingLoan, setRequestingLoan] = useState(false);
+  const [resumoRapidoOpen, setResumoRapidoOpen] = useState(false);
+  const [resumoRapidoData, setResumoRapidoData] = useState(null);
+  const [resumoRapidoLoadingId, setResumoRapidoLoadingId] = useState('');
 
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importLivros, setImportLivros] = useState([]);
@@ -460,6 +483,64 @@ export default function Livros() {
       fetchLivros();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error.message || 'Não foi possível excluir o livro.' });
+    }
+  };
+
+  const handleRequestLoan = async () => {
+    if (!requestLivro?.id) return;
+
+    setRequestingLoan(true);
+    try {
+      await createPainelAlunoLoanRequest({
+        livroId: requestLivro.id,
+        mensagem: requestMsg || null,
+      });
+      toast({ title: 'Solicitação enviada!' });
+      setRequestDialogOpen(false);
+      setRequestLivro(null);
+      setRequestMsg('');
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: error?.message || 'Falha ao solicitar empréstimo.',
+      });
+    } finally {
+      setRequestingLoan(false);
+    }
+  };
+
+  const gerarResumoRapido = async (livro) => {
+    if (!livro?.id) return;
+
+    setResumoRapidoLoadingId(livro.id);
+    try {
+      const data = await generateTextWithCloudflare({
+        task: 'resumo_estudo',
+        input: {
+          titulo: livro.titulo,
+          autor: livro.autor,
+          sinopse: livro.sinopse || '',
+        },
+        fallbackErrorMessage: 'Não foi possível gerar o resumo rápido agora.',
+      });
+      const texto = extractResumoTextoFromIAResponse(data);
+      if (!texto) throw new Error('A IA respondeu sem resumo.');
+
+      setResumoRapidoData({
+        titulo: livro.titulo,
+        autor: livro.autor,
+        texto,
+      });
+      setResumoRapidoOpen(true);
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao gerar resumo',
+        description: error?.message || 'Não foi possível gerar o resumo rápido.',
+      });
+    } finally {
+      setResumoRapidoLoadingId('');
     }
   };
 
@@ -1273,6 +1354,31 @@ export default function Livros() {
                             <p className="text-sm text-muted-foreground">Sem sinopse cadastrada.</p>
                           )}
                         </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs"
+                            disabled={resumoRapidoLoadingId === livro.id}
+                            onClick={() => gerarResumoRapido(livro)}
+                          >
+                            {resumoRapidoLoadingId === livro.id ? 'Gerando...' : 'Resumo IA'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs"
+                            disabled={!livro.disponivel}
+                            onClick={() => {
+                              setRequestLivro(livro);
+                              setRequestMsg('');
+                              setRequestDialogOpen(true);
+                            }}
+                          >
+                            {livro.disponivel ? 'Solicitar' : 'Indisponível'}
+                          </Button>
+                        </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -1642,6 +1748,56 @@ export default function Livros() {
               </DialogContent>
             </Dialog>
           )}
+
+          <Dialog open={requestDialogOpen} onOpenChange={setRequestDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Solicitar empréstimo</DialogTitle>
+                <DialogDescription>
+                  Solicitar: {requestLivro?.titulo || 'Livro'}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Mensagem (opcional)</Label>
+                  <Textarea
+                    value={requestMsg}
+                    onChange={(e) => setRequestMsg(e.target.value)}
+                    placeholder="Motivo ou observações..."
+                    rows={3}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setRequestDialogOpen(false)}>Cancelar</Button>
+                <Button onClick={handleRequestLoan} disabled={requestingLoan}>
+                  {requestingLoan ? 'Enviando...' : 'Enviar solicitação'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={resumoRapidoOpen}
+            onOpenChange={(open) => {
+              setResumoRapidoOpen(open);
+              if (!open) setResumoRapidoData(null);
+            }}
+          >
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>{resumoRapidoData?.titulo || 'Resumo rápido'}</DialogTitle>
+                {resumoRapidoData?.autor && (
+                  <DialogDescription>{resumoRapidoData.autor}</DialogDescription>
+                )}
+              </DialogHeader>
+              <div className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed">
+                {resumoRapidoData?.texto || 'Resumo indisponível.'}
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
             <AlertDialogContent>
