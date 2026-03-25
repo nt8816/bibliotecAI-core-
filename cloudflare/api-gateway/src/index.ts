@@ -7060,6 +7060,45 @@ const routes: Record<string, RouteHandler> = {
 
     return jsonResponse({ success: true });
   },
+
+  'POST /v1/arquivos-aula/:id/delete': async (request, env) => {
+    const context = await getArquivosAulaModuleContext(request, env);
+    const postId = getPathParam(request, /^\/v1\/arquivos-aula\/([^/]+)\/delete$/i);
+
+    const existingRows = await supabaseAdminRequest(
+      env,
+      `/rest/v1/arquivos_aula_posts?${new URLSearchParams({
+        select: 'id,autor_id',
+        id: `eq.${postId}`,
+        limit: '1',
+      }).toString()}`,
+    );
+    const post = Array.isArray(existingRows) ? (existingRows[0] || null) : null;
+    if (!post?.id) {
+      return jsonResponse({ success: false, error: 'Publicacao nao encontrada.' }, 404);
+    }
+    if (String(post?.autor_id || '') !== String(context.perfilId || '')) {
+      return jsonResponse({ success: false, error: 'Voce so pode excluir publicacoes feitas por voce.' }, 403);
+    }
+
+    const deleted = await supabaseAdminRequest(
+      env,
+      `/rest/v1/arquivos_aula_posts?${new URLSearchParams({
+        select: 'id',
+        id: `eq.${postId}`,
+      }).toString()}`,
+      {
+        method: 'DELETE',
+        headers: { Prefer: 'return=representation' },
+      },
+    ) as Array<Record<string, unknown>>;
+
+    if (!Array.isArray(deleted) || !deleted[0]?.id) {
+      return jsonResponse({ success: false, error: 'Publicacao nao encontrada para exclusao.' }, 404);
+    }
+
+    return jsonResponse({ success: true });
+  },
   'POST /v1/aluno/solicitacoes-emprestimo/prorrogacao': async (request, env) => {
     const { alunoId } = await getCommunityModuleContext(request, env);
     if (!alunoId) {

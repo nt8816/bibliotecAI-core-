@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { deleteR2Object, getR2DownloadUrl, uploadFileToR2 } from '@/lib/r2Storage';
 import {
   createArquivosAulaPost,
+  deleteArquivosAulaPost,
   fetchArquivosAulaData,
   updateArquivosAulaFiles,
 } from '@/services/arquivosAulaService';
@@ -101,6 +102,7 @@ export default function ArquivosAula() {
   const [posts, setPosts] = useState([]);
   const [professorFilter, setProfessorFilter] = useState('all');
   const [deleteFileTarget, setDeleteFileTarget] = useState(null);
+  const [deletePostTarget, setDeletePostTarget] = useState(null);
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -330,6 +332,36 @@ export default function ArquivosAula() {
     }
   };
 
+  const handleDeletePost = async () => {
+    const post = deletePostTarget || null;
+    if (!isProfessor || !perfilId || !post?.id || post?.autor_id !== perfilId) return;
+
+    setSaving(true);
+    try {
+      const arquivosAtuais = ensureArray(post?.arquivos);
+      for (const arquivo of arquivosAtuais) {
+        const filePath = safeText(arquivo?.object_key || arquivo?.path, '');
+        if (!filePath) continue;
+        if (String(arquivo?.provider || '').toLowerCase() === 'r2' || String(filePath).startsWith('escolas/')) {
+          await deleteR2Object(filePath);
+        }
+      }
+
+      await deleteArquivosAulaPost(post.id);
+      setPosts((prev) => ensureArray(prev).filter((item) => item.id !== post.id));
+      setDeletePostTarget(null);
+      toast({ title: 'Publicacao excluida!' });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao excluir publicacao',
+        description: error?.message || 'Não foi possível excluir a publicacao.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <MainLayout title="Arquivos de Aula">
       <div className="space-y-4 sm:space-y-6">
@@ -464,10 +496,24 @@ export default function ArquivosAula() {
               <div className="space-y-4">
                 {visiblePosts.map((post) => (
                   <div key={post.id} className="rounded-xl border p-4 space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline">{post?.turma_publico ? `Turma ${post.turma_publico}` : 'Todas as turmas'}</Badge>
-                      <Badge variant="secondary">Professor</Badge>
-                      <span className="text-xs text-muted-foreground">{formatDateBR(post?.created_at)}</span>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">{post?.turma_publico ? `Turma ${post.turma_publico}` : 'Todas as turmas'}</Badge>
+                        <Badge variant="secondary">Professor</Badge>
+                        <span className="text-xs text-muted-foreground">{formatDateBR(post?.created_at)}</span>
+                      </div>
+                      {isProfessor && post?.autor_id === perfilId && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDeletePostTarget(post)}
+                          disabled={saving}
+                        >
+                          <Trash2 className="w-4 h-4 mr-2 text-destructive" />
+                          Excluir publicacao
+                        </Button>
+                      )}
                     </div>
                     <p className="text-sm font-medium">
                       Professor: {safeText(getAuthorName(post), 'Professor não identificado')}
@@ -521,6 +567,22 @@ export default function ArquivosAula() {
               <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
               <AlertDialogAction onClick={handleDeleteFile} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                 Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <AlertDialog open={Boolean(deletePostTarget)} onOpenChange={(open) => !open && setDeletePostTarget(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir publicacao?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta publicacao sera removida permanentemente, junto com todos os arquivos anexados.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeletePost} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Excluir publicacao
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

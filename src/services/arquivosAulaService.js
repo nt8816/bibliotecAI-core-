@@ -17,3 +17,9 @@ export async function updateArquivosAulaFiles(postId, arquivos) {
     body: { arquivos },
   });
 }
+
+export async function deleteArquivosAulaPost(postId) {
+  return requestPlatformApi(`/v1/arquivos-aula/${postId}/delete`, {
+    method: 'POST',
+  });
+}
