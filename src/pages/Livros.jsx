@@ -259,7 +259,6 @@ export default function Livros() {
       await createLivroCategoria({
         escola_id: escolaId,
         nome: categoria,
-        created_by: user?.id || null,
       });
       fetchLivros();
     } catch {
@@ -284,7 +283,6 @@ export default function Livros() {
       await createLivroCategoria({
         escola_id: escolaId,
         nome: categoria,
-        created_by: user?.id || null,
       });
       fetchLivros();
     } catch {

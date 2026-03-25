@@ -6023,7 +6023,7 @@ const routes: Record<string, RouteHandler> = {
   },
 
   'POST /v1/livros/categorias': async (request, env) => {
-    const { profile, canManageBooks } = await getBooksModuleContext(request, env);
+    const { caller, profile, canManageBooks } = await getBooksModuleContext(request, env);
     if (!canManageBooks) {
       return jsonResponse({ success: false, error: 'Sem permissao para gerenciar categorias.' }, 403);
     }
@@ -6037,7 +6037,7 @@ const routes: Record<string, RouteHandler> = {
     const payload = {
       escola_id: escolaId,
       nome: String(body?.nome || '').trim(),
-      created_by: body?.created_by || profile.id || null,
+      created_by: caller.id || null,
     };
 
     if (!payload.nome) {
@@ -6056,7 +6056,7 @@ const routes: Record<string, RouteHandler> = {
   },
 
   'POST /v1/livros/categorias/update': async (request, env) => {
-    const { profile, canManageBooks } = await getBooksModuleContext(request, env);
+    const { caller, profile, canManageBooks } = await getBooksModuleContext(request, env);
     if (!canManageBooks) {
       return jsonResponse({ success: false, error: 'Sem permissao para gerenciar categorias.' }, 403);
     }
@@ -6137,7 +6137,7 @@ const routes: Record<string, RouteHandler> = {
         body: {
           escola_id: escolaId,
           nome: nomeNovo,
-          created_by: profile.id || null,
+          created_by: caller.id || null,
         },
         headers: {
           Prefer: 'resolution=merge-duplicates,return=minimal',
