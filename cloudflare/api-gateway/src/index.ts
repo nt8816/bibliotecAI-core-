@@ -7718,9 +7718,9 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/livros\/categorias\/update$/, '/v1/livros/categorias/update')
     .replace(/\/v1\/livros\/categorias\/delete$/, '/v1/livros/categorias/delete')
     .replace(/\/v1\/livros\/categorias$/, '/v1/livros/categorias')
-    .replace(/\/v1\/livros\/[^/]+\/delete$/, '/v1/livros/:id/delete')
+    .replace(/\/v1\/livros\/(?!categorias(?:\/|$))[^/]+\/delete$/, '/v1/livros/:id/delete')
     .replace(/\/v1\/usuarios\/[^/]+\/delete$/, '/v1/usuarios/:id/delete')
-    .replace(/\/v1\/livros\/[^/]+$/, '/v1/livros/:id')
+    .replace(/\/v1\/livros\/(?!categorias(?:\/|$))[^/]+$/, '/v1/livros/:id')
     .replace(/\/v1\/usuarios\/[^/]+$/, '/v1/usuarios/:id');
 }
 
