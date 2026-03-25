@@ -49,6 +49,12 @@ const emptyLivro = {
 };
 
 const DEFAULT_PRE_CATEGORIES = ['Literatura', 'Ciências', 'Matemática', 'História', 'Geografia', 'Infantil'];
+const normalizeBookSearchText = (value) => String(value || '').trim().toLowerCase();
+const normalizeTomboSearchValue = (value) => {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return String(Number(digits));
+};
 const getLivroStatus = (livro) => {
   if (livro?.isEmprestado) return 'emprestado';
   if (livro?.disponivel) return 'disponivel';
@@ -878,17 +884,20 @@ export default function Livros() {
         const normalizedArea = canonicalizeBookArea(livro.area, preCategorias);
         const normalizedAutor = String(livro.autor || '').trim();
         const status = getLivroStatus(livro);
+        const normalizedTombo = normalizeTomboSearchValue(livro.tombo);
         return {
           ...livro,
           normalizedArea,
           normalizedAutor,
           normalizedStatus: status,
+          normalizedTombo,
           searchIndex: [
             livro.titulo,
             livro.autor,
             livro.tombo,
+            normalizedTombo,
             normalizedArea,
-          ].map((value) => String(value || '').toLowerCase()).join(' '),
+          ].map(normalizeBookSearchText).join(' '),
         };
       }),
     [livros, preCategorias],
@@ -942,9 +951,12 @@ export default function Livros() {
   );
 
   const filteredLivros = useMemo(() => {
-    const term = deferredSearchTerm.trim().toLowerCase();
+    const term = normalizeBookSearchText(deferredSearchTerm);
+    const normalizedTomboTerm = normalizeTomboSearchValue(deferredSearchTerm);
     return processedLivros.filter((livro) => {
-      const searchMatches = !term || livro.searchIndex.includes(term);
+      const searchMatches = !term
+        || livro.searchIndex.includes(term)
+        || (normalizedTomboTerm && livro.normalizedTombo.includes(normalizedTomboTerm));
       const areaMatches = areaFilter === 'all' || livro.normalizedArea === areaFilter;
       const statusMatches = statusFilter === 'all' || livro.normalizedStatus === statusFilter;
       const autorMatches = autorFilter === 'all' || livro.normalizedAutor === autorFilter;
