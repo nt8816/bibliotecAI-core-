@@ -147,6 +147,7 @@ export default function Livros() {
 
   const canManageBooks = isGestor || isBibliotecaria;
   const canViewCatalogOnly = isProfessor && !canManageBooks;
+  const canManageAreas = canManageBooks;
 
   const fetchLivros = useCallback(async () => {
     if (!user?.id) {
@@ -1117,7 +1118,7 @@ export default function Livros() {
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="h-auto w-full justify-start gap-2 overflow-x-auto whitespace-nowrap p-1">
               <TabsTrigger value="acervo">Acervo</TabsTrigger>
-              <TabsTrigger value="areas">Cadastro de Áreas</TabsTrigger>
+              {canManageAreas && <TabsTrigger value="areas">Cadastro de Áreas</TabsTrigger>}
             </TabsList>
 
             <TabsContent value="acervo" className="space-y-6">
@@ -1441,6 +1442,7 @@ export default function Livros() {
           )}
             </TabsContent>
 
+            {canManageAreas && (
             <TabsContent value="areas" className="space-y-6">
               <div className="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
                 <Card>
@@ -1593,6 +1595,7 @@ export default function Livros() {
                 </Card>
               </div>
             </TabsContent>
+            )}
           </Tabs>
 
           {sinopseExpandida && (
