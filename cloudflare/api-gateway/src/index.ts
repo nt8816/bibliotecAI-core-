@@ -2455,13 +2455,8 @@ const routes: Record<string, RouteHandler> = {
       const linkedRoles = Array.isArray(linkedRolesPayload) ? linkedRolesPayload : [];
       const hasProtectedRole = linkedRoles.some((item) => String(item?.role || '').trim() === 'super_admin');
       const reusableLinkedProfiles = linkedProfiles.filter((profile) => {
-        const tipo = String(profile?.tipo || '').trim();
         const escolaId = String(profile?.escola_id || '').trim();
         const profileCpf = normalizeCpf(profile?.cpf);
-
-        if (tipo && tipo !== 'gestor') {
-          return false;
-        }
 
         if (escolaId && escolaId !== inviteEscolaId) {
           return false;
@@ -2537,11 +2532,9 @@ const routes: Record<string, RouteHandler> = {
         : [];
       const profilesByUserId = Array.isArray(profilesByUserIdPayload) ? profilesByUserIdPayload : [];
       const compatibleProfileByUserId = profilesByUserId.find((profile) => {
-        const tipo = String(profile?.tipo || '').trim();
         const escolaId = String(profile?.escola_id || '').trim();
         const profileCpf = normalizeCpf(profile?.cpf);
 
-        if (tipo && tipo !== 'gestor') return false;
         if (escolaId && escolaId !== inviteEscolaId) return false;
         if (profileCpf && profileCpf !== cpf) return false;
         return true;
@@ -2563,6 +2556,18 @@ const routes: Record<string, RouteHandler> = {
       if (!targetProfile?.id && compatibleProfileByUserId?.id) {
         targetProfile = compatibleProfileByUserId;
       }
+
+      await supabaseAdminRequest(
+        env,
+        `/rest/v1/user_roles?${new URLSearchParams({
+          user_id: `eq.${userId}`,
+          role: 'in.(aluno,professor,bibliotecaria)',
+        }).toString()}`,
+        {
+          method: 'DELETE',
+          headers: { Prefer: 'return=minimal' },
+        },
+      ).catch(() => null);
 
       await supabaseAdminRequest(env, `/rest/v1/user_roles?on_conflict=user_id,role`, {
         method: 'POST',
