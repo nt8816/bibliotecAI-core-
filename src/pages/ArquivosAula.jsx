@@ -15,7 +15,6 @@ import {
   createArquivosAulaPost,
   deleteArquivosAulaPost,
   fetchArquivosAulaData,
-  updateArquivosAulaFiles,
 } from '@/services/arquivosAulaService';
 const ALL_TURMAS_OPTION = '__all_turmas__';
 const ACCEPTED_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg', 'ppt', 'pptx'];
@@ -101,7 +100,6 @@ export default function ArquivosAula() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [posts, setPosts] = useState([]);
   const [professorFilter, setProfessorFilter] = useState('all');
-  const [deleteFileTarget, setDeleteFileTarget] = useState(null);
   const [deletePostTarget, setDeletePostTarget] = useState(null);
 
   const fetchData = useCallback(async () => {
@@ -284,51 +282,6 @@ export default function ArquivosAula() {
         title: 'Erro no download',
         description: error?.message || 'Não foi possível baixar o arquivo.',
       });
-    }
-  };
-
-  const handleDeleteFile = async () => {
-    const post = deleteFileTarget?.post || null;
-    const arquivoIndex = Number(deleteFileTarget?.arquivoIndex ?? -1);
-    if (!isProfessor || !perfilId || !post?.id || post?.autor_id !== perfilId) return;
-    const arquivosAtuais = ensureArray(post?.arquivos);
-    const arquivo = arquivosAtuais[arquivoIndex];
-    if (!arquivo) return;
-    if (arquivosAtuais.length <= 1) {
-      setDeleteFileTarget(null);
-      toast({
-        variant: 'destructive',
-        title: 'Ultimo arquivo da publicacao',
-        description: 'Esse botao remove apenas anexos. Para manter a publicacao, deixe pelo menos um arquivo anexado.',
-      });
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const filePath = safeText(arquivo?.object_key || arquivo?.path, '');
-      if (filePath) {
-        if (String(arquivo?.provider || '').toLowerCase() === 'r2' || String(filePath).startsWith('escolas/')) {
-          await deleteR2Object(filePath);
-        }
-      }
-
-      const proximosArquivos = arquivosAtuais.filter((_, index) => index !== arquivoIndex);
-      await updateArquivosAulaFiles(post.id, proximosArquivos);
-
-      setPosts((prev) =>
-        ensureArray(prev).map((item) => (item.id === post.id ? { ...item, arquivos: proximosArquivos } : item)),
-      );
-      setDeleteFileTarget(null);
-      toast({ title: 'Arquivo excluido!' });
-    } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Erro ao excluir arquivo',
-        description: error?.message || 'Não foi possível excluir o arquivo.',
-      });
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -533,18 +486,6 @@ export default function ArquivosAula() {
                               <Download className="w-4 h-4 mr-2" />
                               Baixar
                             </Button>
-                            {isProfessor && post?.autor_id === perfilId && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setDeleteFileTarget({ post, arquivoIndex: index, arquivoNome: safeText(arquivo?.nome, 'arquivo') })}
-                                disabled={saving}
-                              >
-                                <Trash2 className="w-4 h-4 mr-2 text-destructive" />
-                                Excluir
-                              </Button>
-                            )}
                           </div>
                         </div>
                       ))}
@@ -555,22 +496,6 @@ export default function ArquivosAula() {
             )}
           </CardContent>
         </Card>
-        <AlertDialog open={Boolean(deleteFileTarget)} onOpenChange={(open) => !open && setDeleteFileTarget(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Excluir arquivo?</AlertDialogTitle>
-              <AlertDialogDescription>
-                {deleteFileTarget ? `O arquivo "${deleteFileTarget.arquivoNome}" sera removido desta publicacao.` : 'Este arquivo sera removido desta publicacao.'}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDeleteFile} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                Excluir
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
         <AlertDialog open={Boolean(deletePostTarget)} onOpenChange={(open) => !open && setDeletePostTarget(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
