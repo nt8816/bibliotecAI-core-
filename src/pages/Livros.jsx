@@ -1356,10 +1356,11 @@ export default function Livros() {
                         </p>
                       ) : (
                         categoriasGerenciaveis.map((categoria) => (
-                          <div key={categoria.nome} className="flex items-center justify-between gap-3 rounded-md border px-3 py-3">
+                          <div key={categoria.nome} className="flex flex-col gap-3 rounded-md border px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="min-w-0 flex-1">
                               {categoriaEmEdicao === categoria.nome ? (
                                 <Input
+                                  className="w-full"
                                   value={categoriaEditada}
                                   onChange={(e) => setCategoriaEditada(e.target.value)}
                                   onKeyDown={(e) => {
@@ -1376,7 +1377,7 @@ export default function Livros() {
                                 />
                               ) : (
                                 <>
-                                  <p className="truncate font-medium">{categoria.nome}</p>
+                                  <p className="break-words font-medium leading-snug">{categoria.nome}</p>
                                   <div className="mt-1 flex flex-wrap items-center gap-1">
                                     {categoria.saved && <Badge variant="secondary" className="text-[10px]">Cadastrada</Badge>}
                                     {categoria.inUse && <Badge variant="outline" className="text-[10px]">No acervo</Badge>}
@@ -1387,11 +1388,12 @@ export default function Livros() {
                             </div>
 
                             {categoriaEmEdicao === categoria.nome ? (
-                              <div className="flex items-center gap-1">
+                              <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
                                 <Button
                                   type="button"
                                   variant="outline"
                                   size="icon"
+                                  className="h-9 w-9 shrink-0"
                                   disabled={categoriaSalvando === categoria.nome}
                                   onClick={() => handleAtualizarPreCategoria(categoria.nome)}
                                 >
@@ -1401,6 +1403,7 @@ export default function Livros() {
                                   type="button"
                                   variant="ghost"
                                   size="icon"
+                                  className="h-9 w-9 shrink-0"
                                   disabled={categoriaSalvando === categoria.nome}
                                   onClick={handleCancelarEdicaoPreCategoria}
                                 >
@@ -1408,11 +1411,12 @@ export default function Livros() {
                                 </Button>
                               </div>
                             ) : (
-                              <div className="flex items-center gap-1">
+                              <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
                                 <Button
                                   type="button"
                                   variant="ghost"
                                   size="icon"
+                                  className="h-9 w-9 shrink-0"
                                   onClick={() => handleIniciarEdicaoPreCategoria(categoria.nome)}
                                 >
                                   <Pencil className="h-4 w-4" />
@@ -1422,6 +1426,7 @@ export default function Livros() {
                                     type="button"
                                     variant="outline"
                                     size="sm"
+                                    className="shrink-0"
                                     onClick={() => handleSalvarPreCategoria(categoria.nome)}
                                   >
                                     Salvar
@@ -1431,6 +1436,7 @@ export default function Livros() {
                                     type="button"
                                     variant="ghost"
                                     size="icon"
+                                    className="h-9 w-9 shrink-0"
                                     onClick={() => handleRemoverPreCategoria(categoria.nome)}
                                   >
                                     <Trash2 className="h-4 w-4 text-destructive" />
