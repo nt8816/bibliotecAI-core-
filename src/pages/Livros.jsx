@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useDeferredValue, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Plus, Pencil, Trash2, Search, BookOpen, Sparkles, Loader2, Info, Download, Upload, FileSpreadsheet, FileText, AlertCircle, CheckCircle, SlidersHorizontal, X, ChevronsUpDown, Check } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -141,6 +141,7 @@ export default function Livros() {
   const [exportFormat, setExportFormat] = useState('xlsx');
   const [exporting, setExporting] = useState(false);
   const fileInputRef = useRef(null);
+  const deferredSearchTerm = useDeferredValue(searchTerm);
 
   const { isGestor, isBibliotecaria, isProfessor, user } = useAuth();
   const { toast } = useToast();
@@ -792,12 +793,44 @@ export default function Livros() {
     return <Badge variant="secondary">Pendente</Badge>;
   };
 
-  const areaOptions = useMemo(
+  const processedLivros = useMemo(
     () =>
-      [...new Set(livros.map((livro) => canonicalizeBookArea(livro.area, preCategorias)).filter(Boolean))]
-        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      livros.map((livro) => {
+        const normalizedArea = canonicalizeBookArea(livro.area, preCategorias);
+        const normalizedAutor = String(livro.autor || '').trim();
+        const status = getLivroStatus(livro);
+        return {
+          ...livro,
+          normalizedArea,
+          normalizedAutor,
+          normalizedStatus: status,
+          searchIndex: [
+            livro.titulo,
+            livro.autor,
+            livro.tombo,
+            normalizedArea,
+          ].map((value) => String(value || '').toLowerCase()).join(' '),
+        };
+      }),
     [livros, preCategorias],
   );
+
+  const areaOptions = useMemo(
+    () =>
+      [...new Set(processedLivros.map((livro) => livro.normalizedArea).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [processedLivros],
+  );
+
+  const areaUsageCount = useMemo(() => {
+    const counts = new Map();
+    processedLivros.forEach((livro) => {
+      const area = String(livro.normalizedArea || '').trim();
+      if (!area) return;
+      counts.set(area.toLowerCase(), (counts.get(area.toLowerCase()) || 0) + 1);
+    });
+    return counts;
+  }, [processedLivros]);
 
   const categoriasGerenciaveis = useMemo(() => {
     const term = preCategoriaSearch.trim().toLowerCase();
@@ -808,9 +841,9 @@ export default function Livros() {
         nome: categoria,
         saved: preCategorias.some((item) => item.toLowerCase() === categoria.toLowerCase()),
         inUse: areaOptions.some((item) => item.toLowerCase() === categoria.toLowerCase()),
-        usageCount: livros.filter((livro) => canonicalizeBookArea(livro.area, preCategorias).toLowerCase() === categoria.toLowerCase()).length,
+        usageCount: areaUsageCount.get(categoria.toLowerCase()) || 0,
       }));
-  }, [preCategorias, areaOptions, preCategoriaSearch, livros]);
+  }, [preCategorias, areaOptions, preCategoriaSearch, areaUsageCount]);
 
   const areaSuggestions = useMemo(() => {
     const term = String(formData.area || '').trim().toLowerCase();
@@ -824,34 +857,32 @@ export default function Livros() {
 
   const autorOptions = useMemo(
     () =>
-      [...new Set(livros.map((livro) => String(livro.autor || '').trim()).filter(Boolean))]
+      [...new Set(processedLivros.map((livro) => livro.normalizedAutor).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b, 'pt-BR')),
-    [livros],
+    [processedLivros],
   );
 
   const filteredLivros = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    return livros.filter((livro) => {
-      const searchMatches = !term
-        || livro.titulo.toLowerCase().includes(term)
-        || livro.autor.toLowerCase().includes(term)
-        || (livro.tombo || '').toLowerCase().includes(term)
-        || canonicalizeBookArea(livro.area, preCategorias).toLowerCase().includes(term);
-
-      const areaMatches = areaFilter === 'all' || canonicalizeBookArea(livro.area, preCategorias) === areaFilter;
-      const statusMatches = statusFilter === 'all'
-        || (statusFilter === 'disponivel' && getLivroStatus(livro) === 'disponivel')
-        || (statusFilter === 'emprestado' && getLivroStatus(livro) === 'emprestado')
-        || (statusFilter === 'indisponivel' && getLivroStatus(livro) === 'indisponivel');
-      const autorMatches = autorFilter === 'all' || String(livro.autor || '') === autorFilter;
+    const term = deferredSearchTerm.trim().toLowerCase();
+    return processedLivros.filter((livro) => {
+      const searchMatches = !term || livro.searchIndex.includes(term);
+      const areaMatches = areaFilter === 'all' || livro.normalizedArea === areaFilter;
+      const statusMatches = statusFilter === 'all' || livro.normalizedStatus === statusFilter;
+      const autorMatches = autorFilter === 'all' || livro.normalizedAutor === autorFilter;
 
       return searchMatches && areaMatches && statusMatches && autorMatches;
     });
-  }, [livros, searchTerm, areaFilter, statusFilter, autorFilter, preCategorias]);
+  }, [processedLivros, deferredSearchTerm, areaFilter, statusFilter, autorFilter]);
 
-  const totalLivros = livros.length;
-  const totalDisponiveis = livros.filter((livro) => livro.disponivel).length;
-  const totalEmprestados = livros.filter((livro) => livro.isEmprestado).length;
+  const totalLivros = processedLivros.length;
+  const totalDisponiveis = useMemo(
+    () => processedLivros.filter((livro) => livro.disponivel).length,
+    [processedLivros],
+  );
+  const totalEmprestados = useMemo(
+    () => processedLivros.filter((livro) => livro.isEmprestado).length,
+    [processedLivros],
+  );
   const hasActiveFilters = Boolean(searchTerm.trim()) || areaFilter !== 'all' || statusFilter !== 'all' || autorFilter !== 'all';
 
   return (
