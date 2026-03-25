@@ -115,6 +115,7 @@ export default function Livros() {
   const [areaFilter, setAreaFilter] = useState('all');
   const [areaFilterOpen, setAreaFilterOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [autorFilter, setAutorFilter] = useState('all');
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingLivro, setEditingLivro] = useState(null);
@@ -141,10 +142,11 @@ export default function Livros() {
   const [exporting, setExporting] = useState(false);
   const fileInputRef = useRef(null);
 
-  const { isGestor, isBibliotecaria, user } = useAuth();
+  const { isGestor, isBibliotecaria, isProfessor, user } = useAuth();
   const { toast } = useToast();
 
   const canManageBooks = isGestor || isBibliotecaria;
+  const canViewCatalogOnly = isProfessor && !canManageBooks;
 
   const fetchLivros = useCallback(async () => {
     if (!user?.id) {
@@ -819,6 +821,13 @@ export default function Livros() {
       .slice(0, 6);
   }, [formData.area, preCategorias, areaOptions]);
 
+  const autorOptions = useMemo(
+    () =>
+      [...new Set(livros.map((livro) => String(livro.autor || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [livros],
+  );
+
   const filteredLivros = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     return livros.filter((livro) => {
@@ -833,15 +842,16 @@ export default function Livros() {
         || (statusFilter === 'disponivel' && getLivroStatus(livro) === 'disponivel')
         || (statusFilter === 'emprestado' && getLivroStatus(livro) === 'emprestado')
         || (statusFilter === 'indisponivel' && getLivroStatus(livro) === 'indisponivel');
+      const autorMatches = autorFilter === 'all' || String(livro.autor || '') === autorFilter;
 
-      return searchMatches && areaMatches && statusMatches;
+      return searchMatches && areaMatches && statusMatches && autorMatches;
     });
-  }, [livros, searchTerm, areaFilter, statusFilter, preCategorias]);
+  }, [livros, searchTerm, areaFilter, statusFilter, autorFilter, preCategorias]);
 
   const totalLivros = livros.length;
   const totalDisponiveis = livros.filter((livro) => livro.disponivel).length;
   const totalEmprestados = livros.filter((livro) => livro.isEmprestado).length;
-  const hasActiveFilters = Boolean(searchTerm.trim()) || areaFilter !== 'all' || statusFilter !== 'all';
+  const hasActiveFilters = Boolean(searchTerm.trim()) || areaFilter !== 'all' || statusFilter !== 'all' || autorFilter !== 'all';
 
   return (
     <MainLayout title="Livros">
@@ -1111,6 +1121,134 @@ export default function Livros() {
             </TabsList>
 
             <TabsContent value="acervo" className="space-y-6">
+          {canViewCatalogOnly ? (
+            <>
+              <div className="rounded-lg border bg-background p-4">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                  <div className="relative md:col-span-2">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar por título, autor ou área..."
+                      className="pl-9"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                  </div>
+
+                  <Select value={areaFilter} onValueChange={setAreaFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todas as áreas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as áreas</SelectItem>
+                      {areaOptions.map((area) => (
+                        <SelectItem key={area} value={area}>{area}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todos os status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os status</SelectItem>
+                      <SelectItem value="disponivel">Disponíveis</SelectItem>
+                      <SelectItem value="emprestado">Emprestados</SelectItem>
+                      <SelectItem value="indisponivel">Indisponíveis</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+                  <Select value={autorFilter} onValueChange={setAutorFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todos os autores" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os autores</SelectItem>
+                      {autorOptions.map((autor) => (
+                        <SelectItem key={autor} value={autor}>{autor}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="gap-1">
+                      <SlidersHorizontal className="h-3.5 w-3.5" />
+                      {filteredLivros.length} livros
+                    </Badge>
+                    {hasActiveFilters && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setSearchTerm('');
+                          setAreaFilter('all');
+                          setStatusFilter('all');
+                          setAutorFilter('all');
+                        }}
+                      >
+                        Limpar filtros
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {loading ? (
+                <p className="py-8 text-center text-muted-foreground">Carregando catálogo...</p>
+              ) : filteredLivros.length === 0 ? (
+                <p className="py-8 text-center text-muted-foreground">
+                  {hasActiveFilters ? 'Nenhum livro encontrado com os filtros atuais.' : 'Nenhum livro disponível no catálogo.'}
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {filteredLivros.map((livro) => (
+                    <Card key={livro.id} className="overflow-hidden">
+                      <CardContent className="flex h-full flex-col gap-3 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <Badge variant="outline">{canonicalizeBookArea(livro.area, preCategorias) || 'Geral'}</Badge>
+                          <Badge variant={getLivroStatusVariant(livro)}>{getLivroStatusLabel(livro)}</Badge>
+                        </div>
+
+                        <div className="space-y-1">
+                          <p className="line-clamp-2 font-semibold leading-5">{livro.titulo}</p>
+                          <p className="text-sm text-muted-foreground">{livro.autor || 'Autor desconhecido'}</p>
+                          {(livro.editora || livro.ano) && (
+                            <p className="text-xs text-muted-foreground">
+                              {[livro.editora || null, livro.ano || null].filter(Boolean).join(' • ')}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                          <div className="rounded-md bg-muted/40 px-2 py-1.5">Tombo: {livro.tombo || '-'}</div>
+                          <div className="rounded-md bg-muted/40 px-2 py-1.5">Volume: {livro.vol || '-'}</div>
+                        </div>
+
+                        <div className="mt-auto">
+                          {livro.sinopse ? (
+                            <button
+                              type="button"
+                              className="w-full text-left"
+                              onClick={() => setSinopseExpandida(sinopseExpandida === livro.id ? null : livro.id)}
+                            >
+                              <p className="line-clamp-4 text-sm text-muted-foreground" translate="no">{livro.sinopse}</p>
+                              <p className="mt-2 text-xs text-primary">Ver sinopse completa</p>
+                            </button>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Sem sinopse cadastrada.</p>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+          <>
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <div className="rounded-lg border bg-muted/20 p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total</p>
@@ -1219,6 +1357,7 @@ export default function Livros() {
                       setSearchTerm('');
                       setAreaFilter('all');
                       setStatusFilter('all');
+                      setAutorFilter('all');
                     }}
                   >
                     <X className="w-3.5 h-3.5" />
@@ -1297,6 +1436,8 @@ export default function Livros() {
                 </TableBody>
               </Table>
             </div>
+          )}
+          </>
           )}
             </TabsContent>
 
