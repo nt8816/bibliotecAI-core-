@@ -1,6 +1,6 @@
 {
   "appId": "com.bibliotecai.app",
-  "appName": "BibliotecAI",
+  "appName": "BibliotecAi",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "android": {
