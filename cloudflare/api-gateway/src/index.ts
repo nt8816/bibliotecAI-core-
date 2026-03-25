@@ -514,6 +514,19 @@ function uniqueStrings(values: unknown[]) {
   return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))];
 }
 
+function extractAuthAdminUserId(payload: unknown) {
+  const candidates = [
+    (payload as Record<string, unknown>)?.id,
+    (payload as Record<string, unknown>)?.user && typeof (payload as Record<string, unknown>)?.user === 'object'
+      ? ((payload as Record<string, unknown>).user as Record<string, unknown>)?.id
+      : null,
+  ];
+
+  return candidates
+    .map((value) => String(value || '').trim())
+    .find((value) => UUID_PATTERN.test(value)) || '';
+}
+
 async function buildGhostAccounts(env: Env) {
   const [authUsersPayload, profilesPayload, rolesPayload, schoolsPayload, superAdminAccountsPayload] = await Promise.all([
     listAllAuthUsers(env),
@@ -1416,6 +1429,15 @@ async function getProfessorModuleData(request: Request, env: Env) {
   let entregasRaw: Array<Record<string, unknown>> = [];
 
   if (atividadeIds.length > 0) {
+    if (!UUID_PATTERN.test(userId)) {
+      await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
+        method: 'PATCH',
+        body: { usado_em: null, usado_por: null },
+        headers: { Prefer: 'return=minimal' },
+      }).catch(() => null);
+      return jsonResponse({ success: false, error: 'Falha ao identificar a conta do gestor no Auth.' }, 500);
+    }
+
     try {
       const entregasPayload = await supabaseAdminRequest(
         env,
@@ -2208,7 +2230,11 @@ const routes: Record<string, RouteHandler> = {
           user_metadata: { nome },
         },
       });
-      userId = String(authData?.user?.id || '');
+      userId = extractAuthAdminUserId(authData);
+      if (!userId) {
+        await releasePublicInviteReservation(env, String(tokenInfo.id));
+        return jsonResponse({ success: false, error: 'Falha ao identificar a conta criada no Auth.' }, 500);
+      }
     } catch (error) {
       const authErrorMessage = String(error instanceof Error ? error.message : '').toLowerCase();
       if (!duplicateEmailMarkers.some((marker) => authErrorMessage.includes(marker))) {
@@ -2380,7 +2406,15 @@ const routes: Record<string, RouteHandler> = {
           user_metadata: { nome },
         },
       });
-      userId = String(authData?.user?.id || '');
+      userId = extractAuthAdminUserId(authData);
+      if (!userId) {
+        await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
+          method: 'PATCH',
+          body: { usado_em: null, usado_por: null },
+          headers: { Prefer: 'return=minimal' },
+        }).catch(() => null);
+        return jsonResponse({ success: false, error: 'Falha ao identificar a conta criada no Auth.' }, 500);
+      }
     } catch (error) {
       const authErrorMessage = String(error instanceof Error ? error.message : '').toLowerCase();
       if (!duplicateEmailMarkers.some((marker) => authErrorMessage.includes(marker))) {
@@ -3347,9 +3381,15 @@ const routes: Record<string, RouteHandler> = {
         },
       });
 
-      if (authData?.user?.id) {
-        userId = String(authData.user.id);
+      const createdUserId = extractAuthAdminUserId(authData);
+      if (createdUserId) {
+        userId = createdUserId;
         createdNewUser = true;
+      } else {
+        return jsonResponse({
+          success: false,
+          error: 'Nao foi possivel identificar a conta criada no Auth.',
+        }, 500);
       }
     } catch (error) {
       const authErrorMessage = String(error instanceof Error ? error.message : '').toLowerCase();
