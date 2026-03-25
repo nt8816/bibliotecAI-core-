@@ -1,0 +1,12 @@
+{
+  "appId": "com.bibliotecai.app",
+  "appName": "BibliotecAI",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}
