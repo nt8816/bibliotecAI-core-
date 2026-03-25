@@ -2525,6 +2525,45 @@ const routes: Record<string, RouteHandler> = {
     }
 
     try {
+      const profilesByUserIdPayload = userId
+        ? await supabaseAdminRequest(
+          env,
+          `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+            select: 'id,user_id,escola_id,tipo,cpf',
+            user_id: `eq.${userId}`,
+            limit: '5',
+          }).toString()}`,
+        ).catch(() => [])
+        : [];
+      const profilesByUserId = Array.isArray(profilesByUserIdPayload) ? profilesByUserIdPayload : [];
+      const compatibleProfileByUserId = profilesByUserId.find((profile) => {
+        const tipo = String(profile?.tipo || '').trim();
+        const escolaId = String(profile?.escola_id || '').trim();
+        const profileCpf = normalizeCpf(profile?.cpf);
+
+        if (tipo && tipo !== 'gestor') return false;
+        if (escolaId && escolaId !== inviteEscolaId) return false;
+        if (profileCpf && profileCpf !== cpf) return false;
+        return true;
+      }) || null;
+      const conflictingProfileByUserId = profilesByUserId.find((profile) => {
+        const profileId = String(profile?.id || '').trim();
+        return profileId && profileId !== String(compatibleProfileByUserId?.id || '').trim();
+      }) || null;
+
+      if (conflictingProfileByUserId) {
+        await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
+          method: 'PATCH',
+          body: { usado_em: null, usado_por: null },
+          headers: { Prefer: 'return=minimal' },
+        }).catch(() => null);
+        return jsonResponse({ success: false, error: 'Esta conta ja esta vinculada a outro perfil. Faca login ou solicite suporte.' }, 409);
+      }
+
+      if (!targetProfile?.id && compatibleProfileByUserId?.id) {
+        targetProfile = compatibleProfileByUserId;
+      }
+
       await supabaseAdminRequest(env, `/rest/v1/user_roles?on_conflict=user_id,role`, {
         method: 'POST',
         body: [{ user_id: userId, role: 'gestor' }],
