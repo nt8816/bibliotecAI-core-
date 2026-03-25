@@ -5008,6 +5008,29 @@ const routes: Record<string, RouteHandler> = {
       });
     }
 
+    const relatedUserIds = [...new Set(
+      [
+        ...requestedUserIds,
+        ...Array.from(foundProfilesByKey.values())
+          .map((profile) => String(profile.user_id || '').trim())
+          .filter(Boolean),
+      ],
+    )];
+
+    if (relatedUserIds.length > 0) {
+      const siblingProfiles = await supabaseAdminRequest(
+        env,
+        `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+          select: 'id,user_id,escola_id',
+          user_id: `in.(${relatedUserIds.join(',')})`,
+        }).toString()}`,
+      );
+
+      (Array.isArray(siblingProfiles) ? siblingProfiles : []).forEach((profile) => {
+        foundProfilesByKey.set(String(profile.id), profile);
+      });
+    }
+
     const foundProfiles = Array.from(foundProfilesByKey.values());
     const forbiddenProfile = foundProfiles.find((profile) => profile.escola_id !== requestedSchoolId);
     if (forbiddenProfile) {

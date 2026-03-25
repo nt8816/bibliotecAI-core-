@@ -142,6 +142,30 @@ Deno.serve(async (req) => {
       });
     }
 
+    const relatedUserIds = [...new Set(
+      [
+        ...requestedUserIds,
+        ...Array.from(foundProfilesByKey.values())
+          .map((profile) => String(profile.user_id || '').trim())
+          .filter(Boolean),
+      ],
+    )];
+
+    if (relatedUserIds.length > 0) {
+      const { data: siblingProfiles, error: siblingProfilesError } = await adminClient
+        .from('usuarios_biblioteca')
+        .select('id, user_id, escola_id, tipo')
+        .in('user_id', relatedUserIds);
+
+      if (siblingProfilesError) {
+        return jsonResponse({ success: false, error: 'Nao foi possivel carregar perfis vinculados ao usuario para exclusao' }, 500);
+      }
+
+      (siblingProfiles || []).forEach((profile) => {
+        foundProfilesByKey.set(String(profile.id), profile);
+      });
+    }
+
     const foundProfiles = Array.from(foundProfilesByKey.values());
     const foundTargetKeys = new Set(
       foundProfiles.flatMap((profile) => [String(profile.id || '').trim(), String(profile.user_id || '').trim()]).filter(Boolean),
