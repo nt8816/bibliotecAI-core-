@@ -292,6 +292,15 @@ export default function ArquivosAula() {
     const arquivosAtuais = ensureArray(post?.arquivos);
     const arquivo = arquivosAtuais[arquivoIndex];
     if (!arquivo) return;
+    if (arquivosAtuais.length <= 1) {
+      setDeleteFileTarget(null);
+      toast({
+        variant: 'destructive',
+        title: 'Ultimo arquivo da publicacao',
+        description: 'Esse botao remove apenas anexos. Para manter a publicacao, deixe pelo menos um arquivo anexado.',
+      });
+      return;
+    }
 
     setSaving(true);
     try {
