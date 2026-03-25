@@ -29,6 +29,7 @@ import {
   fetchLivrosCatalogo,
   importLivrosBatch,
   saveLivro,
+  updateLivroCategoria,
 } from '@/services/livrosService';
 
 const emptyLivro = {
@@ -130,6 +131,9 @@ export default function Livros() {
   const [preCategorias, setPreCategorias] = useState(DEFAULT_PRE_CATEGORIES);
   const [novaPreCategoria, setNovaPreCategoria] = useState('');
   const [preCategoriaSearch, setPreCategoriaSearch] = useState('');
+  const [categoriaEmEdicao, setCategoriaEmEdicao] = useState('');
+  const [categoriaEditada, setCategoriaEditada] = useState('');
+  const [categoriaSalvando, setCategoriaSalvando] = useState('');
   const [escolaId, setEscolaId] = useState(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState('xlsx');
@@ -278,6 +282,60 @@ export default function Livros() {
         description: 'N??o foi poss??vel remover a pr??-categoria.',
       });
       fetchLivros();
+    }
+  };
+
+  const handleIniciarEdicaoPreCategoria = (categoria) => {
+    setCategoriaEmEdicao(categoria);
+    setCategoriaEditada(categoria);
+  };
+
+  const handleCancelarEdicaoPreCategoria = () => {
+    setCategoriaEmEdicao('');
+    setCategoriaEditada('');
+    setCategoriaSalvando('');
+  };
+
+  const handleAtualizarPreCategoria = async (categoriaAtual) => {
+    const categoriaOriginal = String(categoriaAtual || '').trim();
+    const categoriaNova = canonicalizeBookArea(categoriaEditada, preCategorias);
+    if (!categoriaOriginal || !categoriaNova) return;
+
+    const categoriaOriginalKey = categoriaOriginal.toLowerCase();
+    const categoriaNovaKey = categoriaNova.toLowerCase();
+    const exists = preCategorias.some((item) => item.toLowerCase() === categoriaNovaKey && item.toLowerCase() !== categoriaOriginalKey);
+    if (exists) {
+      toast({
+        variant: 'destructive',
+        title: 'Categoria duplicada',
+        description: 'Já existe uma área com esse nome.',
+      });
+      return;
+    }
+
+    setCategoriaSalvando(categoriaOriginal);
+    try {
+      await updateLivroCategoria({
+        nome_atual: categoriaOriginal,
+        nome_novo: categoriaNova,
+      });
+
+      setPreCategorias((prev) => prev.map((item) => (item === categoriaOriginal ? categoriaNova : item)));
+      setFormData((prev) => ({
+        ...prev,
+        area: prev.area === categoriaOriginal ? categoriaNova : prev.area,
+      }));
+      setAreaFilter((prev) => (prev === categoriaOriginal ? categoriaNova : prev));
+      toast({ title: 'Sucesso', description: 'Área atualizada com sucesso.' });
+      handleCancelarEdicaoPreCategoria();
+      fetchLivros();
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: error.message || 'Não foi possível atualizar a área.',
+      });
+      setCategoriaSalvando('');
     }
   };
 
@@ -991,24 +1049,99 @@ export default function Livros() {
                                       )}
                                       {categoriasGerenciaveis.map((categoria) => (
                                         <div key={categoria.nome} className="flex items-center justify-between rounded-md border px-2.5 py-2 text-sm">
-                                          <div className="min-w-0 pr-3">
-                                            <div className="truncate">{categoria.nome}</div>
-                                            <div className="mt-1 flex flex-wrap gap-1">
-                                              {categoria.saved && <Badge variant="secondary" className="text-[10px]">Pré-definida</Badge>}
-                                              {categoria.inUse && <Badge variant="outline" className="text-[10px]">No acervo</Badge>}
-                                            </div>
+                                          <div className="min-w-0 flex-1 pr-3">
+                                            {categoriaEmEdicao === categoria.nome ? (
+                                              <div className="space-y-2">
+                                                <Input
+                                                  value={categoriaEditada}
+                                                  onChange={(e) => setCategoriaEditada(e.target.value)}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      e.preventDefault();
+                                                      handleAtualizarPreCategoria(categoria.nome);
+                                                    }
+                                                    if (e.key === 'Escape') {
+                                                      e.preventDefault();
+                                                      handleCancelarEdicaoPreCategoria();
+                                                    }
+                                                  }}
+                                                  autoFocus
+                                                />
+                                                <div className="mt-1 flex flex-wrap gap-1">
+                                                  {categoria.saved && <Badge variant="secondary" className="text-[10px]">Pré-definida</Badge>}
+                                                  {categoria.inUse && <Badge variant="outline" className="text-[10px]">No acervo</Badge>}
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <>
+                                                <div className="truncate">{categoria.nome}</div>
+                                                <div className="mt-1 flex flex-wrap gap-1">
+                                                  {categoria.saved && <Badge variant="secondary" className="text-[10px]">Pré-definida</Badge>}
+                                                  {categoria.inUse && <Badge variant="outline" className="text-[10px]">No acervo</Badge>}
+                                                </div>
+                                              </>
+                                            )}
                                           </div>
-                                          {categoria.saved ? (
-                                            <Button
-                                              type="button"
-                                              variant="ghost"
-                                              size="icon"
-                                              className="h-7 w-7 shrink-0"
-                                              onClick={() => handleRemoverPreCategoria(categoria.nome)}
-                                              aria-label={`Remover categoria ${categoria.nome}`}
-                                            >
-                                              <Trash2 className="h-3.5 w-3.5" />
-                                            </Button>
+                                          {categoriaEmEdicao === categoria.nome ? (
+                                            <div className="flex items-center gap-1">
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="icon"
+                                                className="h-7 w-7 shrink-0"
+                                                disabled={categoriaSalvando === categoria.nome}
+                                                onClick={() => handleAtualizarPreCategoria(categoria.nome)}
+                                                aria-label={`Salvar categoria ${categoria.nome}`}
+                                              >
+                                                {categoriaSalvando === categoria.nome ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7 shrink-0"
+                                                disabled={categoriaSalvando === categoria.nome}
+                                                onClick={handleCancelarEdicaoPreCategoria}
+                                                aria-label={`Cancelar edição da categoria ${categoria.nome}`}
+                                              >
+                                                <X className="h-3.5 w-3.5" />
+                                              </Button>
+                                            </div>
+                                          ) : categoria.saved || categoria.inUse ? (
+                                            <div className="flex items-center gap-1">
+                                              <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7 shrink-0"
+                                                onClick={() => handleIniciarEdicaoPreCategoria(categoria.nome)}
+                                                aria-label={`Editar categoria ${categoria.nome}`}
+                                              >
+                                                <Pencil className="h-3.5 w-3.5" />
+                                              </Button>
+                                              {categoria.saved ? (
+                                                <Button
+                                                  type="button"
+                                                  variant="ghost"
+                                                  size="icon"
+                                                  className="h-7 w-7 shrink-0"
+                                                  onClick={() => handleRemoverPreCategoria(categoria.nome)}
+                                                  aria-label={`Remover categoria ${categoria.nome}`}
+                                                >
+                                                  <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                              ) : (
+                                                <Button
+                                                  type="button"
+                                                  variant="outline"
+                                                  size="sm"
+                                                  className="shrink-0"
+                                                  onClick={() => handleSalvarPreCategoria(categoria.nome)}
+                                                >
+                                                  Salvar
+                                                </Button>
+                                              )}
+                                            </div>
                                           ) : (
                                             <Button
                                               type="button"

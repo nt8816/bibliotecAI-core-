@@ -292,6 +292,16 @@ async function getLoanModuleContext(request: Request, env: Env) {
 
 const DEFAULT_BOOK_CATEGORIES = ['Literatura', 'Ciencias', 'Matematica', 'Historia', 'Geografia', 'Infantil'];
 
+function normalizeBookCategoryKey(value: unknown) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 async function getBooksModuleContext(request: Request, env: Env) {
   const caller = await fetchSupabaseUser(request, env);
   if (!caller?.id) {
@@ -6043,6 +6053,113 @@ const routes: Record<string, RouteHandler> = {
     });
 
     return jsonResponse({ success: true });
+  },
+
+  'POST /v1/livros/categorias/update': async (request, env) => {
+    const { profile, canManageBooks } = await getBooksModuleContext(request, env);
+    if (!canManageBooks) {
+      return jsonResponse({ success: false, error: 'Sem permissao para gerenciar categorias.' }, 403);
+    }
+
+    const escolaId = String(profile.escola_id || '').trim();
+    if (!escolaId) {
+      return jsonResponse({ success: false, error: 'Nao foi possivel identificar a escola do usuario.' }, 400);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const nomeAtual = String(body?.nome_atual || '').trim();
+    const nomeNovo = String(body?.nome_novo || '').trim();
+    if (!nomeAtual || !nomeNovo) {
+      return jsonResponse({ success: false, error: 'Nome atual e novo nome da categoria sao obrigatorios.' }, 400);
+    }
+
+    const nomeAtualKey = normalizeBookCategoryKey(nomeAtual);
+    const nomeNovoKey = normalizeBookCategoryKey(nomeNovo);
+    if (!nomeAtualKey || !nomeNovoKey) {
+      return jsonResponse({ success: false, error: 'Os nomes informados sao invalidos.' }, 400);
+    }
+
+    const categorias = await supabaseAdminRequest(
+      env,
+      `/rest/v1/categorias_livros?${new URLSearchParams({
+        select: 'id,nome',
+        escola_id: `eq.${escolaId}`,
+        order: 'nome.asc',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    const categoriaAtual = (Array.isArray(categorias) ? categorias : []).find((item) => {
+      const nomeCategoria = String(item?.nome || '').trim();
+      return nomeCategoria === nomeAtual || normalizeBookCategoryKey(nomeCategoria) === nomeAtualKey;
+    });
+
+    const conflito = (Array.isArray(categorias) ? categorias : []).find((item) => {
+      const nomeCategoria = String(item?.nome || '').trim();
+      if (!nomeCategoria) return false;
+      if (String(item?.id || '') === String(categoriaAtual?.id || '')) return false;
+      return normalizeBookCategoryKey(nomeCategoria) === nomeNovoKey;
+    });
+    if (conflito) {
+      return jsonResponse({ success: false, error: 'Ja existe uma categoria com esse nome.' }, 409);
+    }
+
+    const livrosDaEscola = await supabaseAdminRequest(
+      env,
+      `/rest/v1/livros?${new URLSearchParams({
+        select: 'id,area',
+        escola_id: `eq.${escolaId}`,
+        limit: '5000',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    const livrosParaAtualizar = (Array.isArray(livrosDaEscola) ? livrosDaEscola : []).filter((livro) => {
+      const areaLivro = String(livro?.area || '').trim();
+      return normalizeBookCategoryKey(areaLivro) === nomeAtualKey;
+    });
+
+    if (!categoriaAtual?.id && livrosParaAtualizar.length === 0) {
+      return jsonResponse({ success: false, error: 'Categoria nao encontrada para atualizacao.' }, 404);
+    }
+
+    if (categoriaAtual?.id) {
+      await supabaseAdminRequest(
+        env,
+        `/rest/v1/categorias_livros?${new URLSearchParams({ id: `eq.${String(categoriaAtual.id)}` }).toString()}`,
+        {
+          method: 'PATCH',
+          body: { nome: nomeNovo },
+          headers: { Prefer: 'return=minimal' },
+        },
+      );
+    } else {
+      await supabaseAdminRequest(env, '/rest/v1/categorias_livros', {
+        method: 'POST',
+        body: {
+          escola_id: escolaId,
+          nome: nomeNovo,
+          created_by: profile.id || null,
+        },
+        headers: {
+          Prefer: 'resolution=merge-duplicates,return=minimal',
+        },
+      });
+    }
+
+    await Promise.all(
+      livrosParaAtualizar.map((livro) =>
+        supabaseAdminRequest(
+          env,
+          `/rest/v1/livros?${new URLSearchParams({ id: `eq.${String(livro.id || '')}` }).toString()}`,
+          {
+            method: 'PATCH',
+            body: { area: nomeNovo },
+            headers: { Prefer: 'return=minimal' },
+          },
+        ),
+      ),
+    );
+
+    return jsonResponse({ success: true, updatedBooks: livrosParaAtualizar.length });
   },
 
   'POST /v1/livros/categorias/delete': async (request, env) => {

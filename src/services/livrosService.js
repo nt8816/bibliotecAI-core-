@@ -26,6 +26,10 @@ export async function createLivroCategoria(payload) {
   return requestPlatformApi('/v1/livros/categorias', { method: 'POST', body: payload });
 }
 
+export async function updateLivroCategoria(payload) {
+  return requestPlatformApi('/v1/livros/categorias/update', { method: 'POST', body: payload });
+}
+
 export async function deleteLivroCategoria(escolaId, nome) {
   return requestPlatformApi('/v1/livros/categorias/delete', {
     method: 'POST',
