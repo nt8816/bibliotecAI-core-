@@ -2192,7 +2192,7 @@ const routes: Record<string, RouteHandler> = {
       ? await supabaseAdminRequest(
           env,
           `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
-            select: 'id,user_id',
+            select: 'id,user_id,escola_id,tipo,cpf,matricula,email',
             matricula: `eq.${normalizedMatricula}`,
             limit: '1',
           }).toString()}`,
@@ -2201,7 +2201,7 @@ const routes: Record<string, RouteHandler> = {
         ? await supabaseAdminRequest(
             env,
             `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
-              select: 'id,user_id',
+              select: 'id,user_id,escola_id,tipo,cpf,matricula,email',
               escola_id: `eq.${tokenInfo.escola_id}`,
               tipo: `eq.${tokenInfo.role_destino}`,
               cpf: `eq.${cpf}`,
@@ -2211,7 +2211,7 @@ const routes: Record<string, RouteHandler> = {
         : await supabaseAdminRequest(
             env,
             `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
-              select: 'id,user_id',
+              select: 'id,user_id,escola_id,tipo,cpf,matricula,email',
               escola_id: `eq.${tokenInfo.escola_id}`,
               tipo: `eq.${tokenInfo.role_destino}`,
               email: `eq.${authEmail}`,
@@ -2219,6 +2219,8 @@ const routes: Record<string, RouteHandler> = {
             }).toString()}`,
           );
     const existingProfile = Array.isArray(existingProfileLookup) ? (existingProfileLookup[0] || null) : null;
+    let targetProfile = existingProfile;
+    let duplicateProfileIdsToDelete: string[] = [];
 
     try {
       const authData = await supabaseAdminAuthRequest(env, '/users', {
@@ -2248,12 +2250,63 @@ const routes: Record<string, RouteHandler> = {
         return jsonResponse({ success: false, error: 'Esta conta ja esta cadastrada. Verifique seus dados ou faca login.' }, 409);
       }
 
+      const linkedProfilesPayload = await supabaseAdminRequest(
+        env,
+        `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+          select: 'id,user_id,escola_id,tipo,cpf,matricula,email',
+          user_id: `eq.${existingAuthUser.id}`,
+          limit: '5',
+        }).toString()}`,
+      ).catch(() => []);
+      const linkedProfiles = Array.isArray(linkedProfilesPayload) ? linkedProfilesPayload : [];
+      const linkedRolesPayload = await supabaseAdminRequest(
+        env,
+        `/rest/v1/user_roles?${new URLSearchParams({
+          select: 'role',
+          user_id: `eq.${existingAuthUser.id}`,
+        }).toString()}`,
+      ).catch(() => []);
+      const linkedRoles = Array.isArray(linkedRolesPayload) ? linkedRolesPayload : [];
+      const hasProtectedRole = linkedRoles.some((item) => String(item?.role || '').trim() === 'super_admin');
+
+      if (hasProtectedRole) {
+        await releasePublicInviteReservation(env, String(tokenInfo.id));
+        return jsonResponse({ success: false, error: 'Esta conta esta protegida e nao pode ser reaproveitada por este convite.' }, 409);
+      }
+
+      const reusableLinkedProfiles = linkedProfiles.filter((profile) => {
+        const tipo = String(profile?.tipo || '').trim().toLowerCase();
+        const escolaId = String(profile?.escola_id || '').trim();
+        const profileCpf = normalizeCpf(profile?.cpf);
+        const profileMatricula = String(profile?.matricula || '').trim();
+        const profileEmail = normalizeIdentifier(profile?.email);
+
+        if (tipo === 'gestor') {
+          return false;
+        }
+
+        if (isAluno) {
+          return profileMatricula === normalizedMatricula;
+        }
+
+        if (usesCpfAsLogin) {
+          if (escolaId && escolaId !== String(tokenInfo.escola_id || '').trim()) return false;
+          if (profileCpf && profileCpf !== cpf) return false;
+          return true;
+        }
+
+        if (escolaId && escolaId !== String(tokenInfo.escola_id || '').trim()) return false;
+        if (profileEmail && profileEmail !== normalizeIdentifier(authEmail)) return false;
+        return true;
+      });
+      const conflictingLinkedProfile = linkedProfiles.find((profile) => !reusableLinkedProfiles.includes(profile));
+
       if (existingProfile?.user_id && String(existingProfile.user_id) !== String(existingAuthUser.id)) {
         await releasePublicInviteReservation(env, String(tokenInfo.id));
         return jsonResponse({ success: false, error: 'Este cadastro ja esta vinculado a outra conta. Faca login ou solicite suporte.' }, 409);
       }
 
-      if (!existingProfile?.id) {
+      if (conflictingLinkedProfile) {
         await releasePublicInviteReservation(env, String(tokenInfo.id));
         return jsonResponse({ success: false, error: 'Esta conta ja esta cadastrada. Verifique seus dados ou faca login.' }, 409);
       }
@@ -2270,10 +2323,79 @@ const routes: Record<string, RouteHandler> = {
         },
       });
 
+      const profileToReuse = existingProfile?.id ? existingProfile : (reusableLinkedProfiles[0] || null);
+      if (!existingProfile?.id && profileToReuse?.id) {
+        targetProfile = profileToReuse;
+      }
+      duplicateProfileIdsToDelete = reusableLinkedProfiles
+        .map((profile) => String(profile?.id || '').trim())
+        .filter((id, index, list) => id && id !== String(targetProfile?.id || '').trim() && list.indexOf(id) === index);
       userId = String(existingAuthUser.id);
     }
 
     try {
+      const profilesByUserIdPayload = userId
+        ? await supabaseAdminRequest(
+          env,
+          `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+            select: 'id,user_id,escola_id,tipo,cpf,matricula,email',
+            user_id: `eq.${userId}`,
+            limit: '5',
+          }).toString()}`,
+        ).catch(() => [])
+        : [];
+      const profilesByUserId = Array.isArray(profilesByUserIdPayload) ? profilesByUserIdPayload : [];
+      const compatibleProfileByUserId = profilesByUserId.find((profile) => {
+        const tipo = String(profile?.tipo || '').trim().toLowerCase();
+        const escolaId = String(profile?.escola_id || '').trim();
+        const profileCpf = normalizeCpf(profile?.cpf);
+        const profileMatricula = String(profile?.matricula || '').trim();
+        const profileEmail = normalizeIdentifier(profile?.email);
+
+        if (tipo === 'gestor') return false;
+
+        if (isAluno) {
+          return profileMatricula === normalizedMatricula;
+        }
+
+        if (usesCpfAsLogin) {
+          if (escolaId && escolaId !== String(tokenInfo.escola_id || '').trim()) return false;
+          if (profileCpf && profileCpf !== cpf) return false;
+          return true;
+        }
+
+        if (escolaId && escolaId !== String(tokenInfo.escola_id || '').trim()) return false;
+        if (profileEmail && profileEmail !== normalizeIdentifier(authEmail)) return false;
+        return true;
+      }) || null;
+      const conflictingProfileByUserId = profilesByUserId.find((profile) => {
+        const profileId = String(profile?.id || '').trim();
+        return profileId && profileId !== String(compatibleProfileByUserId?.id || '').trim();
+      }) || null;
+
+      if (conflictingProfileByUserId) {
+        await releasePublicInviteReservation(env, String(tokenInfo.id));
+        return jsonResponse({ success: false, error: 'Esta conta ja esta vinculada a outro perfil. Faca login ou solicite suporte.' }, 409);
+      }
+
+      if (!targetProfile?.id && compatibleProfileByUserId?.id) {
+        targetProfile = compatibleProfileByUserId;
+      }
+
+      if (usesCpfAsLogin) {
+        await supabaseAdminRequest(
+          env,
+          `/rest/v1/user_roles?${new URLSearchParams({
+            user_id: `eq.${userId}`,
+            role: 'in.(aluno,bibliotecaria)',
+          }).toString()}`,
+          {
+            method: 'DELETE',
+            headers: { Prefer: 'return=minimal' },
+          },
+        ).catch(() => null);
+      }
+
       await supabaseAdminRequest(env, `/rest/v1/user_roles?on_conflict=user_id,role`, {
         method: 'POST',
         body: [{ user_id: userId, role: tokenInfo.role_destino }],
@@ -2290,8 +2412,8 @@ const routes: Record<string, RouteHandler> = {
         matricula: isAluno ? normalizedMatricula : null,
       };
 
-      if (existingProfile?.id) {
-        await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ id: `eq.${existingProfile.id}` }).toString()}`, {
+      if (targetProfile?.id) {
+        await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ id: `eq.${targetProfile.id}` }).toString()}`, {
           method: 'PATCH',
           body: profilePayload,
           headers: { Prefer: 'return=minimal' },
@@ -2302,6 +2424,19 @@ const routes: Record<string, RouteHandler> = {
           body: profilePayload,
           headers: { Prefer: 'return=minimal' },
         });
+      }
+
+      if (duplicateProfileIdsToDelete.length > 0) {
+        await supabaseAdminRequest(
+          env,
+          `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+            id: `in.(${duplicateProfileIdsToDelete.join(',')})`,
+          }).toString()}`,
+          {
+            method: 'DELETE',
+            headers: { Prefer: 'return=minimal' },
+          },
+        ).catch(() => null);
       }
 
       await supabaseAdminRequest(env, `/rest/v1/tokens_convite?${new URLSearchParams({ id: `eq.${tokenInfo.id}` }).toString()}`, {
