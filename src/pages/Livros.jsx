@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Badge } from '@/components/ui/badge';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -127,7 +128,7 @@ export default function Livros() {
   const [importLivros, setImportLivros] = useState([]);
   const [importLoading, setImportLoading] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [preCategoriasDialogOpen, setPreCategoriasDialogOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('acervo');
   const [preCategorias, setPreCategorias] = useState(DEFAULT_PRE_CATEGORIES);
   const [novaPreCategoria, setNovaPreCategoria] = useState('');
   const [preCategoriaSearch, setPreCategoriaSearch] = useState('');
@@ -804,8 +805,9 @@ export default function Livros() {
         nome: categoria,
         saved: preCategorias.some((item) => item.toLowerCase() === categoria.toLowerCase()),
         inUse: areaOptions.some((item) => item.toLowerCase() === categoria.toLowerCase()),
+        usageCount: livros.filter((livro) => canonicalizeBookArea(livro.area, preCategorias).toLowerCase() === categoria.toLowerCase()).length,
       }));
-  }, [preCategorias, areaOptions, preCategoriaSearch]);
+  }, [preCategorias, areaOptions, preCategoriaSearch, livros]);
 
   const areaSuggestions = useMemo(() => {
     const term = String(formData.area || '').trim().toLowerCase();
@@ -857,6 +859,8 @@ export default function Livros() {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              {activeTab === 'acervo' && (
+                <>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm">
@@ -1005,161 +1009,17 @@ export default function Livros() {
                         <div className="space-y-2 pt-1">
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-xs text-muted-foreground">Pré-categorias rápidas</p>
-                            <Dialog open={preCategoriasDialogOpen} onOpenChange={setPreCategoriasDialogOpen}>
-                              <DialogTrigger asChild>
-                                <Button type="button" size="sm" variant="outline">
-                                  Gerenciar
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent className="max-w-md">
-                                <DialogHeader>
-                                  <DialogTitle>Gerenciar pré-categorias</DialogTitle>
-                                  <DialogDescription>Adicione ou remova categorias para facilitar o cadastro de livros.</DialogDescription>
-                                </DialogHeader>
-
-                                <div className="space-y-3 py-1">
-                                  <div className="flex flex-col gap-2 sm:flex-row">
-                                    <Input
-                                      placeholder="Nova pré-categoria"
-                                      value={novaPreCategoria}
-                                      onChange={(e) => setNovaPreCategoria(e.target.value)}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                          e.preventDefault();
-                                          handleAdicionarPreCategoria();
-                                        }
-                                      }}
-                                    />
-                                    <Button type="button" variant="outline" onClick={handleAdicionarPreCategoria}>
-                                      <Plus className="w-4 h-4 mr-1" />
-                                      Adicionar
-                                    </Button>
-                                  </div>
-
-                                  <Input
-                                    placeholder="Pesquisar categoria..."
-                                    value={preCategoriaSearch}
-                                    onChange={(e) => setPreCategoriaSearch(e.target.value)}
-                                  />
-
-                                  <div className="max-h-64 overflow-y-auto rounded-md border p-2">
-                                    <div className="space-y-1.5">
-                                      {categoriasGerenciaveis.length === 0 && (
-                                        <p className="px-2 py-3 text-sm text-muted-foreground">Nenhuma categoria encontrada.</p>
-                                      )}
-                                      {categoriasGerenciaveis.map((categoria) => (
-                                        <div key={categoria.nome} className="flex items-center justify-between rounded-md border px-2.5 py-2 text-sm">
-                                          <div className="min-w-0 flex-1 pr-3">
-                                            {categoriaEmEdicao === categoria.nome ? (
-                                              <div className="space-y-2">
-                                                <Input
-                                                  value={categoriaEditada}
-                                                  onChange={(e) => setCategoriaEditada(e.target.value)}
-                                                  onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                      e.preventDefault();
-                                                      handleAtualizarPreCategoria(categoria.nome);
-                                                    }
-                                                    if (e.key === 'Escape') {
-                                                      e.preventDefault();
-                                                      handleCancelarEdicaoPreCategoria();
-                                                    }
-                                                  }}
-                                                  autoFocus
-                                                />
-                                                <div className="mt-1 flex flex-wrap gap-1">
-                                                  {categoria.saved && <Badge variant="secondary" className="text-[10px]">Pré-definida</Badge>}
-                                                  {categoria.inUse && <Badge variant="outline" className="text-[10px]">No acervo</Badge>}
-                                                </div>
-                                              </div>
-                                            ) : (
-                                              <>
-                                                <div className="truncate">{categoria.nome}</div>
-                                                <div className="mt-1 flex flex-wrap gap-1">
-                                                  {categoria.saved && <Badge variant="secondary" className="text-[10px]">Pré-definida</Badge>}
-                                                  {categoria.inUse && <Badge variant="outline" className="text-[10px]">No acervo</Badge>}
-                                                </div>
-                                              </>
-                                            )}
-                                          </div>
-                                          {categoriaEmEdicao === categoria.nome ? (
-                                            <div className="flex items-center gap-1">
-                                              <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="icon"
-                                                className="h-7 w-7 shrink-0"
-                                                disabled={categoriaSalvando === categoria.nome}
-                                                onClick={() => handleAtualizarPreCategoria(categoria.nome)}
-                                                aria-label={`Salvar categoria ${categoria.nome}`}
-                                              >
-                                                {categoriaSalvando === categoria.nome ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                                              </Button>
-                                              <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-7 w-7 shrink-0"
-                                                disabled={categoriaSalvando === categoria.nome}
-                                                onClick={handleCancelarEdicaoPreCategoria}
-                                                aria-label={`Cancelar edição da categoria ${categoria.nome}`}
-                                              >
-                                                <X className="h-3.5 w-3.5" />
-                                              </Button>
-                                            </div>
-                                          ) : categoria.saved || categoria.inUse ? (
-                                            <div className="flex items-center gap-1">
-                                              <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-7 w-7 shrink-0"
-                                                onClick={() => handleIniciarEdicaoPreCategoria(categoria.nome)}
-                                                aria-label={`Editar categoria ${categoria.nome}`}
-                                              >
-                                                <Pencil className="h-3.5 w-3.5" />
-                                              </Button>
-                                              {categoria.saved ? (
-                                                <Button
-                                                  type="button"
-                                                  variant="ghost"
-                                                  size="icon"
-                                                  className="h-7 w-7 shrink-0"
-                                                  onClick={() => handleRemoverPreCategoria(categoria.nome)}
-                                                  aria-label={`Remover categoria ${categoria.nome}`}
-                                                >
-                                                  <Trash2 className="h-3.5 w-3.5" />
-                                                </Button>
-                                              ) : (
-                                                <Button
-                                                  type="button"
-                                                  variant="outline"
-                                                  size="sm"
-                                                  className="shrink-0"
-                                                  onClick={() => handleSalvarPreCategoria(categoria.nome)}
-                                                >
-                                                  Salvar
-                                                </Button>
-                                              )}
-                                            </div>
-                                          ) : (
-                                            <Button
-                                              type="button"
-                                              variant="outline"
-                                              size="sm"
-                                              className="shrink-0"
-                                              onClick={() => handleSalvarPreCategoria(categoria.nome)}
-                                            >
-                                              Salvar
-                                            </Button>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                </div>
-                              </DialogContent>
-                            </Dialog>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setIsDialogOpen(false);
+                                setActiveTab('areas');
+                              }}
+                            >
+                              Cadastro de Áreas
+                            </Button>
                           </div>
                           <div className="max-h-28 overflow-y-auto rounded-md border p-2">
                             <div className="flex flex-wrap gap-2">
@@ -1177,6 +1037,9 @@ export default function Livros() {
                               ))}
                             </div>
                           </div>
+                          <p className="text-xs text-muted-foreground">
+                            Cadastre e edite áreas na subtela <strong>Cadastro de Áreas</strong>.
+                          </p>
                         </div>
                       </div>
                       <div className="space-y-2">
@@ -1234,11 +1097,20 @@ export default function Livros() {
                 </Dialog>
                 </>
               )}
+                </>
+              )}
             </div>
           </div>
         </CardHeader>
 
         <CardContent className="space-y-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+            <TabsList className="h-auto w-full justify-start gap-2 overflow-x-auto whitespace-nowrap p-1">
+              <TabsTrigger value="acervo">Acervo</TabsTrigger>
+              <TabsTrigger value="areas">Cadastro de Áreas</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="acervo" className="space-y-6">
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <div className="rounded-lg border bg-muted/20 p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total</p>
@@ -1426,6 +1298,155 @@ export default function Livros() {
               </Table>
             </div>
           )}
+            </TabsContent>
+
+            <TabsContent value="areas" className="space-y-6">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Cadastro de Áreas</CardTitle>
+                    <CardDescription>
+                      Cadastre novas áreas e edite os nomes já usados no acervo.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="nova-area">Nome da área</Label>
+                      <Input
+                        id="nova-area"
+                        placeholder="Ex.: Literatura Brasileira"
+                        value={novaPreCategoria}
+                        onChange={(e) => setNovaPreCategoria(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAdicionarPreCategoria();
+                          }
+                        }}
+                      />
+                    </div>
+                    <Button type="button" className="w-full" onClick={handleAdicionarPreCategoria}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Cadastrar área
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      Todas as áreas devem ser criadas e editadas nesta subtela.
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Áreas Cadastradas</CardTitle>
+                    <CardDescription>
+                      Gerencie as áreas disponíveis para vincular aos livros.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <Input
+                      placeholder="Pesquisar área..."
+                      value={preCategoriaSearch}
+                      onChange={(e) => setPreCategoriaSearch(e.target.value)}
+                    />
+
+                    <div className="space-y-2">
+                      {categoriasGerenciaveis.length === 0 ? (
+                        <p className="rounded-md border px-3 py-6 text-center text-sm text-muted-foreground">
+                          Nenhuma área encontrada.
+                        </p>
+                      ) : (
+                        categoriasGerenciaveis.map((categoria) => (
+                          <div key={categoria.nome} className="flex items-center justify-between gap-3 rounded-md border px-3 py-3">
+                            <div className="min-w-0 flex-1">
+                              {categoriaEmEdicao === categoria.nome ? (
+                                <Input
+                                  value={categoriaEditada}
+                                  onChange={(e) => setCategoriaEditada(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleAtualizarPreCategoria(categoria.nome);
+                                    }
+                                    if (e.key === 'Escape') {
+                                      e.preventDefault();
+                                      handleCancelarEdicaoPreCategoria();
+                                    }
+                                  }}
+                                  autoFocus
+                                />
+                              ) : (
+                                <>
+                                  <p className="truncate font-medium">{categoria.nome}</p>
+                                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                                    {categoria.saved && <Badge variant="secondary" className="text-[10px]">Cadastrada</Badge>}
+                                    {categoria.inUse && <Badge variant="outline" className="text-[10px]">No acervo</Badge>}
+                                    <Badge variant="outline" className="text-[10px]">{categoria.usageCount} livro(s)</Badge>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+
+                            {categoriaEmEdicao === categoria.nome ? (
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  disabled={categoriaSalvando === categoria.nome}
+                                  onClick={() => handleAtualizarPreCategoria(categoria.nome)}
+                                >
+                                  {categoriaSalvando === categoria.nome ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  disabled={categoriaSalvando === categoria.nome}
+                                  onClick={handleCancelarEdicaoPreCategoria}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleIniciarEdicaoPreCategoria(categoria.nome)}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                {!categoria.saved ? (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleSalvarPreCategoria(categoria.nome)}
+                                  >
+                                    Salvar
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleRemoverPreCategoria(categoria.nome)}
+                                  >
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+          </Tabs>
 
           {sinopseExpandida && (
             <Dialog open={!!sinopseExpandida} onOpenChange={() => setSinopseExpandida(null)}>
