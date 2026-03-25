@@ -7,6 +7,7 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -31,6 +32,7 @@ export default function SugestoesLivros() {
   const [mensagem, setMensagem] = useState('');
   const [selectedArea, setSelectedArea] = useState('');
   const [selectedTurma, setSelectedTurma] = useState('');
+  const [deleteSugestao, setDeleteSugestao] = useState(null);
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -120,9 +122,9 @@ export default function SugestoesLivros() {
   };
 
   const handleDeleteSugestão = async (id) => {
-    if (!window.confirm('Tem certeza que deseja excluir esta sugestão?')) return;
     try {
       await deleteProfessorSugestão(id);
+      setDeleteSugestao(null);
       toast({ title: 'Sucesso', description: 'Sugestão excluida.' });
       await fetchData();
     } catch (error) {
@@ -239,7 +241,7 @@ export default function SugestoesLivros() {
                         <TableCell className="max-w-[200px] truncate">{sugestão.mensagem || '-'}</TableCell>
                         <TableCell>{format(new Date(sugestão.created_at), 'dd/MM/yyyy', { locale: ptBR })}</TableCell>
                         <TableCell><Badge variant={sugestão.lido ? 'default' : 'secondary'}>{sugestão.lido ? 'Lido' : 'Pendente'}</Badge></TableCell>
-                        <TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => handleDeleteSugestão(sugestão.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button></TableCell>
+                        <TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => setDeleteSugestao(sugestão)}><Trash2 className="w-4 h-4 text-destructive" /></Button></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -248,6 +250,22 @@ export default function SugestoesLivros() {
             )}
           </CardContent>
         </Card>
+        <AlertDialog open={Boolean(deleteSugestao)} onOpenChange={(open) => !open && setDeleteSugestao(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir sugestao?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {deleteSugestao ? `A sugestao do livro "${deleteSugestao.livros?.titulo || 'Livro'}" sera removida permanentemente.` : 'Esta sugestao sera removida permanentemente.'}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={() => deleteSugestao?.id && handleDeleteSugestão(deleteSugestao.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </MainLayout>
   );

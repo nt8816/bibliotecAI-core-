@@ -4,6 +4,7 @@ import { Download, FileStack, ImagePlus, Send, Trash2, X } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -99,6 +100,7 @@ export default function ArquivosAula() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [posts, setPosts] = useState([]);
   const [professorFilter, setProfessorFilter] = useState('all');
+  const [deleteFileTarget, setDeleteFileTarget] = useState(null);
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -283,13 +285,13 @@ export default function ArquivosAula() {
     }
   };
 
-  const handleDeleteFile = async (post, arquivoIndex) => {
+  const handleDeleteFile = async () => {
+    const post = deleteFileTarget?.post || null;
+    const arquivoIndex = Number(deleteFileTarget?.arquivoIndex ?? -1);
     if (!isProfessor || !perfilId || !post?.id || post?.autor_id !== perfilId) return;
     const arquivosAtuais = ensureArray(post?.arquivos);
     const arquivo = arquivosAtuais[arquivoIndex];
     if (!arquivo) return;
-    const confirmed = window.confirm(`Deseja excluir o arquivo "${safeText(arquivo?.nome, 'arquivo')}"?`);
-    if (!confirmed) return;
 
     setSaving(true);
     try {
@@ -306,6 +308,7 @@ export default function ArquivosAula() {
       setPosts((prev) =>
         ensureArray(prev).map((item) => (item.id === post.id ? { ...item, arquivos: proximosArquivos } : item)),
       );
+      setDeleteFileTarget(null);
       toast({ title: 'Arquivo excluido!' });
     } catch (error) {
       toast({
@@ -480,7 +483,7 @@ export default function ArquivosAula() {
                                 type="button"
                                 size="sm"
                                 variant="ghost"
-                                onClick={() => handleDeleteFile(post, index)}
+                                onClick={() => setDeleteFileTarget({ post, arquivoIndex: index, arquivoNome: safeText(arquivo?.nome, 'arquivo') })}
                                 disabled={saving}
                               >
                                 <Trash2 className="w-4 h-4 mr-2 text-destructive" />
@@ -497,6 +500,22 @@ export default function ArquivosAula() {
             )}
           </CardContent>
         </Card>
+        <AlertDialog open={Boolean(deleteFileTarget)} onOpenChange={(open) => !open && setDeleteFileTarget(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir arquivo?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {deleteFileTarget ? `O arquivo "${deleteFileTarget.arquivoNome}" sera removido desta publicacao.` : 'Este arquivo sera removido desta publicacao.'}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteFile} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </MainLayout>
   );

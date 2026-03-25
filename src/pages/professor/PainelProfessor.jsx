@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -40,6 +41,7 @@ export default function PainelProfessor() {
   const [editingAtividade, setEditingAtividade] = useState(null);
   const [atividadeForm, setAtividadeForm] = useState(emptyAtividade);
   const [avaliaçãoForm, setAvaliacaoForm] = useState({});
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -126,6 +128,21 @@ export default function PainelProfessor() {
   const entregasPendentes = useMemo(() => entregas.filter((e) => e.status !== 'aprovada').length, [entregas]);
   const pontosDistribuidos = useMemo(() => entregas.filter((e) => e.status === 'aprovada').reduce((acc, e) => acc + Number(e.pontos_ganhos || 0), 0), [entregas]);
 
+  const handleDeleteTarget = async () => {
+    if (!deleteTarget?.id || !deleteTarget?.kind) return;
+    try {
+      if (deleteTarget.kind === 'atividade') {
+        await deleteProfessorAtividade(deleteTarget.id);
+      } else {
+        await deleteProfessorSugestão(deleteTarget.id);
+      }
+      setDeleteTarget(null);
+      await fetchData();
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Falha ao excluir item.' });
+    }
+  };
+
   return (
     <MainLayout title="Painel do Professor">
       <div className="space-y-6">
@@ -158,7 +175,7 @@ export default function PainelProfessor() {
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{atividade.status || 'pendente'}</Badge>
                       <Button variant="ghost" size="icon" onClick={() => { setEditingAtividade(atividade); setAtividadeForm({ titulo: atividade.titulo, descricao: atividade.descricao || '', pontos_extras: Number(atividade.pontos_extras || 0), data_entrega: atividade.data_entrega ? atividade.data_entrega.split('T')[0] : '', livro_id: atividade.livro_id || '', aluno_id: atividade.aluno_id || '', target_mode: 'aluno', turma: atividade.usuarios_biblioteca?.turma || '' }); setIsAtividadeDialogOpen(true); }}><Plus className="w-4 h-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={async () => { if (!window.confirm('Excluir esta atividade?')) return; await deleteProfessorAtividade(atividade.id); await fetchData(); }}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => setDeleteTarget({ kind: 'atividade', id: atividade.id, label: atividade.titulo || 'atividade' })}><Trash2 className="w-4 h-4 text-destructive" /></Button>
                     </div>
                   </div>
                 ))}
@@ -197,7 +214,7 @@ export default function PainelProfessor() {
                 {loading ? <p className="text-sm text-muted-foreground">Carregando...</p> : sugestoes.map((sugestão) => (
                   <div key={sugestão.id} className="rounded-lg border p-4 flex items-start justify-between gap-3">
                     <div><p className="font-medium">{sugestão.livros?.titulo || 'Livro'}</p><p className="text-sm text-muted-foreground">{sugestão.usuarios_biblioteca?.nome || 'Aluno'} • {sugestão.usuarios_biblioteca?.turma || '-'}</p>{sugestão.mensagem && <p className="mt-2 text-sm">{sugestão.mensagem}</p>}</div>
-                    <Button variant="ghost" size="icon" onClick={async () => { if (!window.confirm('Excluir esta sugestão?')) return; await deleteProfessorSugestão(sugestão.id); await fetchData(); }}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setDeleteTarget({ kind: 'sugestao', id: sugestão.id, label: sugestão.livros?.titulo || 'sugestao' })}><Trash2 className="w-4 h-4 text-destructive" /></Button>
                   </div>
                 ))}
                 {!loading && sugestoes.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma sugestão enviada.</p>}
@@ -213,6 +230,22 @@ export default function PainelProfessor() {
         <Dialog open={isAtividadeDialogOpen} onOpenChange={setIsAtividadeDialogOpen}>
           <DialogContent><DialogHeader><DialogTitle>{editingAtividade ? 'Editar atividade' : 'Nova atividade'}</DialogTitle><DialogDescription>Defina a atividade e o destino.</DialogDescription></DialogHeader><div className="space-y-4 py-4"><div className="space-y-2"><Label>Titulo *</Label><Input value={atividadeForm.titulo} onChange={(e) => setAtividadeForm((prev) => ({ ...prev, titulo: e.target.value }))} /></div><div className="space-y-2"><Label>Descricao</Label><Textarea rows={3} value={atividadeForm.descricao} onChange={(e) => setAtividadeForm((prev) => ({ ...prev, descricao: e.target.value }))} /></div><div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Destino</Label><Select value={atividadeForm.target_mode} onValueChange={(value) => setAtividadeForm((prev) => ({ ...prev, target_mode: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="aluno">Aluno</SelectItem><SelectItem value="turma">Turma</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Pontos</Label><Input type="number" min="0" value={atividadeForm.pontos_extras} onChange={(e) => setAtividadeForm((prev) => ({ ...prev, pontos_extras: Number(e.target.value || 0) }))} /></div></div>{atividadeForm.target_mode === 'turma' ? <div className="space-y-2"><Label>Turma</Label><Select value={atividadeForm.turma || ''} onValueChange={(value) => setAtividadeForm((prev) => ({ ...prev, turma: value, aluno_id: '' }))}><SelectTrigger><SelectValue placeholder="Selecione uma turma" /></SelectTrigger><SelectContent>{professorTurmasPermitidas.map((turma) => <SelectItem key={turma} value={turma}>{turma}</SelectItem>)}</SelectContent></Select></div> : <div className="space-y-2"><Label>Aluno</Label><Select value={atividadeForm.aluno_id || ''} onValueChange={(value) => setAtividadeForm((prev) => ({ ...prev, aluno_id: value }))}><SelectTrigger><SelectValue placeholder="Selecione um aluno" /></SelectTrigger><SelectContent>{usuarios.map((u) => <SelectItem key={u.id} value={u.id}>{u.nome} {u.turma ? `(${u.turma})` : ''}</SelectItem>)}</SelectContent></Select></div>}<div className="space-y-2"><Label>Livro</Label><Select value={atividadeForm.livro_id || 'none'} onValueChange={(value) => setAtividadeForm((prev) => ({ ...prev, livro_id: value === 'none' ? '' : value }))}><SelectTrigger><SelectValue placeholder="Selecione um livro" /></SelectTrigger><SelectContent><SelectItem value="none">Sem livro vinculado</SelectItem>{livros.map((l) => <SelectItem key={l.id} value={l.id}>{l.titulo}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Data de entrega</Label><Input type="date" value={atividadeForm.data_entrega} onChange={(e) => setAtividadeForm((prev) => ({ ...prev, data_entrega: e.target.value }))} /></div></div><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setIsAtividadeDialogOpen(false)}>Cancelar</Button><Button onClick={handleSaveAtividade} disabled={saving}>Salvar</Button></div></DialogContent>
         </Dialog>
+        <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{deleteTarget?.kind === 'atividade' ? 'Excluir atividade?' : 'Excluir sugestao?'}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {deleteTarget ? `O item "${deleteTarget.label}" sera removido permanentemente.` : 'Este item sera removido permanentemente.'}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteTarget} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </MainLayout>
   );

@@ -26,6 +26,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -107,6 +108,8 @@ export default function Usuarios() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [batchDeleting, setBatchDeleting] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [deleteSingleUserId, setDeleteSingleUserId] = useState(null);
+  const [deleteBatchOpen, setDeleteBatchOpen] = useState(false);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUsuario, setEditingUsuario] = useState(null);
@@ -378,11 +381,10 @@ export default function Usuarios() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Tem certeza que deseja excluir este usuario?')) return;
-
     setDeletingId(id);
     try {
       await excluirUsuariosDoBanco([id]);
+      setDeleteSingleUserId(null);
       toast({ title: 'Sucesso', description: 'Usuario excluido com sucesso.' });
       trackEvent('usuario_excluido', { id });
       setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
@@ -396,11 +398,11 @@ export default function Usuarios() {
 
   const handleDeleteSelected = async () => {
     if (!selectedIds.length || !isGestor) return;
-    if (!confirm(`Tem certeza que deseja excluir ${selectedIds.length} usuario(s)?`)) return;
 
     setBatchDeleting(true);
     try {
       await excluirUsuariosDoBanco(selectedIds);
+      setDeleteBatchOpen(false);
       toast({ title: 'Sucesso', description: `${selectedIds.length} usuario(s) excluido(s).` });
       trackEvent('usuarios_exclusao_lote', { total: selectedIds.length });
       setSelectedIds([]);
@@ -411,6 +413,8 @@ export default function Usuarios() {
       setBatchDeleting(false);
     }
   };
+
+  const selectedDeleteUser = usuarios.find((usuario) => usuario.id === deleteSingleUserId) || null;
 
   const filtrarUsuariosPorPeriodo = (period) => {
     if (period.mode === 'total') return filteredUsuarios;
@@ -1177,7 +1181,7 @@ export default function Usuarios() {
                     <p className="text-sm font-medium">{selectedIds.length} usuario(s) selecionado(s)</p>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" onClick={() => setSelectedIds([])}>Limpar selecao</Button>
-                      <Button variant="destructive" size="sm" disabled={batchDeleting} onClick={handleDeleteSelected}>
+                      <Button variant="destructive" size="sm" disabled={batchDeleting} onClick={() => setDeleteBatchOpen(true)}>
                         {batchDeleting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Excluindo...</> : <>Excluir selecionados</>}
                       </Button>
                     </div>
@@ -1233,7 +1237,7 @@ export default function Usuarios() {
                               variant="outline"
                               size="sm"
                               className="flex-1"
-                              onClick={() => handleDelete(usuario.id)}
+                              onClick={() => setDeleteSingleUserId(usuario.id)}
                               disabled={deletingId === usuario.id}
                             >
                               {deletingId === usuario.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2 text-destructive" />}
@@ -1314,7 +1318,7 @@ export default function Usuarios() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  onClick={() => handleDelete(usuario.id)}
+                                  onClick={() => setDeleteSingleUserId(usuario.id)}
                                   disabled={deletingId === usuario.id}
                                   aria-label={`Excluir ${usuario.nome}`}
                                 >
@@ -1333,6 +1337,39 @@ export default function Usuarios() {
             )}
           </CardContent>
         </Card>
+        <AlertDialog open={Boolean(deleteSingleUserId)} onOpenChange={(open) => !open && setDeleteSingleUserId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir usuario?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {selectedDeleteUser ? `O usuario "${selectedDeleteUser.nome}" sera removido permanentemente.` : 'Este usuario sera removido permanentemente.'}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={Boolean(deletingId)}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={() => deleteSingleUserId && handleDelete(deleteSingleUserId)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={deleteBatchOpen} onOpenChange={setDeleteBatchOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir usuarios selecionados?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {`Os ${selectedIds.length} usuario(s) selecionado(s) serao removidos permanentemente.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={batchDeleting}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteSelected} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       <ExportPeriodDialog

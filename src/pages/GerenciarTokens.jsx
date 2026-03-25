@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { createInviteToken, deleteInviteToken, fetchInviteTokens } from '@/services/inviteTokensService';
@@ -22,6 +23,7 @@ export default function GerenciarTokens() {
   const [creating, setCreating] = useState(false);
   const [roleDestino, setRoleDestino] = useState('professor');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [deleteTokenId, setDeleteTokenId] = useState(null);
 
   const { toast } = useToast();
 
@@ -104,11 +106,10 @@ export default function GerenciarTokens() {
   };
 
   const apagarToken = async (id) => {
-    if (!confirm('Tem certeza que deseja apagar este token de convite?')) return;
-
     try {
       await deleteInviteToken(id);
       setTokens((prev) => prev.filter((t) => t.id !== id));
+      setDeleteTokenId(null);
       toast({
         title: 'Token apagado',
         description: 'O token de convite foi removido com sucesso.',
@@ -253,7 +254,7 @@ export default function GerenciarTokens() {
                             <Copy className="w-4 h-4" />
                           </Button>
                         )}
-                        <Button variant="ghost" size="sm" onClick={() => apagarToken(token.id)}>
+                        <Button variant="ghost" size="sm" onClick={() => setDeleteTokenId(token.id)}>
                           <Trash2 className="w-4 h-4 text-destructive" />
                         </Button>
                       </TableCell>
@@ -264,6 +265,22 @@ export default function GerenciarTokens() {
             )}
           </CardContent>
         </Card>
+        <AlertDialog open={Boolean(deleteTokenId)} onOpenChange={(open) => !open && setDeleteTokenId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Apagar token de convite?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esse link de convite sera removido permanentemente e nao podera mais ser usado.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={() => deleteTokenId && apagarToken(deleteTokenId)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Apagar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </MainLayout>
   );

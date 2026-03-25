@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
@@ -38,6 +39,7 @@ export default function AtividadesLeitura() {
   const [editingAtividade, setEditingAtividade] = useState(null);
   const [formData, setFormData] = useState(emptyAtividade);
   const [filterStatus, setFilterStatus] = useState('');
+  const [deleteAtividade, setDeleteAtividade] = useState(null);
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -121,9 +123,9 @@ export default function AtividadesLeitura() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Tem certeza que deseja excluir esta atividade?')) return;
     try {
       await deleteProfessorAtividade(id);
+      setDeleteAtividade(null);
       toast({ title: 'Sucesso', description: 'Atividade excluida.' });
       await fetchData();
     } catch (error) {
@@ -245,7 +247,7 @@ export default function AtividadesLeitura() {
                           <div className="flex justify-end gap-1">
                             {atividade.status !== 'concluido' && <Button variant="ghost" size="icon" title="Marcar como concluido" onClick={() => handleUpdateStatus(atividade.id, 'concluido')}><CheckCircle className="w-4 h-4 text-success" /></Button>}
                             <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(atividade)}><Pencil className="w-4 h-4" /></Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(atividade.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => setDeleteAtividade(atividade)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -256,6 +258,22 @@ export default function AtividadesLeitura() {
             )}
           </CardContent>
         </Card>
+        <AlertDialog open={Boolean(deleteAtividade)} onOpenChange={(open) => !open && setDeleteAtividade(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir atividade?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {deleteAtividade ? `A atividade "${deleteAtividade.titulo}" sera removida permanentemente.` : 'Esta atividade sera removida permanentemente.'}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={() => deleteAtividade?.id && handleDelete(deleteAtividade.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </MainLayout>
   );
