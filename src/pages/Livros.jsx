@@ -261,11 +261,11 @@ export default function Livros() {
         nome: categoria,
       });
       fetchLivros();
-    } catch {
+    } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: 'N??o foi poss??vel salvar a pr??-categoria.',
+        description: error?.message || 'Nao foi possivel salvar a area do acervo.',
       });
       fetchLivros();
     }
@@ -285,11 +285,11 @@ export default function Livros() {
         nome: categoria,
       });
       fetchLivros();
-    } catch {
+    } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: 'Não foi possível salvar a pré-categoria.',
+        description: error?.message || 'Nao foi possivel salvar a area do acervo.',
       });
       fetchLivros();
     }
