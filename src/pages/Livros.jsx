@@ -115,19 +115,62 @@ async function buscarSinopseOpenLibrary(titulo, autor) {
   }
 }
 
+function normalizeResumoText(rawValue) {
+  const raw = String(rawValue || '').trim();
+  if (!raw) return '';
+
+  let text = raw
+    .replace(/^\s*\{\s*"?texto"?\s*:\s*/i, '')
+    .replace(/^\s*\{\s*"?resumo"?\s*:\s*/i, '')
+    .replace(/\}\s*$/, '')
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/\\"/g, '"')
+    .replace(/\\n/g, '\n')
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  const bulletized = text
+    .replace(/(\d+\.)\s*\*\*(.*?)\*\*\s*:\s*/g, '\n$1 $2\n')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\s*\n\s*/g, '\n')
+    .trim();
+
+  return bulletized;
+}
+
 function extractResumoTextoFromIAResponse(data) {
   const direct = String(data?.data?.texto || data?.data?.resumo || '').trim();
-  if (direct) return direct;
+  if (direct) return normalizeResumoText(direct);
 
   const raw = String(data?.text || '').trim();
   if (!raw) return '';
 
   try {
     const parsed = JSON.parse(raw);
-    return String(parsed?.texto || parsed?.resumo || '').trim();
+    return normalizeResumoText(String(parsed?.texto || parsed?.resumo || '').trim());
   } catch {
-    return raw;
+    return normalizeResumoText(raw);
   }
+}
+
+function splitResumoSections(text) {
+  return String(text || '')
+    .split(/\n{2,}/)
+    .map((section) => section.trim())
+    .filter(Boolean);
+}
+
+function isResumoListSection(section) {
+  const lines = section.split('\n').map((line) => line.trim()).filter(Boolean);
+  return lines.length > 1 && lines.every((line) => /^\d+\.\s|^[-•]\s/.test(line));
+}
+
+function formatResumoListItem(line) {
+  return line
+    .replace(/^\d+\.\s*/, '')
+    .replace(/^[-•]\s*/, '')
+    .trim();
 }
 
 export default function Livros() {
@@ -1798,13 +1841,55 @@ export default function Livros() {
           >
             <DialogContent className="max-w-2xl">
               <DialogHeader>
-                <DialogTitle>{resumoRapidoData?.titulo || 'Resumo rápido'}</DialogTitle>
-                {resumoRapidoData?.autor && (
-                  <DialogDescription>{resumoRapidoData.autor}</DialogDescription>
-                )}
+                <div className="space-y-3">
+                  <div className="inline-flex w-fit items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Resumo de leitura com IA
+                  </div>
+                  <div>
+                    <DialogTitle>{resumoRapidoData?.titulo || 'Resumo rapido'}</DialogTitle>
+                    {resumoRapidoData?.autor && (
+                      <DialogDescription className="mt-1">{resumoRapidoData.autor}</DialogDescription>
+                    )}
+                  </div>
+                </div>
               </DialogHeader>
-              <div className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed">
-                {resumoRapidoData?.texto || 'Resumo indisponível.'}
+              <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+                {resumoRapidoData?.texto ? (
+                  <>
+                    <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/10 via-background to-background p-4">
+                      <p className="text-sm leading-7 text-foreground/90">
+                        Leia com calma, use este texto como apoio e adapte o conteudo ao contexto da turma quando necessario.
+                      </p>
+                    </div>
+                    <div className="space-y-3">
+                      {splitResumoSections(resumoRapidoData.texto).map((section, index) => (
+                        isResumoListSection(section) ? (
+                          <div key={`section-${index}`} className="rounded-2xl border bg-background p-4 shadow-sm">
+                            <ol className="space-y-3">
+                              {section.split('\n').map((line) => line.trim()).filter(Boolean).map((line, itemIndex) => (
+                                <li key={`item-${itemIndex}`} className="flex items-start gap-3 text-sm leading-6 text-foreground/90">
+                                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                                    {itemIndex + 1}
+                                  </span>
+                                  <span>{formatResumoListItem(line)}</span>
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
+                        ) : (
+                          <div key={`section-${index}`} className="rounded-2xl border bg-background p-4 shadow-sm">
+                            <p className="whitespace-pre-wrap text-sm leading-7 text-foreground/90">{section}</p>
+                          </div>
+                        )
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-2xl border bg-background p-4 text-sm text-muted-foreground">
+                    Resumo indisponivel.
+                  </div>
+                )}
               </div>
             </DialogContent>
           </Dialog>
