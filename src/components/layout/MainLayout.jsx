@@ -24,10 +24,13 @@ export function MainLayout({ children, title }) {
         <AppSidebar />
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 flex min-h-14 items-center justify-between gap-3 border-b bg-card/95 px-3 py-2 backdrop-blur sm:h-16 sm:min-h-16 sm:gap-4 sm:px-4 sm:py-0">
-            <div className="flex min-w-0 items-center gap-3 pt-1 sm:gap-4 sm:pt-0">
+          <header
+            className="sticky top-0 z-30 flex min-h-14 items-center justify-between gap-3 border-b bg-card/95 px-3 py-2 backdrop-blur sm:h-16 sm:min-h-16 sm:gap-4 sm:px-4 sm:py-0"
+            style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 0.85rem)' }}
+          >
+            <div className="flex min-w-0 items-center gap-3 pt-2 sm:gap-4 sm:pt-0">
               <SidebarTrigger
-                className="mt-2 h-12 w-12 shrink-0 rounded-2xl border border-border/70 bg-background/90 text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground sm:mt-0 sm:h-9 sm:w-9 sm:rounded-xl sm:border-0 sm:bg-transparent sm:shadow-none"
+                className="mt-3 h-14 w-14 shrink-0 rounded-2xl border border-border/70 bg-background/90 text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground sm:mt-0 sm:h-9 sm:w-9 sm:rounded-xl sm:border-0 sm:bg-transparent sm:shadow-none"
                 aria-label="Abrir ou fechar menu lateral"
               />
               <h1 className="truncate text-base font-bold text-foreground sm:text-xl">{title}</h1>
