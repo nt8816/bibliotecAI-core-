@@ -162,10 +162,10 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar className="border-r-0" collapsible="icon">
-      <SidebarHeader className={`${collapsed ? 'p-2' : 'p-4'} border-b border-sidebar-border`}>
+    <Sidebar className="border-r-0 bg-transparent" collapsible="icon">
+      <SidebarHeader className={`${collapsed ? 'p-2' : 'p-4'} border-b border-sidebar-border/80 bg-sidebar/95 backdrop-blur`}>
         <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
-          <div className={`${collapsed ? 'w-8 h-8' : 'w-10 h-10'} rounded-xl bg-sidebar-accent/80 ring-1 ring-sidebar-border flex items-center justify-center overflow-hidden`}>
+          <div className={`${collapsed ? 'w-8 h-8' : 'w-11 h-11'} rounded-2xl bg-gradient-to-br from-sidebar-accent to-sidebar-primary/40 ring-1 ring-sidebar-border shadow-[0_12px_24px_rgba(0,0,0,0.18)] flex items-center justify-center overflow-hidden`}>
             <img src="/bibliotecai-symbol.svg" alt="BibliotecAI" className={`${collapsed ? 'w-6 h-6' : 'w-7 h-7'}`} />
           </div>
           {!collapsed && (
@@ -177,7 +177,7 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
 
-      <SidebarContent className={collapsed ? 'p-1' : 'p-2'}>
+      <SidebarContent className={`${collapsed ? 'p-1' : 'p-2'} bg-sidebar/95 backdrop-blur`}>
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -188,10 +188,10 @@ export function AppSidebar() {
                       to={item.url}
                       end
                       onClick={handleMenuItemClick}
-                      className={`flex min-w-0 items-center ${collapsed ? 'mx-auto size-8 justify-center rounded-lg' : 'h-10 w-full gap-3 rounded-lg px-2.5'}`}
-                      activeClassName="rounded-md bg-sidebar-accent text-sidebar-accent-foreground"
+                      className={`flex min-w-0 items-center transition-all duration-200 ${collapsed ? 'mx-auto size-9 justify-center rounded-xl' : 'h-11 w-full gap-3 rounded-2xl px-3'} hover:translate-x-1`}
+                      activeClassName="rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_12px_24px_rgba(0,0,0,0.16)]"
                     >
-                      <span className={`${collapsed ? '' : 'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-sidebar-accent/60 ring-1 ring-sidebar-border'}`}>
+                      <span className={`${collapsed ? '' : 'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-sidebar-accent/60 ring-1 ring-sidebar-border shadow-sm'}`}>
                         <item.icon className="w-4 h-4" />
                       </span>
                       {!collapsed && (
@@ -224,10 +224,10 @@ export function AppSidebar() {
                         to={item.url}
                         end
                         onClick={handleMenuItemClick}
-                        className={`flex min-w-0 items-center ${collapsed ? 'mx-auto size-8 justify-center rounded-lg' : 'h-10 w-full gap-3 rounded-lg px-2.5'}`}
-                        activeClassName="rounded-md bg-sidebar-accent text-sidebar-accent-foreground"
+                        className={`flex min-w-0 items-center transition-all duration-200 ${collapsed ? 'mx-auto size-9 justify-center rounded-xl' : 'h-11 w-full gap-3 rounded-2xl px-3'} hover:translate-x-1`}
+                        activeClassName="rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_12px_24px_rgba(0,0,0,0.16)]"
                       >
-                        <span className={`${collapsed ? '' : 'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-sidebar-accent/60 ring-1 ring-sidebar-border'}`}>
+                        <span className={`${collapsed ? '' : 'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-sidebar-accent/60 ring-1 ring-sidebar-border shadow-sm'}`}>
                           <item.icon className="w-4 h-4" />
                         </span>
                         {!collapsed && <span className="font-medium text-[15px] leading-none">{item.title}</span>}
@@ -241,7 +241,7 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      <SidebarFooter className={`${collapsed ? 'p-2' : 'p-4'} border-t border-sidebar-border`}>
+      <SidebarFooter className={`${collapsed ? 'p-2' : 'p-4'} border-t border-sidebar-border/80 bg-sidebar/95 backdrop-blur`}>
         {!collapsed && user && (
           <div className="mb-3 px-2 space-y-2">
             <Badge className={getRoleBadge().className}>{getRoleBadge().label}</Badge>

@@ -1,13 +1,13 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import * as React from "react";
 import { cn } from "@/lib/utils";
-const Card = React.forwardRef(({ className, ...props }, ref) => (_jsx("div", { ref: ref, className: cn("rounded-lg border bg-card text-card-foreground shadow-sm", className), ...props })));
+const Card = React.forwardRef(({ className, ...props }, ref) => (_jsx("div", { ref: ref, className: cn("rounded-3xl border border-border/70 bg-card/92 text-card-foreground shadow-[0_10px_30px_hsl(var(--primary)/0.08)] backdrop-blur-sm transition-all duration-300 hover:shadow-[0_18px_44px_hsl(var(--primary)/0.14)]", className), ...props })));
 Card.displayName = "Card";
 const CardHeader = React.forwardRef(({ className, ...props }, ref) => (_jsx("div", { ref: ref, className: cn("flex flex-col space-y-1.5 p-6", className), ...props })));
 CardHeader.displayName = "CardHeader";
-const CardTitle = React.forwardRef(({ className, ...props }, ref) => (_jsx("h3", { ref: ref, className: cn("text-2xl font-semibold leading-none tracking-tight", className), ...props })));
+const CardTitle = React.forwardRef(({ className, ...props }, ref) => (_jsx("h3", { ref: ref, className: cn("text-2xl font-semibold leading-none tracking-tight text-foreground", className), ...props })));
 CardTitle.displayName = "CardTitle";
-const CardDescription = React.forwardRef(({ className, ...props }, ref) => (_jsx("p", { ref: ref, className: cn("text-sm text-muted-foreground", className), ...props })));
+const CardDescription = React.forwardRef(({ className, ...props }, ref) => (_jsx("p", { ref: ref, className: cn("text-sm leading-6 text-muted-foreground", className), ...props })));
 CardDescription.displayName = "CardDescription";
 const CardContent = React.forwardRef(({ className, ...props }, ref) => _jsx("div", { ref: ref, className: cn("p-6 pt-0", className), ...props }));
 CardContent.displayName = "CardContent";
