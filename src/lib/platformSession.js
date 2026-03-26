@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+
 const PLATFORM_SESSION_STORAGE_KEY = 'bibliotecai.platform.session.v1';
 const PLATFORM_SESSION_EVENT = 'bibliotecai:platform-session-changed';
 const PLATFORM_API_BASE_URL = String(import.meta.env.VITE_PLATFORM_API_BASE_URL || '').trim().replace(/\/+$/, '');
@@ -16,6 +18,19 @@ function getSessionStorage() {
 function getLegacyStorage() {
   if (!isBrowser()) return null;
   return window.localStorage;
+}
+
+function isNativeMobileApp() {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+}
+
+function getPreferredStorage() {
+  if (!isBrowser()) return null;
+  return isNativeMobileApp() ? window.localStorage : window.sessionStorage;
 }
 
 function buildPlatformApiUrl(routePath) {
@@ -57,23 +72,32 @@ function notifyPlatformSessionChanged(session) {
 
 export function getPlatformSession() {
   if (!isBrowser()) return null;
+  const preferredStorageRef = getPreferredStorage();
   const sessionStorageRef = getSessionStorage();
   const legacyStorageRef = getLegacyStorage();
 
   const currentSession = normalizeSessionPayload(parseJsonSafely(
-    sessionStorageRef?.getItem(PLATFORM_SESSION_STORAGE_KEY),
+    preferredStorageRef?.getItem(PLATFORM_SESSION_STORAGE_KEY),
   ));
 
   if (currentSession) return currentSession;
 
-  const legacySession = normalizeSessionPayload(parseJsonSafely(
-    legacyStorageRef?.getItem(PLATFORM_SESSION_STORAGE_KEY),
-  ));
+  const fallbackStorages = isNativeMobileApp()
+    ? [sessionStorageRef]
+    : [legacyStorageRef];
+
+  const legacySession = fallbackStorages
+    .map((storageRef) => normalizeSessionPayload(parseJsonSafely(storageRef?.getItem(PLATFORM_SESSION_STORAGE_KEY))))
+    .find(Boolean);
 
   if (!legacySession) return null;
 
-  sessionStorageRef?.setItem(PLATFORM_SESSION_STORAGE_KEY, JSON.stringify(legacySession));
-  legacyStorageRef?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
+  preferredStorageRef?.setItem(PLATFORM_SESSION_STORAGE_KEY, JSON.stringify(legacySession));
+  fallbackStorages.forEach((storageRef) => {
+    if (storageRef !== preferredStorageRef) {
+      storageRef?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
+    }
+  });
   return legacySession;
 }
 
@@ -81,24 +105,32 @@ export function setPlatformSession(session) {
   const normalized = normalizeSessionPayload(session);
   if (!isBrowser()) return normalized;
 
+  const preferredStorageRef = getPreferredStorage();
   const sessionStorageRef = getSessionStorage();
   const legacyStorageRef = getLegacyStorage();
 
   if (!normalized) {
+    preferredStorageRef?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
     sessionStorageRef?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
     legacyStorageRef?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
     notifyPlatformSessionChanged(null);
     return null;
   }
 
-  sessionStorageRef?.setItem(PLATFORM_SESSION_STORAGE_KEY, JSON.stringify(normalized));
-  legacyStorageRef?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
+  preferredStorageRef?.setItem(PLATFORM_SESSION_STORAGE_KEY, JSON.stringify(normalized));
+  if (preferredStorageRef !== sessionStorageRef) {
+    sessionStorageRef?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
+  }
+  if (preferredStorageRef !== legacyStorageRef) {
+    legacyStorageRef?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
+  }
   notifyPlatformSessionChanged(normalized);
   return normalized;
 }
 
 export function clearPlatformSession() {
   if (!isBrowser()) return;
+  getPreferredStorage()?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
   getSessionStorage()?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
   getLegacyStorage()?.removeItem(PLATFORM_SESSION_STORAGE_KEY);
   notifyPlatformSessionChanged(null);
