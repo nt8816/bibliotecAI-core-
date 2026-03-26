@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/hooks/useAuth';
-import { useToast } from '@/hooks/use-toast';
 import { getSupabaseRealtimeClient } from '@/integrations/supabase/client';
-import { getBrowserNotificationPermission, showBrowserNotification } from '@/lib/browserNotifications';
 import { fetchSystemNotificationsData, markSystemNotificationAsRead } from '@/services/notificationsService';
 
 const EMPTY_COUNTS = {
@@ -17,26 +15,6 @@ const EMPTY_COUNTS = {
 
 function ensureArray(value) {
   return Array.isArray(value) ? value : [];
-}
-
-function shouldShowBrowserNotification(item) {
-  return item?.tipo === 'solicitacao_chat' || item?.tipo === 'comunicado';
-}
-
-function buildBrowserNotificationPayload(item) {
-  if (item?.tipo === 'comunicado') {
-    return {
-      title: item.titulo || 'Novo comunicado',
-      body: item.descricao || 'Confira o novo comunicado publicado para a sua turma.',
-      path: item.path || '/aluno/comunidade',
-    };
-  }
-
-  return {
-    title: item?.titulo || 'Nova mensagem',
-    body: item?.descricao || 'Voce recebeu uma nova mensagem.',
-    path: item?.path || '/emprestimos?tab=solicitacoes',
-  };
 }
 
 function getSuperAdminReadStorageKeys(userId) {
@@ -65,7 +43,6 @@ function persistStoredIds(storageKey, ids) {
 
 export function useSystemNotifications() {
   const { isGestor, isBibliotecaria, isAluno, isSuperAdmin, user } = useAuth();
-  const { toast } = useToast();
   const [counts, setCounts] = useState(EMPTY_COUNTS);
   const [notifications, setNotifications] = useState([]);
   const [profileId, setProfileId] = useState(null);
@@ -228,30 +205,8 @@ export function useSystemNotifications() {
       return;
     }
 
-    const freshNotifications = ensureArray(notifications)
-      .filter((item) => item?.id && !seenNotificationIdsRef.current.has(item.id))
-      .filter(shouldShowBrowserNotification);
-
-    freshNotifications.forEach((item) => {
-      const payload = buildBrowserNotificationPayload(item);
-
-      toast({
-        title: payload.title,
-        description: payload.body,
-      });
-
-      if (getBrowserNotificationPermission() === 'granted') {
-        showBrowserNotification({
-          title: payload.title,
-          body: payload.body,
-          tag: item.id,
-          path: payload.path,
-        });
-      }
-    });
-
     seenNotificationIdsRef.current = nextIds;
-  }, [notifications, toast]);
+  }, [notifications]);
 
   const markNotificationRead = useCallback(async (notificationId) => {
     if (!notificationId) return;

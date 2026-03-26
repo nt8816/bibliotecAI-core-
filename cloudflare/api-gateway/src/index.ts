@@ -585,14 +585,14 @@ async function fetchActivePushRowsByProfileIds(env: Env, profileIds: string[]) {
   return responses.flatMap((payload) => Array.isArray(payload) ? payload : []);
 }
 
-async function fetchProfileIdsForSchoolAudience(
+async function fetchSchoolAudienceProfiles(
   env: Env,
   escolaId: string,
   turmaPublico?: string | null,
   excludeProfileId?: string | null,
 ) {
   const params = new URLSearchParams({
-    select: 'id',
+    select: 'id,nome',
     escola_id: `eq.${escolaId}`,
   });
   if (turmaPublico) {
@@ -600,10 +600,80 @@ async function fetchProfileIdsForSchoolAudience(
   }
 
   const payload = await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${params.toString()}`);
+  const excludedId = String(excludeProfileId || '').trim();
   const rows = Array.isArray(payload) ? payload : [];
   return rows
-    .map((item) => String(item?.id || '').trim())
-    .filter((id) => id && id !== String(excludeProfileId || '').trim());
+    .map((item) => ({
+      id: String(item?.id || '').trim(),
+      nome: String(item?.nome || '').trim(),
+    }))
+    .filter((item) => item.id && item.id !== excludedId);
+}
+
+async function fetchProfileDisplayName(env: Env, profileId?: string | null) {
+  const normalizedId = String(profileId || '').trim();
+  if (!normalizedId) return '';
+
+  const [profile] = await supabaseAdminRequest(
+    env,
+    `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+      select: 'nome',
+      id: `eq.${normalizedId}`,
+      limit: '1',
+    }).toString()}`,
+  ) as Array<Record<string, unknown>>;
+
+  return String(profile?.nome || '').trim();
+}
+
+async function fetchSchoolDisplayName(env: Env, escolaId?: string | null) {
+  const normalizedId = String(escolaId || '').trim();
+  if (!normalizedId) return '';
+
+  const [school] = await supabaseAdminRequest(
+    env,
+    `/rest/v1/escolas?${new URLSearchParams({
+      select: 'nome',
+      id: `eq.${normalizedId}`,
+      limit: '1',
+    }).toString()}`,
+  ) as Array<Record<string, unknown>>;
+
+  return String(school?.nome || '').trim();
+}
+
+function buildComunicadoPushCopy({
+  recipientName,
+  authorName,
+  schoolName,
+  turmaPublico,
+}: {
+  recipientName?: string | null;
+  authorName?: string | null;
+  schoolName?: string | null;
+  turmaPublico?: string | null;
+}) {
+  const normalizedRecipient = String(recipientName || '').trim();
+  const normalizedAuthor = String(authorName || '').trim();
+  const normalizedSchool = String(schoolName || '').trim();
+  const isTurma = Boolean(String(turmaPublico || '').trim());
+
+  const title = isTurma ? 'Comunicado da sua sala' : 'Comunicado da escola';
+  const greeting = normalizedRecipient ? `${normalizedRecipient}, ` : '';
+  const sender = normalizedAuthor || (isTurma ? 'Sua escola' : 'A escola');
+
+  if (isTurma) {
+    return {
+      title,
+      body: `${greeting}${sender} enviou um comunicado para a sua sala. Va verificar!`,
+    };
+  }
+
+  const destination = normalizedSchool || 'a escola';
+  return {
+    title,
+    body: `${greeting}${sender} enviou um comunicado para ${destination}. Va verificar!`,
+  };
 }
 
 async function markPushTokensInactive(env: Env, tokenIds: string[]) {
@@ -622,8 +692,9 @@ async function markPushTokensInactive(env: Env, tokenIds: string[]) {
   )));
 }
 
-async function sendFirebasePushToTokens(
+async function sendFirebasePushWithAccessToken(
   env: Env,
+  accessToken: string,
   rows: Array<Record<string, unknown>>,
   {
     title,
@@ -640,7 +711,7 @@ async function sendFirebasePushToTokens(
   },
 ) {
   const config = getFirebaseConfig(env);
-  if (!config) return;
+  if (!config || !accessToken) return;
 
   const filteredRows = rows.filter((row) => {
     const token = String(row?.token || '').trim();
@@ -648,8 +719,6 @@ async function sendFirebasePushToTokens(
     return token && (channels.length === 0 || channels.includes(channelId));
   });
   if (filteredRows.length === 0) return;
-
-  const accessToken = await getFirebaseAccessToken(env);
   const inactiveTokenIds: string[] = [];
 
   await Promise.all(filteredRows.map(async (row) => {
@@ -705,6 +774,24 @@ async function sendFirebasePushToTokens(
   }
 }
 
+async function sendFirebasePushToTokens(
+  env: Env,
+  rows: Array<Record<string, unknown>>,
+  notification: {
+    title: string;
+    body: string;
+    channelId: 'comunicados' | 'mensagens' | 'atividades';
+    path: string;
+    extraData?: Record<string, string>;
+  },
+) {
+  const config = getFirebaseConfig(env);
+  if (!config) return;
+
+  const accessToken = await getFirebaseAccessToken(env);
+  await sendFirebasePushWithAccessToken(env, accessToken, rows, notification);
+}
+
 async function notifyComunicadoAudience(
   env: Env,
   {
@@ -721,15 +808,50 @@ async function notifyComunicadoAudience(
     conteudo: string;
   },
 ) {
-  const profileIds = await fetchProfileIdsForSchoolAudience(env, escolaId, turmaPublico, autorProfileId);
-  const pushRows = await fetchActivePushRowsByProfileIds(env, profileIds);
-  await sendFirebasePushToTokens(env, pushRows, {
-    title: titulo || 'Novo comunicado',
-    body: conteudo || 'Um novo comunicado foi publicado.',
-    channelId: 'comunicados',
-    path: '/aluno/comunidade',
-    extraData: turmaPublico ? { turma_publico: turmaPublico } : undefined,
+  const audienceProfiles = await fetchSchoolAudienceProfiles(env, escolaId, turmaPublico, autorProfileId);
+  const profileIds = audienceProfiles.map((item) => item.id);
+  if (profileIds.length === 0) return;
+
+  const [pushRows, authorName, schoolName] = await Promise.all([
+    fetchActivePushRowsByProfileIds(env, profileIds),
+    fetchProfileDisplayName(env, autorProfileId),
+    fetchSchoolDisplayName(env, escolaId),
+  ]);
+
+  if (!Array.isArray(pushRows) || pushRows.length === 0) return;
+
+  const pushRowsByProfileId = new Map<string, Array<Record<string, unknown>>>();
+  pushRows.forEach((row) => {
+    const profileId = String(row?.profile_id || '').trim();
+    if (!profileId) return;
+    const current = pushRowsByProfileId.get(profileId) || [];
+    current.push(row);
+    pushRowsByProfileId.set(profileId, current);
   });
+
+  const config = getFirebaseConfig(env);
+  if (!config) return;
+  const accessToken = await getFirebaseAccessToken(env);
+
+  await Promise.all(audienceProfiles.map(async (recipient) => {
+    const rows = pushRowsByProfileId.get(recipient.id) || [];
+    if (rows.length === 0) return;
+
+    const copy = buildComunicadoPushCopy({
+      recipientName: recipient.nome,
+      authorName,
+      schoolName,
+      turmaPublico,
+    });
+
+    await sendFirebasePushWithAccessToken(env, accessToken, rows, {
+      title: copy.title,
+      body: copy.body,
+      channelId: 'comunicados',
+      path: '/aluno/comunidade',
+      extraData: turmaPublico ? { turma_publico: turmaPublico } : undefined,
+    });
+  }));
 }
 
 async function notifyProfileIds(
