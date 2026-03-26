@@ -19,6 +19,9 @@ export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_PUBLISHABLE_KEY?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
+  FIREBASE_PROJECT_ID?: string;
+  FIREBASE_CLIENT_EMAIL?: string;
+  FIREBASE_PRIVATE_KEY?: string;
   SECURITY_EMAIL_FROM?: string;
   SECURITY_EMAIL_FROM_NAME?: string;
   SECURITY_EMAIL_REPLY_TO?: string;
@@ -32,6 +35,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, content-type, x-user-access-token',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
 };
+
+let firebaseAccessTokenCache: { token: string; expiresAt: number } | null = null;
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -442,6 +447,304 @@ async function upsertPushDeviceToken(
       Prefer: 'return=minimal,resolution=merge-duplicates',
     },
   });
+}
+
+function getFirebaseConfig(env: Env) {
+  const projectId = String(env.FIREBASE_PROJECT_ID || '').trim();
+  const clientEmail = String(env.FIREBASE_CLIENT_EMAIL || '').trim();
+  const privateKey = String(env.FIREBASE_PRIVATE_KEY || '')
+    .replace(/\\n/g, '\n')
+    .trim();
+
+  if (!projectId || !clientEmail || !privateKey) {
+    return null;
+  }
+
+  return {
+    projectId,
+    clientEmail,
+    privateKey,
+    tokenUri: 'https://oauth2.googleapis.com/token',
+  };
+}
+
+function pemToArrayBuffer(pem: string) {
+  const normalized = String(pem || '')
+    .replace(/-----BEGIN PRIVATE KEY-----/g, '')
+    .replace(/-----END PRIVATE KEY-----/g, '')
+    .replace(/\s+/g, '');
+
+  const binary = atob(normalized);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes.buffer;
+}
+
+async function signFirebaseJwt(privateKeyPem: string, header: Record<string, unknown>, payload: Record<string, unknown>) {
+  const encodedHeader = base64UrlEncode(new TextEncoder().encode(JSON.stringify(header)));
+  const encodedPayload = base64UrlEncode(new TextEncoder().encode(JSON.stringify(payload)));
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+  const cryptoKey = await crypto.subtle.importKey(
+    'pkcs8',
+    pemToArrayBuffer(privateKeyPem),
+    {
+      name: 'RSASSA-PKCS1-v1_5',
+      hash: 'SHA-256',
+    },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign(
+    { name: 'RSASSA-PKCS1-v1_5' },
+    cryptoKey,
+    new TextEncoder().encode(signingInput),
+  );
+  return `${signingInput}.${base64UrlEncode(signature)}`;
+}
+
+async function getFirebaseAccessToken(env: Env) {
+  const config = getFirebaseConfig(env);
+  if (!config) {
+    throw new Error('Firebase push nao configurado no Worker.');
+  }
+
+  if (firebaseAccessTokenCache && firebaseAccessTokenCache.expiresAt > Date.now() + 60_000) {
+    return firebaseAccessTokenCache.token;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const jwt = await signFirebaseJwt(
+    config.privateKey,
+    { alg: 'RS256', typ: 'JWT' },
+    {
+      iss: config.clientEmail,
+      sub: config.clientEmail,
+      aud: config.tokenUri,
+      iat: now,
+      exp: now + 3600,
+      scope: 'https://www.googleapis.com/auth/firebase.messaging',
+    },
+  );
+
+  const response = await fetch(config.tokenUri, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: jwt,
+    }).toString(),
+  });
+
+  const payload = await parseResponse(response);
+  if (!response.ok) {
+    throw new Error(
+      (typeof payload === 'string' && payload.trim()) ||
+      payload?.error_description ||
+      payload?.error ||
+      `Falha ao autenticar no Firebase (HTTP ${response.status}).`,
+    );
+  }
+
+  const token = String(payload?.access_token || '').trim();
+  const expiresIn = Math.max(300, Number(payload?.expires_in || 3600));
+  if (!token) {
+    throw new Error('Firebase nao retornou access token.');
+  }
+
+  firebaseAccessTokenCache = {
+    token,
+    expiresAt: Date.now() + expiresIn * 1000,
+  };
+  return token;
+}
+
+function chunkValues<T>(items: T[], size = 100) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function fetchActivePushRowsByProfileIds(env: Env, profileIds: string[]) {
+  const uniqueIds = [...new Set(profileIds.map((item) => String(item || '').trim()).filter(Boolean))];
+  if (uniqueIds.length === 0) return [] as Array<Record<string, unknown>>;
+
+  const chunks = chunkValues(uniqueIds, 100);
+  const responses = await Promise.all(chunks.map((chunk) => supabaseAdminRequest(
+    env,
+    `/rest/v1/push_device_tokens?${new URLSearchParams({
+      select: 'id,token,channels,profile_id',
+      active: 'eq.true',
+      profile_id: `in.(${chunk.join(',')})`,
+    }).toString()}`,
+  )));
+
+  return responses.flatMap((payload) => Array.isArray(payload) ? payload : []);
+}
+
+async function fetchProfileIdsForSchoolAudience(
+  env: Env,
+  escolaId: string,
+  turmaPublico?: string | null,
+  excludeProfileId?: string | null,
+) {
+  const params = new URLSearchParams({
+    select: 'id',
+    escola_id: `eq.${escolaId}`,
+  });
+  if (turmaPublico) {
+    params.set('turma', `eq.${turmaPublico}`);
+  }
+
+  const payload = await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${params.toString()}`);
+  const rows = Array.isArray(payload) ? payload : [];
+  return rows
+    .map((item) => String(item?.id || '').trim())
+    .filter((id) => id && id !== String(excludeProfileId || '').trim());
+}
+
+async function markPushTokensInactive(env: Env, tokenIds: string[]) {
+  const uniqueIds = [...new Set(tokenIds.map((item) => String(item || '').trim()).filter(Boolean))];
+  if (uniqueIds.length === 0) return;
+
+  const chunks = chunkValues(uniqueIds, 100);
+  await Promise.all(chunks.map((chunk) => supabaseAdminRequest(
+    env,
+    `/rest/v1/push_device_tokens?${new URLSearchParams({ id: `in.(${chunk.join(',')})` }).toString()}`,
+    {
+      method: 'PATCH',
+      body: { active: false },
+      headers: { Prefer: 'return=minimal' },
+    },
+  )));
+}
+
+async function sendFirebasePushToTokens(
+  env: Env,
+  rows: Array<Record<string, unknown>>,
+  {
+    title,
+    body,
+    channelId,
+    path,
+    extraData,
+  }: {
+    title: string;
+    body: string;
+    channelId: 'comunicados' | 'mensagens' | 'atividades';
+    path: string;
+    extraData?: Record<string, string>;
+  },
+) {
+  const config = getFirebaseConfig(env);
+  if (!config) return;
+
+  const filteredRows = rows.filter((row) => {
+    const token = String(row?.token || '').trim();
+    const channels = Array.isArray(row?.channels) ? row.channels.map((item) => String(item || '').trim().toLowerCase()) : [];
+    return token && (channels.length === 0 || channels.includes(channelId));
+  });
+  if (filteredRows.length === 0) return;
+
+  const accessToken = await getFirebaseAccessToken(env);
+  const inactiveTokenIds: string[] = [];
+
+  await Promise.all(filteredRows.map(async (row) => {
+    const token = String(row?.token || '').trim();
+    const rowId = String(row?.id || '').trim();
+    if (!token) return;
+
+    const response = await fetch(`https://fcm.googleapis.com/v1/projects/${config.projectId}/messages:send`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: {
+          token,
+          notification: {
+            title,
+            body,
+          },
+          data: {
+            category: channelId,
+            channel: channelId,
+            path,
+            ...(extraData || {}),
+          },
+          android: {
+            priority: 'high',
+            notification: {
+              channel_id: channelId,
+              click_action: 'FCM_PLUGIN_ACTIVITY',
+              sound: 'default',
+            },
+          },
+        },
+      }),
+    });
+
+    if (response.ok) return;
+
+    const payload = await parseResponse(response);
+    const errorCode = String(payload?.error?.details?.[0]?.errorCode || payload?.error?.status || '').trim().toUpperCase();
+    if (rowId && (errorCode.includes('UNREGISTERED') || errorCode.includes('INVALID_ARGUMENT') || response.status === 404)) {
+      inactiveTokenIds.push(rowId);
+      return;
+    }
+
+    console.error('Falha ao enviar push Firebase:', payload);
+  }));
+
+  if (inactiveTokenIds.length > 0) {
+    await markPushTokensInactive(env, inactiveTokenIds);
+  }
+}
+
+async function notifyComunicadoAudience(
+  env: Env,
+  {
+    escolaId,
+    autorProfileId,
+    turmaPublico,
+    titulo,
+    conteudo,
+  }: {
+    escolaId: string;
+    autorProfileId?: string | null;
+    turmaPublico?: string | null;
+    titulo: string;
+    conteudo: string;
+  },
+) {
+  const profileIds = await fetchProfileIdsForSchoolAudience(env, escolaId, turmaPublico, autorProfileId);
+  const pushRows = await fetchActivePushRowsByProfileIds(env, profileIds);
+  await sendFirebasePushToTokens(env, pushRows, {
+    title: titulo || 'Novo comunicado',
+    body: conteudo || 'Um novo comunicado foi publicado.',
+    channelId: 'comunicados',
+    path: '/aluno/comunidade',
+    extraData: turmaPublico ? { turma_publico: turmaPublico } : undefined,
+  });
+}
+
+async function notifyProfileIds(
+  env: Env,
+  profileIds: string[],
+  notification: {
+    title: string;
+    body: string;
+    channelId: 'comunicados' | 'mensagens' | 'atividades';
+    path: string;
+    extraData?: Record<string, string>;
+  },
+) {
+  const pushRows = await fetchActivePushRowsByProfileIds(env, profileIds);
+  await sendFirebasePushToTokens(env, pushRows, notification);
 }
 
 function normalizeIdentifier(value: unknown) {
@@ -1981,6 +2284,23 @@ const routes: Record<string, RouteHandler> = {
           })),
           headers: { Prefer: 'return=minimal' },
         });
+
+        await notifyProfileIds(
+          env,
+          alunosAlvo.map((item) => String(item?.id || '').trim()),
+          {
+            title: 'Nova atividade de leitura',
+            body: titulo,
+            channelId: 'atividades',
+            path: '/aluno/atividades',
+            extraData: {
+              turma: turma || '',
+            },
+          },
+        ).catch((error) => {
+          console.error('Falha ao enviar push de atividade por turma:', error);
+        });
+
         return jsonResponse({ success: true, count: alunosAlvo.length });
       }
 
@@ -1996,6 +2316,16 @@ const routes: Record<string, RouteHandler> = {
         },
         headers: { Prefer: 'return=minimal' },
       });
+
+      await notifyProfileIds(env, [alunoId], {
+        title: 'Nova atividade de leitura',
+        body: titulo,
+        channelId: 'atividades',
+        path: '/aluno/atividades',
+      }).catch((error) => {
+        console.error('Falha ao enviar push de atividade individual:', error);
+      });
+
       return jsonResponse({ success: true });
     } catch (error) {
       return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao criar atividade.' }, 400);
@@ -5779,7 +6109,7 @@ const routes: Record<string, RouteHandler> = {
     const [solicitacao] = await supabaseAdminRequest(
       env,
       `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
-        select: 'id,status,livro_id,livros(disponivel,escola_id),usuarios_biblioteca(escola_id)',
+        select: 'id,status,livro_id,usuario_id,livros(disponivel,escola_id),usuarios_biblioteca(escola_id)',
         id: `eq.${solicitacaoId}`,
         limit: '1',
       }).toString()}`,
@@ -5825,6 +6155,18 @@ const routes: Record<string, RouteHandler> = {
       method: 'PATCH',
       body: { status: nextStatus, resposta: mensagem },
       headers: { Prefer: 'return=minimal' },
+    });
+
+    await notifyProfileIds(env, [String(solicitacao?.usuario_id || '').trim()], {
+      title: 'Nova mensagem da biblioteca',
+      body: mensagem,
+      channelId: 'mensagens',
+      path: '/emprestimos?tab=solicitacoes',
+      extraData: {
+        solicitacao_id: solicitacaoId,
+      },
+    }).catch((error) => {
+      console.error('Falha ao enviar push de mensagem da bibliotecaria:', error);
     });
 
     return jsonResponse({ success: true });
@@ -7668,7 +8010,7 @@ const routes: Record<string, RouteHandler> = {
   },
 
   'POST /v1/aluno/comunidade/posts': async (request, env) => {
-    const { alunoId, escolaId } = await getCommunityModuleContext(request, env);
+    const { profile, alunoId, escolaId } = await getCommunityModuleContext(request, env);
     if (!alunoId || !escolaId) {
       return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
     }
@@ -7679,6 +8021,18 @@ const routes: Record<string, RouteHandler> = {
       body: { ...body, autor_id: alunoId, escola_id: escolaId },
       headers: { Prefer: 'return=representation' },
     }) as Array<Record<string, unknown>>;
+
+    if (String(body?.tipo || '').trim().toLowerCase() === 'comunicado') {
+      await notifyComunicadoAudience(env, {
+        escolaId,
+        autorProfileId: String(profile?.id || '').trim() || alunoId,
+        turmaPublico: body?.turma_publico ? String(body.turma_publico).trim() : null,
+        titulo: String(body?.titulo || '').trim() || 'Novo comunicado',
+        conteudo: String(body?.conteudo || '').trim() || 'Confira o novo comunicado na comunidade.',
+      }).catch((error) => {
+        console.error('Falha ao enviar push de comunicado:', error);
+      });
+    }
 
     return jsonResponse({ success: true, postId: created?.[0]?.id || null });
   },
