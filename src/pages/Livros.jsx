@@ -1412,16 +1412,22 @@ export default function Livros() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="text-xs"
+                            className="h-11 justify-start gap-2 rounded-xl border-primary/20 bg-primary/5 px-3 text-xs hover:bg-primary/10"
                             disabled={resumoRapidoLoadingId === livro.id}
                             onClick={() => gerarResumoRapido(livro)}
                           >
-                            {resumoRapidoLoadingId === livro.id ? 'Gerando...' : 'Resumo IA'}
+                            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                              {resumoRapidoLoadingId === livro.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                            </span>
+                            <span className="flex flex-col items-start leading-none">
+                              <span className="font-medium">{resumoRapidoLoadingId === livro.id ? 'Gerando...' : 'Resumo IA'}</span>
+                              <span className="mt-1 text-[10px] text-muted-foreground">Leitura rapida</span>
+                            </span>
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
-                            className="text-xs"
+                            className="h-11 justify-start gap-2 rounded-xl px-3 text-xs"
                             disabled={!livro.disponivel}
                             onClick={() => {
                               setRequestLivro(livro);
@@ -1429,7 +1435,15 @@ export default function Livros() {
                               setRequestDialogOpen(true);
                             }}
                           >
-                            {livro.disponivel ? 'Solicitar' : 'Indisponível'}
+                            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted text-foreground">
+                              <BookOpen className="h-3.5 w-3.5" />
+                            </span>
+                            <span className="flex flex-col items-start leading-none">
+                              <span className="font-medium">{livro.disponivel ? 'Solicitar' : 'Indisponivel'}</span>
+                              <span className="mt-1 text-[10px] text-muted-foreground">
+                                {livro.disponivel ? 'Pedir emprestimo' : 'Nao disponivel'}
+                              </span>
+                            </span>
                           </Button>
                         </div>
                       </CardContent>
