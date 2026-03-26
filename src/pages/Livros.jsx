@@ -1371,40 +1371,49 @@ export default function Livros() {
               ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   {filteredLivros.map((livro) => (
-                    <Card key={livro.id} className="overflow-hidden">
-                      <CardContent className="flex h-full flex-col gap-3 p-4">
+                    <Card key={livro.id} className="overflow-hidden rounded-3xl border-border/70 bg-gradient-to-br from-background via-background to-primary/5 shadow-sm transition-all hover:-translate-y-1 hover:border-primary/25 hover:shadow-lg">
+                      <CardContent className="flex h-full flex-col gap-4 p-5">
                         <div className="flex items-start justify-between gap-3">
-                          <Badge variant="outline">{canonicalizeBookArea(livro.area, preCategorias) || 'Geral'}</Badge>
-                          <Badge variant={getLivroStatusVariant(livro)}>{getLivroStatusLabel(livro)}</Badge>
+                          <Badge variant="outline" className="rounded-full border-primary/20 bg-primary/5 px-3 py-1 text-primary">
+                            {canonicalizeBookArea(livro.area, preCategorias) || 'Geral'}
+                          </Badge>
+                          <Badge
+                            variant={getLivroStatusVariant(livro)}
+                            className={livro.disponivel ? 'rounded-full bg-emerald-600 text-white hover:bg-emerald-600' : 'rounded-full'}
+                          >
+                            {getLivroStatusLabel(livro)}
+                          </Badge>
                         </div>
 
-                        <div className="space-y-1">
-                          <p className="line-clamp-2 font-semibold leading-5">{livro.titulo}</p>
-                          <p className="text-sm text-muted-foreground">{livro.autor || 'Autor desconhecido'}</p>
+                        <div className="space-y-1.5">
+                          <p className="line-clamp-2 text-[1.35rem] font-semibold leading-7 text-foreground">{livro.titulo}</p>
+                          <p className="text-base text-muted-foreground">{livro.autor || 'Autor desconhecido'}</p>
                           {(livro.editora || livro.ano) && (
-                            <p className="text-xs text-muted-foreground">
-                              {[livro.editora || null, livro.ano || null].filter(Boolean).join(' • ')}
+                            <p className="text-xs font-medium text-muted-foreground/90">
+                              {[livro.editora || null, livro.ano || null].filter(Boolean).join(' - ')}
                             </p>
                           )}
                         </div>
 
                         <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                          <div className="rounded-md bg-muted/40 px-2 py-1.5">Tombo: {livro.tombo || '-'}</div>
-                          <div className="rounded-md bg-muted/40 px-2 py-1.5">Volume: {livro.vol || '-'}</div>
+                          <div className="rounded-xl border border-primary/10 bg-primary/5 px-3 py-2">Tombo: {livro.tombo || '-'}</div>
+                          <div className="rounded-xl border border-secondary/20 bg-secondary/10 px-3 py-2">Volume: {livro.vol || '-'}</div>
                         </div>
 
                         <div className="mt-auto">
                           {livro.sinopse ? (
                             <button
                               type="button"
-                              className="w-full text-left"
+                              className="w-full rounded-2xl border border-border/70 bg-white/70 p-3 text-left transition-colors hover:border-primary/20 hover:bg-primary/5"
                               onClick={() => setSinopseExpandida(sinopseExpandida === livro.id ? null : livro.id)}
                             >
-                              <p className="line-clamp-4 text-sm text-muted-foreground" translate="no">{livro.sinopse}</p>
-                              <p className="mt-2 text-xs text-primary">Ver sinopse completa</p>
+                              <p className="line-clamp-4 text-sm leading-6 text-muted-foreground" translate="no">{livro.sinopse}</p>
+                              <p className="mt-2 text-xs font-medium text-primary">Ver sinopse completa</p>
                             </button>
                           ) : (
-                            <p className="text-sm text-muted-foreground">Sem sinopse cadastrada.</p>
+                            <div className="rounded-2xl border border-dashed border-border/80 bg-muted/20 p-3">
+                              <p className="text-sm text-muted-foreground">Sem sinopse cadastrada.</p>
+                            </div>
                           )}
                         </div>
 
