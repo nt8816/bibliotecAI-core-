@@ -4057,60 +4057,142 @@ export default function PainelAluno() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Resumo com IA</CardTitle>
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="space-y-2">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Ferramenta de estudo com IA
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">Resumo com IA</CardTitle>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Gere um resumo inicial, refine com suas ideias e salve suas melhores versoes no laboratorio.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:w-auto">
+                    <div className="rounded-xl border bg-muted/30 px-3 py-2 text-center">
+                      <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Livros</p>
+                      <p className="text-lg font-semibold">{meusLivrosOptions.length}</p>
+                    </div>
+                    <div className="rounded-xl border bg-muted/30 px-3 py-2 text-center">
+                      <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Salvos</p>
+                      <p className="text-lg font-semibold">{resumosCriados.length}</p>
+                    </div>
+                  </div>
+                </div>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
-                  <div className="space-y-1">
-                    <Label htmlFor="resumo-livro">Livro</Label>
-                    <select
-                      id="resumo-livro"
-                      className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                      value={resumoLivroId}
-                      onChange={(e) => setResumoLivroId(e.target.value)}
-                    >
-                      <option value="">Selecione um livro</option>
-                      {meusLivrosOptions.map((livro) => (
-                        <option key={livro.id} value={livro.id}>
-                          {livro.titulo}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="opacity-0">Gerar</Label>
-                    <Button type="button" variant="outline" onClick={gerarResumo} disabled={gerandoResumoIA} className="w-full">
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      {gerandoResumoIA ? 'Gerando resumo...' : 'Gerar resumo IA'}
-                    </Button>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="opacity-0">Salvar</Label>
-                    <Button type="button" onClick={salvarResumo} className="w-full">
-                      Salvar resumo
-                    </Button>
+              <CardContent className="space-y-4">
+                <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/10 via-background to-warning/10 p-4">
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.9fr)]">
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
+                        <div className="space-y-2">
+                          <Label htmlFor="resumo-livro">Livro</Label>
+                          <select
+                            id="resumo-livro"
+                            className="h-11 w-full rounded-xl border border-border/70 bg-background/95 px-3 text-sm shadow-sm transition-colors focus:border-primary focus:outline-none"
+                            value={resumoLivroId}
+                            onChange={(e) => setResumoLivroId(e.target.value)}
+                          >
+                            <option value="">Selecione um livro</option>
+                            {meusLivrosOptions.map((livro) => (
+                              <option key={livro.id} value={livro.id}>
+                                {livro.titulo}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={gerarResumo}
+                          disabled={gerandoResumoIA}
+                          className="h-11 rounded-xl border-primary/30 bg-background/90 px-4"
+                        >
+                          <Sparkles className="mr-2 h-4 w-4" />
+                          {gerandoResumoIA ? 'Gerando resumo...' : 'Gerar resumo IA'}
+                        </Button>
+                        <Button type="button" onClick={salvarResumo} className="h-11 rounded-xl px-4 shadow-sm">
+                          Salvar resumo
+                        </Button>
+                      </div>
+
+                      <Textarea
+                        rows={9}
+                        value={resumoTexto}
+                        onChange={(e) => setResumoTexto(e.target.value)}
+                        placeholder="O resumo gerado aparecera aqui..."
+                        className="min-h-[220px] rounded-2xl border-border/70 bg-background/95 shadow-sm"
+                      />
+                    </div>
+
+                    <div className="space-y-3 rounded-2xl border bg-background/80 p-4 shadow-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10">
+                          <BookOpen className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold">Dicas para um resumo melhor</p>
+                          <p className="text-xs text-muted-foreground">Use a IA como ponto de partida, nao como versao final.</p>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="rounded-xl border bg-muted/30 p-3">
+                          <p className="text-sm font-medium">1. Gere a base</p>
+                          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                            Escolha o livro e peça um resumo para organizar os principais acontecimentos.
+                          </p>
+                        </div>
+                        <div className="rounded-xl border bg-muted/30 p-3">
+                          <p className="text-sm font-medium">2. Personalize o texto</p>
+                          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                            Ajuste o tom, acrescente sua interpretacao e deixe o texto com a sua voz.
+                          </p>
+                        </div>
+                        <div className="rounded-xl border bg-muted/30 p-3">
+                          <p className="text-sm font-medium">3. Salve o que ficou bom</p>
+                          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                            Guarde as melhores versoes para revisar depois ou publicar no laboratorio.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <Textarea
-                  rows={8}
-                  value={resumoTexto}
-                  onChange={(e) => setResumoTexto(e.target.value)}
-                  placeholder="O resumo gerado aparecera aqui..."
-                />
-
                 {resumosCriados.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold">Resumos salvos</p>
-                    {resumosCriados.slice(0, resumosLimit).map((resumo) => (
-                      <div key={resumo.id} className="rounded-md border p-3">
-                        <p className="text-xs text-muted-foreground">{resumo.livroTitulo}</p>
-                        <p className="text-sm line-clamp-3">{resumo.texto}</p>
-                        <div className="flex justify-end mt-2">
+                  <div className="space-y-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold">Resumos salvos</p>
+                        <p className="text-xs text-muted-foreground">Continue de onde parou e abra qualquer resumo completo quando quiser.</p>
+                      </div>
+                      <Badge variant="outline" className="w-fit rounded-full px-3 py-1">
+                        {resumosCriados.length} salvo{resumosCriados.length !== 1 ? 's' : ''}
+                      </Badge>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {resumosCriados.slice(0, resumosLimit).map((resumo) => (
+                        <div key={resumo.id} className="rounded-2xl border bg-background p-4 shadow-sm transition-colors hover:border-primary/30">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold">{resumo.livroTitulo}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {resumo.criadoEm ? `Salvo em ${formatDateBR(resumo.criadoEm)}` : 'Salvo no laboratorio'}
+                              </p>
+                            </div>
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                              <Sparkles className="h-4 w-4 text-primary" />
+                            </div>
+                          </div>
+                          <p className="mt-3 text-sm leading-6 text-foreground/90 line-clamp-4">{resumo.texto}</p>
+                          <div className="mt-4 flex justify-end">
                           <Button
                             type="button"
                             size="sm"
                             variant="ghost"
+                            className="rounded-full px-4"
                             onClick={() =>
                               abrirResumoCompleto({
                                 titulo: resumo.livroTitulo,
@@ -4121,12 +4203,13 @@ export default function PainelAluno() {
                           >
                             Ver completo
                           </Button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                     {resumosCriados.length > resumosLimit && (
                       <div className="flex justify-center">
-                        <Button type="button" variant="outline" size="sm" onClick={() => setResumosLimit((prev) => prev + 5)}>
+                        <Button type="button" variant="outline" size="sm" className="rounded-full px-5" onClick={() => setResumosLimit((prev) => prev + 5)}>
                           Carregar mais
                         </Button>
                       </div>
