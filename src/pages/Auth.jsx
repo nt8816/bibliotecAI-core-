@@ -831,10 +831,13 @@ export default function Auth() {
 
   return (
     <div className="auth-login-page min-h-screen flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+      <div className="auth-bg-gradient" aria-hidden="true" />
       <div className="auth-bg-grid" aria-hidden="true" />
+      <div className="auth-bg-rings" aria-hidden="true" />
       <div className="auth-orb auth-orb-1" aria-hidden="true" />
       <div className="auth-orb auth-orb-2" aria-hidden="true" />
       <div className="auth-orb auth-orb-3" aria-hidden="true" />
+      <div className="auth-orb auth-orb-4" aria-hidden="true" />
 
       <Card className="auth-login-card w-full max-w-[560px] border-border/70 shadow-2xl" translate="no">
         <CardHeader className="text-center space-y-3 px-4 pt-5 pb-3 sm:px-6 sm:pt-6 sm:pb-3">
