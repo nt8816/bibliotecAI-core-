@@ -24,12 +24,27 @@ export function isPlatformApiUnavailableError(error) {
   return Boolean(error?.platformUnavailable);
 }
 
+function isTransientNetworkError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes('failed to fetch')
+    || message.includes('networkerror')
+    || message.includes('load failed')
+    || message.includes('network request failed');
+}
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 export async function requestPlatformApi(routePath, {
   method = 'GET',
   body,
   headers,
   auth = true,
   retryOnUnauthorized = true,
+  retryOnNetworkError = true,
 } = {}) {
   if (!isPlatformApiConfigured()) {
     const error = new Error('Platform API nao configurada.');
@@ -39,15 +54,30 @@ export async function requestPlatformApi(routePath, {
 
   const executeRequest = async () => {
     const accessToken = auth ? getPlatformAccessToken() : '';
-    return fetch(buildUrl(routePath), {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}`, 'x-user-access-token': accessToken } : {}),
-        ...(headers || {}),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    const maxAttempts = retryOnNetworkError && method === 'GET' ? 2 : 1;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await fetch(buildUrl(routePath), {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}`, 'x-user-access-token': accessToken } : {}),
+            ...(headers || {}),
+          },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+      } catch (error) {
+        lastError = error;
+        if (!isTransientNetworkError(error) || attempt >= maxAttempts) {
+          throw error;
+        }
+        await wait(350 * attempt);
+      }
+    }
+
+    throw lastError || new Error('Falha de rede ao acessar a Platform API.');
   };
 
   let response = await executeRequest();

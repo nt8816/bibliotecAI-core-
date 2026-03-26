@@ -213,6 +213,8 @@ export default function Livros() {
   const [exportFormat, setExportFormat] = useState('xlsx');
   const [exporting, setExporting] = useState(false);
   const fileInputRef = useRef(null);
+  const isFetchingLivrosRef = useRef(false);
+  const hasLoadedLivrosRef = useRef(false);
   const deferredSearchTerm = useDeferredValue(searchTerm);
 
   const { isGestor, isBibliotecaria, isProfessor, user } = useAuth();
@@ -227,9 +229,14 @@ export default function Livros() {
       setLivros([]);
       setPreCategorias(DEFAULT_PRE_CATEGORIES);
       setEscolaId(null);
+      hasLoadedLivrosRef.current = false;
       setLoading(false);
       return;
     }
+
+    if (isFetchingLivrosRef.current) return;
+
+    isFetchingLivrosRef.current = true;
     try {
       const data = await fetchLivrosCatalogo({
         userId: user.id,
@@ -240,10 +247,20 @@ export default function Livros() {
       setEscolaId(data?.escolaId || null);
       setPreCategorias((data?.preCategorias || DEFAULT_PRE_CATEGORIES).map((nome) => canonicalizeBookArea(nome)));
       setLivros(data?.livros || []);
+      hasLoadedLivrosRef.current = true;
     } catch (error) {
       console.error('Error fetching books:', error);
-      toast({ variant: 'destructive', title: 'Erro', description: 'N??o foi poss??vel carregar os livros.' });
+      const message = String(error?.message || '').toLowerCase();
+      const isTransientFetchError = message.includes('failed to fetch')
+        || message.includes('networkerror')
+        || message.includes('load failed')
+        || message.includes('network request failed');
+
+      if (!hasLoadedLivrosRef.current || !isTransientFetchError) {
+        toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel carregar os livros.' });
+      }
     } finally {
+      isFetchingLivrosRef.current = false;
       setLoading(false);
     }
   }, [user?.id, preCategorias, toast]);
