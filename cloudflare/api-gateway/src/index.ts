@@ -4225,6 +4225,10 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const profile = await getLatestUserProfile(user.id, env);
+    if (String(profile?.tipo || '').trim() === 'aluno') {
+      return jsonResponse({ success: false, error: 'Alunos nao podem alterar as proprias informacoes cadastrais.' }, 403);
+    }
+
     const body = await request.json().catch(() => ({} as Record<string, unknown>));
     const nextNome = String(body?.nome || '').trim();
     const payload = {

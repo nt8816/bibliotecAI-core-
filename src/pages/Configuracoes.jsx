@@ -62,12 +62,13 @@ export default function Configurações() {
   const alunoOnboardingKey = useMemo(() => (user?.id ? `onboarding:aluno:${user.id}` : ''), [user?.id]);
   const alunoSenhaDefinidaKey = useMemo(() => (user?.id ? `aluno:senha-definida:${user.id}` : ''), [user?.id]);
   const isAluno = userRole === 'aluno';
+  const canEditOwnProfile = !isAluno;
   const alunoSenhaDefinida = useMemo(
     () => user?.user_metadata?.senha_definida === true || localStorage.getItem(alunoSenhaDefinidaKey) === 'true',
     [alunoSenhaDefinidaKey, user?.user_metadata?.senha_definida],
   );
   const forcePasswordChange = Boolean(location.state?.forcePasswordChange) && isAluno && !alunoSenhaDefinida;
-  const canEditTurma = userRole === 'aluno' || userRole === 'professor';
+  const canEditTurma = userRole === 'professor';
   const showMatricula = userRole === 'aluno';
   const isGestão = userRole === 'gestor' || userRole === 'bibliotecaria' || userRole === 'super_admin';
   const showEmailInProfile = !isAluno && !isGestão;
@@ -110,6 +111,15 @@ export default function Configurações() {
   }, [loadProfile]);
 
   const handleSaveProfile = async () => {
+    if (!canEditOwnProfile) {
+      toast({
+        variant: 'destructive',
+        title: 'Edicao indisponivel',
+        description: 'Alunos nao podem alterar as proprias informacoes cadastrais.',
+      });
+      return;
+    }
+
     if (!profile.nome.trim()) {
       toast({
         variant: 'destructive',
@@ -218,7 +228,7 @@ export default function Configurações() {
                 <Input
                   id="nome"
                   value={profile.nome}
-                  disabled={loadingProfile || savingProfile}
+                  disabled={loadingProfile || savingProfile || !canEditOwnProfile}
                   onChange={(e) => setProfile((prev) => ({ ...prev, nome: e.target.value }))}
                 />
               </div>
@@ -236,7 +246,7 @@ export default function Configurações() {
                   <Input
                     id="telefone"
                     value={profile.telefone}
-                    disabled={loadingProfile || savingProfile}
+                    disabled={loadingProfile || savingProfile || !canEditOwnProfile}
                     onChange={(e) => setProfile((prev) => ({ ...prev, telefone: e.target.value }))}
                   />
                 </div>
@@ -248,7 +258,7 @@ export default function Configurações() {
                   <Input
                     id="cpf"
                     value={profile.cpf}
-                    disabled={loadingProfile || savingProfile}
+                    disabled={loadingProfile || savingProfile || !canEditOwnProfile}
                     onChange={(e) => handleCpfChange(e.target.value)}
                   />
                 </div>
@@ -260,7 +270,7 @@ export default function Configurações() {
                   <Input
                     id="turma"
                     value={profile.turma}
-                    disabled={loadingProfile || savingProfile}
+                    disabled={loadingProfile || savingProfile || !canEditOwnProfile}
                     onChange={(e) => setProfile((prev) => ({ ...prev, turma: e.target.value }))}
                   />
                 </div>
@@ -274,12 +284,21 @@ export default function Configurações() {
               )}
             </div>
 
-            <div className="flex justify-end">
-              <Button onClick={handleSaveProfile} disabled={loadingProfile || savingProfile}>
-                {savingProfile ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-                Salvar informações
-              </Button>
-            </div>
+            {isAluno ? (
+              <Alert>
+                <AlertTitle>Cadastro protegido</AlertTitle>
+                <AlertDescription>
+                  Seus dados cadastrais sao controlados pela escola. Se precisar corrigir nome, turma ou outro dado, fale com a biblioteca ou a gestao.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <div className="flex justify-end">
+                <Button onClick={handleSaveProfile} disabled={loadingProfile || savingProfile}>
+                  {savingProfile ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                  Salvar informações
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
