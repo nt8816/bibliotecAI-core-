@@ -3690,19 +3690,36 @@ export default function PainelAluno() {
                   ) : (
                     <div className="space-y-4">
                       {atividadesComEntrega.map((atividade) => (
-                        <div key={atividade.id} className="p-4 border rounded-lg space-y-3">
-                          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                            <div>
-                              <p className="font-semibold">{atividade.titulo}</p>
+                        <div
+                          key={atividade.id}
+                          className="space-y-4 rounded-3xl border border-border/80 bg-gradient-to-br from-background via-background to-primary/5 p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-[0_18px_40px_rgba(0,0,0,0.08)]"
+                        >
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-semibold">{atividade.titulo}</p>
+                                {Array.isArray(atividade.atividadeMeta?.formulario?.perguntas)
+                                  && atividade.atividadeMeta.formulario.perguntas.length > 0 && (
+                                  <Badge className="bg-primary/10 text-primary hover:bg-primary/10">
+                                    {atividade.atividadeMeta.formulario.perguntas.length} questões
+                                  </Badge>
+                                )}
+                              </div>
                               <p className="text-xs text-muted-foreground">{atividade.livros?.titulo || 'Livro nao informado'}</p>
                               <p className="text-xs text-muted-foreground">
                                 Professor: {atividade.professor?.nome || 'Professor nao informado'}
                               </p>
-                              {atividade.atividadeMeta?.descricaoLimpa && <p className="text-sm mt-1">{atividade.atividadeMeta.descricaoLimpa}</p>}
+                              {atividade.atividadeMeta?.descricaoLimpa && (
+                                <p className="rounded-2xl border border-primary/10 bg-primary/5 px-3 py-2 text-sm leading-6">
+                                  {atividade.atividadeMeta.descricaoLimpa}
+                                </p>
+                              )}
                             </div>
-                            <div className="text-right">
-                              <Badge variant="outline">Pontos possiveis: {Number(atividade.pontos_extras || 0)}</Badge>
-                              <p className="text-xs text-muted-foreground mt-1">
+                            <div className="space-y-2 text-left md:text-right">
+                              <Badge variant="outline" className="rounded-full px-3 py-1">
+                                Pontos possiveis: {Number(atividade.pontos_extras || 0)}
+                              </Badge>
+                              <p className="text-xs text-muted-foreground">
                                 Entrega: {formatDateBR(atividade.data_entrega)}
                               </p>
                             </div>
@@ -3725,39 +3742,49 @@ export default function PainelAluno() {
 
                           {Array.isArray(atividade.atividadeMeta?.formulario?.perguntas)
                             && atividade.atividadeMeta.formulario.perguntas.length > 0 && (
-                            <div className="space-y-3 rounded-md border p-3">
-                              <p className="text-sm font-medium">Formulario da atividade</p>
+                            <div className="space-y-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-sm font-medium">Formulario da atividade</p>
+                                <span className="text-xs text-primary">Responda com calma</span>
+                              </div>
                               {atividade.atividadeMeta.formulario.perguntas.map((pergunta, idx) => {
                                 const perguntaId = String(pergunta?.id || `q_${idx + 1}`);
                                 const respostaAtual = String(atividadeRespostas[atividade.id]?.[perguntaId] || '');
                                 const opcoes = ensureArray(pergunta?.opcoes);
                                 const tipo = String(pergunta?.tipo || 'texto');
                                 return (
-                                  <div key={perguntaId} className="space-y-1.5">
-                                    <Label className="text-xs">
+                                  <div key={perguntaId} className="space-y-2 rounded-2xl border bg-background/95 p-4 shadow-sm animate-in fade-in-0 slide-in-from-bottom-2">
+                                    <Label className="text-xs uppercase tracking-[0.18em] text-primary">
                                       {idx + 1}. {String(pergunta?.pergunta || 'Pergunta')}
                                     </Label>
                                     {tipo === 'multipla_escolha' && opcoes.length > 0 ? (
-                                      <select
-                                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                        value={respostaAtual || 'none'}
-                                        onChange={(e) =>
-                                          setAtividadeRespostas((prev) => ({
-                                            ...prev,
-                                            [atividade.id]: {
-                                              ...(prev[atividade.id] || {}),
-                                              [perguntaId]: e.target.value === 'none' ? '' : e.target.value,
-                                            },
-                                          }))
-                                        }
-                                      >
-                                        <option value="none">Selecione</option>
-                                        {opcoes.map((opcao, optionIndex) => (
-                                          <option key={`${perguntaId}-${optionIndex}`} value={String(opcao)}>
-                                            {String(opcao)}
-                                          </option>
-                                        ))}
-                                      </select>
+                                      <div className="grid gap-2 sm:grid-cols-2">
+                                        {opcoes.map((opcao, optionIndex) => {
+                                          const selected = respostaAtual === String(opcao);
+                                          return (
+                                            <button
+                                              key={`${perguntaId}-${optionIndex}`}
+                                              type="button"
+                                              className={`rounded-2xl border px-4 py-3 text-left text-sm transition-all duration-200 hover:-translate-y-0.5 ${
+                                                selected
+                                                  ? 'border-primary bg-primary text-primary-foreground shadow-[0_12px_24px_rgba(0,0,0,0.12)]'
+                                                  : 'border-border bg-background hover:border-primary/40'
+                                              }`}
+                                              onClick={() =>
+                                                setAtividadeRespostas((prev) => ({
+                                                  ...prev,
+                                                  [atividade.id]: {
+                                                    ...(prev[atividade.id] || {}),
+                                                    [perguntaId]: selected ? '' : String(opcao),
+                                                  },
+                                                }))
+                                              }
+                                            >
+                                              {String(opcao)}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
                                     ) : (
                                       <Textarea
                                         rows={2}
@@ -3789,13 +3816,13 @@ export default function PainelAluno() {
                               onChange={(e) => handleSelectActivityImages(atividade.id, e.target.files)}
                             />
                             {ensureArray(atividadeImagens[atividade.id]).length > 0 && (
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                                 {ensureArray(atividadeImagens[atividade.id]).map((img, imageIndex) => (
                                   <div key={`${atividade.id}-img-${imageIndex}`} className="relative">
                                     <ResolvedMediaImage
                                       value={img}
                                       alt={`Atividade ${imageIndex + 1}`}
-                                      className="w-full h-20 object-cover rounded-md border"
+                                      className="h-20 w-full rounded-md border object-cover"
                                     />
                                     <button
                                       type="button"
@@ -3805,7 +3832,7 @@ export default function PainelAluno() {
                                           [atividade.id]: ensureArray(prev[atividade.id]).filter((_, i) => i !== imageIndex),
                                         }))
                                       }
-                                      className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1"
+                                      className="absolute -top-2 -right-2 rounded-full bg-destructive p-1 text-destructive-foreground"
                                     >
                                       <Trash2 className="w-3 h-3" />
                                     </button>
@@ -3816,7 +3843,7 @@ export default function PainelAluno() {
                           </div>
 
                           <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div className="flex items-center gap-2 text-sm">
+                            <div className="flex flex-wrap items-center gap-2 text-sm">
                               {atividade.entrega ? (
                                 <>
                                   <Badge
@@ -3827,6 +3854,7 @@ export default function PainelAluno() {
                                           ? 'destructive'
                                           : 'secondary'
                                     }
+                                    className="rounded-full px-3"
                                   >
                                     {atividade.entrega.status}
                                   </Badge>
@@ -3835,18 +3863,18 @@ export default function PainelAluno() {
                                   </span>
                                 </>
                               ) : (
-                                <Badge variant="outline">Ainda não enviado</Badge>
+                                <Badge variant="outline" className="rounded-full px-3">Ainda não enviado</Badge>
                               )}
                             </div>
 
-                            <Button onClick={() => handleEnviarAtividade(atividade)} disabled={saving}>
+                            <Button onClick={() => handleEnviarAtividade(atividade)} disabled={saving} className="rounded-2xl">
                               <Send className="w-4 h-4 mr-2" />
                               {atividade.entrega ? 'Atualizar entrega' : 'Enviar atividade'}
                             </Button>
                           </div>
 
                           {atividade.entrega?.feedback_professor && (
-                            <div className="p-3 bg-muted rounded-md">
+                            <div className="rounded-2xl bg-muted p-3">
                               <p className="text-xs text-muted-foreground">Feedback do professor</p>
                               <p className="text-sm">{atividade.entrega.feedback_professor}</p>
                             </div>

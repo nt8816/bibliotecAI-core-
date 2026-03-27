@@ -2393,10 +2393,17 @@ const routes: Record<string, RouteHandler> = {
         return jsonResponse({ success: false, error: 'Titulo obrigatorio.' }, 400);
       }
 
-      if (targetMode === 'turma') {
-        const alunosAlvo = context.usuarios.filter((item) => String(item?.turma || '').trim() === turma);
+      if (targetMode === 'turma' || targetMode === 'todas_turmas') {
+        const alunosAlvo = targetMode === 'todas_turmas'
+          ? context.usuarios
+          : context.usuarios.filter((item) => String(item?.turma || '').trim() === turma);
         if (!alunosAlvo.length) {
-          return jsonResponse({ success: false, error: 'Nenhum aluno encontrado para a turma selecionada.' }, 400);
+          return jsonResponse({
+            success: false,
+            error: targetMode === 'todas_turmas'
+              ? 'Nenhum aluno encontrado nas turmas vinculadas ao professor.'
+              : 'Nenhum aluno encontrado para a turma selecionada.',
+          }, 400);
         }
         await supabaseAdminRequest(env, '/rest/v1/atividades_leitura', {
           method: 'POST',
@@ -2416,14 +2423,19 @@ const routes: Record<string, RouteHandler> = {
             channelId: 'atividades',
             path: '/aluno/atividades',
             extraData: {
-              turma: turma || '',
+              turma: targetMode === 'todas_turmas' ? 'todas' : (turma || ''),
+              targetMode,
             },
           },
         ).catch((error) => {
-          console.error('Falha ao enviar push de atividade por turma:', error);
+          console.error('Falha ao enviar push de atividade em lote:', error);
         });
 
-        return jsonResponse({ success: true, count: alunosAlvo.length });
+        return jsonResponse({
+          success: true,
+          count: alunosAlvo.length,
+          targetMode,
+        });
       }
 
       if (!alunoId) {
