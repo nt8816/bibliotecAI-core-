@@ -35,7 +35,6 @@ export function MainLayout({ children, title }) {
               />
               <div className="min-w-0">
                 <h1 className="truncate text-base font-bold text-foreground sm:text-xl">{title}</h1>
-                <p className="hidden text-xs text-muted-foreground sm:block">Uma experiencia mais clara, viva e facil de usar.</p>
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
