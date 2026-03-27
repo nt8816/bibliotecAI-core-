@@ -6,11 +6,12 @@ import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { AppSidebar } from './AppSidebar';
+import { NotificationsPopover } from './NotificationsPopover';
 
 export function MainLayout({ children, title }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAluno, isProfessor, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
+  const { isAluno, isProfessor, isGestor, isBibliotecaria, isSuperAdmin, userRole } = useAuth();
   const canCreateComplaint = useMemo(
     () => (isAluno || isProfessor || isGestor || isBibliotecaria) && !isSuperAdmin,
     [isAluno, isBibliotecaria, isGestor, isProfessor, isSuperAdmin],
@@ -38,6 +39,7 @@ export function MainLayout({ children, title }) {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              <NotificationsPopover userRole={userRole} />
               {canCreateComplaint && !isComplaintsPage && (
                 <Button
                   type="button"
