@@ -31,6 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { generateTextWithCloudflare } from '@/lib/cloudflareAiApi';
 import { cn } from '@/lib/utils';
 import {
   avaliarProfessorEntrega,
@@ -155,6 +156,19 @@ function getTargetSummary(atividade) {
   return aluno ? `${aluno}${turma ? ` • ${turma}` : ''}` : (turma || 'Destino individual');
 }
 
+function buildQuestionsFromAI(rawQuestions) {
+  if (!Array.isArray(rawQuestions)) return [];
+
+  return rawQuestions
+    .map((item, index) => normalizeQuestion({
+      id: item?.id || `ia_${index + 1}`,
+      tipo: item?.tipo === 'multipla_escolha' ? 'multipla_escolha' : 'texto',
+      pergunta: String(item?.pergunta || item?.enunciado || '').trim(),
+      opcoes: Array.isArray(item?.opcoes) ? item.opcoes : [],
+    }, index))
+    .filter((item) => item.pergunta);
+}
+
 export default function PainelProfessor() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -176,6 +190,8 @@ export default function PainelProfessor() {
   const [atividadeForm, setAtividadeForm] = useState(createEmptyAtividade);
   const [avaliacaoForm, setAvaliacaoForm] = useState({});
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiGenerating, setAiGenerating] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -268,6 +284,7 @@ export default function PainelProfessor() {
   const resetAtividadeDialog = () => {
     setEditingAtividade(null);
     setAtividadeForm(createEmptyAtividade());
+    setAiPrompt('');
   };
 
   const handleOpenAtividadeDialog = (atividade = null) => {
@@ -401,6 +418,81 @@ export default function PainelProfessor() {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Falha ao enviar sugestão.' });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleGenerateActivityWithAI = async () => {
+    if (!aiPrompt.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Prompt vazio',
+        description: 'Escreva um pedido para a IA montar a atividade.',
+      });
+      return;
+    }
+
+    setAiGenerating(true);
+    try {
+      const livrosDisponiveis = livros
+        .slice(0, 12)
+        .map((item) => ({ id: item.id, titulo: item.titulo, autor: item.autor }))
+        .filter((item) => item.id && item.titulo);
+
+      const prompt = [
+        'Voce e um assistente para criacao de atividades escolares.',
+        'Crie uma atividade em portugues do Brasil a partir do pedido do professor.',
+        'Responda SOMENTE com JSON valido.',
+        'Formato esperado:',
+        '{"titulo":"...","descricao":"...","pontos_extras":10,"perguntas":[{"tipo":"texto","pergunta":"..."},{"tipo":"multipla_escolha","pergunta":"...","opcoes":["...","...","..."]}],"livro_sugerido_titulo":"..."}',
+        'Regras:',
+        '- gere entre 0 e 5 perguntas',
+        '- use tipo "texto" para respostas abertas',
+        '- use tipo "multipla_escolha" para questoes de marcar',
+        '- em questoes de marcar, inclua ao menos 3 opcoes curtas',
+        '- nao inclua explicacoes fora do JSON',
+        `Pedido do professor: ${aiPrompt.trim()}`,
+        `Turmas disponiveis: ${professorTurmasPermitidas.join(', ') || 'nao informado'}`,
+        `Livros disponiveis: ${JSON.stringify(livrosDisponiveis)}`,
+      ].join('\n');
+
+      const generated = await generateTextWithCloudflare({
+        prompt,
+        fallbackErrorMessage: 'Nao foi possivel gerar a atividade com IA agora.',
+      });
+
+      const data = generated?.data && typeof generated.data === 'object'
+        ? generated.data
+        : {};
+
+      const perguntas = buildQuestionsFromAI(data?.perguntas);
+      const suggestedBook = livros.find((item) => item.titulo === data?.livro_sugerido_titulo);
+
+      setAtividadeForm((prev) => ({
+        ...prev,
+        titulo: String(data?.titulo || prev.titulo || '').trim(),
+        descricao: String(data?.descricao || prev.descricao || '').trim(),
+        pontos_extras: Number.isFinite(Number(data?.pontos_extras))
+          ? Number(data.pontos_extras)
+          : prev.pontos_extras,
+        perguntas,
+        formulario_ativo: perguntas.length > 0,
+        livro_id: suggestedBook?.id || prev.livro_id,
+      }));
+
+      toast({
+        title: 'Rascunho gerado pela IA',
+        description: perguntas.length > 0
+          ? `A IA montou ${perguntas.length} questoes para voce revisar.`
+          : 'A IA preencheu o titulo e a orientacao. Revise antes de publicar.',
+      });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao gerar com IA',
+        description: error?.message || 'Nao foi possivel montar a atividade automaticamente.',
+      });
+    } finally {
+      setAiGenerating(false);
     }
   };
 
@@ -870,9 +962,9 @@ export default function PainelProfessor() {
             if (!open) resetAtividadeDialog();
           }}
         >
-          <DialogContent className="max-w-5xl overflow-hidden p-0">
-            <div className="grid gap-0 lg:grid-cols-[minmax(0,1.35fr)_340px]">
-              <div className="p-6 sm:p-7">
+          <DialogContent className="w-[calc(100vw-1rem)] max-w-6xl overflow-hidden p-0 sm:w-[calc(100vw-2rem)] max-h-[92vh]">
+            <div className="grid max-h-[92vh] gap-0 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1.15fr)_340px]">
+              <div className="overflow-y-auto p-4 sm:p-6 lg:p-7">
                 <DialogHeader className="space-y-2 text-left">
                   <DialogTitle className="text-2xl">
                     {editingAtividade ? 'Editar atividade' : 'Criar atividade personalizada'}
@@ -883,6 +975,33 @@ export default function PainelProfessor() {
                 </DialogHeader>
 
                 <div className="mt-6 space-y-6">
+                  <div className="rounded-3xl border bg-gradient-to-br from-info/10 via-background to-primary/10 p-4 sm:p-5">
+                    <div className="flex flex-col gap-4">
+                      <div>
+                        <p className="font-semibold">Gerar atividade com IA</p>
+                        <p className="text-sm text-muted-foreground">
+                          Descreva o que voce quer e a IA monta um rascunho com titulo, orientacao e questoes.
+                        </p>
+                      </div>
+                      <Textarea
+                        rows={3}
+                        placeholder="Ex.: Crie uma atividade sobre fotossintese para o 7 ano com 3 perguntas, sendo 2 de marcar e 1 aberta."
+                        value={aiPrompt}
+                        onChange={(e) => setAiPrompt(e.target.value)}
+                      />
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs text-muted-foreground">
+                          A IA cria um rascunho. Voce revisa tudo antes de publicar.
+                        </p>
+                        <Button type="button" variant="outline" onClick={handleGenerateActivityWithAI} disabled={aiGenerating}>
+                          {aiGenerating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          <Sparkles className="mr-2 h-4 w-4" />
+                          Gerar com IA
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
                     <div className="space-y-2">
                       <Label>Título *</Label>
@@ -1045,7 +1164,7 @@ export default function PainelProfessor() {
                     )}
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-4 lg:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Livro</Label>
                       <Select
@@ -1083,7 +1202,7 @@ export default function PainelProfessor() {
                       </p>
                     </div>
 
-                    <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                       {[
                         { value: 'aluno', title: 'Aluno', description: 'Entrega individual para um aluno.' },
                         { value: 'turma', title: 'Turma', description: 'Envio em lote para uma turma.' },
@@ -1157,7 +1276,7 @@ export default function PainelProfessor() {
                 </div>
               </div>
 
-              <aside className="border-l bg-muted/30 p-6">
+              <aside className="overflow-y-auto border-t bg-muted/30 p-4 sm:p-6 lg:border-l lg:border-t-0">
                 <div className="space-y-5">
                   <div className="rounded-3xl border bg-background p-4">
                     <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">Prévia</p>
