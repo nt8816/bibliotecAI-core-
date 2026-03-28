@@ -208,8 +208,8 @@ export default function Convite() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 overflow-hidden rounded-xl bg-primary flex items-center justify-center">
-            <img src="/app-logo.png" alt="BibliotecAI" className="h-full w-full object-cover" />
+          <div className="w-16 h-16 mx-auto mb-4 overflow-hidden rounded-[1.5rem] bg-primary/10 flex items-center justify-center p-1 shadow-[0_14px_30px_hsl(var(--primary)/0.2)] ring-1 ring-primary/15">
+            <img src="/app-logo.png" alt="BibliotecAI" className="h-full w-full rounded-[1.25rem] object-cover" />
           </div>
           <CardTitle>Bem-vindo ao BibliotecAI</CardTitle>
           <CardDescription>

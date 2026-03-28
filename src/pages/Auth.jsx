@@ -841,8 +841,8 @@ export default function Auth() {
 
       <Card className="auth-login-card w-full max-w-[560px] border-border/70 shadow-2xl" translate="no">
         <CardHeader className="text-center space-y-3 px-4 pt-5 pb-3 sm:px-6 sm:pt-6 sm:pb-3">
-          <div className="auth-logo-wrap mx-auto flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-primary">
-            <img src="/app-logo.png" alt="BibliotecAI" className="h-full w-full object-cover" />
+          <div className="auth-logo-wrap mx-auto flex h-16 w-16 items-center justify-center overflow-hidden rounded-[1.5rem] bg-primary/10 p-1 shadow-[0_14px_30px_hsl(var(--primary)/0.22)] ring-1 ring-primary/15">
+            <img src="/app-logo.png" alt="BibliotecAI" className="h-full w-full rounded-[1.25rem] object-cover" />
           </div>
           <CardTitle className="text-2xl font-bold">BibliotecAI</CardTitle>
           <CardDescription>
