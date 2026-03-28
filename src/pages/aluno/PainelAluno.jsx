@@ -1027,7 +1027,7 @@ export default function PainelAluno() {
   const [livrosOffset, setLivrosOffset] = useState(0);
   const [livrosHasMore, setLivrosHasMore] = useState(false);
   const [livrosLoadingMore, setLivrosLoadingMore] = useState(false);
-  const [bibliotecaView, setBibliotecaView] = useState('meus_livros');
+  const [bibliotecaView, setBibliotecaView] = useState('biblioteca');
   const [solicitacoesView, setSolicitacoesView] = useState('pendentes');
   const [speakingLivroId, setSpeakingLivroId] = useState(null);
   const [speakingPhase, setSpeakingPhase] = useState('idle');
@@ -4398,10 +4398,10 @@ export default function PainelAluno() {
                   <Button
                     type="button"
                     size="sm"
-                    variant={bibliotecaView === 'meus_livros' ? 'default' : 'ghost'}
-                    onClick={() => setBibliotecaView('meus_livros')}
+                    variant={bibliotecaView === 'biblioteca' ? 'default' : 'ghost'}
+                    onClick={() => setBibliotecaView('biblioteca')}
                   >
-                    Meus livros
+                    Biblioteca
                   </Button>
                   <Button
                     type="button"
@@ -4414,10 +4414,10 @@ export default function PainelAluno() {
                   <Button
                     type="button"
                     size="sm"
-                    variant={bibliotecaView === 'biblioteca' ? 'default' : 'ghost'}
-                    onClick={() => setBibliotecaView('biblioteca')}
+                    variant={bibliotecaView === 'meus_livros' ? 'default' : 'ghost'}
+                    onClick={() => setBibliotecaView('meus_livros')}
                   >
-                    Biblioteca
+                    Meus livros
                   </Button>
                 </div>
 
