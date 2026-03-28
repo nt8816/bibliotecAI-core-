@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Library, Loader2, XCircle } from 'lucide-react';
+import { Loader2, XCircle } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -208,8 +208,8 @@ export default function Convite() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-primary flex items-center justify-center">
-            <Library className="w-8 h-8 text-primary-foreground" />
+          <div className="w-16 h-16 mx-auto mb-4 overflow-hidden rounded-xl bg-primary flex items-center justify-center">
+            <img src="/app-logo.png" alt="BibliotecAI" className="h-full w-full object-cover" />
           </div>
           <CardTitle>Bem-vindo ao BibliotecAI</CardTitle>
           <CardDescription>

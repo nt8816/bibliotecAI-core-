@@ -153,7 +153,7 @@ export function AppSidebar() {
       <SidebarHeader className={`${collapsed ? 'p-2' : 'p-4'} border-b border-sidebar-border/80 bg-sidebar/95 backdrop-blur`}>
         <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
           <div className={`${collapsed ? 'w-8 h-8' : 'w-11 h-11'} rounded-2xl bg-gradient-to-br from-sidebar-accent to-sidebar-primary/40 ring-1 ring-sidebar-border shadow-[0_12px_24px_rgba(0,0,0,0.18)] flex items-center justify-center overflow-hidden`}>
-            <img src="/bibliotecai-symbol.svg" alt="BibliotecAI" className={`${collapsed ? 'w-6 h-6' : 'w-7 h-7'}`} />
+            <img src="/app-logo.png" alt="BibliotecAI" className={`${collapsed ? 'w-6 h-6' : 'w-7 h-7'} object-contain`} />
           </div>
           {!collapsed && (
             <div className="flex flex-col">

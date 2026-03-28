@@ -1,7 +1,7 @@
 ﻿import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
-import { Library, Loader2, Eye, EyeOff, QrCode, ShieldCheck, Smartphone, MonitorSmartphone, MailCheck } from 'lucide-react';
+import { Loader2, Eye, EyeOff, QrCode, ShieldCheck, Smartphone, MonitorSmartphone, MailCheck } from 'lucide-react';
 
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -841,8 +841,8 @@ export default function Auth() {
 
       <Card className="auth-login-card w-full max-w-[560px] border-border/70 shadow-2xl" translate="no">
         <CardHeader className="text-center space-y-3 px-4 pt-5 pb-3 sm:px-6 sm:pt-6 sm:pb-3">
-          <div className="auth-logo-wrap mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary">
-            <Library className="h-8 w-8 text-primary-foreground" />
+          <div className="auth-logo-wrap mx-auto flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-primary">
+            <img src="/app-logo.png" alt="BibliotecAI" className="h-full w-full object-cover" />
           </div>
           <CardTitle className="text-2xl font-bold">BibliotecAI</CardTitle>
           <CardDescription>
