@@ -118,6 +118,21 @@ async function fetchSupabaseUserByToken(token: string, env: Env) {
   return payload?.id ? payload : null;
 }
 
+async function authenticateWithSupabasePassword(email: string, password: string, env: Env) {
+  const { supabaseUrl, publishableKey } = getSupabaseConfig(env);
+  const authResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: {
+      apikey: publishableKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email, password }),
+  });
+
+  const authPayload = await parseResponse(authResponse);
+  return { authResponse, authPayload };
+}
+
 async function supabaseAdminRequest(
   env: Env,
   path: string,
@@ -1348,6 +1363,65 @@ async function resolveSuperAdminMatch(identifier: string, env: Env) {
   };
 }
 
+async function registerSuperAdminFailedAttemptInternal(
+  request: Request,
+  env: Env,
+  identifier: string,
+  path: string,
+  extraContext?: Record<string, unknown> | null,
+) {
+  const match = await resolveSuperAdminMatch(identifier, env);
+
+  if (!match?.matched || !match?.account_id) {
+    return { matched: false, blocked: false, attempts: 0, remaining: 0 };
+  }
+
+  const attempts = Number(match.tentativas_falhas || 0) + 1;
+  const blocked = attempts >= 4;
+
+  await supabaseAdminRequest(
+    env,
+    `/rest/v1/super_admin_accounts?${new URLSearchParams({ id: `eq.${match.account_id}` }).toString()}`,
+    {
+      method: 'PATCH',
+      body: {
+        tentativas_falhas: attempts,
+        ultima_tentativa_em: new Date().toISOString(),
+        bloqueado: blocked,
+        ativo: blocked ? false : match.ativo !== false,
+        bloqueado_em: blocked ? new Date().toISOString() : null,
+      },
+      headers: {
+        Prefer: 'return=minimal',
+      },
+    },
+  );
+
+  await insertSystemLog(request, env, {
+    level: blocked ? 'error' : 'warn',
+    event: blocked ? 'super_admin_account_locked' : 'super_admin_login_failed',
+    message: blocked
+      ? 'Conta de Super Admin bloqueada apos 4 tentativas falhas.'
+      : 'Tentativa invalida de login em conta de Super Admin.',
+    path,
+    context: {
+      identifier,
+      email: match.email || null,
+      account_id: match.account_id,
+      attempts,
+      blocked,
+      ...(extraContext && typeof extraContext === 'object' ? extraContext : {}),
+    },
+  });
+
+  return {
+    matched: true,
+    blocked,
+    attempts,
+    remaining: Math.max(0, 4 - attempts),
+  };
+}
+
 async function getSuperAdminAccountById(accountId: string, env: Env) {
   const payload = await supabaseAdminRequest(
     env,
@@ -1372,6 +1446,44 @@ async function getSuperAdminAccountByAuthUserId(userId: string, env: Env) {
   );
 
   return Array.isArray(payload) ? (payload[0] || null) : null;
+}
+
+async function fetchSuperAdminSecurityProfileByToken(
+  request: Request,
+  token: string,
+  env: Env,
+  context: Record<string, unknown> | null = null,
+) {
+  const user = await fetchSupabaseUserByToken(token, env);
+  if (!user?.id) {
+    throw new Error('Nao autenticado.');
+  }
+
+  const account =
+    await getSuperAdminAccountByAuthUserId(user.id, env) ||
+    await resolveSuperAdminMatch(user.email || '', env).then((match) => (match?.account_id ? getSuperAdminAccountById(match.account_id, env) : null));
+
+  if (!account?.id) {
+    throw new Error('Conta de Super Admin nao encontrada.');
+  }
+
+  const passkeys = await listActivePasskeys(String(account.id), env);
+  const risk = buildRiskContext(request, context);
+
+  return {
+    account: {
+      id: account.id,
+      nome: account.nome || null,
+      email: account.email || user.email || null,
+      passkey_required: account.passkey_required !== false,
+      passkey_enrolled_at: account.passkey_enrolled_at || null,
+    },
+    passkeysCount: passkeys.length,
+    needsPasskeyEnrollment: passkeys.length === 0,
+    requiresEmailVerification: false,
+    deviceType: risk.deviceType,
+    risk,
+  };
 }
 
 async function listActivePasskeys(accountId: string, env: Env) {
@@ -2165,7 +2277,7 @@ const routes: Record<string, RouteHandler> = {
       const payload = await supabaseAdminRequest(
         env,
         `/rest/v1/tenants?${new URLSearchParams({
-          select: 'id,nome,escola_id,subdominio,schema_name,plano,ativo',
+          select: 'nome,subdominio,plano,ativo',
           subdominio: `eq.${subdomain}`,
           ativo: 'eq.true',
           limit: '1',
@@ -2579,17 +2691,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Email e senha sao obrigatorios.' }, 400);
     }
 
-    const { supabaseUrl, publishableKey } = getSupabaseConfig(env);
-    const authResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
-      method: 'POST',
-      headers: {
-        apikey: publishableKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, password }),
-    });
-
-    const authPayload = await parseResponse(authResponse);
+    const { authResponse, authPayload } = await authenticateWithSupabasePassword(email, password, env);
     if (!authResponse.ok) {
       return jsonResponse(
         {
@@ -2609,6 +2711,73 @@ const routes: Record<string, RouteHandler> = {
       success: true,
       session: authPayload,
       user: authPayload?.user || null,
+    });
+  },
+  'POST /v1/auth/super-admin/begin': async (request, env) => {
+    const body = await request.json().catch(() => ({}));
+    const identifier = String(body?.identifier || '').trim();
+    const password = String(body?.password || '');
+    const context = body?.context && typeof body.context === 'object' ? body.context : null;
+
+    if (!identifier || !password) {
+      return jsonResponse({ success: false, error: 'Identificador e senha sao obrigatorios.' }, 400);
+    }
+
+    const match = await resolveSuperAdminMatch(identifier, env);
+    if (!match?.matched || !match?.email || !match?.account_id) {
+      return jsonResponse({ success: false, error: 'Credenciais invalidas.' }, 401);
+    }
+
+    const { authResponse, authPayload } = await authenticateWithSupabasePassword(String(match.email), password, env);
+    if (!authResponse.ok) {
+      const failedAttempt = await registerSuperAdminFailedAttemptInternal(
+        request,
+        env,
+        identifier,
+        '/auth',
+        context && typeof context === 'object' ? context as Record<string, unknown> : null,
+      );
+
+      return jsonResponse(
+        {
+          success: false,
+          error: failedAttempt?.blocked
+            ? 'Usuario bloqueado. Fale com seu parceiro ou superior para solicitar a liberacao.'
+            : `Senha incorreta para Super Admin. Tentativas restantes: ${failedAttempt?.remaining ?? 0}.`,
+          blocked: failedAttempt?.blocked === true,
+        },
+        failedAttempt?.blocked ? 403 : 401,
+      );
+    }
+
+    if (match.bloqueado || match.ativo === false) {
+      return jsonResponse(
+        {
+          success: false,
+          error: 'Conta de Super Admin bloqueada. Outro Super Admin precisa fazer a liberacao.',
+          blocked: true,
+        },
+        403,
+      );
+    }
+
+    const pendingAccessToken = authPayload?.access_token;
+    if (!pendingAccessToken) {
+      return jsonResponse({ success: false, error: 'Sessao temporaria invalida para o Super Admin.' }, 400);
+    }
+
+    const profile = await fetchSuperAdminSecurityProfileByToken(request, pendingAccessToken, env, context);
+    const resolvedDeviceType = String(profile?.deviceType || detectDeviceType(request)).trim() || 'desktop';
+
+    return jsonResponse({
+      success: true,
+      matched: true,
+      email: String(match.email).trim().toLowerCase(),
+      session: authPayload,
+      account: profile?.account || null,
+      needsPasskeyEnrollment: profile?.needsPasskeyEnrollment === true,
+      requiresEmailVerification: profile?.requiresEmailVerification === true,
+      deviceType: resolvedDeviceType,
     });
   },
   'POST /v1/auth/signup': async (request, env) => {
@@ -3791,24 +3960,16 @@ const routes: Record<string, RouteHandler> = {
   'POST /v1/auth/resolve-login': async (request, env) => {
     const body = await request.json().catch(() => ({}));
     const identifier = String(body?.identifier || '').trim();
-    const digits = normalizeDigits(identifier);
-
     if (!identifier) {
       return jsonResponse({ success: false, error: 'Identificador nao informado.' }, 400);
     }
 
-    const [superAdminMatch, cpfEmail, matriculaEmail, matriculaActivated] = await Promise.all([
-      resolveSuperAdminMatch(identifier, env),
-      fetchLatestProfileEmailByCpf(digits || identifier, env),
-      fetchMatriculaProfile(identifier, env),
-    ]);
-
     return jsonResponse({
       success: true,
-      superAdminMatch: superAdminMatch || null,
-      cpfEmail: cpfEmail || null,
-      matriculaEmail: matriculaEmail?.email || null,
-      matriculaActivated: matriculaEmail ? Boolean(matriculaEmail.user_id) : null,
+      superAdminMatch: null,
+      cpfEmail: null,
+      matriculaEmail: null,
+      matriculaActivated: null,
     });
   },
   'POST /v1/auth/logout': async (request, env) => {
@@ -3980,56 +4141,15 @@ const routes: Record<string, RouteHandler> = {
     const body = await request.json().catch(() => ({}));
     const identifier = String(body?.identifier || '').trim();
     const path = String(body?.path || '/auth');
-    const match = await resolveSuperAdminMatch(identifier, env);
-
-    if (!match?.matched || !match?.account_id) {
-      return jsonResponse({ matched: false });
-    }
-
-    const attempts = Number(match.tentativas_falhas || 0) + 1;
-    const blocked = attempts >= 4;
-
-    await supabaseAdminRequest(
+    const result = await registerSuperAdminFailedAttemptInternal(
+      request,
       env,
-      `/rest/v1/super_admin_accounts?${new URLSearchParams({ id: `eq.${match.account_id}` }).toString()}`,
-      {
-        method: 'PATCH',
-        body: {
-          tentativas_falhas: attempts,
-          ultima_tentativa_em: new Date().toISOString(),
-          bloqueado: blocked,
-          ativo: blocked ? false : match.ativo !== false,
-          bloqueado_em: blocked ? new Date().toISOString() : null,
-        },
-        headers: {
-          Prefer: 'return=minimal',
-        },
-      },
+      identifier,
+      path,
+      body?.context && typeof body.context === 'object' ? body.context as Record<string, unknown> : null,
     );
 
-    await insertSystemLog(request, env, {
-      level: blocked ? 'error' : 'warn',
-      event: blocked ? 'super_admin_account_locked' : 'super_admin_login_failed',
-      message: blocked
-        ? 'Conta de Super Admin bloqueada apos 4 tentativas falhas.'
-        : 'Tentativa invalida de login em conta de Super Admin.',
-      path,
-      context: {
-        identifier,
-        email: match.email || null,
-        account_id: match.account_id,
-        attempts,
-        blocked,
-        ...(body?.context && typeof body.context === 'object' ? body.context : {}),
-      },
-    });
-
-    return jsonResponse({
-      matched: true,
-      blocked,
-      attempts,
-      remaining: Math.max(0, 4 - attempts),
-    });
+    return jsonResponse(result?.matched ? result : { matched: false });
   },
   'POST /v1/auth/activate-matricula': async (request, env) => {
     const body = await request.json().catch(() => ({}));

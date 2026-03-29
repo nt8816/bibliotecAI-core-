@@ -104,6 +104,14 @@ export async function resolvePlatformLoginIdentifier(identifier) {
   });
 }
 
+export async function beginSuperAdminLogin(identifier, password, context) {
+  return requestPlatformApi('/v1/auth/super-admin/begin', {
+    method: 'POST',
+    body: { identifier, password, context },
+    auth: false,
+  });
+}
+
 export async function registerPlatformSuperAdminLoginSuccess(email, options = {}) {
   return requestPlatformApi('/v1/auth/super-admin/login-success', {
     method: 'POST',

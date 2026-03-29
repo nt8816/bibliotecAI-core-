@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import {
   activateStudentMatricula,
   approveSuperAdminDesktopAccess,
-  authenticatePlatformCredentials,
+  beginSuperAdminLogin,
   beginSuperAdminPasskeyAuthentication,
   beginSuperAdminPasskeyRegistration,
   fetchPlatformCurrentRoles,
@@ -21,9 +21,7 @@ import {
   finalizePlatformSession,
   finishSuperAdminPasskeyAuthentication,
   finishSuperAdminPasskeyRegistration,
-  registerPlatformSuperAdminFailedAttempt,
   registerPlatformSuperAdminLoginSuccess,
-  resolvePlatformLoginIdentifier,
   sendSuperAdminEmailCode,
   startSuperAdminDesktopApproval,
   verifySuperAdminEmailCode,
@@ -410,110 +408,87 @@ export default function Auth() {
     await runPasskeyAuthentication(nextPending);
   };
 
-  const handleSuperAdminPasswordFlow = async (superAdminEmail, identifier) => {
-    const passwordPayload = await authenticatePlatformCredentials(superAdminEmail, formData.password);
-    const pendingAccessToken = passwordPayload?.session?.access_token;
-    if (!pendingAccessToken) {
-      return {
-        error: {
-          message: 'Sessao temporaria invalida para o Super Admin.',
-        },
-      };
-    }
-
-    const context = {
-      ...buildSecurityContext(),
-      device_type: isMobileDevice() ? 'mobile' : 'desktop',
-      desktop_approval_token: desktopApprovalTokenRef.current || null,
-    };
-
-    const profile = await fetchSuperAdminSecurityProfile(pendingAccessToken, context);
-    const nextPending = {
-      account: profile?.account || null,
-      context,
-      email: superAdminEmail,
-      pendingAccessToken,
-      pendingSession: passwordPayload.session,
-      needsPasskeyEnrollment: profile?.needsPasskeyEnrollment === true,
-      requiresEmailVerification: profile?.requiresEmailVerification === true,
-      deviceType: profile?.deviceType || context.device_type,
-    };
-
-    setPendingSecurity(nextPending);
-
-    if (desktopApprovalTokenRef.current) {
-      setSecurityStep(nextPending.needsPasskeyEnrollment ? 'passkey_enrollment' : 'mobile_biometric');
-      return { success: true };
-    }
-
-    if (nextPending.deviceType === 'desktop') {
-      const desktopChallenge = await startSuperAdminDesktopApproval(pendingAccessToken, context);
-      setPendingSecurity({
-        ...nextPending,
-        desktopToken: desktopChallenge.token,
-        desktopQrCodeUrl: desktopChallenge.qrCodeUrl,
-        desktopApprovalUrl: desktopChallenge.approvalUrl,
-        desktopExpiresAt: desktopChallenge.expiresAt,
-        approved: false,
-      });
-      setDesktopStatus(null);
-      setSecurityStep('desktop_waiting');
-      return { success: true };
-    }
-
-    setSecurityStep(nextPending.needsPasskeyEnrollment ? 'passkey_enrollment' : 'mobile_biometric');
-    return { success: true };
-  };
-
   const loginWithIdentifier = async (login, password) => {
     const normalized = login.trim();
-    const loginResolution = await resolvePlatformLoginIdentifier(normalized);
-    const superAdminMatch = loginResolution?.superAdminMatch;
 
-    if (superAdminMatch?.matched) {
-      if (superAdminMatch?.bloqueado || superAdminMatch?.ativo === false) {
-        return {
-          error: {
-            message: 'Conta de Super Admin bloqueada. Outro Super Admin precisa fazer a liberacao.',
-          },
-        };
-      }
+    if (normalized.includes('@')) {
+      return signIn(normalized.toLowerCase(), password);
+    }
 
-      try {
-        return await handleSuperAdminPasswordFlow(String(superAdminMatch.email || '').trim().toLowerCase(), normalized);
-      } catch (error) {
-        if (String(error?.message || '').includes('Invalid login credentials')) {
-          const failedAttemptData = await registerPlatformSuperAdminFailedAttempt(normalized, {
+    try {
+      const superAdminStart = await beginSuperAdminLogin(normalized, password, {
+        ...buildSecurityContext(),
+        device_type: isMobileDevice() ? 'mobile' : 'desktop',
+        desktop_approval_token: desktopApprovalTokenRef.current || null,
+      });
+
+      if (superAdminStart?.matched) {
+        const nextPending = {
+          account: superAdminStart?.account || null,
+          context: {
             ...buildSecurityContext(),
             device_type: isMobileDevice() ? 'mobile' : 'desktop',
-          });
+            desktop_approval_token: desktopApprovalTokenRef.current || null,
+          },
+          email: String(superAdminStart?.email || '').trim().toLowerCase(),
+          pendingAccessToken: superAdminStart?.session?.access_token || '',
+          pendingSession: superAdminStart?.session || null,
+          needsPasskeyEnrollment: superAdminStart?.needsPasskeyEnrollment === true,
+          requiresEmailVerification: superAdminStart?.requiresEmailVerification === true,
+          deviceType: superAdminStart?.deviceType || (isMobileDevice() ? 'mobile' : 'desktop'),
+        };
 
-          if (failedAttemptData?.blocked) {
-            return {
-              error: {
-                message: 'Usuario bloqueado. Fale com seu parceiro ou superior para solicitar a liberacao.',
-                blocked: true,
-              },
-            };
-          }
-
+        if (!nextPending.pendingAccessToken || !nextPending.pendingSession) {
           return {
             error: {
-              message: `Senha incorreta para Super Admin. Tentativas restantes: ${failedAttemptData?.remaining ?? 0}.`,
+              message: 'Sessao temporaria invalida para o Super Admin.',
             },
           };
         }
 
+        setPendingSecurity(nextPending);
+
+        if (desktopApprovalTokenRef.current) {
+          setSecurityStep(nextPending.needsPasskeyEnrollment ? 'passkey_enrollment' : 'mobile_biometric');
+          return { success: true };
+        }
+
+        if (nextPending.deviceType === 'desktop') {
+          const desktopChallenge = await startSuperAdminDesktopApproval(nextPending.pendingAccessToken, nextPending.context);
+          setPendingSecurity({
+            ...nextPending,
+            desktopToken: desktopChallenge.token,
+            desktopQrCodeUrl: desktopChallenge.qrCodeUrl,
+            desktopApprovalUrl: desktopChallenge.approvalUrl,
+            desktopExpiresAt: desktopChallenge.expiresAt,
+            approved: false,
+          });
+          setDesktopStatus(null);
+          setSecurityStep('desktop_waiting');
+          return { success: true };
+        }
+
+        setSecurityStep(nextPending.needsPasskeyEnrollment ? 'passkey_enrollment' : 'mobile_biometric');
+        return { success: true };
+      }
+    } catch (error) {
+      const errorMessage = String(error?.message || '');
+      if (error?.status === 403 || errorMessage.includes('liberacao') || errorMessage.includes('bloquead')) {
         return {
           error: {
-            message: error?.message || 'Falha inesperada no fluxo de seguranca do Super Admin.',
+            message: errorMessage || 'Conta de Super Admin bloqueada. Outro Super Admin precisa fazer a liberacao.',
+            blocked: true,
           },
         };
       }
-    }
 
-    if (normalized.includes('@')) {
-      return signIn(normalized.toLowerCase(), password);
+      if (error?.status && error.status !== 401 && error.status !== 404) {
+        return {
+          error: {
+            message: errorMessage || 'Falha inesperada no fluxo de seguranca do Super Admin.',
+          },
+        };
+      }
     }
 
     const cpfDigits = normalized.replace(/\D/g, '');
@@ -523,39 +498,6 @@ export default function Auth() {
     const matriculaCandidates = [...new Set([matriculaCompacta, matriculaSomenteAlfanumerica].filter(Boolean))];
     const candidates = [...matriculaCandidates.map((matricula) => `${matricula}@temp.bibliotecai.com`)];
     if (cpfCandidate) candidates.unshift(cpfCandidate);
-
-    if (loginResolution?.cpfEmail) {
-      candidates.unshift(String(loginResolution.cpfEmail).toLowerCase());
-    }
-
-    if (loginResolution?.matriculaActivated === false) {
-      let activationData;
-      try {
-        activationData = await activateStudentMatricula(matriculaCompacta || normalized, password);
-      } catch (activationInvokeError) {
-        return {
-          error: {
-            message: activationInvokeError.message || 'Não foi possível ativar sua conta por matrícula.',
-          },
-        };
-      }
-
-      if (!activationData?.success) {
-        return {
-          error: {
-            message: activationData?.error || 'Não foi possível ativar sua conta por matrícula.',
-          },
-        };
-      }
-
-      if (activationData?.email) {
-        candidates.unshift(String(activationData.email).toLowerCase());
-      }
-    }
-
-    if (loginResolution?.matriculaEmail) {
-      candidates.unshift(String(loginResolution.matriculaEmail).toLowerCase());
-    }
 
     let lastError = null;
 
@@ -569,6 +511,33 @@ export default function Auth() {
       lastError = result.error;
       if (result.error.message !== 'Invalid login credentials') {
         break;
+      }
+    }
+
+    if (!cpfCandidate && matriculaCandidates.length > 0) {
+      try {
+        const activationData = await activateStudentMatricula(matriculaCompacta || normalized, password);
+        if (activationData?.email) {
+          const activatedResult = await signIn(String(activationData.email).toLowerCase(), password);
+          if (!activatedResult?.error) {
+            return activatedResult;
+          }
+          lastError = activatedResult.error;
+        }
+      } catch (activationInvokeError) {
+        const activationMessage = String(activationInvokeError?.message || '');
+        const shouldIgnoreActivationError =
+          activationMessage.includes('Matricula nao encontrada')
+          || activationMessage.includes('Matricula invalida')
+          || activationMessage.includes('Invalid login credentials');
+
+        if (!shouldIgnoreActivationError) {
+          return {
+            error: {
+              message: activationMessage || 'Não foi possível ativar sua conta por matrícula.',
+            },
+          };
+        }
       }
     }
 
