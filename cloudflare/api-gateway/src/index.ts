@@ -863,7 +863,7 @@ async function notifyComunicadoAudience(
       title: copy.title,
       body: copy.body,
       channelId: 'comunicados',
-      path: '/aluno/comunidade',
+      path: '/comunicados',
       extraData: turmaPublico ? { turma_publico: turmaPublico } : undefined,
     });
   }));
@@ -4909,7 +4909,7 @@ const routes: Record<string, RouteHandler> = {
           titulo: item?.titulo || 'Novo comunicado',
           descricao: item?.conteudo || 'Confira o comunicado da sua turma na comunidade.',
           created_at: item?.created_at || null,
-          path: '/aluno/comunidade',
+          path: '/comunicados',
         }))
         .filter((item) => !lidas.has(item.id));
 

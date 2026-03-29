@@ -32,7 +32,8 @@ export function NotificationsPopover({ userRole, onNavigate }) {
       await markNotificationRead(item.id);
     }
 
-    handleNavigate(item?.path || '/aluno/comunidade');
+    const fallbackPath = userRole === 'aluno' ? '/aluno/comunicados' : '/comunicados';
+    handleNavigate(item?.path || fallbackPath);
   };
 
   return (

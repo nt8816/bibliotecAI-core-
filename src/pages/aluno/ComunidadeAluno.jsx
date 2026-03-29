@@ -33,8 +33,6 @@ const POSTS_PAGE_SIZE = 20;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const POSTS_CACHE_KEY = 'aluno:comunidade_posts:page0';
 const ALL_TURMAS_OPTION = '__all_turmas__';
-const COMUNICADO_AUTO_TAG = 'comunicado';
-
 function formatDateBR(dateValue) {
   if (!dateValue) return '-';
   try {
@@ -568,7 +566,7 @@ export default function ComunidadeAluno() {
   }, [likes]);
 
   const postsFiltrados = useMemo(() => {
-    let list = ensureArray(posts).filter((post) => !isExpiredComunicado(post));
+    let list = ensureArray(posts).filter((post) => post?.tipo !== 'comunicado' && !isExpiredComunicado(post));
     if (!isGestor && !isBibliotecaria && !isSuperAdmin) {
       if (isProfessor) {
         const turmaSet = new Set(ensureArray(professorTurmas).map(normalizeTurmaKey).filter(Boolean));
@@ -759,8 +757,7 @@ export default function ComunidadeAluno() {
       const livroRelacionado = postLivroId
         ? livros.find((livro) => livro.id === postLivroId)
         : null;
-      const conteudoBase =
-        postConteudo.trim() || (postTipo === 'comunicado' ? 'Novo comunicado da escola.' : 'Compartilhamento de midia criado na comunidade.');
+      const conteudoBase = postConteudo.trim() || 'Compartilhamento de midia criado na comunidade.';
       const conteudoComLivroManual =
         !postLivroId && livroManual
           ? `Livro desejado: ${livroManual}\n\n${conteudoBase}`.trim()
@@ -784,7 +781,6 @@ export default function ComunidadeAluno() {
         imagem_urls: imagemUrls,
         tags: Array.from(new Set([
           ...(postComIA ? ['ia'] : []),
-          ...(postTipo === 'comunicado' ? [COMUNICADO_AUTO_TAG] : []),
           ...(livroManual && !livroRelacionado ? ['livro-manual'] : []),
         ])),
       });
@@ -802,7 +798,7 @@ export default function ComunidadeAluno() {
 
       clearPostForm();
       setPostDialogOpen(false);
-      toast({ title: postTipo === 'comunicado' ? 'Comunicado publicado!' : 'Publicacao criada!' });
+      toast({ title: 'Publicacao criada!' });
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -1189,9 +1185,6 @@ export default function ComunidadeAluno() {
           <Button size="sm" variant={filtroTipo === 'sugestão' ? 'default' : 'outline'} onClick={() => setFiltroTipo('sugestão')}>
             Sugestoes
           </Button>
-          <Button size="sm" variant={filtroTipo === 'comunicado' ? 'default' : 'outline'} onClick={() => setFiltroTipo('comunicado')}>
-            Comunicados
-          </Button>
           <Button size="sm" variant={filtroTipo === 'quiz' ? 'default' : 'outline'} onClick={() => setFiltroTipo('quiz')}>
             Quizzes
           </Button>
@@ -1228,9 +1221,7 @@ export default function ComunidadeAluno() {
                             <p className="font-semibold text-sm sm:text-base break-words">{safeText(post?.titulo, 'Post da comunidade')}</p>
                             {ensureArray(post?.tags).includes('ia') && <Badge variant="secondary">IA</Badge>}
                             {quizData && <Badge variant="secondary">Quiz</Badge>}
-                            {post?.tipo === 'comunicado' && <Badge variant="destructive">Comunicado</Badge>}
                             {post?.turma_publico && <Badge variant="outline">Turma {post.turma_publico}</Badge>}
-                            {post?.tipo === 'comunicado' && !post?.turma_publico && <Badge variant="outline">Todas as turmas</Badge>}
                           </div>
                           <p className="text-xs text-muted-foreground break-words">
                             {safeNestedName(post?.usuarios_biblioteca, 'Usuario')} • {quizData ? 'quiz' : safeText(post?.tipo, 'resenha')} • {formatDateBR(post?.created_at)}
@@ -1442,7 +1433,7 @@ export default function ComunidadeAluno() {
             </DialogTitle>
             <DialogDescription>
               {canPublicarComunicado
-                ? 'Compartilhe resenhas, dicas, sugestoes ou comunicados com a comunidade.'
+                ? 'Compartilhe resenhas, dicas ou sugestoes com a comunidade.'
                 : 'Compartilhe uma resenha, dica ou sugestão com a comunidade.'}
             </DialogDescription>
           </DialogHeader>
@@ -1459,7 +1450,6 @@ export default function ComunidadeAluno() {
                   <option value="resenha">Resenha</option>
                   <option value="dica">Dica</option>
                   <option value="sugestão">Sugestão</option>
-                  {canPublicarComunicado && <option value="comunicado">Comunicado</option>}
                 </select>
               </div>
               <div className="space-y-2 sm:col-span-2">

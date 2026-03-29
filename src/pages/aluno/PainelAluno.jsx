@@ -3646,7 +3646,7 @@ export default function PainelAluno() {
                           return;
                         }
                         if (n.tipo === 'comunicado') {
-                          navigate('/aluno/comunidade');
+                          navigate('/aluno/comunicados');
                         }
                       };
 

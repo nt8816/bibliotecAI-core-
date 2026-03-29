@@ -29,14 +29,14 @@ function isNativeAndroidApp() {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 }
 
-function buildNotificationRoute(notification) {
+function buildNotificationRoute(notification, userRole) {
   const data = notification?.data && typeof notification.data === 'object' ? notification.data : {};
   const explicitPath = String(data?.path || '').trim();
   if (explicitPath.startsWith('/')) return explicitPath;
 
   const category = String(data?.category || data?.canal || '').trim().toLowerCase();
   if (category === 'atividades') return '/aluno/atividades';
-  if (category === 'comunicados') return '/aluno/comunidade';
+  if (category === 'comunicados') return userRole === 'aluno' ? '/aluno/comunicados' : '/comunicados';
   if (category === 'mensagens') return '/emprestimos?tab=solicitacoes';
 
   return '/dashboard';
@@ -57,7 +57,7 @@ async function ensureAndroidPushChannels() {
 
 export function NativePushBridge() {
   const navigate = useNavigate();
-  const { user, session } = useAuth();
+  const { user, session, userRole } = useAuth();
   const registeredTokenRef = useRef('');
   const unregisteringTokenRef = useRef('');
 
@@ -118,7 +118,7 @@ export function NativePushBridge() {
         });
 
         actionPerformedListener = await PushNotifications.addListener('pushNotificationActionPerformed', (event) => {
-          navigate(buildNotificationRoute(event?.notification), { replace: false });
+          navigate(buildNotificationRoute(event?.notification, userRole), { replace: false });
         });
 
         await PushNotifications.register();
@@ -139,7 +139,7 @@ export function NativePushBridge() {
       receivedListener?.remove();
       actionPerformedListener?.remove();
     };
-  }, [isNativePushAvailable, navigate, session?.access_token, user?.id]);
+  }, [isNativePushAvailable, navigate, session?.access_token, user?.id, userRole]);
 
   useEffect(() => {
     if (!isNativePushAvailable) return undefined;
