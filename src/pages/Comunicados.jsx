@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { AudioLines, BellRing, CalendarClock, Megaphone, Send, Upload, Users, X } from 'lucide-react';
+import { AudioLines, BellRing, CalendarClock, Mic, Megaphone, PauseCircle, Send, Upload, Users, X } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -17,6 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { createComunidadePost, fetchComunidadeAlunoData } from '@/services/comunidadeAlunoService';
 import { uploadFileToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
+import { cn } from '@/lib/utils';
 
 const ALL_TURMAS_OPTION = '__all_turmas__';
 
@@ -78,6 +79,26 @@ async function getAudioDurationFromUrl(audioUrl) {
   });
 }
 
+function buildAudioFileFromBlob(blob) {
+  const mimeType = String(blob?.type || '').trim() || 'audio/webm';
+  const extension = mimeType.includes('mp4')
+    ? 'm4a'
+    : mimeType.includes('ogg')
+      ? 'ogg'
+      : mimeType.includes('mpeg')
+        ? 'mp3'
+        : 'webm';
+
+  return new File([blob], `gravacao-comunicado-${Date.now()}.${extension}`, { type: mimeType });
+}
+
+function formatRecordingClock(totalSeconds) {
+  const safeSeconds = Number.isFinite(totalSeconds) ? Math.max(0, Math.floor(totalSeconds)) : 0;
+  const minutes = String(Math.floor(safeSeconds / 60)).padStart(2, '0');
+  const seconds = String(safeSeconds % 60).padStart(2, '0');
+  return `${minutes}:${seconds}`;
+}
+
 async function resolveComunicadoMedia(post) {
   return {
     ...(post || {}),
@@ -102,12 +123,32 @@ export default function Comunicados() {
   const [expiraEm, setExpiraEm] = useState('');
   const [audioFile, setAudioFile] = useState(null);
   const [busca, setBusca] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const audioInputRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const recordingChunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
   const minComunicadoDate = getTodayInputValue();
 
   useEffect(() => () => {
     if (audioFile?.previewUrl?.startsWith('blob:')) {
       URL.revokeObjectURL(audioFile.previewUrl);
+    }
+
+    if (recordingTimerRef.current) {
+      window.clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
     }
   }, [audioFile]);
 
@@ -170,8 +211,7 @@ export default function Comunicados() {
     return list.sort((a, b) => new Date(b?.created_at || 0).getTime() - new Date(a?.created_at || 0).getTime());
   }, [busca, isAluno, perfil?.turma, posts]);
 
-  const handleSelectAudioFile = async (files) => {
-    const file = files?.[0];
+  const setSelectedAudioFile = async (file) => {
     if (!file) return;
 
     if (!String(file.type || '').startsWith('audio/')) {
@@ -207,11 +247,99 @@ export default function Comunicados() {
     });
   };
 
+  const handleSelectAudioFile = async (files) => {
+    const file = files?.[0];
+    await setSelectedAudioFile(file);
+  };
+
+  const stopRecordingResources = () => {
+    if (recordingTimerRef.current) {
+      window.clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+  };
+
+  const startRecording = async () => {
+    if (isRecording) return;
+
+    if (typeof window === 'undefined' || !navigator?.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      toast({
+        variant: 'destructive',
+        title: 'Gravacao indisponivel',
+        description: 'Este dispositivo nao oferece suporte para gravacao de audio no navegador/app.',
+      });
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+
+      recordingChunksRef.current = [];
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = mediaRecorder;
+      setRecordingSeconds(0);
+      setIsRecording(true);
+
+      mediaRecorder.addEventListener('dataavailable', (event) => {
+        if (event.data && event.data.size > 0) {
+          recordingChunksRef.current.push(event.data);
+        }
+      });
+
+      mediaRecorder.addEventListener('stop', async () => {
+        const blob = new Blob(recordingChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
+        recordingChunksRef.current = [];
+        setIsRecording(false);
+        setRecordingSeconds(0);
+        stopRecordingResources();
+
+        if (blob.size > 0) {
+          const recordedFile = buildAudioFileFromBlob(blob);
+          await setSelectedAudioFile(recordedFile);
+          toast({ title: 'Audio gravado com sucesso!' });
+        }
+      });
+
+      mediaRecorder.start();
+      recordingTimerRef.current = window.setInterval(() => {
+        setRecordingSeconds((current) => current + 1);
+      }, 1000);
+    } catch (error) {
+      setIsRecording(false);
+      stopRecordingResources();
+      toast({
+        variant: 'destructive',
+        title: 'Permissao negada',
+        description: 'Libere o microfone para gravar audio no navegador ou no app.',
+      });
+    }
+  };
+
+  const stopRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') {
+      stopRecordingResources();
+      setIsRecording(false);
+      return;
+    }
+    recorder.stop();
+  };
+
   const clearAudio = () => {
+    if (isRecording) {
+      stopRecording();
+    }
     if (audioFile?.previewUrl?.startsWith('blob:')) {
       URL.revokeObjectURL(audioFile.previewUrl);
     }
     setAudioFile(null);
+    setRecordingSeconds(0);
     if (audioInputRef.current) {
       audioInputRef.current.value = '';
     }
@@ -379,7 +507,9 @@ export default function Comunicados() {
                     <Label className="flex items-center gap-2 text-base text-emerald-900">
                       <AudioLines className="h-4 w-4" /> Audio do comunicado
                     </Label>
-                    <p className="text-sm text-emerald-800/80">O audio sera salvo no Cloudflare R2 e exibido com player animado.</p>
+                    <p className="text-sm text-emerald-800/80">
+                      Grave com o microfone ou escolha um arquivo ja salvo no aparelho. O audio sera salvo no Cloudflare R2.
+                    </p>
                   </div>
                   <input
                     ref={audioInputRef}
@@ -388,11 +518,37 @@ export default function Comunicados() {
                     className="hidden"
                     onChange={(e) => handleSelectAudioFile(e.target.files)}
                   />
-                  <Button type="button" variant="outline" className="rounded-full" onClick={() => audioInputRef.current?.click()}>
-                    <Upload className="mr-2 h-4 w-4" />
-                    {audioFile ? 'Trocar audio' : 'Adicionar audio'}
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant={isRecording ? 'destructive' : 'default'}
+                      className={cn(
+                        'rounded-full transition-all duration-200 active:scale-95',
+                        isRecording && 'record-button-live',
+                      )}
+                      onClick={isRecording ? stopRecording : startRecording}
+                    >
+                      {isRecording ? <PauseCircle className="mr-2 h-4 w-4 animate-pulse" /> : <Mic className="mr-2 h-4 w-4" />}
+                      {isRecording ? `Parar gravacao (${formatRecordingClock(recordingSeconds)})` : 'Gravar audio'}
+                    </Button>
+                    <Button type="button" variant="outline" className="rounded-full" onClick={() => audioInputRef.current?.click()}>
+                      <Upload className="mr-2 h-4 w-4" />
+                      {audioFile ? 'Trocar arquivo' : 'Adicionar audio'}
+                    </Button>
+                  </div>
                 </div>
+
+                {isRecording ? (
+                  <div className="record-status-enter mt-4 rounded-2xl border border-rose-200 bg-white/85 px-4 py-3 text-sm text-rose-700 shadow-[0_12px_24px_rgba(244,63,94,0.08)]">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-2.5 w-2.5 rounded-full bg-rose-500 animate-pulse" />
+                      <span className="font-medium">Gravando agora: {formatRecordingClock(recordingSeconds)}</span>
+                    </div>
+                    <p className="mt-1 text-rose-700/80">
+                      O aplicativo/navegador pode pedir permissao do microfone nesta etapa.
+                    </p>
+                  </div>
+                ) : null}
 
                 {audioFile ? (
                   <div className="mt-4 space-y-3">

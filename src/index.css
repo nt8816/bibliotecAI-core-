@@ -652,6 +652,35 @@ html.a11y-reduce-motion *::after {
   }
 }
 
+@keyframes recordButtonPulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.32);
+  }
+
+  50% {
+    transform: scale(1.03);
+    box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+  }
+
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+@keyframes recordBadgeEntrance {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .audio-wave-bar {
   width: 0.32rem;
   min-width: 0.32rem;
@@ -670,8 +699,21 @@ html.a11y-reduce-motion *::after {
   animation: comunicadoWavePulse 1.15s ease-in-out infinite;
 }
 
+.record-button-live {
+  animation: recordButtonPulse 1.15s ease-in-out infinite;
+}
+
+.record-status-enter {
+  animation: recordBadgeEntrance 220ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .audio-wave-bar-active {
+    animation: none !important;
+  }
+
+  .record-button-live,
+  .record-status-enter {
     animation: none !important;
   }
 }
