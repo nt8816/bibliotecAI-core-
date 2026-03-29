@@ -322,16 +322,6 @@ export default function Comunicados() {
 
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
               <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-sm">
-                <p className="text-xs uppercase tracking-[0.22em] text-emerald-700/80">Visibilidade</p>
-                <p className="mt-2 text-sm font-medium text-slate-800">Todas as categorias, exceto Super Admin</p>
-              </div>
-              <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-sm">
-                <p className="text-xs uppercase tracking-[0.22em] text-emerald-700/80">Publicacao</p>
-                <p className="mt-2 text-sm font-medium text-slate-800">
-                  {canPublish ? 'Voce pode publicar aqui.' : 'Leitura liberada, sem permissao de publicar.'}
-                </p>
-              </div>
-              <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-sm">
                 <p className="text-xs uppercase tracking-[0.22em] text-emerald-700/80">Ativos agora</p>
                 <p className="mt-2 text-2xl font-semibold text-slate-900">{comunicadosVisiveis.length}</p>
               </div>
