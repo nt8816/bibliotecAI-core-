@@ -681,6 +681,19 @@ html.a11y-reduce-motion *::after {
   }
 }
 
+@keyframes recordingFrequencyPulse {
+  0%,
+  100% {
+    transform: scaleY(0.28);
+    opacity: 0.4;
+  }
+
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
 .audio-wave-bar {
   width: 0.32rem;
   min-width: 0.32rem;
@@ -707,13 +720,24 @@ html.a11y-reduce-motion *::after {
   animation: recordBadgeEntrance 220ms ease-out;
 }
 
+.recording-frequency-bar {
+  width: 0.28rem;
+  min-width: 0.28rem;
+  height: 1.4rem;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, rgba(244, 63, 94, 0.45), rgba(225, 29, 72, 0.95));
+  transform-origin: center bottom;
+  animation: recordingFrequencyPulse 0.95s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .audio-wave-bar-active {
     animation: none !important;
   }
 
   .record-button-live,
-  .record-status-enter {
+  .record-status-enter,
+  .recording-frequency-bar {
     animation: none !important;
   }
 }

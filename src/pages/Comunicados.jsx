@@ -508,7 +508,7 @@ export default function Comunicados() {
                       <AudioLines className="h-4 w-4" /> Audio do comunicado
                     </Label>
                     <p className="text-sm text-emerald-800/80">
-                      Grave com o microfone ou escolha um arquivo ja salvo no aparelho. O audio sera salvo no Cloudflare R2.
+                      Grave com o microfone ou escolha um arquivo ja salvo no aparelho.
                     </p>
                   </div>
                   <input
@@ -543,6 +543,15 @@ export default function Comunicados() {
                     <div className="flex items-center gap-2">
                       <span className="inline-flex h-2.5 w-2.5 rounded-full bg-rose-500 animate-pulse" />
                       <span className="font-medium">Gravando agora: {formatRecordingClock(recordingSeconds)}</span>
+                    </div>
+                    <div className="mt-3 flex items-end gap-1 overflow-hidden rounded-full bg-rose-50 px-3 py-2">
+                      {Array.from({ length: 24 }).map((_, index) => (
+                        <span
+                          key={`recording-bar-${index}`}
+                          className="recording-frequency-bar"
+                          style={{ animationDelay: `${index * 0.05}s` }}
+                        />
+                      ))}
                     </div>
                     <p className="mt-1 text-rose-700/80">
                       O aplicativo/navegador pode pedir permissao do microfone nesta etapa.
