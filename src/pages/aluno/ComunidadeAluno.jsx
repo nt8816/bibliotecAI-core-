@@ -1,7 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { AudioLines, Filter, Heart, ImagePlus, MessageSquare, Pencil, Plus, Send, Sparkles, Trash2, X } from 'lucide-react';
+import { AudioLines, Filter, Heart, ImagePlus, MessageSquare, Pencil, Plus, Send, Sparkles, Trash2, Upload, X } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,8 +24,9 @@ import {
   toggleComunidadeLike,
   updateComunidadePost,
 } from '@/services/comunidadeAlunoService';
-import { uploadDataUrlToR2 } from '@/lib/r2Storage';
+import { uploadDataUrlToR2, uploadFileToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
+import { AudioMessagePlayer } from '@/components/community/AudioMessagePlayer';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 const POSTS_PAGE_SIZE = 20;
@@ -214,7 +215,7 @@ async function insertCommunityPostCompat(payload) {
   let { data, error } = await runInsert(payload);
 
   if (error) {
-    const missingColumns = ['escola_id', 'imagem_urls', 'audiobook_id', 'turma_publico', 'expires_at'];
+    const missingColumns = ['escola_id', 'imagem_urls', 'audiobook_id', 'turma_publico', 'expires_at', 'audio_url', 'audio_duration_seconds'];
     for (const column of missingColumns) {
       if (Object.hasOwn(payload, column) && isMissingColumnError(error, column, 'comunidade_posts')) {
         const { [column]: _ignored, ...fallbackPayload } = payload;
@@ -235,6 +236,22 @@ async function fileToDataUrl(file) {
   });
 }
 
+async function getAudioDurationFromUrl(audioUrl) {
+  if (!audioUrl) return null;
+  return new Promise((resolve) => {
+    const audio = new Audio();
+    const finish = (value) => {
+      audio.removeAttribute('src');
+      audio.load();
+      resolve(Number.isFinite(value) ? Math.round(value) : null);
+    };
+    audio.preload = 'metadata';
+    audio.onloadedmetadata = () => finish(audio.duration);
+    audio.onerror = () => finish(null);
+    audio.src = audioUrl;
+  });
+}
+
 function dataUrlToFile(dataUrl, filename = 'compartilhamento.jpg') {
   const parts = String(dataUrl || '').split(',');
   if (parts.length < 2) throw new Error('Imagem invalida.');
@@ -251,7 +268,8 @@ function dataUrlToFile(dataUrl, filename = 'compartilhamento.jpg') {
 async function resolvePostMedia(post) {
   const safePost = post || {};
   const imagem_urls = await resolveR2MediaUrls(ensureArray(safePost.imagem_urls), `comunidade-${safePost.id || 'post'}`);
-  const audio_url = await resolveR2MediaUrl(
+  const comunicadoAudioUrl = await resolveR2MediaUrl(safePost?.audio_url, `comunicado-${safePost.id || 'post'}.webm`);
+  const audiobookAudioUrl = await resolveR2MediaUrl(
     safePost?.audiobooks_biblioteca?.audio_url,
     `audiobook-${safePost?.audiobooks_biblioteca?.id || safePost.id || 'post'}.mp3`,
   );
@@ -259,8 +277,9 @@ async function resolvePostMedia(post) {
   return {
     ...safePost,
     imagem_urls,
+    audio_url: comunicadoAudioUrl,
     audiobooks_biblioteca: safePost?.audiobooks_biblioteca
-      ? { ...safePost.audiobooks_biblioteca, audio_url }
+      ? { ...safePost.audiobooks_biblioteca, audio_url: audiobookAudioUrl }
       : safePost?.audiobooks_biblioteca,
   };
 }
@@ -313,6 +332,7 @@ export default function ComunidadeAluno() {
   const [postTurmaPublico, setPostTurmaPublico] = useState('');
   const [postExpiraEm, setPostExpiraEm] = useState('');
   const [imageDataUrls, setImageDataUrls] = useState([]);
+  const [postAudioFile, setPostAudioFile] = useState(null);
   const [selectedImageUrl, setSelectedImageUrl] = useState('');
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [sharePost, setSharePost] = useState(null);
@@ -320,6 +340,7 @@ export default function ComunidadeAluno() {
   const [shareImageDataUrl, setShareImageDataUrl] = useState('');
   const [sharing, setSharing] = useState(false);
   const postImagesInputRef = useRef(null);
+  const postAudioInputRef = useRef(null);
   const [quizRespostasPorPost, setQuizRespostasPorPost] = useState({});
   const [quizResultadoPorPost, setQuizResultadoPorPost] = useState({});
   const [quizRankingByPost, setQuizRankingByPost] = useState({});
@@ -519,6 +540,12 @@ export default function ComunidadeAluno() {
     loadTurmasPublicacao({ perfilId: alunoId, escolaIdAtual: escolaId });
   }, [alunoId, canPublicarComunicado, escolaId, loadTurmasPublicacao]);
 
+  useEffect(() => () => {
+    if (postAudioFile?.previewUrl?.startsWith('blob:')) {
+      URL.revokeObjectURL(postAudioFile.previewUrl);
+    }
+  }, [postAudioFile]);
+
   useEffect(() => {
     const quizPostIds = posts
       .filter((post) => Boolean(extractQuizFromConteudo(post?.conteudo)))
@@ -610,6 +637,57 @@ export default function ComunidadeAluno() {
     setPostTurmaPublico('');
     setPostExpiraEm('');
     setImageDataUrls([]);
+    if (postAudioFile?.previewUrl?.startsWith('blob:')) {
+      URL.revokeObjectURL(postAudioFile.previewUrl);
+    }
+    setPostAudioFile(null);
+  };
+
+  const handleSelectAudioFile = async (files) => {
+    const file = files?.[0];
+    if (!file) return;
+
+    if (!String(file.type || '').startsWith('audio/')) {
+      toast({
+        variant: 'destructive',
+        title: 'Arquivo invalido',
+        description: 'Selecione um arquivo de audio valido.',
+      });
+      return;
+    }
+
+    if (file.size > 20 * 1024 * 1024) {
+      toast({
+        variant: 'destructive',
+        title: 'Audio muito grande',
+        description: 'O limite para audio em comunicados é 20MB.',
+      });
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    const durationSeconds = await getAudioDurationFromUrl(previewUrl);
+
+    if (postAudioFile?.previewUrl?.startsWith('blob:')) {
+      URL.revokeObjectURL(postAudioFile.previewUrl);
+    }
+
+    setPostAudioFile({
+      file,
+      previewUrl,
+      durationSeconds,
+      fileName: file.name,
+    });
+  };
+
+  const removeSelectedAudio = () => {
+    if (postAudioFile?.previewUrl?.startsWith('blob:')) {
+      URL.revokeObjectURL(postAudioFile.previewUrl);
+    }
+    setPostAudioFile(null);
+    if (postAudioInputRef.current) {
+      postAudioInputRef.current.value = '';
+    }
   };
 
   const handleCriarPost = async () => {
@@ -621,11 +699,11 @@ export default function ComunidadeAluno() {
       });
       return;
     }
-    if (!postConteudo.trim() && imageDataUrls.length === 0 && !postAudiobookId) {
+    if (!postConteudo.trim() && imageDataUrls.length === 0 && !postAudiobookId && !postAudioFile?.file) {
       toast({
         variant: 'destructive',
         title: 'Conteudo obrigatorio',
-        description: 'Escreva algo ou anexe uma imagem/audiobook.',
+        description: 'Escreva algo ou anexe uma imagem, audio ou audiobook.',
       });
       return;
     }
@@ -669,6 +747,14 @@ export default function ComunidadeAluno() {
             }),
           )
         : [];
+      const uploadedAudio = postAudioFile?.file
+        ? await uploadFileToR2({
+            file: postAudioFile.file,
+            escolaId,
+            ownerId: alunoId,
+            scope: 'comunicados-audio',
+          })
+        : null;
       const livroManual = postLivroNomeManual.trim();
       const livroRelacionado = postLivroId
         ? livros.find((livro) => livro.id === postLivroId)
@@ -690,6 +776,8 @@ export default function ComunidadeAluno() {
         expires_at: expiresAt,
         livro_id: postLivroId || null,
         audiobook_id: postAudiobookId || null,
+        audio_url: uploadedAudio?.objectKey || null,
+        audio_duration_seconds: postAudioFile?.durationSeconds || null,
         tipo: postTipo,
         titulo: tituloComLivroManual,
         conteudo: conteudoComLivroManual,
@@ -1276,6 +1364,14 @@ export default function ComunidadeAluno() {
                         </div>
                       )}
 
+                      {post?.audio_url && (
+                        <AudioMessagePlayer
+                          src={post.audio_url}
+                          title={post?.tipo === 'comunicado' ? 'Audio do comunicado' : 'Audio anexado'}
+                          durationSeconds={post?.audio_duration_seconds}
+                        />
+                      )}
+
                       {post?.audiobooks_biblioteca && (
                         <div className="p-2 rounded-md bg-muted/70 text-xs space-y-2">
                           <p>
@@ -1456,6 +1552,59 @@ export default function ComunidadeAluno() {
                 placeholder="Escreva sua experiencia de leitura..."
               />
             </div>
+
+            {postTipo === 'comunicado' && (
+              <div className="space-y-3 rounded-[28px] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.95),rgba(240,253,250,0.92),rgba(255,255,255,0.98))] p-4 shadow-[0_18px_38px_rgba(16,185,129,0.08)] animate-in fade-in-0 slide-in-from-bottom-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <Label className="flex items-center gap-2 text-base text-emerald-900">
+                      <AudioLines className="h-4 w-4" /> Audio do comunicado
+                    </Label>
+                    <p className="text-sm text-emerald-800/80">
+                      Envie um audio curto para deixar o comunicado mais vivo. O arquivo sera salvo no Cloudflare R2.
+                    </p>
+                  </div>
+                  <input
+                    ref={postAudioInputRef}
+                    type="file"
+                    accept="audio/*"
+                    className="hidden"
+                    onChange={(e) => handleSelectAudioFile(e.target.files)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-full border-emerald-300 bg-white/80 text-emerald-800 hover:bg-emerald-50"
+                    onClick={() => postAudioInputRef.current?.click()}
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    {postAudioFile ? 'Trocar audio' : 'Adicionar audio'}
+                  </Button>
+                </div>
+
+                {postAudioFile ? (
+                  <div className="space-y-3">
+                    <AudioMessagePlayer
+                      src={postAudioFile.previewUrl}
+                      title={postAudioFile.fileName || 'Previa do audio'}
+                      durationSeconds={postAudioFile.durationSeconds}
+                    />
+                    <div className="flex items-center justify-between gap-3 rounded-2xl bg-white/80 px-4 py-3 text-sm text-slate-600">
+                      <p className="truncate">
+                        {postAudioFile.fileName} {postAudioFile.durationSeconds ? `• ${postAudioFile.durationSeconds}s` : ''}
+                      </p>
+                      <Button type="button" variant="ghost" size="sm" onClick={removeSelectedAudio}>
+                        Remover
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-emerald-300 bg-white/70 px-4 py-5 text-sm text-emerald-900/75">
+                    O audio pode ser uma explicacao rapida, um convite da turma ou um aviso importante.
+                  </div>
+                )}
+              </div>
+            )}
 
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -1680,6 +1829,14 @@ export default function ComunidadeAluno() {
               {safeNestedName(postPreviewItem?.usuarios_biblioteca, 'Usuario')} • {formatDateBR(postPreviewItem?.created_at)}
             </DialogDescription>
           </DialogHeader>
+          {postPreviewItem?.audio_url && (
+            <AudioMessagePlayer
+              src={postPreviewItem.audio_url}
+              title={postPreviewItem?.tipo === 'comunicado' ? 'Audio do comunicado' : 'Audio anexado'}
+              durationSeconds={postPreviewItem?.audio_duration_seconds}
+              className="mb-4"
+            />
+          )}
           <div className="whitespace-pre-wrap text-sm text-muted-foreground">
             {safeText(extractQuizFromConteudo(postPreviewItem?.conteudo)?.descricao || postPreviewItem?.conteudo, 'Conteudo indisponivel')}
           </div>
