@@ -549,7 +549,10 @@ export default function Comunicados() {
                         <span
                           key={`recording-bar-${index}`}
                           className="recording-frequency-bar"
-                          style={{ animationDelay: `${index * 0.05}s` }}
+                          style={{
+                            animationDelay: `${index * 0.05}s`,
+                            height: `${0.9 + (index % 5) * 0.22}rem`,
+                          }}
                         />
                       ))}
                     </div>
