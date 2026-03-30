@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { AudioLines, BellRing, CalendarClock, Mic, Megaphone, PauseCircle, Send, Upload, Users, X } from 'lucide-react';
+import { AudioLines, BellRing, CalendarClock, Download, ImagePlus, Mic, Megaphone, PauseCircle, Send, Upload, Users, X } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -9,13 +9,14 @@ import { AudioMessagePlayer } from '@/components/community/AudioMessagePlayer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { createComunidadePost, fetchComunidadeAlunoData } from '@/services/comunidadeAlunoService';
-import { uploadFileToR2 } from '@/lib/r2Storage';
+import { getR2DownloadUrl, uploadFileToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
 import { cn } from '@/lib/utils';
 
@@ -103,9 +104,30 @@ function smoothLevel(previous, next, weight = 0.7) {
   return previous * weight + next * (1 - weight);
 }
 
+function createPendingImage(file) {
+  return {
+    id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`,
+    file,
+    previewUrl: URL.createObjectURL(file),
+  };
+}
+
+function downloadFromUrl(url, fileName = 'arquivo') {
+  if (!url) return;
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.target = '_blank';
+  link.rel = 'noreferrer';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 async function resolveComunicadoMedia(post) {
   return {
     ...(post || {}),
+    imagem_urls_r2_keys: ensureArray(post?.imagem_urls),
     imagem_urls: await resolveR2MediaUrls(ensureArray(post?.imagem_urls), `comunicado-${post?.id || 'item'}`),
     audio_url: await resolveR2MediaUrl(post?.audio_url, `comunicado-${post?.id || 'item'}.webm`),
   };
@@ -126,11 +148,15 @@ export default function Comunicados() {
   const [turmaPublico, setTurmaPublico] = useState('');
   const [expiraEm, setExpiraEm] = useState('');
   const [audioFile, setAudioFile] = useState(null);
+  const [pendingImages, setPendingImages] = useState([]);
   const [busca, setBusca] = useState('');
+  const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
+  const [selectedImagePreview, setSelectedImagePreview] = useState({ src: '', title: 'Visualizacao da imagem' });
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingLevels, setRecordingLevels] = useState(() => Array.from({ length: 24 }, () => 0.18));
   const audioInputRef = useRef(null);
+  const imageInputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const recordingChunksRef = useRef([]);
@@ -146,6 +172,12 @@ export default function Comunicados() {
     if (audioFile?.previewUrl?.startsWith('blob:')) {
       URL.revokeObjectURL(audioFile.previewUrl);
     }
+
+    ensureArray(pendingImages).forEach((image) => {
+      if (image?.previewUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(image.previewUrl);
+      }
+    });
 
     if (recordingTimerRef.current) {
       window.clearInterval(recordingTimerRef.current);
@@ -175,7 +207,7 @@ export default function Comunicados() {
       audioContextRef.current.close().catch(() => null);
       audioContextRef.current = null;
     }
-  }, [audioFile]);
+  }, [audioFile, pendingImages]);
 
   useEffect(() => {
     let cancelled = false;
@@ -267,14 +299,74 @@ export default function Comunicados() {
     setAudioFile({
       file,
       previewUrl,
-      fileName: file.name,
       durationSeconds,
     });
+  };
+
+  const handleSelectImages = async (files) => {
+    const selectedFiles = Array.from(files || []);
+    if (selectedFiles.length === 0) return;
+
+    const invalidFiles = selectedFiles.filter((file) => !String(file.type || '').startsWith('image/'));
+    if (invalidFiles.length > 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Arquivo invalido',
+        description: 'Essa area aceita apenas imagens.',
+      });
+      return;
+    }
+
+    const nextSelection = selectedFiles.slice(0, 4).map(createPendingImage);
+    setPendingImages((current) => [...ensureArray(current), ...nextSelection].slice(0, 4));
   };
 
   const handleSelectAudioFile = async (files) => {
     const file = files?.[0];
     await setSelectedAudioFile(file);
+  };
+
+  const removePendingImage = (imageId) => {
+    setPendingImages((current) => {
+      const found = ensureArray(current).find((image) => image.id === imageId);
+      if (found?.previewUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(found.previewUrl);
+      }
+      return ensureArray(current).filter((image) => image.id !== imageId);
+    });
+  };
+
+  const handleDownloadPendingImage = (image) => {
+    if (!image?.previewUrl) return;
+    downloadFromUrl(image.previewUrl, image?.file?.name || 'imagem-comunicado');
+  };
+
+  const handleDownloadPublishedImage = async (post, index) => {
+    const objectKey = ensureArray(post?.imagem_urls_r2_keys)[index];
+    const resolvedUrl = ensureArray(post?.imagem_urls)[index];
+    const fileName = `comunicado-imagem-${index + 1}.jpg`;
+
+    try {
+      if (objectKey) {
+        const downloadUrl = await getR2DownloadUrl(objectKey, fileName);
+        downloadFromUrl(downloadUrl, fileName);
+        return;
+      }
+
+      downloadFromUrl(resolvedUrl, fileName);
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Falha no download',
+        description: error?.message || 'Nao foi possivel baixar a imagem agora.',
+      });
+    }
+  };
+
+  const openImagePreview = (src, title = 'Visualizacao da imagem') => {
+    if (!src) return;
+    setSelectedImagePreview({ src, title });
+    setImagePreviewOpen(true);
   };
 
   const stopRecordingResources = () => {
@@ -435,12 +527,25 @@ export default function Comunicados() {
     }
   };
 
+  const clearPendingImages = () => {
+    ensureArray(pendingImages).forEach((image) => {
+      if (image?.previewUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(image.previewUrl);
+      }
+    });
+    setPendingImages([]);
+    if (imageInputRef.current) {
+      imageInputRef.current.value = '';
+    }
+  };
+
   const clearForm = () => {
     setTitulo('');
     setConteudo('');
     setTurmaPublico('');
     setExpiraEm('');
     clearAudio();
+    clearPendingImages();
   };
 
   const handlePublish = async () => {
@@ -475,6 +580,20 @@ export default function Comunicados() {
 
     setSaving(true);
     try {
+      const uploadedImages = pendingImages.length > 0
+        ? await Promise.all(
+            pendingImages.map(async (image) => {
+              const upload = await uploadFileToR2({
+                file: image.file,
+                escolaId: perfil.escola_id,
+                ownerId: perfil.id,
+                scope: 'comunicados-imagens',
+              });
+              return upload.objectKey;
+            }),
+          )
+        : [];
+
       const uploadedAudio = audioFile?.file
         ? await uploadFileToR2({
             file: audioFile.file,
@@ -491,6 +610,7 @@ export default function Comunicados() {
         turma_publico: turmaPublico === ALL_TURMAS_OPTION ? null : turmaPublico,
         expires_at: toEndOfDayIso(expiraEm),
         tags: ['comunicado'],
+        imagem_urls: uploadedImages,
         audio_url: uploadedAudio?.objectKey || null,
         audio_duration_seconds: audioFile?.durationSeconds || null,
       };
@@ -606,7 +726,21 @@ export default function Comunicados() {
                     type="file"
                     accept="audio/*"
                     className="hidden"
-                    onChange={(e) => handleSelectAudioFile(e.target.files)}
+                    onChange={(e) => {
+                      handleSelectAudioFile(e.target.files);
+                      e.target.value = '';
+                    }}
+                  />
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      handleSelectImages(e.target.files);
+                      e.target.value = '';
+                    }}
                   />
                   <div className="flex flex-wrap gap-2">
                     <Button
@@ -623,7 +757,17 @@ export default function Comunicados() {
                     </Button>
                     <Button type="button" variant="outline" className="rounded-full" onClick={() => audioInputRef.current?.click()}>
                       <Upload className="mr-2 h-4 w-4" />
-                      {audioFile ? 'Trocar arquivo' : 'Adicionar audio'}
+                      {audioFile ? 'Trocar audio' : 'Adicionar audio'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-full"
+                      onClick={() => imageInputRef.current?.click()}
+                      disabled={pendingImages.length >= 4}
+                    >
+                      <ImagePlus className="mr-2 h-4 w-4" />
+                      Adicionar imagens
                     </Button>
                   </div>
                 </div>
@@ -658,14 +802,68 @@ export default function Comunicados() {
                   <div className="mt-4 space-y-3">
                     <AudioMessagePlayer
                       src={audioFile.previewUrl}
-                      title={audioFile.fileName || 'Previa do audio'}
+                      title="Previa do audio"
                       durationSeconds={audioFile.durationSeconds}
                     />
                     <div className="flex items-center justify-between rounded-2xl bg-white/80 px-4 py-3 text-sm">
-                      <span className="truncate">{audioFile.fileName}</span>
+                      <span className="truncate font-medium text-slate-700">Audio pronto para envio</span>
                       <Button type="button" variant="ghost" size="sm" onClick={clearAudio}>
                         <X className="mr-1 h-3.5 w-3.5" /> Remover
                       </Button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {pendingImages.length > 0 ? (
+                  <div className="mt-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-slate-700">Imagens anexadas</p>
+                      <Button type="button" variant="ghost" size="sm" onClick={clearPendingImages}>
+                        <X className="mr-1 h-3.5 w-3.5" /> Limpar imagens
+                      </Button>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      {pendingImages.map((image, index) => (
+                        <div
+                          key={image.id}
+                          className="group relative overflow-hidden rounded-[24px] border border-emerald-100 bg-white shadow-sm"
+                        >
+                          <img
+                            src={image.previewUrl}
+                            alt={`Imagem do comunicado ${index + 1}`}
+                            className="h-40 w-full cursor-zoom-in object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                            onClick={() => openImagePreview(image.previewUrl, `Imagem do comunicado ${index + 1}`)}
+                          />
+                          <div className="absolute right-2 top-2 flex gap-2">
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="secondary"
+                              className="h-9 w-9 rounded-full bg-white/92 shadow-sm backdrop-blur"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleDownloadPendingImage(image);
+                              }}
+                              aria-label={`Baixar imagem ${index + 1}`}
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="secondary"
+                              className="h-9 w-9 rounded-full bg-white/92 shadow-sm backdrop-blur"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                removePendingImage(image.id);
+                              }}
+                              aria-label={`Remover imagem ${index + 1}`}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ) : null}
@@ -735,9 +933,29 @@ export default function Comunicados() {
                     ) : null}
 
                     {ensureArray(post.imagem_urls).length > 0 ? (
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                         {ensureArray(post.imagem_urls).slice(0, 4).map((img, index) => (
-                          <img key={`${post.id}-${index}`} src={img} alt={`Imagem ${index + 1}`} className="h-40 w-full rounded-2xl border object-cover" />
+                          <div key={`${post.id}-${index}`} className="group relative overflow-hidden rounded-[24px] border">
+                            <img
+                              src={img}
+                              alt={`Imagem ${index + 1}`}
+                              className="h-44 w-full cursor-zoom-in object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                              onClick={() => openImagePreview(img, post?.titulo || `Imagem ${index + 1}`)}
+                            />
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="secondary"
+                              className="absolute right-2 top-2 h-9 w-9 rounded-full bg-white/92 shadow-sm backdrop-blur"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleDownloadPublishedImage(post, index);
+                              }}
+                              aria-label={`Baixar imagem ${index + 1}`}
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </div>
                         ))}
                       </div>
                     ) : null}
@@ -748,6 +966,22 @@ export default function Comunicados() {
           </CardContent>
         </Card>
       </div>
+      <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
+        <DialogContent className="max-w-5xl overflow-hidden border-emerald-100 bg-white/95 p-4 sm:p-6">
+          <DialogHeader>
+            <DialogTitle>{selectedImagePreview.title || 'Visualizacao da imagem'}</DialogTitle>
+          </DialogHeader>
+          <div className="overflow-hidden rounded-[28px] border border-emerald-100 bg-emerald-50/40">
+            {selectedImagePreview.src ? (
+              <img
+                src={selectedImagePreview.src}
+                alt={selectedImagePreview.title || 'Visualizacao da imagem'}
+                className="max-h-[78vh] w-full object-contain"
+              />
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }
