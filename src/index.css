@@ -695,11 +695,16 @@ html.a11y-reduce-motion *::after {
 }
 
 .audio-wave-bar {
+  display: block;
   width: 0.32rem;
   min-width: 0.32rem;
+  height: 1rem;
   border-radius: 9999px;
   background: linear-gradient(180deg, rgba(16, 185, 129, 0.65), rgba(13, 148, 136, 0.95));
   transform-origin: center bottom;
+  box-shadow: 0 1px 10px rgba(16, 185, 129, 0.12);
+  will-change: height, opacity, transform, border-radius;
+  transition: height 68ms linear, opacity 68ms linear, transform 68ms linear, border-radius 68ms linear;
 }
 
 .audio-wave-bar-idle {
@@ -709,7 +714,6 @@ html.a11y-reduce-motion *::after {
 
 .audio-wave-bar-active {
   height: 1.4rem;
-  animation: comunicadoWavePulse 1.15s ease-in-out infinite;
 }
 
 .record-button-live {

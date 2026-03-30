@@ -11,6 +11,13 @@ function formatAudioTime(totalSeconds) {
   return `${minutes}:${seconds}`;
 }
 
+function smoothPlaybackLevel(nextLevel, previousLevel) {
+  const next = Number.isFinite(nextLevel) ? nextLevel : 0;
+  const previous = Number.isFinite(previousLevel) ? previousLevel : 0;
+  const riseWeight = next > previous ? 0.7 : 0.38;
+  return (previous * (1 - riseWeight)) + (next * riseWeight);
+}
+
 export function AudioMessagePlayer({
   src,
   title = 'Audio do comunicado',
@@ -19,6 +26,12 @@ export function AudioMessagePlayer({
   className,
 }) {
   const audioRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const sourceNodeRef = useRef(null);
+  const animationFrameRef = useRef(null);
+  const playbackLevelsRef = useRef([]);
+  const waveformSeedRef = useRef([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [loadedDuration, setLoadedDuration] = useState(Number(durationSeconds) || 0);
@@ -26,6 +39,111 @@ export function AudioMessagePlayer({
   const totalDuration = loadedDuration || Number(durationSeconds) || 0;
   const progressValue = totalDuration > 0 ? Math.min(100, (currentTime / totalDuration) * 100) : 0;
   const bars = useMemo(() => Array.from({ length: compact ? 16 : 22 }), [compact]);
+  const [playbackLevels, setPlaybackLevels] = useState(() => bars.map(() => 0.18));
+
+  useEffect(() => {
+    const seed = bars.map((_, index) => 0.6 + Math.sin(index * 1.37) * 0.18 + ((index % 5) * 0.04));
+    waveformSeedRef.current = seed;
+    const idleLevels = bars.map((_, index) => {
+      const previous = playbackLevelsRef.current[index] ?? 0.18;
+      return smoothPlaybackLevel(0.16 + (seed[index] * 0.08), previous);
+    });
+    playbackLevelsRef.current = idleLevels;
+    setPlaybackLevels(idleLevels);
+  }, [bars]);
+
+  const stopPlaybackVisualization = (resetToIdle = true) => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    if (resetToIdle && playbackLevelsRef.current.length) {
+      const idleLevels = bars.map((_, index) => {
+        const baseSeed = waveformSeedRef.current[index] ?? 0.7;
+        const previous = playbackLevelsRef.current[index] ?? 0.18;
+        return smoothPlaybackLevel(0.14 + (baseSeed * 0.08), previous);
+      });
+      playbackLevelsRef.current = idleLevels;
+      setPlaybackLevels(idleLevels);
+    }
+  };
+
+  const startPlaybackVisualization = async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (typeof window === 'undefined') return;
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) return;
+
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContextCtor();
+      }
+
+      const context = audioContextRef.current;
+      if (context.state === 'suspended') {
+        await context.resume();
+      }
+
+      if (!sourceNodeRef.current) {
+        sourceNodeRef.current = context.createMediaElementSource(audio);
+      }
+
+      if (!analyserRef.current) {
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.82;
+        analyser.minDecibels = -92;
+        analyser.maxDecibels = -18;
+        sourceNodeRef.current.connect(analyser);
+        analyser.connect(context.destination);
+        analyserRef.current = analyser;
+      }
+
+      const analyser = analyserRef.current;
+      const frequencyData = new Uint8Array(analyser.frequencyBinCount);
+
+      const updateLevels = () => {
+        if (!audioRef.current || audioRef.current.paused) {
+          stopPlaybackVisualization(true);
+          return;
+        }
+
+        analyser.getByteFrequencyData(frequencyData);
+        const nextLevels = bars.map((_, index) => {
+          const start = Math.floor((index / bars.length) * frequencyData.length);
+          const end = Math.max(start + 1, Math.floor(((index + 1) / bars.length) * frequencyData.length));
+          let sum = 0;
+          for (let cursor = start; cursor < end; cursor += 1) {
+            sum += frequencyData[cursor] || 0;
+          }
+
+          const sliceAverage = sum / Math.max(1, end - start);
+          const normalized = Math.min(1, sliceAverage / 210);
+          const timePulse = Math.abs(Math.sin((audio.currentTime * 5.4) + (index * 0.55)));
+          const seed = waveformSeedRef.current[index] ?? 0.7;
+          const nextLevel = 0.1 + (normalized * 0.92) + (timePulse * 0.12) + (seed * 0.04);
+          return smoothPlaybackLevel(Math.min(1.08, nextLevel), playbackLevelsRef.current[index] ?? 0.16);
+        });
+
+        playbackLevelsRef.current = nextLevels;
+        setPlaybackLevels(nextLevels);
+        animationFrameRef.current = requestAnimationFrame(updateLevels);
+      };
+
+      stopPlaybackVisualization(false);
+      animationFrameRef.current = requestAnimationFrame(updateLevels);
+    } catch {
+      const fallbackLevels = bars.map((_, index) => {
+        const oscillation = 0.38 + Math.abs(Math.sin((audio.currentTime * 4.2) + (index * 0.48))) * 0.62;
+        return smoothPlaybackLevel(oscillation, playbackLevelsRef.current[index] ?? 0.18);
+      });
+      playbackLevelsRef.current = fallbackLevels;
+      setPlaybackLevels(fallbackLevels);
+    }
+  };
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -41,9 +159,16 @@ export function AudioMessagePlayer({
       setIsPlaying(false);
       setCurrentTime(0);
       audio.currentTime = 0;
+      stopPlaybackVisualization(true);
     };
-    const handlePause = () => setIsPlaying(false);
-    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => {
+      setIsPlaying(false);
+      stopPlaybackVisualization(true);
+    };
+    const handlePlay = () => {
+      setIsPlaying(true);
+      void startPlaybackVisualization();
+    };
 
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
     audio.addEventListener('timeupdate', handleTimeUpdate);
@@ -52,6 +177,7 @@ export function AudioMessagePlayer({
     audio.addEventListener('play', handlePlay);
 
     return () => {
+      stopPlaybackVisualization(true);
       audio.pause();
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audio.removeEventListener('timeupdate', handleTimeUpdate);
@@ -65,11 +191,28 @@ export function AudioMessagePlayer({
     setCurrentTime(0);
     setIsPlaying(false);
     setLoadedDuration(Number(durationSeconds) || 0);
+    stopPlaybackVisualization(true);
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
     }
   }, [durationSeconds, src]);
+
+  useEffect(() => () => {
+    stopPlaybackVisualization(false);
+    if (analyserRef.current) {
+      analyserRef.current.disconnect();
+      analyserRef.current = null;
+    }
+    if (sourceNodeRef.current) {
+      sourceNodeRef.current.disconnect();
+      sourceNodeRef.current = null;
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+  }, []);
 
   const togglePlayback = async () => {
     const audio = audioRef.current;
@@ -105,7 +248,7 @@ export function AudioMessagePlayer({
         className,
       )}
     >
-      <audio ref={audioRef} src={src} preload="metadata" />
+      <audio ref={audioRef} src={src} preload="metadata" crossOrigin="anonymous" />
 
       <div className="flex items-center gap-3">
         <Button
@@ -136,13 +279,23 @@ export function AudioMessagePlayer({
           </div>
 
           <div className="flex items-end gap-1 overflow-hidden rounded-full bg-white/70 px-3 py-2">
-            {bars.map((_, index) => (
+            {bars.map((_, index) => {
+              const level = playbackLevels[index] ?? 0.18;
+              const heightRem = 0.48 + (Math.min(1.12, Math.max(0.08, level)) * (compact ? 1.3 : 1.7));
+              return (
               <span
                 key={`${title}-${index}`}
                 className={cn('audio-wave-bar', isPlaying ? 'audio-wave-bar-active' : 'audio-wave-bar-idle')}
-                style={{ animationDelay: `${index * 0.08}s` }}
+                style={{
+                  height: `${heightRem}rem`,
+                  opacity: isPlaying ? Math.min(1, 0.38 + (level * 0.9)) : 0.45,
+                  transform: `scaleY(${isPlaying ? 1 + (Math.min(level, 1.05) * 0.06) : 1}) translateY(${isPlaying ? `${(1 - Math.min(level, 1)) * 1.5}px` : '0px'})`,
+                  borderRadius: `${Math.max(6, 16 - (level * 4))}px`,
+                  transitionDelay: `${index * 16}ms`,
+                }}
               />
-            ))}
+            );
+            })}
           </div>
 
           <div className="flex items-center gap-2">
