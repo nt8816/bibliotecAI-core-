@@ -99,6 +99,10 @@ function formatRecordingClock(totalSeconds) {
   return `${minutes}:${seconds}`;
 }
 
+function smoothLevel(previous, next, weight = 0.7) {
+  return previous * weight + next * (1 - weight);
+}
+
 async function resolveComunicadoMedia(post) {
   return {
     ...(post || {}),
@@ -131,6 +135,7 @@ export default function Comunicados() {
   const mediaStreamRef = useRef(null);
   const recordingChunksRef = useRef([]);
   const recordingTimerRef = useRef(null);
+  const recordingLevelsRef = useRef(Array.from({ length: 24 }, () => 0.18));
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const sourceNodeRef = useRef(null);
@@ -299,7 +304,8 @@ export default function Comunicados() {
     }
 
     analyserRef.current = null;
-    setRecordingLevels(Array.from({ length: 24 }, () => 0.18));
+    recordingLevelsRef.current = Array.from({ length: 24 }, () => 0.18);
+    setRecordingLevels(recordingLevelsRef.current);
   };
 
   const startRecording = async () => {
@@ -330,11 +336,12 @@ export default function Comunicados() {
       sourceNodeRef.current = sourceNode;
       setRecordingSeconds(0);
       setIsRecording(true);
-      setRecordingLevels(Array.from({ length: 24 }, () => 0.2));
+      recordingLevelsRef.current = Array.from({ length: 24 }, () => 0.2);
+      setRecordingLevels(recordingLevelsRef.current);
 
       if (audioContext && analyser && sourceNode) {
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.82;
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.58;
         sourceNode.connect(analyser);
 
         const frequencyData = new Uint8Array(analyser.frequencyBinCount);
@@ -354,10 +361,15 @@ export default function Comunicados() {
             }
 
             const normalized = count > 0 ? total / count / 255 : 0;
-            return Math.max(0.14, normalized);
+            const boosted = Math.min(1, Math.pow(normalized * 1.9, 0.9));
+            const ripple = (Math.sin((performance.now() / 140) + index * 0.75) + 1) * 0.035;
+            const previous = recordingLevelsRef.current[index] ?? 0.18;
+            const smoothed = smoothLevel(previous, Math.max(0.08, boosted + ripple), boosted > previous ? 0.42 : 0.74);
+            return Math.max(0.08, Math.min(1, smoothed));
           });
 
-          setRecordingLevels(nextLevels);
+          recordingLevelsRef.current = nextLevels;
+          setRecordingLevels([...nextLevels]);
           animationFrameRef.current = window.requestAnimationFrame(updateLevels);
         };
 
@@ -628,8 +640,10 @@ export default function Comunicados() {
                           key={`recording-bar-${index}`}
                           className="recording-frequency-bar"
                           style={{
-                            height: `${0.7 + level * 2.2}rem`,
-                            opacity: `${0.35 + level * 0.65}`,
+                            height: `${0.55 + level * 3.1}rem`,
+                            opacity: `${0.28 + level * 0.72}`,
+                            transform: `scaleY(${0.82 + level * 0.52}) translateY(${(1 - level) * 1.6}px)`,
+                            borderRadius: `${0.55 + level * 0.7}rem`,
                           }}
                         />
                       ))}

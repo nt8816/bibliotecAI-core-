@@ -722,14 +722,15 @@ html.a11y-reduce-motion *::after {
 
 .recording-frequency-bar {
   display: block;
-  width: 0.28rem;
-  min-width: 0.28rem;
+  width: 0.34rem;
+  min-width: 0.34rem;
   height: 1.4rem;
   border-radius: 9999px;
-  background: linear-gradient(180deg, rgba(244, 63, 94, 0.45), rgba(225, 29, 72, 0.95));
+  background: linear-gradient(180deg, rgba(251, 113, 133, 0.38), rgba(244, 63, 94, 0.92) 45%, rgba(190, 24, 93, 0.98));
   transform-origin: center bottom;
-  will-change: height, opacity;
-  transition: height 90ms linear, opacity 90ms linear;
+  box-shadow: 0 1px 10px rgba(244, 63, 94, 0.12);
+  will-change: height, opacity, transform, border-radius;
+  transition: height 72ms linear, opacity 72ms linear, transform 72ms linear, border-radius 72ms linear;
 }
 
 @media (prefers-reduced-motion: reduce) {
