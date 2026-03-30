@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -79,6 +79,7 @@ function getVisibleEmail(nome, email) {
 
 export default function Emprestimos() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [emprestimos, setEmprestimos] = useState([]);
   const [solicitacoes, setSolicitacoes] = useState([]);
   const [livrosDisponiveis, setLivrosDisponiveis] = useState([]);
@@ -117,6 +118,7 @@ export default function Emprestimos() {
   const canManageLoans = isBibliotecaria;
   const requestedTab = searchParams.get('tab');
   const requestedStatus = searchParams.get('status');
+  const hasAtrasadosFilter = requestedStatus === 'atrasados';
 
   const fetchData = useCallback(async () => {
     try {
@@ -711,6 +713,10 @@ export default function Emprestimos() {
     const isValidTab = ['ativos', 'historico', ...(canManageLoans ? ['solicitacoes', 'recusadas'] : [])].includes(nextTab);
     setActiveTab(isValidTab ? nextTab : defaultTab);
   }, [canManageLoans, requestedTab]);
+
+  const clearAtivosFilter = useCallback(() => {
+    navigate('/emprestimos?tab=ativos', { replace: true });
+  }, [navigate]);
 
   if (!isBibliotecaria) {
     return <Navigate to="/dashboard" replace />;
@@ -1355,6 +1361,17 @@ export default function Emprestimos() {
                 </TabsTrigger>
               </TabsList>
 
+              {activeTab === 'ativos' && hasAtrasadosFilter && (
+                <div className="mb-4 flex flex-col gap-2 rounded-2xl border border-warning/30 bg-warning/10 p-3 text-sm text-foreground sm:flex-row sm:items-center sm:justify-between">
+                  <p>
+                    Mostrando apenas os empréstimos atrasados. Existem {emprestimosAtivos.length} empréstimos ativos no total.
+                  </p>
+                  <Button type="button" variant="outline" size="sm" onClick={clearAtivosFilter}>
+                    Ver todos os ativos
+                  </Button>
+                </div>
+              )}
+
               {canManageLoans && (
                 <TabsContent value="solicitacoes">
                   {solicitacoesPendentes.length === 0 ? (
@@ -1465,7 +1482,16 @@ export default function Emprestimos() {
 
               <TabsContent value="ativos">
                 {emprestimosAtivosFiltrados.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">Nenhum empréstimo ativo</p>
+                  hasAtrasadosFilter && emprestimosAtivos.length > 0 ? (
+                    <div className="py-8 text-center space-y-3">
+                      <p className="text-muted-foreground">Nenhum empréstimo atrasado no momento.</p>
+                      <Button type="button" variant="outline" onClick={clearAtivosFilter}>
+                        Ver todos os empréstimos ativos
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-center text-muted-foreground py-8">Nenhum empréstimo ativo</p>
+                  )
                 ) : (
                   renderTable(emprestimosAtivosFiltrados, true)
                 )}
