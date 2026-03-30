@@ -515,10 +515,6 @@ export default function ComunidadeAluno() {
   useEffect(() => {
     if (!user?.id || !enabled) return undefined;
 
-    const interval = window.setInterval(() => {
-      fetchData();
-    }, 30000);
-
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         fetchData();
@@ -528,7 +524,6 @@ export default function ComunidadeAluno() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [enabled, fetchData, user?.id]);

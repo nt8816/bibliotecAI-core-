@@ -1418,10 +1418,6 @@ export default function PainelAluno() {
   useEffect(() => {
     if (!user?.id) return undefined;
 
-    const interval = window.setInterval(() => {
-      fetchData();
-    }, 30000);
-
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         fetchData();
@@ -1431,7 +1427,6 @@ export default function PainelAluno() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [fetchData, user?.id]);
@@ -3432,6 +3427,9 @@ export default function PainelAluno() {
                   <Sparkles className="w-4 h-4 mr-2" />
                   {gerandoDesafioIA ? 'Gerando desafio...' : 'Gerar desafio de gamificacao'}
                 </Button>
+                <p className="text-xs text-muted-foreground">
+                  Quando a meta for cumprida na plataforma, a recompensa em XP entra automaticamente no seu total.
+                </p>
                 {desafioIA && (
                   <div className="rounded-lg border p-3 space-y-1">
                     <p className="text-sm font-semibold">{desafioIA.titulo}</p>
@@ -3455,6 +3453,11 @@ export default function PainelAluno() {
                       <Badge variant="outline" className="mt-1">
                         Recompensa: {desafioIA.recompensa}
                       </Badge>
+                    )}
+                    {Number(desafioIA.xp_recompensa || extractXpFromRewardText(desafioIA.recompensa)) > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        XP previsto: {Number(desafioIA.xp_recompensa || extractXpFromRewardText(desafioIA.recompensa))} XP
+                      </p>
                     )}
                     <div className="flex flex-wrap items-center gap-2 pt-2">
                       {desafioIA.concluido_em ? (

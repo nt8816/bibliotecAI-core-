@@ -643,15 +643,15 @@ export default function Comunicados() {
   return (
     <MainLayout title="Comunicados">
       <div className="space-y-6">
-        <Card className="overflow-hidden border-emerald-200/70 bg-[linear-gradient(135deg,rgba(236,253,245,0.95),rgba(255,255,255,0.98),rgba(240,253,250,0.95))]">
+        <Card className="overflow-hidden border-emerald-200/70 bg-[linear-gradient(135deg,rgba(236,253,245,0.95),rgba(255,255,255,0.98),rgba(240,253,250,0.95))] dark:border-emerald-900/60 dark:bg-[linear-gradient(135deg,rgba(6,78,59,0.28),rgba(15,23,42,0.92),rgba(5,46,22,0.34))]">
           <CardContent className="grid gap-5 p-6 lg:grid-cols-[1.15fr_0.85fr]">
             <div className="space-y-4">
               <Badge className="w-fit rounded-full bg-emerald-600 px-3 py-1 text-white">
                 <Megaphone className="mr-1.5 h-3.5 w-3.5" /> Canal oficial da escola
               </Badge>
               <div className="space-y-2">
-                <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Comunicados em destaque</h2>
-                <p className="max-w-2xl text-sm leading-6 text-slate-600">
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Comunicados em destaque</h2>
+                <p className="max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
                   Um espaco proprio para avisos da escola, da biblioteca e dos professores. Os alunos acompanham tudo daqui,
                   mas somente a equipe pode publicar novos comunicados.
                 </p>
@@ -659,9 +659,9 @@ export default function Comunicados() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-              <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-sm">
-                <p className="text-xs uppercase tracking-[0.22em] text-emerald-700/80">Ativos agora</p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900">{comunicadosVisiveis.length}</p>
+              <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+                <p className="text-xs uppercase tracking-[0.22em] text-emerald-700/80 dark:text-emerald-300/80">Ativos agora</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{comunicadosVisiveis.length}</p>
               </div>
             </div>
           </CardContent>
@@ -711,13 +711,13 @@ export default function Comunicados() {
                 </div>
               </div>
 
-              <div className="rounded-[28px] border border-emerald-200/80 bg-emerald-50/70 p-4">
+              <div className="rounded-[28px] border border-emerald-200/80 bg-emerald-50/70 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/20">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <Label className="flex items-center gap-2 text-base text-emerald-900">
+                    <Label className="flex items-center gap-2 text-base text-emerald-900 dark:text-emerald-100">
                       <AudioLines className="h-4 w-4" /> Audio do comunicado
                     </Label>
-                    <p className="text-sm text-emerald-800/80">
+                    <p className="text-sm text-emerald-800/80 dark:text-emerald-100/75">
                       Grave com o microfone ou escolha um arquivo ja salvo no aparelho.
                     </p>
                   </div>
@@ -773,12 +773,12 @@ export default function Comunicados() {
                 </div>
 
                 {isRecording ? (
-                  <div className="record-status-enter mt-4 rounded-2xl border border-rose-200 bg-white/85 px-4 py-3 text-sm text-rose-700 shadow-[0_12px_24px_rgba(244,63,94,0.08)]">
+                  <div className="record-status-enter mt-4 rounded-2xl border border-rose-200 bg-white/85 px-4 py-3 text-sm text-rose-700 shadow-[0_12px_24px_rgba(244,63,94,0.08)] dark:border-rose-900/60 dark:bg-slate-950/60 dark:text-rose-200">
                     <div className="flex items-center gap-2">
                       <span className="inline-flex h-2.5 w-2.5 rounded-full bg-rose-500 animate-pulse" />
                       <span className="font-medium">Gravando agora: {formatRecordingClock(recordingSeconds)}</span>
                     </div>
-                    <div className="mt-3 flex items-end gap-1 overflow-hidden rounded-full bg-rose-50 px-3 py-2">
+                    <div className="mt-3 flex items-end gap-1 overflow-hidden rounded-full bg-rose-50 px-3 py-2 dark:bg-rose-950/25">
                       {recordingLevels.map((level, index) => (
                         <span
                           key={`recording-bar-${index}`}
@@ -792,7 +792,7 @@ export default function Comunicados() {
                         />
                       ))}
                     </div>
-                    <p className="mt-1 text-rose-700/80">
+                    <p className="mt-1 text-rose-700/80 dark:text-rose-200/80">
                       O aplicativo/navegador pode pedir permissao do microfone nesta etapa.
                     </p>
                   </div>
@@ -805,8 +805,8 @@ export default function Comunicados() {
                       title="Previa do audio"
                       durationSeconds={audioFile.durationSeconds}
                     />
-                    <div className="flex items-center justify-between rounded-2xl bg-white/80 px-4 py-3 text-sm">
-                      <span className="truncate font-medium text-slate-700">Audio pronto para envio</span>
+                    <div className="flex items-center justify-between rounded-2xl bg-white/80 px-4 py-3 text-sm dark:bg-slate-950/45">
+                      <span className="truncate font-medium text-slate-700 dark:text-slate-200">Audio pronto para envio</span>
                       <Button type="button" variant="ghost" size="sm" onClick={clearAudio}>
                         <X className="mr-1 h-3.5 w-3.5" /> Remover
                       </Button>
@@ -817,7 +817,7 @@ export default function Comunicados() {
                 {pendingImages.length > 0 ? (
                   <div className="mt-4 space-y-3">
                     <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-slate-700">Imagens anexadas</p>
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Imagens anexadas</p>
                       <Button type="button" variant="ghost" size="sm" onClick={clearPendingImages}>
                         <X className="mr-1 h-3.5 w-3.5" /> Limpar imagens
                       </Button>
@@ -826,7 +826,7 @@ export default function Comunicados() {
                       {pendingImages.map((image, index) => (
                         <div
                           key={image.id}
-                          className="group relative overflow-hidden rounded-[24px] border border-emerald-100 bg-white shadow-sm"
+                          className="group relative overflow-hidden rounded-[24px] border border-emerald-100 bg-white shadow-sm dark:border-white/10 dark:bg-slate-950/45"
                         >
                           <img
                             src={image.previewUrl}
@@ -904,14 +904,14 @@ export default function Comunicados() {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-lg font-semibold text-slate-900">{post.titulo || 'Novo comunicado'}</p>
+                          <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">{post.titulo || 'Novo comunicado'}</p>
                           <Badge variant="destructive">Comunicado</Badge>
                           <Badge variant="outline">
                             <Users className="mr-1 h-3.5 w-3.5" />
                             {post.turma_publico || 'Todas as turmas'}
                           </Badge>
                         </div>
-                        <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600">{post.conteudo || 'Sem mensagem adicional.'}</p>
+                        <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">{post.conteudo || 'Sem mensagem adicional.'}</p>
                       </div>
                       <div className="shrink-0 rounded-2xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                         <div className="flex items-center gap-1">
@@ -967,11 +967,11 @@ export default function Comunicados() {
         </Card>
       </div>
       <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
-        <DialogContent className="max-w-5xl overflow-hidden border-emerald-100 bg-white/95 p-4 sm:p-6">
+        <DialogContent className="max-w-5xl overflow-hidden border-emerald-100 bg-white/95 p-4 sm:p-6 dark:border-white/10 dark:bg-slate-950/95">
           <DialogHeader>
             <DialogTitle>{selectedImagePreview.title || 'Visualizacao da imagem'}</DialogTitle>
           </DialogHeader>
-          <div className="overflow-hidden rounded-[28px] border border-emerald-100 bg-emerald-50/40">
+          <div className="overflow-hidden rounded-[28px] border border-emerald-100 bg-emerald-50/40 dark:border-white/10 dark:bg-slate-900/70">
             {selectedImagePreview.src ? (
               <img
                 src={selectedImagePreview.src}
