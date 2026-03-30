@@ -1116,6 +1116,7 @@ export default function PainelAluno() {
   const [resumosLimit, setResumosLimit] = useState(5);
   const warnedMissingFeaturesRef = useRef(false);
   const fetchInFlightRef = useRef(null);
+  const catalogoInicialCarregadoRef = useRef(false);
   const audioPlayerRef = useRef(null);
   const speechRequestRef = useRef(0);
   const speakingLivroIdRef = useRef(null);
@@ -1194,12 +1195,14 @@ export default function PainelAluno() {
     [alunoId],
   );
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async ({ silent = false } = {}) => {
     if (!user) return;
     if (fetchInFlightRef.current) return fetchInFlightRef.current;
 
     const request = (async () => {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       try {
         const painelData = await fetchPainelAlunoData();
         const perfil = painelData?.perfil;
@@ -1209,9 +1212,10 @@ export default function PainelAluno() {
         setEscolaId(perfil.escola_id || null);
         setAlunoTurma(perfil.turma || null);
 
-        const livrosPromise = fetchLivrosPage({ reset: true });
-
-        await livrosPromise;
+        if (!catalogoInicialCarregadoRef.current) {
+          await fetchLivrosPage({ reset: true });
+          catalogoInicialCarregadoRef.current = true;
+        }
 
         setEmprestimos(painelData?.emprestimos || []);
         setAvaliacoes(painelData?.avaliacoes || []);
@@ -1310,7 +1314,9 @@ export default function PainelAluno() {
           description,
         });
       } finally {
-        setLoading(false);
+        if (!silent) {
+          setLoading(false);
+        }
       }
     })();
     fetchInFlightRef.current = request;
@@ -1420,7 +1426,7 @@ export default function PainelAluno() {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        fetchData();
+        fetchData({ silent: true });
       }
     };
 
