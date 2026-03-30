@@ -125,11 +125,16 @@ export default function Comunicados() {
   const [busca, setBusca] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [recordingLevels, setRecordingLevels] = useState(() => Array.from({ length: 24 }, () => 0.18));
   const audioInputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const recordingChunksRef = useRef([]);
   const recordingTimerRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const sourceNodeRef = useRef(null);
+  const animationFrameRef = useRef(null);
   const minComunicadoDate = getTodayInputValue();
 
   useEffect(() => () => {
@@ -149,6 +154,21 @@ export default function Comunicados() {
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
+    }
+
+    if (animationFrameRef.current) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    if (sourceNodeRef.current) {
+      sourceNodeRef.current.disconnect();
+      sourceNodeRef.current = null;
+    }
+
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => null);
+      audioContextRef.current = null;
     }
   }, [audioFile]);
 
@@ -262,6 +282,24 @@ export default function Comunicados() {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
     }
+
+    if (animationFrameRef.current) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    if (sourceNodeRef.current) {
+      sourceNodeRef.current.disconnect();
+      sourceNodeRef.current = null;
+    }
+
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => null);
+      audioContextRef.current = null;
+    }
+
+    analyserRef.current = null;
+    setRecordingLevels(Array.from({ length: 24 }, () => 0.18));
   };
 
   const startRecording = async () => {
@@ -279,12 +317,52 @@ export default function Comunicados() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      const audioContext = AudioContextCtor ? new AudioContextCtor() : null;
+      const analyser = audioContext ? audioContext.createAnalyser() : null;
+      const sourceNode = audioContext ? audioContext.createMediaStreamSource(stream) : null;
 
       recordingChunksRef.current = [];
       mediaStreamRef.current = stream;
       mediaRecorderRef.current = mediaRecorder;
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+      sourceNodeRef.current = sourceNode;
       setRecordingSeconds(0);
       setIsRecording(true);
+      setRecordingLevels(Array.from({ length: 24 }, () => 0.2));
+
+      if (audioContext && analyser && sourceNode) {
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.82;
+        sourceNode.connect(analyser);
+
+        const frequencyData = new Uint8Array(analyser.frequencyBinCount);
+        const updateLevels = () => {
+          analyser.getByteFrequencyData(frequencyData);
+
+          const nextLevels = Array.from({ length: 24 }, (_, index) => {
+            const bucketSize = Math.max(1, Math.floor(frequencyData.length / 24));
+            const start = index * bucketSize;
+            const end = Math.min(frequencyData.length, start + bucketSize);
+            let total = 0;
+            let count = 0;
+
+            for (let cursor = start; cursor < end; cursor += 1) {
+              total += frequencyData[cursor];
+              count += 1;
+            }
+
+            const normalized = count > 0 ? total / count / 255 : 0;
+            return Math.max(0.14, normalized);
+          });
+
+          setRecordingLevels(nextLevels);
+          animationFrameRef.current = window.requestAnimationFrame(updateLevels);
+        };
+
+        animationFrameRef.current = window.requestAnimationFrame(updateLevels);
+      }
 
       mediaRecorder.addEventListener('dataavailable', (event) => {
         if (event.data && event.data.size > 0) {
@@ -545,13 +623,13 @@ export default function Comunicados() {
                       <span className="font-medium">Gravando agora: {formatRecordingClock(recordingSeconds)}</span>
                     </div>
                     <div className="mt-3 flex items-end gap-1 overflow-hidden rounded-full bg-rose-50 px-3 py-2">
-                      {Array.from({ length: 24 }).map((_, index) => (
+                      {recordingLevels.map((level, index) => (
                         <span
                           key={`recording-bar-${index}`}
                           className="recording-frequency-bar"
                           style={{
-                            animationDelay: `${index * 0.05}s`,
-                            height: `${0.9 + (index % 5) * 0.22}rem`,
+                            height: `${0.7 + level * 2.2}rem`,
+                            opacity: `${0.35 + level * 0.65}`,
                           }}
                         />
                       ))}

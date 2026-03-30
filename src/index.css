@@ -728,8 +728,8 @@ html.a11y-reduce-motion *::after {
   border-radius: 9999px;
   background: linear-gradient(180deg, rgba(244, 63, 94, 0.45), rgba(225, 29, 72, 0.95));
   transform-origin: center bottom;
-  will-change: transform, opacity;
-  animation: recordingFrequencyPulse 0.95s ease-in-out infinite;
+  will-change: height, opacity;
+  transition: height 90ms linear, opacity 90ms linear;
 }
 
 @media (prefers-reduced-motion: reduce) {
