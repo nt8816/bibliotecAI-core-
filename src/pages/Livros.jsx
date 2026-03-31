@@ -439,16 +439,29 @@ export default function Livros() {
 
     setBuscandoSinopse(true);
     try {
-      const resultado = await buscarSinopseOpenLibrary(formData.titulo, formData.autor);
+      const [openLibraryResult, iaResult] = await Promise.allSettled([
+        buscarSinopseOpenLibrary(formData.titulo, formData.autor),
+        generateTextWithCloudflare({
+          task: 'sinopse_livro',
+          input: {
+            titulo: formData.titulo,
+            autor: formData.autor,
+            area: formData.area,
+            sinopseBase: formData.sinopse,
+          },
+          fallbackErrorMessage: 'NÃ£o foi possÃ­vel gerar sinopse por IA.',
+        }),
+      ]);
+      const resultado = openLibraryResult.status === 'fulfilled' ? openLibraryResult.value : null;
+      const iaData = iaResult.status === 'fulfilled' ? iaResult.value?.data || null : null;
       const freeSinopse = String(resultado?.sinopse || '').trim();
       const freeAutor = String(resultado?.autoData?.autor || '').trim();
       const freeAno = String(resultado?.autoData?.ano || '').trim();
       const freeEditora = String(resultado?.autoData?.editora || '').trim();
 
-      const precisaIA = !freeSinopse || (!formData.autor && !freeAutor) || (!formData.ano && !freeAno) || (!formData.editora && !freeEditora);
+      const usouComplementoIA = !freeSinopse || (!formData.autor && !freeAutor) || (!formData.ano && !freeAno) || (!formData.editora && !freeEditora);
 
-      let iaData = null;
-      if (precisaIA) {
+      if (false) {
         try {
           const iaPayload = await generateTextWithCloudflare({
             task: 'sinopse_livro',
@@ -460,9 +473,9 @@ export default function Livros() {
             },
             fallbackErrorMessage: 'Não foi possível gerar sinopse por IA.',
           });
-          iaData = iaPayload?.data || null;
+          void iaPayload;
         } catch {
-          iaData = null;
+          void 0;
         }
       }
 
@@ -488,7 +501,7 @@ export default function Livros() {
         setFormData((prev) => ({ ...prev, ...updates }));
         toast({
           title: 'Dados preenchidos',
-          description: precisaIA
+          description: usouComplementoIA
             ? 'Informações completadas com fallback de IA.'
             : 'Informações preenchidas automaticamente.',
         });
