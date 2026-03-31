@@ -88,6 +88,24 @@ async function parseResponse(response: Response) {
   return response.text();
 }
 
+function shouldAutoPaginateSupabaseGet(
+  path: string,
+  method: string,
+  headers?: Record<string, string>,
+) {
+  if (String(method || 'GET').toUpperCase() !== 'GET') return false;
+  if (!String(path || '').startsWith('/rest/v1/')) return false;
+
+  const normalizedHeaders = Object.fromEntries(
+    Object.entries(headers || {}).map(([key, value]) => [key.toLowerCase(), value]),
+  );
+  if (normalizedHeaders.range || normalizedHeaders['range-unit']) return false;
+
+  const queryString = String(path || '').split('?')[1] || '';
+  const params = new URLSearchParams(queryString);
+  return !params.has('limit') && !params.has('offset');
+}
+
 async function fetchSupabaseUser(request: Request, env: Env) {
   const token = getUserToken(request);
   if (!token) {
@@ -139,28 +157,57 @@ async function supabaseAdminRequest(
   { method = 'GET', body, headers }: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
 ) {
   const { supabaseUrl, serviceRoleKey } = getSupabaseConfig(env);
-  const response = await fetch(`${supabaseUrl}${path}`, {
-    method,
-    headers: {
-      apikey: serviceRoleKey,
-      Authorization: `Bearer ${serviceRoleKey}`,
-      'Content-Type': 'application/json',
-      ...(headers || {}),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const baseHeaders = {
+    apikey: serviceRoleKey,
+    Authorization: `Bearer ${serviceRoleKey}`,
+    'Content-Type': 'application/json',
+    ...(headers || {}),
+  };
 
-  const payload = await parseResponse(response);
-  if (!response.ok) {
-    throw new Error(
-      (typeof payload === 'string' && payload.trim()) ||
-      payload?.message ||
-      payload?.error ||
-      `Falha na consulta administrativa ao Supabase (HTTP ${response.status}).`,
-    );
+  const executeRequest = async (requestHeaders?: Record<string, string>) => {
+    const response = await fetch(`${supabaseUrl}${path}`, {
+      method,
+      headers: requestHeaders || baseHeaders,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+
+    const payload = await parseResponse(response);
+    if (!response.ok) {
+      throw new Error(
+        (typeof payload === 'string' && payload.trim()) ||
+        payload?.message ||
+        payload?.error ||
+        `Falha na consulta administrativa ao Supabase (HTTP ${response.status}).`,
+      );
+    }
+
+    return payload;
+  };
+
+  const payload = await executeRequest();
+  if (!shouldAutoPaginateSupabaseGet(path, method, headers) || !Array.isArray(payload) || payload.length < 1000) {
+    return payload;
   }
 
-  return payload;
+  const pageSize = 1000;
+  const allRows = [...payload];
+  let start = pageSize;
+
+  // PostgREST applies a default row cap, so we continue fetching in explicit ranges.
+  while (true) {
+    const page = await executeRequest({
+      ...baseHeaders,
+      Range-Unit: 'items',
+      Range: `${start}-${start + pageSize - 1}`,
+    });
+
+    if (!Array.isArray(page) || page.length === 0) break;
+    allRows.push(...page);
+    if (page.length < pageSize) break;
+    start += pageSize;
+  }
+
+  return allRows;
 }
 
 async function supabaseAdminAuthRequest(
