@@ -4581,23 +4581,63 @@ const routes: Record<string, RouteHandler> = {
           ? 'bibliotecaria'
           : roles[0] || null;
 
+    const profile = userRole === 'super_admin'
+      ? null
+      : await getLatestUserProfile(user.id, env).catch(() => null);
+    const escolaId = String(profile?.escola_id || '').trim();
+    const isSchoolScopedDashboard = Boolean(userRole && userRole !== 'super_admin' && escolaId);
+
     const baseQueries = await Promise.all([
-      supabaseAdminRequest(env, '/rest/v1/livros?select=id,disponivel'),
-      supabaseAdminRequest(env, '/rest/v1/usuarios_biblioteca?select=id'),
-      supabaseAdminRequest(env, '/rest/v1/emprestimos?select=id,data_emprestimo,data_devolucao_real,status,created_at,livro_id,livros(titulo),usuarios_biblioteca(nome)'),
+      supabaseAdminRequest(
+        env,
+        isSchoolScopedDashboard
+          ? `/rest/v1/livros?${new URLSearchParams({
+            select: 'id,disponivel,escola_id',
+            escola_id: `eq.${escolaId}`,
+          }).toString()}`
+          : '/rest/v1/livros?select=id,disponivel,escola_id',
+      ),
+      supabaseAdminRequest(
+        env,
+        isSchoolScopedDashboard
+          ? `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+            select: 'id,escola_id',
+            escola_id: `eq.${escolaId}`,
+          }).toString()}`
+          : '/rest/v1/usuarios_biblioteca?select=id,escola_id',
+      ),
+      supabaseAdminRequest(
+        env,
+        isSchoolScopedDashboard
+          ? `/rest/v1/emprestimos?${new URLSearchParams({
+            select: 'id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livro_id,livros(titulo,escola_id),usuarios_biblioteca(nome,escola_id)',
+          }).toString()}`
+          : '/rest/v1/emprestimos?select=id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livro_id,livros(titulo,escola_id),usuarios_biblioteca(nome,escola_id)',
+      ),
       supabaseAdminRequest(env, '/rest/v1/tenants?select=id,nome,subdominio,ativo,escola_id'),
       supabaseAdminRequest(env, '/rest/v1/escolas?select=id,nome,gestor_id'),
     ]);
 
     const [livros, usuarios, emprestimos, tenants, escolas] = baseQueries.map((item) => (Array.isArray(item) ? item : []));
 
-    const emprestimosAtivos = emprestimos.filter((item) => item?.status === 'ativo');
+    const sameSchool = (candidateEscolaId: unknown) => String(candidateEscolaId || '').trim() === escolaId;
+    const livrosBase = isSchoolScopedDashboard
+      ? livros.filter((item) => sameSchool(item?.escola_id))
+      : livros;
+    const usuariosBase = isSchoolScopedDashboard
+      ? usuarios.filter((item) => sameSchool(item?.escola_id))
+      : usuarios;
+    const emprestimosBase = isSchoolScopedDashboard
+      ? emprestimos.filter((item) => sameSchool(item?.livros?.escola_id) || sameSchool(item?.usuarios_biblioteca?.escola_id))
+      : emprestimos;
+
+    const emprestimosAtivos = emprestimosBase.filter((item) => item?.status === 'ativo');
     const emprestimosAtrasados = emprestimosAtivos.filter((item) => {
       const prev = item?.data_devolucao_prevista;
       return prev ? new Date(prev).getTime() < Date.now() : false;
     });
 
-    const atividades = [...emprestimos]
+    const atividades = [...emprestimosBase]
       .sort((a, b) => new Date(b?.created_at || 0).getTime() - new Date(a?.created_at || 0).getTime())
       .slice(0, 5)
       .map((emp) => ({
@@ -4615,7 +4655,7 @@ const routes: Record<string, RouteHandler> = {
     );
     const livroCountMap = new Map<string, number>();
 
-    emprestimos.forEach((emp) => {
+    emprestimosBase.forEach((emp) => {
       const loanDate = emp?.data_emprestimo || emp?.created_at;
       if (loanDate) {
         const key = monthKey(loanDate);
@@ -4694,9 +4734,9 @@ const routes: Record<string, RouteHandler> = {
     return jsonResponse({
       success: true,
       stats: {
-        totalLivros: livros.length,
-        livrosDisponiveis: livros.filter((item) => item?.disponivel !== false).length,
-        totalUsuarios: usuarios.length,
+        totalLivros: livrosBase.length,
+        livrosDisponiveis: livrosBase.filter((item) => item?.disponivel !== false).length,
+        totalUsuarios: usuariosBase.length,
         emprestimosAtivos: emprestimosAtivos.length,
         emprestimosAtrasados: emprestimosAtrasados.length,
       },
