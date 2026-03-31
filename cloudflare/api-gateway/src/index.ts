@@ -194,12 +194,12 @@ async function supabaseAdminRequest(
   let start = pageSize;
 
   // PostgREST applies a default row cap, so we continue fetching in explicit ranges.
-  while (true) {
-    const page = await executeRequest({
-      ...baseHeaders,
-      Range-Unit: 'items',
-      Range: `${start}-${start + pageSize - 1}`,
-    });
+    while (true) {
+      const page = await executeRequest({
+        ...baseHeaders,
+        'Range-Unit': 'items',
+        Range: `${start}-${start + pageSize - 1}`,
+      });
 
     if (!Array.isArray(page) || page.length === 0) break;
     allRows.push(...page);
