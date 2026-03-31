@@ -1,5 +1,7 @@
 ﻿const DEFAULT_BASE_URL = 'https://api-bibliotecai.ntn3223.workers.dev';
 const API_BASE_URL = String(import.meta.env.VITE_BIBLIOTECA_AI_API_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
+const TEXT_CACHE_TTL_MS = 10 * 60 * 1000;
+const textResponseCache = new Map();
 
 const ensureObject = (value) => (value && typeof value === 'object' ? value : {});
 
@@ -80,6 +82,12 @@ const extractErrorMessage = (parsed, fallback) => {
   return fallback;
 };
 
+const buildTextCacheKey = ({ task, prompt, input }) => JSON.stringify({
+  task: String(task || '').trim().toLowerCase(),
+  prompt: sanitizeText(prompt, 4000),
+  input: ensureObject(input),
+});
+
 const buildTextPromptFromTask = (task, input) => {
   const safeTask = String(task || '').trim().toLowerCase();
   const safeInput = ensureObject(input);
@@ -118,8 +126,19 @@ const buildTextPromptFromTask = (task, input) => {
 
   if (safeTask === 'resumo_estudo') {
     return [
-      'Crie um resumo de estudo em portugues do Brasil para aluno.',
+      'Voce cria resumos educacionais para estudantes em portugues do Brasil.',
+      'O resultado deve ser amigavel para ler, bem organizado e util para estudo rapido.',
       'Responda SOMENTE com JSON valido no formato: {"texto":"..."}',
+      'Dentro de "texto", use blocos curtos separados por linha em branco.',
+      'Siga esta estrutura:',
+      '1. Visao geral',
+      '2. Ideias principais',
+      '3. Personagens ou elementos centrais',
+      '4. O que esse livro ensina',
+      '5. Pergunta para pensar',
+      'Use linguagem simples, tom acolhedor e frases naturais.',
+      'Se faltar informacao, deixe isso claro sem inventar fatos.',
+      'Evite texto muito longo. Tamanho ideal: 130 a 220 palavras.',
       `Livro: ${titulo || 'nao informado'}`,
       `Autor: ${autor || 'nao informado'}`,
       `Sinopse/base: ${sinopse || 'nao informada'}`,
@@ -225,22 +244,36 @@ export const generateTextWithCloudflare = async ({
     throw new Error('Conteudo sensivel detectado. Pedido bloqueado.');
   }
 
+  const cacheKey = buildTextCacheKey({ task, prompt: finalPrompt, input });
+  const cached = textResponseCache.get(cacheKey);
+  if (cached && (Date.now() - cached.createdAt) < TEXT_CACHE_TTL_MS) {
+    return cached.value;
+  }
+
   const parsed = await callBibliotecaAi('/text', { prompt: finalPrompt }, fallbackErrorMessage);
 
+  let result;
   if (parsed.kind === 'text') {
     const text = String(parsed.payload || '').trim();
     const json = extractJsonFromText(text);
-    return { data: ensureObject(json), text };
+    result = { data: ensureObject(json), text };
+  } else {
+    const payload = ensureObject(parsed.payload);
+    const rawText = String(payload.text || payload.output || payload.response || '').trim();
+    const responseJson = typeof payload.response === 'object' ? ensureObject(payload.response) : null;
+    const textJson = extractJsonFromText(rawText);
+    const data = ensureObject(payload.data || responseJson || textJson);
+    const text = String(payload.text || data.text || rawText || '').trim();
+
+    result = { data, text, raw: payload, prompt: finalPrompt };
   }
 
-  const payload = ensureObject(parsed.payload);
-  const rawText = String(payload.text || payload.output || payload.response || '').trim();
-  const responseJson = typeof payload.response === 'object' ? ensureObject(payload.response) : null;
-  const textJson = extractJsonFromText(rawText);
-  const data = ensureObject(payload.data || responseJson || textJson);
-  const text = String(payload.text || data.text || rawText || '').trim();
+  textResponseCache.set(cacheKey, {
+    createdAt: Date.now(),
+    value: result,
+  });
 
-  return { data, text, raw: payload, prompt: finalPrompt };
+  return result;
 };
 
 export const generateImageWithCloudflare = async ({

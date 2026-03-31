@@ -118,7 +118,7 @@ const buildPrompt = (task: string, input: any): PromptConfig => {
 
     return {
       systemInstruction:
-        "Você cria resumos guiados para estudantes em português brasileiro, com estrutura didática e linguagem simples.",
+        "Você cria resumos educacionais para estudantes em português brasileiro, com estrutura didática, leitura leve e linguagem simples.",
       userPrompt: [
         "Gere um resumo guiado para estudo de leitura.",
         `Livro: ${titulo || "não informado"}`,
@@ -126,8 +126,11 @@ const buildPrompt = (task: string, input: any): PromptConfig => {
         `Sinopse/base: ${sinopse || "não informada"}`,
         "Responda em JSON no formato exato:",
         '{"texto":"..."}',
-        "Inclua: tema principal, pontos-chave, personagens (quando aplicável) e reflexão final.",
-        "Tamanho entre 120 e 220 palavras.",
+        'Dentro de "texto", use blocos curtos separados por linha em branco.',
+        "Siga esta estrutura: 1. Visão geral; 2. Ideias principais; 3. Personagens ou elementos centrais; 4. O que esse livro ensina; 5. Pergunta para pensar.",
+        "Use linguagem simples, tom acolhedor e frases naturais.",
+        "Se faltar informação, deixe isso claro sem inventar fatos.",
+        "Tamanho entre 130 e 220 palavras.",
       ].join("\n"),
       expectJson: true,
     };
@@ -178,8 +181,8 @@ const callGemini = async (
     },
     contents: [{ role: "user", parts: [{ text: config.userPrompt }] }],
     generationConfig: {
-      temperature: 0.5,
-      maxOutputTokens: 1200,
+      temperature: 0.35,
+      maxOutputTokens: 900,
     },
   };
 
