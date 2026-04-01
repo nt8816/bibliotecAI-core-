@@ -1100,15 +1100,18 @@ export default function Emprestimos() {
                         </div>
 
                         {selectedLivro ? (
-                          <div className="flex items-center justify-between gap-3 p-2 rounded-md bg-primary/10 border">
+                          <div className="flex items-start justify-between gap-3 p-2 rounded-md bg-primary/10 border">
                             <div className="min-w-0">
                               <span className="block text-sm font-medium truncate">{livrosDisponiveis.find((l) => l.id === selectedLivro)?.titulo}</span>
-                              {formatLivroTombo(livrosDisponiveis.find((l) => l.id === selectedLivro)) ? (
-                                <span className="block text-xs text-muted-foreground truncate">
-                                  {formatLivroTombo(livrosDisponiveis.find((l) => l.id === selectedLivro))}
-                                </span>
-                              ) : null}
+                              <span className="block text-xs text-muted-foreground truncate">
+                                {livrosDisponiveis.find((l) => l.id === selectedLivro)?.autor || 'Autor não informado'}
+                              </span>
                             </div>
+                            {formatLivroTombo(livrosDisponiveis.find((l) => l.id === selectedLivro)) ? (
+                              <span className="shrink-0 rounded-full bg-primary/15 px-2.5 py-1 text-[11px] font-semibold text-primary">
+                                {formatLivroTombo(livrosDisponiveis.find((l) => l.id === selectedLivro))}
+                              </span>
+                            ) : null}
                             <Button variant="ghost" size="sm" onClick={() => { setSelectedLivro(''); setSearchLivro(''); }}>
                               Trocar
                             </Button>
@@ -1127,10 +1130,17 @@ export default function Emprestimos() {
                                     setSearchLivro(l.titulo);
                                   }}
                                 >
-                                  <p className="font-medium">{l.titulo}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {formatLivroTombo(l) || l.autor}
-                                  </p>
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="font-medium truncate">{l.titulo}</p>
+                                      <p className="text-xs text-muted-foreground truncate">{l.autor || 'Autor não informado'}</p>
+                                    </div>
+                                    {formatLivroTombo(l) ? (
+                                      <span className="shrink-0 rounded-full bg-primary/15 px-2.5 py-1 text-[11px] font-semibold text-primary">
+                                        {formatLivroTombo(l)}
+                                      </span>
+                                    ) : null}
+                                  </div>
                                 </button>
                               ))
                             )}
