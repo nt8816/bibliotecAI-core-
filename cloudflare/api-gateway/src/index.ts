@@ -6121,14 +6121,14 @@ const routes: Record<string, RouteHandler> = {
       supabaseAdminRequest(
         env,
         `/rest/v1/emprestimos?${new URLSearchParams({
-          select: 'id,livro_id,usuario_id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livros(titulo,autor,escola_id),usuarios_biblioteca(nome,email,escola_id)',
+          select: 'id,livro_id,usuario_id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livros(titulo,autor,escola_id),usuarios_biblioteca(nome,email,turma,tipo,escola_id)',
           order: 'data_emprestimo.desc',
         }).toString()}`,
       ),
       supabaseAdminRequest(
         env,
         `/rest/v1/livros?${new URLSearchParams({
-          select: 'id,titulo,autor,disponivel,escola_id',
+          select: 'id,titulo,autor,tombo,disponivel,escola_id',
           escola_id: `eq.${profile.escola_id}`,
           order: 'titulo.asc',
         }).toString()}`,
@@ -6136,7 +6136,7 @@ const routes: Record<string, RouteHandler> = {
       supabaseAdminRequest(
         env,
         `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
-          select: 'id,nome,email,escola_id',
+          select: 'id,nome,email,turma,tipo,escola_id',
           escola_id: `eq.${profile.escola_id}`,
           order: 'nome.asc',
         }).toString()}`,
@@ -6145,7 +6145,7 @@ const routes: Record<string, RouteHandler> = {
         ? supabaseAdminRequest(
             env,
             `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
-              select: 'id,livro_id,usuario_id,mensagem,resposta,status,created_at,livros(id,titulo,autor,disponivel,escola_id),usuarios_biblioteca(nome,email,escola_id),solicitacoes_emprestimo_mensagens(id,mensagem,autor_tipo,created_at)',
+              select: 'id,livro_id,usuario_id,mensagem,resposta,status,created_at,livros(id,titulo,autor,disponivel,escola_id),usuarios_biblioteca(nome,email,turma,tipo,escola_id),solicitacoes_emprestimo_mensagens(id,mensagem,autor_tipo,created_at)',
               order: 'created_at.desc',
             }).toString()}`,
           )

@@ -77,6 +77,23 @@ function getVisibleEmail(nome, email) {
   return isTempLoginEmail(email) ? (nome || '-') : (email || '-');
 }
 
+function formatUsuarioCargo(usuario) {
+  const tipo = String(usuario?.tipo || '').trim().toLowerCase();
+  const turma = String(usuario?.turma || '').trim();
+
+  if (tipo === 'professor') return 'Professor';
+  if (tipo === 'aluno') return turma ? `Aluno • Turma ${turma}` : 'Aluno';
+  if (tipo === 'bibliotecaria') return 'Bibliotecária';
+  if (tipo === 'gestor') return 'Gestor';
+
+  return turma ? `Turma ${turma}` : '';
+}
+
+function formatLivroTombo(livro) {
+  const tombo = String(livro?.tombo || '').trim();
+  return tombo ? `Tombo ${tombo}` : '';
+}
+
 export default function Emprestimos() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -1029,8 +1046,15 @@ export default function Emprestimos() {
                         </div>
 
                         {selectedUsuario ? (
-                          <div className="flex items-center justify-between p-2 rounded-md bg-primary/10 border">
-                            <span className="text-sm font-medium">{usuarios.find((u) => u.id === selectedUsuario)?.nome}</span>
+                          <div className="flex items-center justify-between gap-3 p-2 rounded-md bg-primary/10 border">
+                            <div className="min-w-0">
+                              <span className="block text-sm font-medium truncate">{usuarios.find((u) => u.id === selectedUsuario)?.nome}</span>
+                              {formatUsuarioCargo(usuarios.find((u) => u.id === selectedUsuario)) ? (
+                                <span className="block text-xs text-muted-foreground truncate">
+                                  {formatUsuarioCargo(usuarios.find((u) => u.id === selectedUsuario))}
+                                </span>
+                              ) : null}
+                            </div>
                             <Button variant="ghost" size="sm" onClick={() => { setSelectedUsuario(''); setSearchUsuario(''); }}>
                               Trocar
                             </Button>
@@ -1050,7 +1074,9 @@ export default function Emprestimos() {
                                   }}
                                 >
                                   <p className="font-medium">{u.nome}</p>
-                                  <p className="text-xs text-muted-foreground">{getVisibleEmail(u.nome, u.email)}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {formatUsuarioCargo(u) || getVisibleEmail(u.nome, u.email)}
+                                  </p>
                                 </button>
                               ))
                             )}
@@ -1074,8 +1100,15 @@ export default function Emprestimos() {
                         </div>
 
                         {selectedLivro ? (
-                          <div className="flex items-center justify-between p-2 rounded-md bg-primary/10 border">
-                            <span className="text-sm font-medium">{livrosDisponiveis.find((l) => l.id === selectedLivro)?.titulo}</span>
+                          <div className="flex items-center justify-between gap-3 p-2 rounded-md bg-primary/10 border">
+                            <div className="min-w-0">
+                              <span className="block text-sm font-medium truncate">{livrosDisponiveis.find((l) => l.id === selectedLivro)?.titulo}</span>
+                              {formatLivroTombo(livrosDisponiveis.find((l) => l.id === selectedLivro)) ? (
+                                <span className="block text-xs text-muted-foreground truncate">
+                                  {formatLivroTombo(livrosDisponiveis.find((l) => l.id === selectedLivro))}
+                                </span>
+                              ) : null}
+                            </div>
                             <Button variant="ghost" size="sm" onClick={() => { setSelectedLivro(''); setSearchLivro(''); }}>
                               Trocar
                             </Button>
@@ -1095,7 +1128,9 @@ export default function Emprestimos() {
                                   }}
                                 >
                                   <p className="font-medium">{l.titulo}</p>
-                                  <p className="text-xs text-muted-foreground">{l.autor}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {formatLivroTombo(l) || l.autor}
+                                  </p>
                                 </button>
                               ))
                             )}
