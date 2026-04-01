@@ -189,6 +189,7 @@ export default function Livros() {
   const [buscandoSinopse, setBuscandoSinopse] = useState(false);
   const [sinopseExpandida, setSinopseExpandida] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [availabilityLoadingId, setAvailabilityLoadingId] = useState('');
   const [requestDialogOpen, setRequestDialogOpen] = useState(false);
   const [requestLivro, setRequestLivro] = useState(null);
   const [requestMsg, setRequestMsg] = useState('');
@@ -549,6 +550,38 @@ export default function Livros() {
       toast({ variant: 'destructive', title: 'Erro', description: error.message || 'Não foi possível salvar o livro.' });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleToggleDisponibilidade = async (livro) => {
+    if (!livro?.id) return;
+    if (livro?.isEmprestado) {
+      toast({
+        variant: 'destructive',
+        title: 'Livro emprestado',
+        description: 'Nao e possivel alterar a disponibilidade enquanto o livro estiver emprestado.',
+      });
+      return;
+    }
+
+    setAvailabilityLoadingId(String(livro.id));
+    try {
+      await saveLivro({ disponivel: livro.disponivel === false }, livro.id);
+      toast({
+        title: livro.disponivel === false ? 'Livro disponivel' : 'Livro indisponivel',
+        description: livro.disponivel === false
+          ? 'O livro voltou a ficar disponivel no acervo.'
+          : 'O livro foi marcado como indisponivel no acervo.',
+      });
+      fetchLivros();
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: error?.message || 'Nao foi possivel atualizar a disponibilidade do livro.',
+      });
+    } finally {
+      setAvailabilityLoadingId('');
     }
   };
 
@@ -1666,6 +1699,26 @@ export default function Livros() {
                       {canManageBooks && (
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={availabilityLoadingId === String(livro.id) || livro.isEmprestado}
+                              onClick={() => handleToggleDisponibilidade(livro)}
+                            >
+                              {availabilityLoadingId === String(livro.id) ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : livro.disponivel === false ? (
+                                <>
+                                  <CheckCircle className="w-4 h-4 mr-2" />
+                                  Disponibilizar
+                                </>
+                              ) : (
+                                <>
+                                  <AlertCircle className="w-4 h-4 mr-2" />
+                                  Marcar indisponivel
+                                </>
+                              )}
+                            </Button>
                             <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(livro)}>
                               <Pencil className="w-4 h-4" />
                             </Button>
