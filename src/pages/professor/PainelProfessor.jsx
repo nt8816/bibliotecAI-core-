@@ -251,6 +251,67 @@ function buildActivityDraftFromPlainText(rawValue) {
   };
 }
 
+function decodePossiblyEscapedText(value) {
+  return String(value || '')
+    .replace(/\\"/g, '"')
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t')
+    .trim();
+}
+
+function extractQuotedJsonField(raw, fieldName) {
+  const match = String(raw || '').match(new RegExp(`"${fieldName}"\\s*:\\s*"([\\s\\S]*?)(?<!\\\\)"`, 'i'));
+  return decodePossiblyEscapedText(match?.[1] || '');
+}
+
+function extractNumericJsonField(raw, fieldName) {
+  const match = String(raw || '').match(new RegExp(`"${fieldName}"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`, 'i'));
+  return match?.[1] ? Number(match[1]) : Number.NaN;
+}
+
+function extractQuestionsFromBrokenJson(raw) {
+  const source = String(raw || '');
+  const questionsMatch = source.match(/"perguntas"\s*:\s*\[([\s\S]*)$/i);
+  if (!questionsMatch?.[1]) return [];
+
+  const block = questionsMatch[1];
+  const objectMatches = block.match(/\{[\s\S]*?(?=\}\s*,|\}\s*$|$)/g) || [];
+
+  return objectMatches.map((item) => {
+    const tipo = extractQuotedJsonField(item, 'tipo') === 'multipla_escolha' ? 'multipla_escolha' : 'texto';
+    const pergunta = extractQuotedJsonField(item, 'pergunta') || extractQuotedJsonField(item, 'enunciado');
+    const optionsBlock = item.match(/"opcoes"\s*:\s*\[([\s\S]*?)(?:\]|\}|$)/i)?.[1] || '';
+    const opcoes = [...optionsBlock.matchAll(/"((?:\\.|[^"\\])*)"/g)]
+      .map((match) => decodePossiblyEscapedText(match[1]))
+      .filter(Boolean);
+
+    return { tipo, pergunta, opcoes };
+  }).filter((item) => item.pergunta);
+}
+
+function recoverActivityDraftFromBrokenJson(rawValue) {
+  const raw = String(rawValue || '').trim();
+  if (!raw || !raw.includes('"titulo"')) return null;
+
+  const titulo = extractQuotedJsonField(raw, 'titulo');
+  const descricao = extractQuotedJsonField(raw, 'descricao');
+  const livro_sugerido_titulo = extractQuotedJsonField(raw, 'livro_sugerido_titulo');
+  const pontos_extras = extractNumericJsonField(raw, 'pontos_extras');
+  const perguntas = extractQuestionsFromBrokenJson(raw);
+
+  if (!titulo && !descricao && !perguntas.length) return null;
+
+  return {
+    titulo,
+    descricao,
+    pontos_extras,
+    perguntas,
+    livro_sugerido_titulo,
+    livro_sugerido_id: '',
+  };
+}
+
 function extractActivityDraftFromIAResponse(response) {
   const rawText = String(
     response?.text
@@ -263,6 +324,7 @@ function extractActivityDraftFromIAResponse(response) {
   const textJson = extractJsonFromIAPlainText(
     rawText,
   );
+  const recoveredJsonDraft = recoverActivityDraftFromBrokenJson(rawText);
 
   const candidates = [
     response?.data,
@@ -279,6 +341,7 @@ function extractActivityDraftFromIAResponse(response) {
     textJson?.atividade,
     textJson?.resultado,
     textJson?.result,
+    recoveredJsonDraft,
   ].filter((item) => item && typeof item === 'object' && !Array.isArray(item));
 
   const draft = candidates.find((item) => (
