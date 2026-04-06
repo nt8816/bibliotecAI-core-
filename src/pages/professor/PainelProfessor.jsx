@@ -1984,7 +1984,8 @@ export default function PainelProfessor() {
               </div>
 
               <aside className="overflow-y-auto border-t bg-muted/30 p-4 sm:p-6 lg:border-l lg:border-t-0">
-                <div className="space-y-5">
+                <div className="flex min-h-full flex-col">
+                  <div className="space-y-5">
                   <div className="rounded-3xl border bg-background p-4">
                     <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">Prévia</p>
                     <p className="mt-2 text-lg font-semibold">{atividadeForm.titulo || 'Sua atividade aparecerá aqui'}</p>
@@ -2021,22 +2022,9 @@ export default function PainelProfessor() {
                     </div>
                   </div>
 
-                  <div className="rounded-3xl border bg-background p-4">
-                    <p className="text-sm font-medium">O que o aluno verá</p>
-                    <div className="mt-3 space-y-2">
-                      <div className="rounded-2xl border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">
-                        Uma atividade com instruções claras e botão de envio.
-                      </div>
-                      <div className="rounded-2xl border border-info/20 bg-info/5 px-3 py-2 text-sm text-info">
-                        Questões abertas ou de marcar, conforme você definiu.
-                      </div>
-                      <div className="rounded-2xl border border-warning/20 bg-warning/5 px-3 py-2 text-sm text-warning">
-                        Espaço para escrever, anexar imagens e receber feedback.
-                      </div>
-                    </div>
                   </div>
 
-                  <div className="flex flex-col gap-2 pt-2">
+                  <div className="sticky bottom-0 mt-5 flex flex-col gap-2 border-t bg-muted/95 pt-4 backdrop-blur supports-[backdrop-filter]:bg-muted/80">
                     <Button onClick={handleSaveAtividade} disabled={saving} className="rounded-2xl">
                       {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       {editingAtividade ? 'Salvar alterações' : 'Publicar atividade'}
