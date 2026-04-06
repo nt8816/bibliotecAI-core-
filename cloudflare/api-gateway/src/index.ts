@@ -2004,12 +2004,13 @@ async function getProfessorModuleData(request: Request, env: Env) {
   if (!caller?.id) {
     throw new Error('Nao autenticado.');
   }
+  const userId = String(caller.id || '').trim();
 
   const professorProfiles = await supabaseAdminRequest(
     env,
     `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
       select: 'id,escola_id,nome,email,tipo,turma',
-      user_id: `eq.${caller.id}`,
+      user_id: `eq.${userId}`,
       tipo: 'eq.professor',
       order: 'updated_at.desc.nullslast,created_at.desc',
       limit: '10',
