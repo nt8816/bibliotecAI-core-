@@ -379,6 +379,94 @@ function buildQuestionsFromAI(rawQuestions) {
     .filter((item) => item.pergunta);
 }
 
+function parseRequestedQuestionConstraints(promptValue) {
+  const text = normalizeAiLookup(promptValue);
+  const totalMatch = text.match(/(\d+)\s+(?:questoes|questao|perguntas|pergunta)\b/);
+
+  const extractFirstNumber = (patterns) => {
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match?.[1]) return Number(match[1]);
+    }
+    return null;
+  };
+
+  const openCount = extractFirstNumber([
+    /(\d+)\s+(?:questoes|questao|perguntas|pergunta)\s+(?:abertas|aberta)\b/,
+    /(\d+)\s+(?:abertas|aberta)\b/,
+    /(\d+)\s+(?:de\s+)?(?:texto|resposta\s+aberta)\b/,
+  ]);
+
+  const choiceCount = extractFirstNumber([
+    /(\d+)\s+(?:questoes|questao|perguntas|pergunta)\s+(?:de\s+)?(?:marcar|multipla\s+escolha)\b/,
+    /(\d+)\s+(?:de\s+)?(?:marcar|multipla\s+escolha)\b/,
+  ]);
+
+  let total = totalMatch?.[1] ? Number(totalMatch[1]) : null;
+  if (!Number.isInteger(total) && Number.isInteger(openCount) && Number.isInteger(choiceCount)) {
+    total = openCount + choiceCount;
+  }
+
+  return {
+    total: Number.isInteger(total) ? Math.max(0, Math.min(10, total)) : null,
+    openCount: Number.isInteger(openCount) ? Math.max(0, Math.min(10, openCount)) : null,
+    choiceCount: Number.isInteger(choiceCount) ? Math.max(0, Math.min(10, choiceCount)) : null,
+  };
+}
+
+function createPlaceholderQuestionForType(tipo, index) {
+  return normalizeQuestion({
+    id: `ia_placeholder_${tipo}_${index + 1}`,
+    tipo,
+    pergunta: tipo === 'multipla_escolha'
+      ? `Questao ${index + 1} de multipla escolha`
+      : `Questao ${index + 1} dissertativa`,
+    opcoes: tipo === 'multipla_escolha' ? ['Opcao 1', 'Opcao 2', 'Opcao 3'] : [],
+  }, index);
+}
+
+function adjustQuestionsToRequestedConstraints(questions, constraints) {
+  const source = Array.isArray(questions) ? questions : [];
+  const total = Number.isInteger(constraints?.total) ? constraints.total : null;
+  const choiceTarget = Number.isInteger(constraints?.choiceCount) ? constraints.choiceCount : null;
+  const openTarget = Number.isInteger(constraints?.openCount) ? constraints.openCount : null;
+
+  if (!Number.isInteger(total) && !Number.isInteger(choiceTarget) && !Number.isInteger(openTarget)) {
+    return source;
+  }
+
+  const textQuestions = source.filter((item) => item?.tipo !== 'multipla_escolha');
+  const choiceQuestions = source.filter((item) => item?.tipo === 'multipla_escolha');
+
+  let desiredChoice = choiceTarget;
+  let desiredText = openTarget;
+
+  if (Number.isInteger(total)) {
+    if (desiredChoice === null && desiredText === null) {
+      return source.slice(0, total);
+    }
+    if (desiredChoice === null) desiredChoice = Math.max(0, total - (desiredText || 0));
+    if (desiredText === null) desiredText = Math.max(0, total - (desiredChoice || 0));
+  }
+
+  if (!Number.isInteger(desiredChoice)) desiredChoice = choiceQuestions.length;
+  if (!Number.isInteger(desiredText)) desiredText = textQuestions.length;
+
+  const nextChoice = choiceQuestions.slice(0, desiredChoice);
+  const nextText = textQuestions.slice(0, desiredText);
+
+  while (nextChoice.length < desiredChoice) {
+    nextChoice.push(createPlaceholderQuestionForType('multipla_escolha', nextChoice.length));
+  }
+
+  while (nextText.length < desiredText) {
+    nextText.push(createPlaceholderQuestionForType('texto', nextText.length));
+  }
+
+  const merged = [...nextChoice, ...nextText];
+  return merged.slice(0, Number.isInteger(total) ? total : merged.length);
+}
+
 export default function PainelProfessor() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -654,6 +742,7 @@ export default function PainelProfessor() {
 
     setAiGenerating(true);
     try {
+      const requestedConstraints = parseRequestedQuestionConstraints(aiPrompt);
       const livrosDisponiveis = livros
         .slice(0, 12)
         .map((item) => ({ id: item.id, titulo: item.titulo, autor: item.autor }))
@@ -666,11 +755,18 @@ export default function PainelProfessor() {
         'Formato esperado:',
         '{"titulo":"...","descricao":"...","pontos_extras":10,"perguntas":[{"tipo":"texto","pergunta":"..."},{"tipo":"multipla_escolha","pergunta":"...","opcoes":["...","...","..."]}],"livro_sugerido_titulo":"..."}',
         'Regras:',
-        '- gere entre 0 e 5 perguntas',
-        '- use tipo "texto" para respostas abertas',
-        '- use tipo "multipla_escolha" para questoes de marcar',
+        Number.isInteger(requestedConstraints.total)
+          ? `- gere exatamente ${requestedConstraints.total} perguntas`
+          : '- gere entre 0 e 5 perguntas',
+        Number.isInteger(requestedConstraints.choiceCount)
+          ? `- gere exatamente ${requestedConstraints.choiceCount} questoes de multipla escolha`
+          : '- use tipo "multipla_escolha" para questoes de marcar',
+        Number.isInteger(requestedConstraints.openCount)
+          ? `- gere exatamente ${requestedConstraints.openCount} questoes abertas`
+          : '- use tipo "texto" para respostas abertas',
         '- em questoes de marcar, inclua ao menos 3 opcoes curtas',
         '- nao inclua explicacoes fora do JSON',
+        '- respeite exatamente a quantidade pedida pelo professor quando ela for informada',
         `Pedido do professor: ${aiPrompt.trim()}`,
         `Turmas disponiveis: ${professorTurmasPermitidas.join(', ') || 'nao informado'}`,
         `Livros disponiveis: ${JSON.stringify(livrosDisponiveis)}`,
@@ -686,7 +782,10 @@ export default function PainelProfessor() {
       const finalDraft = (draft.titulo || draft.descricao || Array.isArray(draft.perguntas) && draft.perguntas.length > 0)
         ? draft
         : plainTextDraft;
-      const perguntas = buildQuestionsFromAI(finalDraft.perguntas);
+      const perguntas = adjustQuestionsToRequestedConstraints(
+        buildQuestionsFromAI(finalDraft.perguntas),
+        requestedConstraints,
+      );
       const suggestedBook = findSuggestedBookFromAI(livros, finalDraft);
       const hasMeaningfulContent = Boolean(finalDraft.titulo || finalDraft.descricao || perguntas.length > 0);
 
