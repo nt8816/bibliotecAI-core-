@@ -312,6 +312,7 @@ export const generateTextWithCloudflare = async ({
   task,
   input,
   prompt,
+  skipCache = false,
   fallbackErrorMessage = 'Não foi possível gerar texto com IA no momento.',
 } = {}) => {
   const finalPrompt = sanitizeText(String(prompt || '').trim(), 4000) || buildTextPromptFromTask(task, input);
@@ -320,9 +321,11 @@ export const generateTextWithCloudflare = async ({
   }
 
   const cacheKey = buildTextCacheKey({ task, prompt: finalPrompt, input });
-  const cached = textResponseCache.get(cacheKey);
-  if (cached && (Date.now() - cached.createdAt) < TEXT_CACHE_TTL_MS) {
-    return cached.value;
+  if (!skipCache) {
+    const cached = textResponseCache.get(cacheKey);
+    if (cached && (Date.now() - cached.createdAt) < TEXT_CACHE_TTL_MS) {
+      return cached.value;
+    }
   }
 
   const parsed = await callBibliotecaAi('/text', { prompt: finalPrompt }, fallbackErrorMessage);
@@ -350,10 +353,12 @@ export const generateTextWithCloudflare = async ({
     result = { data, text, raw: payload, prompt: finalPrompt };
   }
 
-  textResponseCache.set(cacheKey, {
-    createdAt: Date.now(),
-    value: result,
-  });
+  if (!skipCache) {
+    textResponseCache.set(cacheKey, {
+      createdAt: Date.now(),
+      value: result,
+    });
+  }
 
   return result;
 };

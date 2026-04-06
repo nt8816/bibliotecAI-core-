@@ -493,6 +493,14 @@ function buildBatchConstraints(constraints, maxBatchSize = 4) {
   };
 }
 
+function getAutoBatchSizes(total) {
+  if (!Number.isInteger(total) || total <= 0) return [6, 4, 2, 1];
+  if (total <= 4) return [total, 2, 1].filter((value, index, source) => value > 0 && source.indexOf(value) === index);
+  if (total <= 8) return [4, 3, 2, 1];
+  if (total <= 16) return [6, 4, 3, 2, 1];
+  return [8, 6, 4, 3, 2, 1];
+}
+
 function buildActivityGenerationPrompt({
   teacherPrompt,
   constraints,
@@ -563,58 +571,70 @@ async function completeQuestionsWithAI({
   let perguntas = Array.isArray(perguntasIniciais) ? [...perguntasIniciais] : [];
   const countChoice = () => perguntas.filter((item) => item.tipo === 'multipla_escolha').length;
   const countOpen = () => perguntas.filter((item) => item.tipo !== 'multipla_escolha').length;
+  const requestedTotal = Number.isInteger(requestedConstraints?.total) ? requestedConstraints.total : null;
+  const batchSizes = getAutoBatchSizes(requestedTotal);
 
-  if (Number.isInteger(requestedConstraints.total)) {
-    for (let attempt = 0; attempt < 8 && perguntas.length < requestedConstraints.total; attempt += 1) {
-      const faltantes = requestedConstraints.total - perguntas.length;
-      const remainingConstraints = {
-        total: faltantes,
-        choiceCount: Number.isInteger(requestedConstraints.choiceCount)
-          ? Math.max(0, requestedConstraints.choiceCount - countChoice())
-          : null,
-        openCount: Number.isInteger(requestedConstraints.openCount)
-          ? Math.max(0, requestedConstraints.openCount - countOpen())
-          : null,
-      };
-      const batchConstraints = buildBatchConstraints(remainingConstraints, 4);
-      const continuationPrompt = buildActivityGenerationPrompt({
-        teacherPrompt,
-        constraints: batchConstraints,
-        livrosDisponiveis,
-        professorTurmasPermitidas,
-        continuation: true,
-        remainingQuestions: batchConstraints.total || faltantes,
-        existingQuestions: perguntas.map((item) => ({
-          tipo: item.tipo,
-          pergunta: item.pergunta,
-        })),
-        overallConstraints: requestedConstraints,
-      });
+  if (Number.isInteger(requestedTotal)) {
+    let stalledRounds = 0;
 
-      const continuationGenerated = await generateTextWithCloudflare({
-        prompt: continuationPrompt,
-        fallbackErrorMessage: 'Nao foi possivel completar todas as questoes com IA agora.',
-      });
+    while (perguntas.length < requestedTotal && stalledRounds < 8) {
+      const beforeRound = perguntas.length;
 
-      const continuationDraft = extractActivityDraftFromIAResponse(continuationGenerated);
-      const continuationQuestions = buildQuestionsFromAI(continuationDraft.perguntas);
-      const uniqueQuestions = continuationQuestions.filter((candidate) => (
-        candidate.pergunta
-        && !perguntas.some((existing) => normalizeAiLookup(existing.pergunta) === normalizeAiLookup(candidate.pergunta))
-      ));
+      for (const batchSize of batchSizes) {
+        if (perguntas.length >= requestedTotal) break;
+        const faltantes = requestedTotal - perguntas.length;
 
-      if (uniqueQuestions.length === 0) {
-        break;
+        const remainingConstraints = {
+          total: faltantes,
+          choiceCount: Number.isInteger(requestedConstraints.choiceCount)
+            ? Math.max(0, requestedConstraints.choiceCount - countChoice())
+            : null,
+          openCount: Number.isInteger(requestedConstraints.openCount)
+            ? Math.max(0, requestedConstraints.openCount - countOpen())
+            : null,
+        };
+        const batchConstraints = buildBatchConstraints(remainingConstraints, Math.min(batchSize, faltantes));
+        const continuationPrompt = buildActivityGenerationPrompt({
+          teacherPrompt,
+          constraints: batchConstraints,
+          livrosDisponiveis,
+          professorTurmasPermitidas,
+          continuation: true,
+          remainingQuestions: batchConstraints.total || faltantes,
+          existingQuestions: perguntas.map((item) => ({
+            tipo: item.tipo,
+            pergunta: item.pergunta,
+          })),
+          overallConstraints: requestedConstraints,
+        });
+
+        const continuationGenerated = await generateTextWithCloudflare({
+          prompt: continuationPrompt,
+          skipCache: true,
+          fallbackErrorMessage: 'Nao foi possivel completar todas as questoes com IA agora.',
+        });
+
+        const continuationDraft = extractActivityDraftFromIAResponse(continuationGenerated);
+        const continuationQuestions = buildQuestionsFromAI(continuationDraft.perguntas);
+        const uniqueQuestions = continuationQuestions.filter((candidate) => (
+          candidate.pergunta
+          && !perguntas.some((existing) => normalizeAiLookup(existing.pergunta) === normalizeAiLookup(candidate.pergunta))
+        ));
+
+        if (uniqueQuestions.length > 0) {
+          perguntas = [...perguntas, ...uniqueQuestions];
+        }
       }
 
-      perguntas = [...perguntas, ...uniqueQuestions];
+      if (perguntas.length === beforeRound) stalledRounds += 1;
+      else stalledRounds = 0;
     }
   }
 
-  if (Number.isInteger(requestedConstraints.total) && perguntas.length < requestedConstraints.total) {
+  if (Number.isInteger(requestedTotal) && perguntas.length < requestedTotal) {
     let stalledAttempts = 0;
 
-    while (perguntas.length < requestedConstraints.total && stalledAttempts < 12) {
+    while (perguntas.length < requestedTotal && stalledAttempts < 20) {
       const remainingChoice = Number.isInteger(requestedConstraints.choiceCount)
         ? Math.max(0, requestedConstraints.choiceCount - countChoice())
         : null;
@@ -649,6 +669,7 @@ async function completeQuestionsWithAI({
 
       const singleGenerated = await generateTextWithCloudflare({
         prompt: singlePrompt,
+        skipCache: true,
         fallbackErrorMessage: 'Nao foi possivel completar uma das questoes restantes com IA agora.',
       });
 
@@ -964,6 +985,7 @@ export default function PainelProfessor() {
         choiceCount: Number.isInteger(visualChoice) ? visualChoice : promptConstraints.choiceCount,
         openCount: Number.isInteger(visualOpen) ? visualOpen : promptConstraints.openCount,
       };
+      const initialBatchSize = getAutoBatchSizes(requestedConstraints.total)[0] || 4;
 
       if (
         Number.isInteger(requestedConstraints.total)
@@ -979,7 +1001,7 @@ export default function PainelProfessor() {
         .map((item) => ({ id: item.id, titulo: item.titulo, autor: item.autor }))
         .filter((item) => item.id && item.titulo);
 
-      const initialBatchConstraints = buildBatchConstraints(requestedConstraints, 4);
+      const initialBatchConstraints = buildBatchConstraints(requestedConstraints, initialBatchSize);
       const prompt = buildActivityGenerationPrompt({
         teacherPrompt: aiPrompt,
         constraints: initialBatchConstraints,
@@ -990,6 +1012,7 @@ export default function PainelProfessor() {
 
       const generated = await generateTextWithCloudflare({
         prompt,
+        skipCache: true,
         fallbackErrorMessage: 'Nao foi possivel gerar a atividade com IA agora.',
       });
 
@@ -1041,8 +1064,8 @@ export default function PainelProfessor() {
         });
         toast({
           variant: 'destructive',
-          title: 'Geracao parcial',
-          description: 'A IA trouxe parte das questoes. Use "Tentar completar restantes" para buscar o restante sem perder o rascunho.',
+          title: 'Geracao incompleta',
+          description: 'A IA ainda nao entregou o total exato de questoes. Tente gerar novamente para buscar uma resposta melhor.',
         });
         return;
       }
