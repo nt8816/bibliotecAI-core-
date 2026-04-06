@@ -414,17 +414,6 @@ function parseRequestedQuestionConstraints(promptValue) {
   };
 }
 
-function createPlaceholderQuestionForType(tipo, index) {
-  return normalizeQuestion({
-    id: `ia_placeholder_${tipo}_${index + 1}`,
-    tipo,
-    pergunta: tipo === 'multipla_escolha'
-      ? `Questao ${index + 1} de multipla escolha`
-      : `Questao ${index + 1} dissertativa`,
-    opcoes: tipo === 'multipla_escolha' ? ['Opcao 1', 'Opcao 2', 'Opcao 3'] : [],
-  }, index);
-}
-
 function adjustQuestionsToRequestedConstraints(questions, constraints) {
   const source = Array.isArray(questions) ? questions : [];
   const total = Number.isInteger(constraints?.total) ? constraints.total : null;
@@ -443,12 +432,7 @@ function adjustQuestionsToRequestedConstraints(questions, constraints) {
 
   if (Number.isInteger(total)) {
     if (desiredChoice === null && desiredText === null) {
-      const sameTypeQuestions = source.slice(0, total);
-      const fallbackType = choiceQuestions.length > textQuestions.length ? 'multipla_escolha' : 'texto';
-      while (sameTypeQuestions.length < total) {
-        sameTypeQuestions.push(createPlaceholderQuestionForType(fallbackType, sameTypeQuestions.length));
-      }
-      return sameTypeQuestions;
+      return source.slice(0, total);
     }
     if (desiredChoice === null) desiredChoice = Math.max(0, total - (desiredText || 0));
     if (desiredText === null) desiredText = Math.max(0, total - (desiredChoice || 0));
@@ -460,14 +444,6 @@ function adjustQuestionsToRequestedConstraints(questions, constraints) {
   const nextChoice = choiceQuestions.slice(0, desiredChoice);
   const nextText = textQuestions.slice(0, desiredText);
 
-  while (nextChoice.length < desiredChoice) {
-    nextChoice.push(createPlaceholderQuestionForType('multipla_escolha', nextChoice.length));
-  }
-
-  while (nextText.length < desiredText) {
-    nextText.push(createPlaceholderQuestionForType('texto', nextText.length));
-  }
-
   const merged = [...nextChoice, ...nextText];
   return merged.slice(0, Number.isInteger(total) ? total : merged.length);
 }
@@ -478,6 +454,110 @@ function parseOptionalPositiveInteger(value, max = 30) {
   const parsed = Number(normalized);
   if (!Number.isInteger(parsed)) return null;
   return Math.max(0, Math.min(max, parsed));
+}
+
+function buildActivityGenerationPrompt({
+  teacherPrompt,
+  constraints,
+  livrosDisponiveis,
+  professorTurmasPermitidas,
+  continuation = false,
+  remainingQuestions = 0,
+  existingQuestions = [],
+}) {
+  const lines = [
+    'Voce e um assistente para criacao de atividades escolares.',
+    'Crie uma atividade em portugues do Brasil a partir do pedido do professor.',
+    'Responda SOMENTE com JSON valido.',
+    continuation
+      ? 'Formato esperado: {"perguntas":[{"tipo":"texto","pergunta":"..."},{"tipo":"multipla_escolha","pergunta":"...","opcoes":["...","...","..."]}]}'
+      : 'Formato esperado: {"titulo":"...","descricao":"...","pontos_extras":10,"perguntas":[{"tipo":"texto","pergunta":"..."},{"tipo":"multipla_escolha","pergunta":"...","opcoes":["...","...","..."]}],"livro_sugerido_titulo":"..."}',
+    'Regras:',
+    Number.isInteger(constraints?.total)
+      ? `- gere exatamente ${constraints.total} perguntas`
+      : '- gere entre 0 e 5 perguntas',
+    Number.isInteger(constraints?.choiceCount)
+      ? `- gere exatamente ${constraints.choiceCount} questoes de multipla escolha`
+      : '- use tipo "multipla_escolha" para questoes de marcar',
+    Number.isInteger(constraints?.openCount)
+      ? `- gere exatamente ${constraints.openCount} questoes abertas`
+      : '- use tipo "texto" para respostas abertas',
+    '- em questoes de marcar, inclua ao menos 3 opcoes curtas',
+    '- nao inclua explicacoes fora do JSON',
+    '- respeite exatamente a quantidade pedida pelo professor quando ela for informada',
+    '- nao confunda quantidade de perguntas com pontos_extras',
+    '- mantenha pontos_extras independente do numero de perguntas',
+  ];
+
+  if (continuation) {
+    lines.push(`- gere somente as ${remainingQuestions} perguntas faltantes`);
+    lines.push('- nao repita perguntas ja criadas');
+    lines.push('- nao devolva titulo, descricao ou pontos_extras novamente');
+    lines.push(`Perguntas ja criadas: ${JSON.stringify(existingQuestions)}`);
+  }
+
+  lines.push(`Pedido do professor: ${teacherPrompt.trim()}`);
+  lines.push(`Turmas disponiveis: ${professorTurmasPermitidas.join(', ') || 'nao informado'}`);
+  lines.push(`Livros disponiveis: ${JSON.stringify(livrosDisponiveis)}`);
+
+  return lines.join('\n');
+}
+
+async function completeQuestionsWithAI({
+  teacherPrompt,
+  requestedConstraints,
+  livrosDisponiveis,
+  professorTurmasPermitidas,
+  perguntasIniciais,
+}) {
+  let perguntas = Array.isArray(perguntasIniciais) ? [...perguntasIniciais] : [];
+
+  if (Number.isInteger(requestedConstraints.total)) {
+    for (let attempt = 0; attempt < 3 && perguntas.length < requestedConstraints.total; attempt += 1) {
+      const faltantes = requestedConstraints.total - perguntas.length;
+      const continuationPrompt = buildActivityGenerationPrompt({
+        teacherPrompt,
+        constraints: {
+          ...requestedConstraints,
+          total: faltantes,
+          choiceCount: Number.isInteger(requestedConstraints.choiceCount)
+            ? Math.max(0, requestedConstraints.choiceCount - perguntas.filter((item) => item.tipo === 'multipla_escolha').length)
+            : null,
+          openCount: Number.isInteger(requestedConstraints.openCount)
+            ? Math.max(0, requestedConstraints.openCount - perguntas.filter((item) => item.tipo !== 'multipla_escolha').length)
+            : null,
+        },
+        livrosDisponiveis,
+        professorTurmasPermitidas,
+        continuation: true,
+        remainingQuestions: faltantes,
+        existingQuestions: perguntas.map((item) => ({
+          tipo: item.tipo,
+          pergunta: item.pergunta,
+        })),
+      });
+
+      const continuationGenerated = await generateTextWithCloudflare({
+        prompt: continuationPrompt,
+        fallbackErrorMessage: 'Nao foi possivel completar todas as questoes com IA agora.',
+      });
+
+      const continuationDraft = extractActivityDraftFromIAResponse(continuationGenerated);
+      const continuationQuestions = buildQuestionsFromAI(continuationDraft.perguntas);
+      const uniqueQuestions = continuationQuestions.filter((candidate) => (
+        candidate.pergunta
+        && !perguntas.some((existing) => normalizeAiLookup(existing.pergunta) === normalizeAiLookup(candidate.pergunta))
+      ));
+
+      if (uniqueQuestions.length === 0) {
+        break;
+      }
+
+      perguntas = [...perguntas, ...uniqueQuestions];
+    }
+  }
+
+  return adjustQuestionsToRequestedConstraints(perguntas, requestedConstraints);
 }
 
 export default function PainelProfessor() {
@@ -507,6 +587,7 @@ export default function PainelProfessor() {
   const [aiChoiceCount, setAiChoiceCount] = useState('');
   const [aiOpenCount, setAiOpenCount] = useState('');
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiPendingCompletion, setAiPendingCompletion] = useState(null);
 
   const fetchData = useCallback(async ({ silent = false } = {}) => {
     if (!user?.id) return;
@@ -609,6 +690,7 @@ export default function PainelProfessor() {
     setAiQuestionCount('');
     setAiChoiceCount('');
     setAiOpenCount('');
+    setAiPendingCompletion(null);
   };
 
   const resetSugestaoDialog = () => {
@@ -785,31 +867,12 @@ export default function PainelProfessor() {
         .map((item) => ({ id: item.id, titulo: item.titulo, autor: item.autor }))
         .filter((item) => item.id && item.titulo);
 
-      const prompt = [
-        'Voce e um assistente para criacao de atividades escolares.',
-        'Crie uma atividade em portugues do Brasil a partir do pedido do professor.',
-        'Responda SOMENTE com JSON valido.',
-        'Formato esperado:',
-        '{"titulo":"...","descricao":"...","pontos_extras":10,"perguntas":[{"tipo":"texto","pergunta":"..."},{"tipo":"multipla_escolha","pergunta":"...","opcoes":["...","...","..."]}],"livro_sugerido_titulo":"..."}',
-        'Regras:',
-        Number.isInteger(requestedConstraints.total)
-          ? `- gere exatamente ${requestedConstraints.total} perguntas`
-          : '- gere entre 0 e 5 perguntas',
-        Number.isInteger(requestedConstraints.choiceCount)
-          ? `- gere exatamente ${requestedConstraints.choiceCount} questoes de multipla escolha`
-          : '- use tipo "multipla_escolha" para questoes de marcar',
-        Number.isInteger(requestedConstraints.openCount)
-          ? `- gere exatamente ${requestedConstraints.openCount} questoes abertas`
-          : '- use tipo "texto" para respostas abertas',
-        '- em questoes de marcar, inclua ao menos 3 opcoes curtas',
-        '- nao inclua explicacoes fora do JSON',
-        '- respeite exatamente a quantidade pedida pelo professor quando ela for informada',
-        '- nao confunda quantidade de perguntas com pontos_extras',
-        '- mantenha pontos_extras independente do numero de perguntas',
-        `Pedido do professor: ${aiPrompt.trim()}`,
-        `Turmas disponiveis: ${professorTurmasPermitidas.join(', ') || 'nao informado'}`,
-        `Livros disponiveis: ${JSON.stringify(livrosDisponiveis)}`,
-      ].join('\n');
+      const prompt = buildActivityGenerationPrompt({
+        teacherPrompt: aiPrompt,
+        constraints: requestedConstraints,
+        livrosDisponiveis,
+        professorTurmasPermitidas,
+      });
 
       const generated = await generateTextWithCloudflare({
         prompt,
@@ -821,16 +884,25 @@ export default function PainelProfessor() {
       const finalDraft = (draft.titulo || draft.descricao || Array.isArray(draft.perguntas) && draft.perguntas.length > 0)
         ? draft
         : plainTextDraft;
-      const perguntas = adjustQuestionsToRequestedConstraints(
-        buildQuestionsFromAI(finalDraft.perguntas),
-        requestedConstraints,
-      );
       const suggestedBook = findSuggestedBookFromAI(livros, finalDraft);
+      const perguntas = await completeQuestionsWithAI({
+        teacherPrompt: aiPrompt,
+        requestedConstraints,
+        livrosDisponiveis,
+        professorTurmasPermitidas,
+        perguntasIniciais: buildQuestionsFromAI(finalDraft.perguntas),
+      });
       const hasMeaningfulContent = Boolean(finalDraft.titulo || finalDraft.descricao || perguntas.length > 0);
 
       if (!hasMeaningfulContent) {
         throw new Error('A IA respondeu em formato invalido. Tente um pedido mais direto e curto.');
       }
+
+      const totalOk = !Number.isInteger(requestedConstraints.total) || perguntas.length === requestedConstraints.total;
+      const choiceOk = !Number.isInteger(requestedConstraints.choiceCount)
+        || perguntas.filter((item) => item.tipo === 'multipla_escolha').length === requestedConstraints.choiceCount;
+      const openOk = !Number.isInteger(requestedConstraints.openCount)
+        || perguntas.filter((item) => item.tipo !== 'multipla_escolha').length === requestedConstraints.openCount;
 
       setAtividadeForm((prev) => ({
         ...prev,
@@ -844,6 +916,25 @@ export default function PainelProfessor() {
         livro_id: suggestedBook?.id || prev.livro_id,
       }));
 
+      if (!totalOk || !choiceOk || !openOk) {
+        setAiPendingCompletion({
+          requestedConstraints,
+          livrosDisponiveis,
+          titulo: String(finalDraft.titulo || '').trim(),
+          descricao: String(finalDraft.descricao || '').trim(),
+          pontos_extras: Number.isFinite(finalDraft.pontos_extras) ? finalDraft.pontos_extras : null,
+          livro_id: suggestedBook?.id || '',
+        });
+        toast({
+          variant: 'destructive',
+          title: 'Geracao parcial',
+          description: 'A IA trouxe parte das questoes. Use "Tentar completar restantes" para buscar o restante sem perder o rascunho.',
+        });
+        return;
+      }
+
+      setAiPendingCompletion(null);
+
       toast({
         title: 'Rascunho gerado pela IA',
         description: perguntas.length > 0
@@ -855,6 +946,52 @@ export default function PainelProfessor() {
         variant: 'destructive',
         title: 'Erro ao gerar com IA',
         description: error?.message || 'Nao foi possivel montar a atividade automaticamente.',
+      });
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
+  const handleCompleteRemainingQuestionsWithAI = async () => {
+    if (!aiPendingCompletion) return;
+
+    setAiGenerating(true);
+    try {
+      const perguntas = await completeQuestionsWithAI({
+        teacherPrompt: aiPrompt,
+        requestedConstraints: aiPendingCompletion.requestedConstraints,
+        livrosDisponiveis: aiPendingCompletion.livrosDisponiveis,
+        professorTurmasPermitidas,
+        perguntasIniciais: atividadeForm.perguntas,
+      });
+
+      const totalOk = !Number.isInteger(aiPendingCompletion.requestedConstraints?.total)
+        || perguntas.length === aiPendingCompletion.requestedConstraints.total;
+      const choiceOk = !Number.isInteger(aiPendingCompletion.requestedConstraints?.choiceCount)
+        || perguntas.filter((item) => item.tipo === 'multipla_escolha').length === aiPendingCompletion.requestedConstraints.choiceCount;
+      const openOk = !Number.isInteger(aiPendingCompletion.requestedConstraints?.openCount)
+        || perguntas.filter((item) => item.tipo !== 'multipla_escolha').length === aiPendingCompletion.requestedConstraints.openCount;
+
+      setAtividadeForm((prev) => ({
+        ...prev,
+        perguntas,
+        formulario_ativo: perguntas.length > 0,
+      }));
+
+      if (!totalOk || !choiceOk || !openOk) {
+        throw new Error('A IA ainda nao conseguiu completar todas as questoes restantes.');
+      }
+
+      setAiPendingCompletion(null);
+      toast({
+        title: 'Questoes completadas',
+        description: `A IA finalizou as ${perguntas.length} questoes solicitadas.`,
+      });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Nao foi possivel completar',
+        description: error?.message || 'A IA ainda nao conseguiu completar as questoes restantes.',
       });
     } finally {
       setAiGenerating(false);
@@ -1413,12 +1550,25 @@ export default function PainelProfessor() {
                         <p className="text-xs text-muted-foreground">
                           Se voce preencher os campos acima, eles tem prioridade sobre o texto do prompt.
                         </p>
-                        <Button type="button" variant="outline" onClick={handleGenerateActivityWithAI} disabled={aiGenerating}>
-                          {aiGenerating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                          <Sparkles className="mr-2 h-4 w-4" />
-                          Gerar com IA
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          {aiPendingCompletion && (
+                            <Button type="button" variant="secondary" onClick={handleCompleteRemainingQuestionsWithAI} disabled={aiGenerating}>
+                              {aiGenerating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                              Tentar completar restantes
+                            </Button>
+                          )}
+                          <Button type="button" variant="outline" onClick={handleGenerateActivityWithAI} disabled={aiGenerating}>
+                            {aiGenerating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            <Sparkles className="mr-2 h-4 w-4" />
+                            Gerar com IA
+                          </Button>
+                        </div>
                       </div>
+                      {aiPendingCompletion && (
+                        <div className="rounded-2xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+                          A IA montou um rascunho parcial. Use o botao para completar apenas as questoes restantes sem perder o que ja veio certo.
+                        </div>
+                      )}
                     </div>
                   </div>
 
