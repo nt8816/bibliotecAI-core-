@@ -219,6 +219,81 @@ const extractJsonFromText = (text) => {
   return null;
 };
 
+const ensureArray = (value) => (Array.isArray(value) ? value : []);
+
+const extractTextFragmentsFromValue = (value) => {
+  if (typeof value === 'string') {
+    const text = value.trim();
+    return text ? [text] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => extractTextFragmentsFromValue(item));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return [];
+  }
+
+  const fragments = [];
+  const directKeys = ['text', 'output_text', 'output', 'content', 'response'];
+  directKeys.forEach((key) => {
+    if (typeof value?.[key] === 'string' && value[key].trim()) {
+      fragments.push(value[key].trim());
+    }
+  });
+
+  ensureArray(value?.candidates).forEach((candidate) => {
+    ensureArray(candidate?.content?.parts).forEach((part) => {
+      if (typeof part?.text === 'string' && part.text.trim()) fragments.push(part.text.trim());
+    });
+  });
+
+  ensureArray(value?.choices).forEach((choice) => {
+    if (typeof choice?.text === 'string' && choice.text.trim()) fragments.push(choice.text.trim());
+    if (typeof choice?.message?.content === 'string' && choice.message.content.trim()) {
+      fragments.push(choice.message.content.trim());
+    }
+  });
+
+  ensureArray(value?.output).forEach((item) => {
+    if (typeof item?.content === 'string' && item.content.trim()) fragments.push(item.content.trim());
+    ensureArray(item?.content).forEach((part) => {
+      if (typeof part?.text === 'string' && part.text.trim()) fragments.push(part.text.trim());
+      if (typeof part?.content === 'string' && part.content.trim()) fragments.push(part.content.trim());
+    });
+  });
+
+  ensureArray(value?.content).forEach((part) => {
+    if (typeof part?.text === 'string' && part.text.trim()) fragments.push(part.text.trim());
+    if (typeof part?.content === 'string' && part.content.trim()) fragments.push(part.content.trim());
+  });
+
+  return [...new Set(fragments.filter(Boolean))];
+};
+
+const extractStructuredDataFromPayload = (payload) => {
+  const source = ensureObject(payload);
+  const candidateObjects = [
+    source.data,
+    source.response,
+    source.result,
+    source.output,
+    source.candidates,
+    source.choices,
+  ];
+
+  for (const candidate of candidateObjects) {
+    if (candidate && typeof candidate === 'object') {
+      if (!Array.isArray(candidate)) return ensureObject(candidate);
+      const firstObject = candidate.find((item) => item && typeof item === 'object' && !Array.isArray(item));
+      if (firstObject) return ensureObject(firstObject);
+    }
+  }
+
+  return {};
+};
+
 const callDirect = async (path, body, fallbackErrorMessage) => {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
@@ -259,11 +334,18 @@ export const generateTextWithCloudflare = async ({
     result = { data: ensureObject(json), text };
   } else {
     const payload = ensureObject(parsed.payload);
-    const rawText = String(payload.text || payload.output || payload.response || '').trim();
-    const responseJson = typeof payload.response === 'object' ? ensureObject(payload.response) : null;
+    const fragments = extractTextFragmentsFromValue(payload);
+    const rawText = fragments.join('\n\n').trim();
+    const structuredData = extractStructuredDataFromPayload(payload);
     const textJson = extractJsonFromText(rawText);
-    const data = ensureObject(payload.data || responseJson || textJson);
-    const text = String(payload.text || data.text || rawText || '').trim();
+    const data = ensureObject(payload.data || structuredData || textJson);
+    const text = String(
+      payload.text
+        || data.text
+        || data.output_text
+        || rawText
+        || '',
+    ).trim();
 
     result = { data, text, raw: payload, prompt: finalPrompt };
   }
