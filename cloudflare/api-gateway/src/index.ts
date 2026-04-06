@@ -2582,10 +2582,6 @@ const routes: Record<string, RouteHandler> = {
         return jsonResponse({ success: false, error: 'Titulo obrigatorio.' }, 400);
       }
 
-      if (!livroId) {
-        return jsonResponse({ success: false, error: 'Livro obrigatorio.' }, 400);
-      }
-
       if (targetMode === 'turma' || targetMode === 'todas_turmas') {
         const alunosAlvo = targetMode === 'todas_turmas'
           ? context.usuarios
@@ -2668,9 +2664,6 @@ const routes: Record<string, RouteHandler> = {
       const atividade = ensureArray<Record<string, unknown>>(record)[0] || null;
       if (!atividade?.id || !context.professorProfileIds.includes(String(atividade?.professor_id || '').trim())) {
         return jsonResponse({ success: false, error: 'Atividade nao encontrada.' }, 404);
-      }
-      if (!livroId) {
-        return jsonResponse({ success: false, error: 'Livro obrigatorio.' }, 400);
       }
       await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ id: `eq.${id}` }).toString()}`, {
         method: 'PATCH',

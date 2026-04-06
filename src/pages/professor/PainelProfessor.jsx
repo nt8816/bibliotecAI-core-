@@ -521,15 +521,6 @@ export default function PainelProfessor() {
       return;
     }
 
-    if (!atividadeForm.livro_id) {
-      toast({
-        variant: 'destructive',
-        title: 'Erro',
-        description: 'Selecione um livro para a atividade.',
-      });
-      return;
-    }
-
     if (atividadeForm.formulario_ativo) {
       const perguntasInvalidas = atividadeForm.perguntas.some((question) => {
         if (!String(question.pergunta || '').trim()) return true;
@@ -557,7 +548,7 @@ export default function PainelProfessor() {
         ),
         pontos_extras: Number(atividadeForm.pontos_extras || 0),
         data_entrega: atividadeForm.data_entrega ? new Date(atividadeForm.data_entrega).toISOString() : null,
-        livro_id: atividadeForm.livro_id,
+        livro_id: atividadeForm.livro_id || null,
         aluno_id: atividadeForm.target_mode === 'aluno' ? atividadeForm.aluno_id || null : null,
         target_mode: atividadeForm.target_mode,
         turma: atividadeForm.target_mode === 'turma' ? atividadeForm.turma || null : null,
@@ -1175,7 +1166,7 @@ export default function PainelProfessor() {
 
                   <div className="grid gap-4 lg:grid-cols-2">
                     <div className="space-y-2">
-                      <Label>Livro *</Label>
+                      <Label>Livro</Label>
                       <Select
                         value={atividadeForm.livro_id || 'none'}
                         onValueChange={(value) => setAtividadeForm((prev) => ({
@@ -1185,6 +1176,7 @@ export default function PainelProfessor() {
                       >
                         <SelectTrigger><SelectValue placeholder="Selecione um livro" /></SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="none">Sem livro vinculado</SelectItem>
                           {livros.map((livro) => (
                             <SelectItem key={livro.id} value={livro.id}>{livro.titulo}</SelectItem>
                           ))}
