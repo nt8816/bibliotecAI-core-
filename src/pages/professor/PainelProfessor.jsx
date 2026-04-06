@@ -292,7 +292,7 @@ function extractQuestionsFromBrokenJson(raw) {
 
 function recoverActivityDraftFromBrokenJson(rawValue) {
   const raw = String(rawValue || '').trim();
-  if (!raw || !raw.includes('"titulo"')) return null;
+  if (!raw || (!raw.includes('"titulo"') && !raw.includes('"perguntas"'))) return null;
 
   const titulo = extractQuotedJsonField(raw, 'titulo');
   const descricao = extractQuotedJsonField(raw, 'descricao');
