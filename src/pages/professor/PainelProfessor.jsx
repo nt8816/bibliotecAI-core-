@@ -561,6 +561,8 @@ async function completeQuestionsWithAI({
   perguntasIniciais,
 }) {
   let perguntas = Array.isArray(perguntasIniciais) ? [...perguntasIniciais] : [];
+  const countChoice = () => perguntas.filter((item) => item.tipo === 'multipla_escolha').length;
+  const countOpen = () => perguntas.filter((item) => item.tipo !== 'multipla_escolha').length;
 
   if (Number.isInteger(requestedConstraints.total)) {
     for (let attempt = 0; attempt < 8 && perguntas.length < requestedConstraints.total; attempt += 1) {
@@ -568,10 +570,10 @@ async function completeQuestionsWithAI({
       const remainingConstraints = {
         total: faltantes,
         choiceCount: Number.isInteger(requestedConstraints.choiceCount)
-          ? Math.max(0, requestedConstraints.choiceCount - perguntas.filter((item) => item.tipo === 'multipla_escolha').length)
+          ? Math.max(0, requestedConstraints.choiceCount - countChoice())
           : null,
         openCount: Number.isInteger(requestedConstraints.openCount)
-          ? Math.max(0, requestedConstraints.openCount - perguntas.filter((item) => item.tipo !== 'multipla_escolha').length)
+          ? Math.max(0, requestedConstraints.openCount - countOpen())
           : null,
       };
       const batchConstraints = buildBatchConstraints(remainingConstraints, 4);
@@ -606,6 +608,64 @@ async function completeQuestionsWithAI({
       }
 
       perguntas = [...perguntas, ...uniqueQuestions];
+    }
+  }
+
+  if (Number.isInteger(requestedConstraints.total) && perguntas.length < requestedConstraints.total) {
+    let stalledAttempts = 0;
+
+    while (perguntas.length < requestedConstraints.total && stalledAttempts < 12) {
+      const remainingChoice = Number.isInteger(requestedConstraints.choiceCount)
+        ? Math.max(0, requestedConstraints.choiceCount - countChoice())
+        : null;
+      const remainingOpen = Number.isInteger(requestedConstraints.openCount)
+        ? Math.max(0, requestedConstraints.openCount - countOpen())
+        : null;
+
+      const singleConstraints = {
+        total: 1,
+        choiceCount: Number.isInteger(remainingChoice) && remainingChoice > 0 ? 1 : 0,
+        openCount: Number.isInteger(remainingOpen) && remainingOpen > 0 ? 1 : 0,
+      };
+
+      if (!Number.isInteger(requestedConstraints.choiceCount) && !Number.isInteger(requestedConstraints.openCount)) {
+        singleConstraints.choiceCount = null;
+        singleConstraints.openCount = null;
+      }
+
+      const singlePrompt = buildActivityGenerationPrompt({
+        teacherPrompt,
+        constraints: singleConstraints,
+        livrosDisponiveis,
+        professorTurmasPermitidas,
+        continuation: true,
+        remainingQuestions: 1,
+        existingQuestions: perguntas.map((item) => ({
+          tipo: item.tipo,
+          pergunta: item.pergunta,
+        })),
+        overallConstraints: requestedConstraints,
+      });
+
+      const singleGenerated = await generateTextWithCloudflare({
+        prompt: singlePrompt,
+        fallbackErrorMessage: 'Nao foi possivel completar uma das questoes restantes com IA agora.',
+      });
+
+      const singleDraft = extractActivityDraftFromIAResponse(singleGenerated);
+      const singleQuestions = buildQuestionsFromAI(singleDraft.perguntas);
+      const uniqueSingle = singleQuestions.filter((candidate) => (
+        candidate.pergunta
+        && !perguntas.some((existing) => normalizeAiLookup(existing.pergunta) === normalizeAiLookup(candidate.pergunta))
+      ));
+
+      if (uniqueSingle.length === 0) {
+        stalledAttempts += 1;
+        continue;
+      }
+
+      perguntas = [...perguntas, uniqueSingle[0]];
+      stalledAttempts = 0;
     }
   }
 
