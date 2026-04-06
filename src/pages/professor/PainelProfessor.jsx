@@ -173,6 +173,7 @@ export default function PainelProfessor() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [livros, setLivros] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
@@ -193,9 +194,13 @@ export default function PainelProfessor() {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiGenerating, setAiGenerating] = useState(false);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async ({ silent = false } = {}) => {
     if (!user?.id) return;
-    setLoading(true);
+    if (silent) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const data = await fetchProfessorPainelData();
       setLivros(Array.isArray(data?.livros) ? data.livros : []);
@@ -218,7 +223,11 @@ export default function PainelProfessor() {
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Falha ao carregar dados.' });
     } finally {
-      setLoading(false);
+      if (silent) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   }, [toast, user?.id]);
 
@@ -227,13 +236,11 @@ export default function PainelProfessor() {
   }, [fetchData]);
 
   useEffect(() => {
-    const interval = window.setInterval(fetchData, 30000);
     const onVisible = () => {
-      if (document.visibilityState === 'visible') fetchData();
+      if (document.visibilityState === 'visible') fetchData({ silent: true });
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
-      window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [fetchData]);
@@ -623,6 +630,13 @@ export default function PainelProfessor() {
   return (
     <MainLayout title="Painel do Professor">
       <div className="space-y-6">
+        {refreshing && !loading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Atualizando dados em segundo plano...
+          </div>
+        )}
+
         {professorTurmasPermitidas.length === 0 && (
           <div className="rounded-2xl border border-warning/30 bg-warning/10 p-4 animate-in fade-in-0 slide-in-from-top-2">
             <p className="text-sm text-warning">

@@ -1,7 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { endOfMonth, format, isWithinInterval, parseISO, startOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { BarChart3, BookOpen, Calendar, Filter, GraduationCap, TrendingUp } from 'lucide-react';
+import { BarChart3, BookOpen, Calendar, Filter, GraduationCap, Loader2, TrendingUp } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,14 +23,19 @@ export default function RelatoriosLeitura() {
   const [usuarios, setUsuarios] = useState([]);
   const [emprestimos, setEmprestimos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [turmasPermitidas, setTurmasPermitidas] = useState([]);
   const [filterTurma, setFilterTurma] = useState('');
   const [periodoInicio, setPeriodoInicio] = useState(format(startOfMonth(subMonths(new Date(), 3)), 'yyyy-MM-dd'));
   const [periodoFim, setPeriodoFim] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async ({ silent = false } = {}) => {
     if (!user?.id) return;
-    setLoading(true);
+    if (silent) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const data = await fetchProfessorPainelData();
       setUsuarios(Array.isArray(data?.usuarios) ? data.usuarios : []);
@@ -43,7 +48,11 @@ export default function RelatoriosLeitura() {
         description: error?.message || 'Não foi possível carregar os relatorios.',
       });
     } finally {
-      setLoading(false);
+      if (silent) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   }, [toast, user?.id]);
 
@@ -52,13 +61,11 @@ export default function RelatoriosLeitura() {
   }, [fetchData]);
 
   useEffect(() => {
-    const interval = window.setInterval(fetchData, 30000);
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') fetchData();
+      if (document.visibilityState === 'visible') fetchData({ silent: true });
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
-      window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [fetchData]);
@@ -112,6 +119,13 @@ export default function RelatoriosLeitura() {
         {turmasPermitidas.length === 0 && (
           <div className="rounded-md border border-warning/30 bg-warning/5 p-3">
             <p className="text-sm text-warning">Nenhuma turma foi vinculada ao seu perfil. Solicite ao gestor a vinculacao.</p>
+          </div>
+        )}
+
+        {refreshing && !loading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Atualizando dados em segundo plano...
           </div>
         )}
 
