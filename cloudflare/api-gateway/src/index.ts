@@ -32,7 +32,7 @@ type RouteHandler = (request: Request, env: Env) => Promise<Response> | Response
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type, x-user-access-token',
+  'Access-Control-Allow-Headers': 'authorization, content-type, x-user-access-token, x-profile-role-hint',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
 };
 
