@@ -26,3 +26,4 @@ android/app/google-services.json
 *.njsproj
 *.sln
 *.sw?
+.vercel
