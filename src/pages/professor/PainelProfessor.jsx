@@ -214,13 +214,54 @@ function findSuggestedBookFromAI(livros, draft) {
     || livros.find((item) => suggestedTitle.includes(normalizeAiLookup(item?.titulo)));
 }
 
+function buildActivityDraftFromPlainText(rawValue) {
+  const raw = String(rawValue || '')
+    .replace(/```(?:json)?/gi, '')
+    .trim();
+
+  if (!raw) {
+    return {
+      titulo: '',
+      descricao: '',
+      pontos_extras: Number.NaN,
+      perguntas: [],
+      livro_sugerido_titulo: '',
+      livro_sugerido_id: '',
+    };
+  }
+
+  const lines = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const firstLongLine = lines.find((line) => line.length >= 6) || '';
+  const normalizedFirstLine = firstLongLine.replace(/^[-*#\d.\s]+/, '').trim();
+  const guessedTitle = normalizedFirstLine.length <= 90
+    ? normalizedFirstLine
+    : 'Atividade gerada com IA';
+
+  return {
+    titulo: guessedTitle,
+    descricao: raw,
+    pontos_extras: Number.NaN,
+    perguntas: [],
+    livro_sugerido_titulo: '',
+    livro_sugerido_id: '',
+  };
+}
+
 function extractActivityDraftFromIAResponse(response) {
-  const textJson = extractJsonFromIAPlainText(
+  const rawText = String(
     response?.text
       || response?.raw?.text
       || response?.raw?.output
       || response?.raw?.response
       || '',
+  ).trim();
+
+  const textJson = extractJsonFromIAPlainText(
+    rawText,
   );
 
   const candidates = [
@@ -578,9 +619,13 @@ export default function PainelProfessor() {
       });
 
       const draft = extractActivityDraftFromIAResponse(generated);
-      const perguntas = buildQuestionsFromAI(draft.perguntas);
-      const suggestedBook = findSuggestedBookFromAI(livros, draft);
-      const hasMeaningfulContent = Boolean(draft.titulo || draft.descricao || perguntas.length > 0);
+      const plainTextDraft = buildActivityDraftFromPlainText(generated?.text);
+      const finalDraft = (draft.titulo || draft.descricao || Array.isArray(draft.perguntas) && draft.perguntas.length > 0)
+        ? draft
+        : plainTextDraft;
+      const perguntas = buildQuestionsFromAI(finalDraft.perguntas);
+      const suggestedBook = findSuggestedBookFromAI(livros, finalDraft);
+      const hasMeaningfulContent = Boolean(finalDraft.titulo || finalDraft.descricao || perguntas.length > 0);
 
       if (!hasMeaningfulContent) {
         throw new Error('A IA respondeu em formato invalido. Tente um pedido mais direto e curto.');
@@ -588,10 +633,10 @@ export default function PainelProfessor() {
 
       setAtividadeForm((prev) => ({
         ...prev,
-        titulo: String(draft.titulo || prev.titulo || '').trim(),
-        descricao: String(draft.descricao || prev.descricao || '').trim(),
-        pontos_extras: Number.isFinite(draft.pontos_extras)
-          ? draft.pontos_extras
+        titulo: String(finalDraft.titulo || prev.titulo || '').trim(),
+        descricao: String(finalDraft.descricao || prev.descricao || '').trim(),
+        pontos_extras: Number.isFinite(finalDraft.pontos_extras)
+          ? finalDraft.pontos_extras
           : prev.pontos_extras,
         perguntas,
         formulario_ativo: perguntas.length > 0,
