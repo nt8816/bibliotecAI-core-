@@ -408,9 +408,9 @@ function parseRequestedQuestionConstraints(promptValue) {
   }
 
   return {
-    total: Number.isInteger(total) ? Math.max(0, Math.min(10, total)) : null,
-    openCount: Number.isInteger(openCount) ? Math.max(0, Math.min(10, openCount)) : null,
-    choiceCount: Number.isInteger(choiceCount) ? Math.max(0, Math.min(10, choiceCount)) : null,
+    total: Number.isInteger(total) ? Math.max(0, Math.min(30, total)) : null,
+    openCount: Number.isInteger(openCount) ? Math.max(0, Math.min(30, openCount)) : null,
+    choiceCount: Number.isInteger(choiceCount) ? Math.max(0, Math.min(30, choiceCount)) : null,
   };
 }
 
@@ -443,7 +443,12 @@ function adjustQuestionsToRequestedConstraints(questions, constraints) {
 
   if (Number.isInteger(total)) {
     if (desiredChoice === null && desiredText === null) {
-      return source.slice(0, total);
+      const sameTypeQuestions = source.slice(0, total);
+      const fallbackType = choiceQuestions.length > textQuestions.length ? 'multipla_escolha' : 'texto';
+      while (sameTypeQuestions.length < total) {
+        sameTypeQuestions.push(createPlaceholderQuestionForType(fallbackType, sameTypeQuestions.length));
+      }
+      return sameTypeQuestions;
     }
     if (desiredChoice === null) desiredChoice = Math.max(0, total - (desiredText || 0));
     if (desiredText === null) desiredText = Math.max(0, total - (desiredChoice || 0));
@@ -465,6 +470,14 @@ function adjustQuestionsToRequestedConstraints(questions, constraints) {
 
   const merged = [...nextChoice, ...nextText];
   return merged.slice(0, Number.isInteger(total) ? total : merged.length);
+}
+
+function parseOptionalPositiveInteger(value, max = 30) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  if (!Number.isInteger(parsed)) return null;
+  return Math.max(0, Math.min(max, parsed));
 }
 
 export default function PainelProfessor() {
@@ -490,6 +503,9 @@ export default function PainelProfessor() {
   const [avaliacaoForm, setAvaliacaoForm] = useState({});
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [aiPrompt, setAiPrompt] = useState('');
+  const [aiQuestionCount, setAiQuestionCount] = useState('');
+  const [aiChoiceCount, setAiChoiceCount] = useState('');
+  const [aiOpenCount, setAiOpenCount] = useState('');
   const [aiGenerating, setAiGenerating] = useState(false);
 
   const fetchData = useCallback(async ({ silent = false } = {}) => {
@@ -590,6 +606,9 @@ export default function PainelProfessor() {
     setEditingAtividade(null);
     setAtividadeForm(createEmptyAtividade());
     setAiPrompt('');
+    setAiQuestionCount('');
+    setAiChoiceCount('');
+    setAiOpenCount('');
   };
 
   const resetSugestaoDialog = () => {
@@ -742,7 +761,25 @@ export default function PainelProfessor() {
 
     setAiGenerating(true);
     try {
-      const requestedConstraints = parseRequestedQuestionConstraints(aiPrompt);
+      const promptConstraints = parseRequestedQuestionConstraints(aiPrompt);
+      const visualTotal = parseOptionalPositiveInteger(aiQuestionCount);
+      const visualChoice = parseOptionalPositiveInteger(aiChoiceCount);
+      const visualOpen = parseOptionalPositiveInteger(aiOpenCount);
+      const requestedConstraints = {
+        total: Number.isInteger(visualTotal) ? visualTotal : promptConstraints.total,
+        choiceCount: Number.isInteger(visualChoice) ? visualChoice : promptConstraints.choiceCount,
+        openCount: Number.isInteger(visualOpen) ? visualOpen : promptConstraints.openCount,
+      };
+
+      if (
+        Number.isInteger(requestedConstraints.total)
+        && Number.isInteger(requestedConstraints.choiceCount)
+        && Number.isInteger(requestedConstraints.openCount)
+        && (requestedConstraints.choiceCount + requestedConstraints.openCount) > requestedConstraints.total
+      ) {
+        throw new Error('A soma de questoes abertas e de multipla escolha nao pode passar do total informado.');
+      }
+
       const livrosDisponiveis = livros
         .slice(0, 12)
         .map((item) => ({ id: item.id, titulo: item.titulo, autor: item.autor }))
@@ -767,6 +804,8 @@ export default function PainelProfessor() {
         '- em questoes de marcar, inclua ao menos 3 opcoes curtas',
         '- nao inclua explicacoes fora do JSON',
         '- respeite exatamente a quantidade pedida pelo professor quando ela for informada',
+        '- nao confunda quantidade de perguntas com pontos_extras',
+        '- mantenha pontos_extras independente do numero de perguntas',
         `Pedido do professor: ${aiPrompt.trim()}`,
         `Turmas disponiveis: ${professorTurmasPermitidas.join(', ') || 'nao informado'}`,
         `Livros disponiveis: ${JSON.stringify(livrosDisponiveis)}`,
@@ -1332,9 +1371,47 @@ export default function PainelProfessor() {
                         value={aiPrompt}
                         onChange={(e) => setAiPrompt(e.target.value)}
                       />
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="ai-question-count">Total de questoes</Label>
+                          <Input
+                            id="ai-question-count"
+                            type="number"
+                            min="0"
+                            max="30"
+                            placeholder="Ex.: 14"
+                            value={aiQuestionCount}
+                            onChange={(e) => setAiQuestionCount(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ai-choice-count">De marcar</Label>
+                          <Input
+                            id="ai-choice-count"
+                            type="number"
+                            min="0"
+                            max="30"
+                            placeholder="Ex.: 8"
+                            value={aiChoiceCount}
+                            onChange={(e) => setAiChoiceCount(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ai-open-count">Abertas</Label>
+                          <Input
+                            id="ai-open-count"
+                            type="number"
+                            min="0"
+                            max="30"
+                            placeholder="Ex.: 6"
+                            value={aiOpenCount}
+                            onChange={(e) => setAiOpenCount(e.target.value)}
+                          />
+                        </div>
+                      </div>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-xs text-muted-foreground">
-                          A IA cria um rascunho. Voce revisa tudo antes de publicar.
+                          Se voce preencher os campos acima, eles tem prioridade sobre o texto do prompt.
                         </p>
                         <Button type="button" variant="outline" onClick={handleGenerateActivityWithAI} disabled={aiGenerating}>
                           {aiGenerating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
