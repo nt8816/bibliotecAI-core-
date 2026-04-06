@@ -156,6 +156,112 @@ function getTargetSummary(atividade) {
   return aluno ? `${aluno}${turma ? ` • ${turma}` : ''}` : (turma || 'Destino individual');
 }
 
+function extractJsonFromIAPlainText(rawValue) {
+  const raw = String(rawValue || '').trim();
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // ignore
+  }
+
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced?.[1]) {
+    try {
+      return JSON.parse(fenced[1]);
+    } catch {
+      // ignore
+    }
+  }
+
+  const firstBrace = raw.indexOf('{');
+  const lastBrace = raw.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    try {
+      return JSON.parse(raw.slice(firstBrace, lastBrace + 1));
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
+}
+
+function normalizeAiLookup(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findSuggestedBookFromAI(livros, draft) {
+  const suggestedId = String(draft?.livro_sugerido_id || draft?.livro_id || '').trim();
+  if (suggestedId) {
+    const byId = livros.find((item) => String(item?.id || '').trim() === suggestedId);
+    if (byId) return byId;
+  }
+
+  const suggestedTitle = normalizeAiLookup(
+    draft?.livro_sugerido_titulo || draft?.livro?.titulo || draft?.titulo_livro,
+  );
+  if (!suggestedTitle) return null;
+
+  return livros.find((item) => normalizeAiLookup(item?.titulo) === suggestedTitle)
+    || livros.find((item) => normalizeAiLookup(item?.titulo).includes(suggestedTitle))
+    || livros.find((item) => suggestedTitle.includes(normalizeAiLookup(item?.titulo)));
+}
+
+function extractActivityDraftFromIAResponse(response) {
+  const textJson = extractJsonFromIAPlainText(
+    response?.text
+      || response?.raw?.text
+      || response?.raw?.output
+      || response?.raw?.response
+      || '',
+  );
+
+  const candidates = [
+    response?.data,
+    response?.data?.atividade,
+    response?.data?.resultado,
+    response?.data?.result,
+    response?.raw,
+    response?.raw?.data,
+    response?.raw?.response,
+    response?.raw?.atividade,
+    response?.raw?.result,
+    textJson,
+    textJson?.data,
+    textJson?.atividade,
+    textJson?.resultado,
+    textJson?.result,
+  ].filter((item) => item && typeof item === 'object' && !Array.isArray(item));
+
+  const draft = candidates.find((item) => (
+    item?.titulo
+      || item?.descricao
+      || item?.orientacao
+      || item?.perguntas
+      || item?.questoes
+      || item?.questions
+      || item?.livro_sugerido_titulo
+  )) || {};
+
+  return {
+    titulo: String(draft?.titulo || draft?.nome || '').trim(),
+    descricao: String(draft?.descricao || draft?.orientacao || draft?.instrucoes || '').trim(),
+    pontos_extras: Number(draft?.pontos_extras ?? draft?.pontos ?? draft?.pontuacao ?? Number.NaN),
+    perguntas: draft?.perguntas || draft?.questoes || draft?.questions || [],
+    livro_sugerido_titulo: String(
+      draft?.livro_sugerido_titulo || draft?.livro?.titulo || draft?.titulo_livro || '',
+    ).trim(),
+    livro_sugerido_id: String(draft?.livro_sugerido_id || draft?.livro_id || '').trim(),
+  };
+}
+
 function buildQuestionsFromAI(rawQuestions) {
   if (!Array.isArray(rawQuestions)) return [];
 
@@ -471,19 +577,21 @@ export default function PainelProfessor() {
         fallbackErrorMessage: 'Nao foi possivel gerar a atividade com IA agora.',
       });
 
-      const data = generated?.data && typeof generated.data === 'object'
-        ? generated.data
-        : {};
+      const draft = extractActivityDraftFromIAResponse(generated);
+      const perguntas = buildQuestionsFromAI(draft.perguntas);
+      const suggestedBook = findSuggestedBookFromAI(livros, draft);
+      const hasMeaningfulContent = Boolean(draft.titulo || draft.descricao || perguntas.length > 0);
 
-      const perguntas = buildQuestionsFromAI(data?.perguntas);
-      const suggestedBook = livros.find((item) => item.titulo === data?.livro_sugerido_titulo);
+      if (!hasMeaningfulContent) {
+        throw new Error('A IA respondeu em formato invalido. Tente um pedido mais direto e curto.');
+      }
 
       setAtividadeForm((prev) => ({
         ...prev,
-        titulo: String(data?.titulo || prev.titulo || '').trim(),
-        descricao: String(data?.descricao || prev.descricao || '').trim(),
-        pontos_extras: Number.isFinite(Number(data?.pontos_extras))
-          ? Number(data.pontos_extras)
+        titulo: String(draft.titulo || prev.titulo || '').trim(),
+        descricao: String(draft.descricao || prev.descricao || '').trim(),
+        pontos_extras: Number.isFinite(draft.pontos_extras)
+          ? draft.pontos_extras
           : prev.pontos_extras,
         perguntas,
         formulario_ativo: perguntas.length > 0,
