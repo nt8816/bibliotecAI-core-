@@ -2632,6 +2632,10 @@ const routes: Record<string, RouteHandler> = {
         return jsonResponse({ success: false, error: 'Aluno obrigatorio.' }, 400);
       }
 
+      if (!context.usuarios.some((item) => String(item?.id || '').trim() === alunoId)) {
+        return jsonResponse({ success: false, error: 'Aluno nao permitido para este professor.' }, 403);
+      }
+
       await supabaseAdminRequest(env, '/rest/v1/atividades_leitura', {
         method: 'POST',
         body: {
@@ -2666,6 +2670,10 @@ const routes: Record<string, RouteHandler> = {
       if (!atividade?.id || !context.professorProfileIds.includes(String(atividade?.professor_id || '').trim())) {
         return jsonResponse({ success: false, error: 'Atividade nao encontrada.' }, 404);
       }
+      const alunoId = body?.aluno_id ? String(body.aluno_id).trim() : '';
+      if (alunoId && !context.usuarios.some((item) => String(item?.id || '').trim() === alunoId)) {
+        return jsonResponse({ success: false, error: 'Aluno nao permitido para este professor.' }, 403);
+      }
       await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ id: `eq.${id}` }).toString()}`, {
         method: 'PATCH',
         body: {
@@ -2673,8 +2681,8 @@ const routes: Record<string, RouteHandler> = {
           descricao: body?.descricao ? String(body.descricao) : null,
           pontos_extras: Number(body?.pontos_extras || 0),
           data_entrega: body?.data_entrega ? String(body.data_entrega) : null,
-          livro_id: livroId,
-          aluno_id: body?.aluno_id ? String(body.aluno_id) : null,
+          livro_id: livroId || null,
+          aluno_id: alunoId || null,
         },
         headers: { Prefer: 'return=minimal' },
       });
@@ -7666,9 +7674,27 @@ const routes: Record<string, RouteHandler> = {
     let posts: Array<Record<string, unknown>> = [];
     let enabled = true;
     try {
+      if (!context.escolaId) {
+        return jsonResponse({
+          success: true,
+          enabled,
+          perfilId: context.perfilId,
+          perfilNome: context.profile?.nome || null,
+          escolaId: context.escolaId,
+          alunoTurma: context.profile?.turma || null,
+          professorTurmas: context.professorTurmas,
+          professoresPermitidos: context.professoresPermitidos,
+          posts: [],
+        });
+      }
+
       const rawPosts = await supabaseAdminRequest(
         env,
-        '/rest/v1/arquivos_aula_posts?select=*&order=created_at.desc',
+        `/rest/v1/arquivos_aula_posts?${new URLSearchParams({
+          select: '*',
+          escola_id: `eq.${context.escolaId}`,
+          order: 'created_at.desc',
+        }).toString()}`,
       );
       posts = Array.isArray(rawPosts) ? rawPosts : [];
     } catch (error) {
@@ -7696,6 +7722,21 @@ const routes: Record<string, RouteHandler> = {
         }));
       }
     }
+
+    const turmasProfessor = new Set(context.professorTurmas.map((item) => normalizeTurmaKey(item)).filter(Boolean));
+    const turmaAluno = normalizeTurmaKey(context.profile?.turma);
+    const perfilId = String(context.perfilId || '').trim();
+    posts = posts.filter((item) => {
+      const turmaPost = normalizeTurmaKey(item?.turma_publico);
+      if (context.tipo === 'aluno') {
+        return !turmaPost || turmaPost === turmaAluno;
+      }
+      if (context.tipo === 'professor') {
+        const autorId = String(item?.autor_id || '').trim();
+        return autorId === perfilId || !turmaPost || turmasProfessor.has(turmaPost);
+      }
+      return true;
+    });
 
     return jsonResponse({
       success: true,
@@ -7725,6 +7766,14 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Mensagem e arquivos sao obrigatorios.' }, 400);
     }
 
+    if (!context.professorTurmas.length) {
+      return jsonResponse({ success: false, error: 'Professor sem turmas liberadas para publicar arquivos.' }, 403);
+    }
+
+    if (turmaPublico && !context.professorTurmas.includes(turmaPublico)) {
+      return jsonResponse({ success: false, error: 'Turma nao permitida para este professor.' }, 403);
+    }
+
     await supabaseAdminRequest(env, '/rest/v1/arquivos_aula_posts', {
       method: 'POST',
       body: {
@@ -7743,6 +7792,9 @@ const routes: Record<string, RouteHandler> = {
 
   'PATCH /v1/arquivos-aula/:id/arquivos': async (request, env) => {
     const context = await getArquivosAulaModuleContext(request, env);
+    if (context.tipo !== 'professor' || !context.perfilId) {
+      return jsonResponse({ success: false, error: 'Apenas professores podem editar arquivos publicados.' }, 403);
+    }
     const postId = getPathParam(request, /^\/v1\/arquivos-aula\/([^/]+)\/arquivos$/i);
     const body = await request.json().catch(() => ({}));
     const arquivos = Array.isArray(body?.arquivos) ? body.arquivos : [];
@@ -7792,7 +7844,13 @@ const routes: Record<string, RouteHandler> = {
       supabaseAdminRequest(env, '/rest/v1/livros?select=id,titulo&order=titulo.asc'),
       supabaseAdminRequest(env, '/rest/v1/comunidade_curtidas?select=post_id,usuario_id'),
       supabaseAdminRequest(env, '/rest/v1/audiobooks_biblioteca?select=id,titulo,autor&order=titulo.asc').catch(() => []),
-      supabaseAdminRequest(env, '/rest/v1/comunidade_posts?select=*,livros(titulo,autor),audiobooks_biblioteca(titulo,autor,audio_url),usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)&order=created_at.desc').catch(() => []),
+      escolaId
+        ? supabaseAdminRequest(env, `/rest/v1/comunidade_posts?${new URLSearchParams({
+          select: '*,livros(titulo,autor),audiobooks_biblioteca(titulo,autor,audio_url),usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)',
+          escola_id: `eq.${escolaId}`,
+          order: 'created_at.desc',
+        }).toString()}`).catch(() => [])
+        : Promise.resolve([]),
       isProfessor && alunoId
         ? supabaseAdminRequest(env, `/rest/v1/professor_turmas?${new URLSearchParams({ select: 'turma', professor_id: `eq.${alunoId}` }).toString()}`).catch(() => [])
         : Promise.resolve([]),
@@ -8340,23 +8398,70 @@ const routes: Record<string, RouteHandler> = {
   },
 
   'POST /v1/aluno/comunidade/posts': async (request, env) => {
-    const { profile, alunoId, escolaId } = await getCommunityModuleContext(request, env);
+    const { profile, alunoId, escolaId, canPublicarComunicado, isProfessor, isGestor, isBibliotecaria } = await getCommunityModuleContext(request, env);
     if (!alunoId || !escolaId) {
       return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
     }
 
     const body = await request.json().catch(() => ({}));
+    const tipoPost = String(body?.tipo || '').trim().toLowerCase();
+    const turmaPublico = body?.turma_publico ? String(body.turma_publico).trim() : null;
+
+    if (tipoPost === 'comunicado') {
+      if (!canPublicarComunicado) {
+        return jsonResponse({ success: false, error: 'Sem permissao para publicar comunicados.' }, 403);
+      }
+
+      if (isProfessor) {
+        const professorTurmas = await supabaseAdminRequest(env, `/rest/v1/professor_turmas?${new URLSearchParams({
+          select: 'turma',
+          professor_id: `eq.${alunoId}`,
+        }).toString()}`).catch(() => []);
+        const turmasPermitidas = [...new Set(ensureArray<Record<string, unknown>>(professorTurmas).map((item) => String(item?.turma || '').trim()).filter(Boolean))];
+
+        if (!turmasPermitidas.length) {
+          return jsonResponse({ success: false, error: 'Professor sem turmas liberadas para publicar comunicados.' }, 403);
+        }
+
+        if (turmaPublico && !turmasPermitidas.includes(turmaPublico)) {
+          return jsonResponse({ success: false, error: 'Turma nao permitida para este professor.' }, 403);
+        }
+      }
+
+      if ((isGestor || isBibliotecaria) && turmaPublico) {
+        const [salas, usuariosSala, professorTurmasEscola] = await Promise.all([
+          supabaseAdminRequest(env, `/rest/v1/salas_cursos?${new URLSearchParams({ select: 'nome', escola_id: `eq.${escolaId}` }).toString()}`).catch(() => []),
+          supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({ select: 'turma', escola_id: `eq.${escolaId}` }).toString()}`).catch(() => []),
+          supabaseAdminRequest(env, `/rest/v1/professor_turmas?${new URLSearchParams({ select: 'turma', escola_id: `eq.${escolaId}` }).toString()}`).catch(() => []),
+        ]);
+
+        const turmasEscola = new Set<string>();
+        ensureArray<Record<string, unknown>>(salas).forEach((item) => {
+          const nome = String(item?.nome || '').trim();
+          if (nome) turmasEscola.add(nome);
+        });
+        [...ensureArray<Record<string, unknown>>(usuariosSala), ...ensureArray<Record<string, unknown>>(professorTurmasEscola)].forEach((item) => {
+          const nome = String(item?.turma || '').trim();
+          if (nome) turmasEscola.add(nome);
+        });
+
+        if (!turmasEscola.has(turmaPublico)) {
+          return jsonResponse({ success: false, error: 'Turma nao encontrada para esta escola.' }, 404);
+        }
+      }
+    }
+
     const created = await supabaseAdminRequest(env, '/rest/v1/comunidade_posts?select=id', {
       method: 'POST',
-      body: { ...body, autor_id: alunoId, escola_id: escolaId },
+      body: { ...body, autor_id: alunoId, escola_id: escolaId, turma_publico: turmaPublico },
       headers: { Prefer: 'return=representation' },
     }) as Array<Record<string, unknown>>;
 
-    if (String(body?.tipo || '').trim().toLowerCase() === 'comunicado') {
+    if (tipoPost === 'comunicado') {
       await notifyComunicadoAudience(env, {
         escolaId,
         autorProfileId: String(profile?.id || '').trim() || alunoId,
-        turmaPublico: body?.turma_publico ? String(body.turma_publico).trim() : null,
+        turmaPublico,
         titulo: String(body?.titulo || '').trim() || 'Novo comunicado',
         conteudo: String(body?.conteudo || '').trim() || 'Confira o novo comunicado na comunidade.',
       }).catch((error) => {

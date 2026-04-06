@@ -287,6 +287,12 @@ export default function PainelProfessor() {
     setAiPrompt('');
   };
 
+  const resetSugestaoDialog = () => {
+    setSelectedAluno('');
+    setSelectedLivro('');
+    setMensagem('');
+  };
+
   const handleOpenAtividadeDialog = (atividade = null) => {
     if (!atividade) {
       resetAtividadeDialog();
@@ -408,9 +414,7 @@ export default function PainelProfessor() {
         livro_id: selectedLivro,
         mensagem: mensagem || null,
       });
-      setSelectedAluno('');
-      setSelectedLivro('');
-      setMensagem('');
+      resetSugestaoDialog();
       setIsSugestaoDialogOpen(false);
       toast({ title: 'Sugestão enviada!' });
       await fetchData();
@@ -599,6 +603,7 @@ export default function PainelProfessor() {
   const handleDeleteTarget = async () => {
     if (!deleteTarget?.id || !deleteTarget?.kind) return;
 
+    setSaving(true);
     try {
       if (deleteTarget.kind === 'atividade') {
         await deleteProfessorAtividade(deleteTarget.id);
@@ -606,9 +611,12 @@ export default function PainelProfessor() {
         await deleteProfessorSugestão(deleteTarget.id);
       }
       setDeleteTarget(null);
+      toast({ title: deleteTarget.kind === 'atividade' ? 'Atividade excluida' : 'Sugestao excluida' });
       await fetchData();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Falha ao excluir item.' });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -908,7 +916,13 @@ export default function PainelProfessor() {
           </TabsContent>
         </Tabs>
 
-        <Dialog open={isSugestaoDialogOpen} onOpenChange={setIsSugestaoDialogOpen}>
+        <Dialog
+          open={isSugestaoDialogOpen}
+          onOpenChange={(open) => {
+            setIsSugestaoDialogOpen(open);
+            if (!open) resetSugestaoDialog();
+          }}
+        >
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Nova sugestão</DialogTitle>
@@ -1366,3 +1380,4 @@ export default function PainelProfessor() {
     </MainLayout>
   );
 }
+

@@ -102,6 +102,7 @@ export default function ArquivosAula() {
   const [posts, setPosts] = useState([]);
   const [professorFilter, setProfessorFilter] = useState('all');
   const [deletePostTarget, setDeletePostTarget] = useState(null);
+  const canPublishArquivos = isProfessor && enabled && professorTurmas.length > 0;
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -170,7 +171,11 @@ export default function ArquivosAula() {
       return;
     }
 
-    setSelectedFiles((prev) => [...prev, ...incoming]);
+    setSelectedFiles((prev) => {
+      const knownKeys = new Set(prev.map((file) => `${file.name}-${file.size}-${file.lastModified}`));
+      const dedupedIncoming = incoming.filter((file) => !knownKeys.has(`${file.name}-${file.size}-${file.lastModified}`));
+      return [...prev, ...dedupedIncoming];
+    });
   };
 
   const handlePublish = async () => {
@@ -209,6 +214,7 @@ export default function ArquivosAula() {
     }
 
     setSaving(true);
+    const uploadedObjectKeys = [];
     try {
       const arquivos = [];
       for (const file of selectedFiles) {
@@ -228,6 +234,7 @@ export default function ArquivosAula() {
           mime_type: file.type || null,
           extensao: getFileExtension(file.name),
         });
+        uploadedObjectKeys.push(upload.objectKey);
       }
 
       const payload = {
@@ -245,6 +252,7 @@ export default function ArquivosAula() {
       toast({ title: 'Arquivos publicados!' });
       fetchData();
     } catch (error) {
+      await Promise.all(uploadedObjectKeys.map((objectKey) => deleteR2Object(objectKey).catch(() => null)));
       toast({
         variant: 'destructive',
         title: 'Erro ao publicar',
@@ -339,12 +347,18 @@ export default function ArquivosAula() {
 
             {isProfessor && enabled && (
               <div className="space-y-4 rounded-xl border p-4">
+                {professorTurmas.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhuma turma foi liberada para o seu perfil ainda. Peça ao gestor para vincular suas turmas.
+                  </p>
+                )}
                 <div className="space-y-2">
                   <Label>Turma</Label>
                   <select
                     value={turmaPublico || 'none'}
                     onChange={(e) => setTurmaPublico(e.target.value === 'none' ? '' : e.target.value)}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    disabled={!canPublishArquivos || saving}
                   >
                     <option value="none">Selecione a turma</option>
                     <option value={ALL_TURMAS_OPTION}>Todas as turmas</option>
@@ -379,7 +393,12 @@ export default function ArquivosAula() {
                     className="hidden"
                     onChange={(e) => handleSelectFiles(e.target.files)}
                   />
-                  <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!canPublishArquivos || saving}
+                  >
                     <ImagePlus className="w-4 h-4 mr-2" />
                     Adicionar arquivos
                   </Button>
@@ -409,7 +428,7 @@ export default function ArquivosAula() {
                 </div>
 
                 <div className="flex justify-end">
-                  <Button type="button" onClick={handlePublish} disabled={saving}>
+                  <Button type="button" onClick={handlePublish} disabled={!canPublishArquivos || saving}>
                     <Send className="w-4 h-4 mr-2" />
                     {saving ? 'Publicando...' : 'Publicar material'}
                   </Button>

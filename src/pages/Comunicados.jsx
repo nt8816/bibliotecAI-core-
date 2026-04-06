@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { createComunidadePost, fetchComunidadeAlunoData } from '@/services/comunidadeAlunoService';
-import { getR2DownloadUrl, uploadFileToR2 } from '@/lib/r2Storage';
+import { deleteR2Object, getR2DownloadUrl, uploadFileToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
 import { cn } from '@/lib/utils';
 
@@ -328,8 +328,22 @@ export default function Comunicados() {
       return;
     }
 
-    const nextSelection = selectedFiles.slice(0, 4).map(createPendingImage);
-    setPendingImages((current) => [...ensureArray(current), ...nextSelection].slice(0, 4));
+    setPendingImages((current) => {
+      const currentList = ensureArray(current);
+      const availableSlots = Math.max(0, 4 - currentList.length);
+      const acceptedFiles = selectedFiles.slice(0, availableSlots);
+      const discardedFiles = selectedFiles.slice(availableSlots);
+      const nextSelection = acceptedFiles.map(createPendingImage);
+
+      if (discardedFiles.length > 0) {
+        toast({
+          title: 'Limite de imagens atingido',
+          description: 'Cada comunicado aceita no máximo 4 imagens.',
+        });
+      }
+
+      return [...currentList, ...nextSelection];
+    });
   };
 
   const handleSelectAudioFile = async (files) => {
@@ -590,8 +604,10 @@ export default function Comunicados() {
     }
 
     setSaving(true);
+    let uploadedImages = [];
+    let uploadedAudio = null;
     try {
-      const uploadedImages = pendingImages.length > 0
+      uploadedImages = pendingImages.length > 0
         ? await Promise.all(
             pendingImages.map(async (image) => {
               const upload = await uploadFileToR2({
@@ -605,7 +621,7 @@ export default function Comunicados() {
           )
         : [];
 
-      const uploadedAudio = audioFile?.file
+      uploadedAudio = audioFile?.file
         ? await uploadFileToR2({
             file: audioFile.file,
             escolaId: perfil.escola_id,
@@ -637,6 +653,12 @@ export default function Comunicados() {
       clearForm();
       toast({ title: 'Comunicado publicado!' });
     } catch (error) {
+      const cleanupTargets = [
+        ...uploadedImages,
+        uploadedAudio?.objectKey,
+      ].filter(Boolean);
+
+      await Promise.all(cleanupTargets.map((objectKey) => deleteR2Object(objectKey).catch(() => null)));
       toast({
         variant: 'destructive',
         title: 'Falha ao publicar',
