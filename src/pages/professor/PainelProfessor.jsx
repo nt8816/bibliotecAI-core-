@@ -456,6 +456,43 @@ function parseOptionalPositiveInteger(value, max = 30) {
   return Math.max(0, Math.min(max, parsed));
 }
 
+function buildBatchConstraints(constraints, maxBatchSize = 4) {
+  const total = Number.isInteger(constraints?.total) ? Math.max(0, constraints.total) : null;
+  const choiceCount = Number.isInteger(constraints?.choiceCount) ? Math.max(0, constraints.choiceCount) : null;
+  const openCount = Number.isInteger(constraints?.openCount) ? Math.max(0, constraints.openCount) : null;
+
+  if (!Number.isInteger(total)) {
+    return {
+      total: maxBatchSize,
+      choiceCount: Number.isInteger(choiceCount) ? Math.min(choiceCount, maxBatchSize) : null,
+      openCount: Number.isInteger(openCount) ? Math.min(openCount, maxBatchSize) : null,
+    };
+  }
+
+  const batchTotal = Math.min(maxBatchSize, total);
+  let batchChoice = null;
+  let batchOpen = null;
+
+  if (Number.isInteger(choiceCount) && Number.isInteger(openCount)) {
+    batchChoice = Math.min(choiceCount, batchTotal);
+    batchOpen = Math.min(openCount, Math.max(0, batchTotal - batchChoice));
+    if ((batchChoice + batchOpen) < batchTotal) {
+      if (choiceCount - batchChoice > openCount - batchOpen) batchChoice += batchTotal - (batchChoice + batchOpen);
+      else batchOpen += batchTotal - (batchChoice + batchOpen);
+    }
+  } else if (Number.isInteger(choiceCount)) {
+    batchChoice = Math.min(choiceCount, batchTotal);
+  } else if (Number.isInteger(openCount)) {
+    batchOpen = Math.min(openCount, batchTotal);
+  }
+
+  return {
+    total: batchTotal,
+    choiceCount: batchChoice,
+    openCount: batchOpen,
+  };
+}
+
 function buildActivityGenerationPrompt({
   teacherPrompt,
   constraints,
@@ -464,7 +501,10 @@ function buildActivityGenerationPrompt({
   continuation = false,
   remainingQuestions = 0,
   existingQuestions = [],
+  overallConstraints = null,
 }) {
+  const effectiveConstraints = constraints || {};
+  const referenceConstraints = overallConstraints || effectiveConstraints;
   const lines = [
     'Voce e um assistente para criacao de atividades escolares.',
     'Crie uma atividade em portugues do Brasil a partir do pedido do professor.',
@@ -473,14 +513,14 @@ function buildActivityGenerationPrompt({
       ? 'Formato esperado: {"perguntas":[{"tipo":"texto","pergunta":"..."},{"tipo":"multipla_escolha","pergunta":"...","opcoes":["...","...","..."]}]}'
       : 'Formato esperado: {"titulo":"...","descricao":"...","pontos_extras":10,"perguntas":[{"tipo":"texto","pergunta":"..."},{"tipo":"multipla_escolha","pergunta":"...","opcoes":["...","...","..."]}],"livro_sugerido_titulo":"..."}',
     'Regras:',
-    Number.isInteger(constraints?.total)
-      ? `- gere exatamente ${constraints.total} perguntas`
+    Number.isInteger(effectiveConstraints?.total)
+      ? `- gere exatamente ${effectiveConstraints.total} perguntas`
       : '- gere entre 0 e 5 perguntas',
-    Number.isInteger(constraints?.choiceCount)
-      ? `- gere exatamente ${constraints.choiceCount} questoes de multipla escolha`
+    Number.isInteger(effectiveConstraints?.choiceCount)
+      ? `- gere exatamente ${effectiveConstraints.choiceCount} questoes de multipla escolha`
       : '- use tipo "multipla_escolha" para questoes de marcar',
-    Number.isInteger(constraints?.openCount)
-      ? `- gere exatamente ${constraints.openCount} questoes abertas`
+    Number.isInteger(effectiveConstraints?.openCount)
+      ? `- gere exatamente ${effectiveConstraints.openCount} questoes abertas`
       : '- use tipo "texto" para respostas abertas',
     '- em questoes de marcar, inclua ao menos 3 opcoes curtas',
     '- nao inclua explicacoes fora do JSON',
@@ -494,6 +534,16 @@ function buildActivityGenerationPrompt({
     lines.push('- nao repita perguntas ja criadas');
     lines.push('- nao devolva titulo, descricao ou pontos_extras novamente');
     lines.push(`Perguntas ja criadas: ${JSON.stringify(existingQuestions)}`);
+  }
+
+  if (Number.isInteger(referenceConstraints?.total) && referenceConstraints.total !== effectiveConstraints?.total) {
+    lines.push(`- no total final, a atividade precisa ter ${referenceConstraints.total} perguntas`);
+  }
+  if (Number.isInteger(referenceConstraints?.choiceCount) && referenceConstraints.choiceCount !== effectiveConstraints?.choiceCount) {
+    lines.push(`- no total final, a atividade precisa ter ${referenceConstraints.choiceCount} questoes de multipla escolha`);
+  }
+  if (Number.isInteger(referenceConstraints?.openCount) && referenceConstraints.openCount !== effectiveConstraints?.openCount) {
+    lines.push(`- no total final, a atividade precisa ter ${referenceConstraints.openCount} questoes abertas`);
   }
 
   lines.push(`Pedido do professor: ${teacherPrompt.trim()}`);
@@ -513,28 +563,30 @@ async function completeQuestionsWithAI({
   let perguntas = Array.isArray(perguntasIniciais) ? [...perguntasIniciais] : [];
 
   if (Number.isInteger(requestedConstraints.total)) {
-    for (let attempt = 0; attempt < 3 && perguntas.length < requestedConstraints.total; attempt += 1) {
+    for (let attempt = 0; attempt < 8 && perguntas.length < requestedConstraints.total; attempt += 1) {
       const faltantes = requestedConstraints.total - perguntas.length;
+      const remainingConstraints = {
+        total: faltantes,
+        choiceCount: Number.isInteger(requestedConstraints.choiceCount)
+          ? Math.max(0, requestedConstraints.choiceCount - perguntas.filter((item) => item.tipo === 'multipla_escolha').length)
+          : null,
+        openCount: Number.isInteger(requestedConstraints.openCount)
+          ? Math.max(0, requestedConstraints.openCount - perguntas.filter((item) => item.tipo !== 'multipla_escolha').length)
+          : null,
+      };
+      const batchConstraints = buildBatchConstraints(remainingConstraints, 4);
       const continuationPrompt = buildActivityGenerationPrompt({
         teacherPrompt,
-        constraints: {
-          ...requestedConstraints,
-          total: faltantes,
-          choiceCount: Number.isInteger(requestedConstraints.choiceCount)
-            ? Math.max(0, requestedConstraints.choiceCount - perguntas.filter((item) => item.tipo === 'multipla_escolha').length)
-            : null,
-          openCount: Number.isInteger(requestedConstraints.openCount)
-            ? Math.max(0, requestedConstraints.openCount - perguntas.filter((item) => item.tipo !== 'multipla_escolha').length)
-            : null,
-        },
+        constraints: batchConstraints,
         livrosDisponiveis,
         professorTurmasPermitidas,
         continuation: true,
-        remainingQuestions: faltantes,
+        remainingQuestions: batchConstraints.total || faltantes,
         existingQuestions: perguntas.map((item) => ({
           tipo: item.tipo,
           pergunta: item.pergunta,
         })),
+        overallConstraints: requestedConstraints,
       });
 
       const continuationGenerated = await generateTextWithCloudflare({
@@ -867,11 +919,13 @@ export default function PainelProfessor() {
         .map((item) => ({ id: item.id, titulo: item.titulo, autor: item.autor }))
         .filter((item) => item.id && item.titulo);
 
+      const initialBatchConstraints = buildBatchConstraints(requestedConstraints, 4);
       const prompt = buildActivityGenerationPrompt({
         teacherPrompt: aiPrompt,
-        constraints: requestedConstraints,
+        constraints: initialBatchConstraints,
         livrosDisponiveis,
         professorTurmasPermitidas,
+        overallConstraints: requestedConstraints,
       });
 
       const generated = await generateTextWithCloudflare({
