@@ -321,15 +321,59 @@ async function isSuperAdmin(userId: string, env: Env) {
 }
 
 async function getLatestUserProfile(userId: string, env: Env) {
-  const params = new URLSearchParams({
+  const payload = await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
     select: 'id,user_id,escola_id,nome,email,telefone,cpf,turma,matricula,tipo',
     user_id: `eq.${userId}`,
     order: 'updated_at.desc.nullslast,created_at.desc',
-    limit: '1',
+    limit: '10',
+  }).toString()}`);
+
+  return Array.isArray(payload) ? (payload[0] || null) : null;
+}
+
+function normalizeProfileRoleHint(value: unknown) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ['aluno', 'professor', 'gestor', 'bibliotecaria', 'super_admin'].includes(normalized)
+    ? normalized
+    : '';
+}
+
+async function getUserProfileForRequest(
+  request: Request,
+  env: Env,
+  {
+    preferredTypes = [],
+  }: {
+    preferredTypes?: string[];
+  } = {},
+) {
+  const caller = await fetchSupabaseUser(request, env);
+  if (!caller?.id) {
+    throw new Error('Nao autenticado.');
+  }
+
+  const params = new URLSearchParams({
+    select: 'id,user_id,escola_id,nome,email,telefone,cpf,turma,matricula,tipo',
+    user_id: `eq.${caller.id}`,
+    order: 'updated_at.desc.nullslast,created_at.desc',
+    limit: '10',
   });
 
   const payload = await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${params.toString()}`);
-  return Array.isArray(payload) ? (payload[0] || null) : null;
+  const profiles = Array.isArray(payload) ? payload : [];
+  const roleHint = normalizeProfileRoleHint(request.headers.get('x-profile-role-hint'));
+  const preferred = [roleHint, ...preferredTypes.map((item) => normalizeProfileRoleHint(item))].filter(Boolean);
+
+  const profile = preferred
+    .map((tipo) => profiles.find((item) => String(item?.tipo || '').trim().toLowerCase() === tipo))
+    .find(Boolean)
+    || profiles[0]
+    || null;
+
+  return {
+    caller,
+    profile,
+  };
 }
 
 async function getLoanModuleContext(request: Request, env: Env) {
@@ -430,10 +474,7 @@ async function getUsersModuleContext(request: Request, env: Env) {
 }
 
 async function getCommunityModuleContext(request: Request, env: Env) {
-  const caller = await fetchSupabaseUser(request, env);
-  if (!caller?.id) throw new Error('Nao autenticado.');
-
-  const profile = await getLatestUserProfile(caller.id, env);
+  const { caller, profile } = await getUserProfileForRequest(request, env);
   if (!profile?.id) throw new Error('Perfil do usuario nao encontrado.');
 
   const tipo = String(profile.tipo || '').trim().toLowerCase();
@@ -1859,10 +1900,7 @@ async function fetchTenantAdminInviteContext(token: string, env: Env) {
 }
 
 async function getArquivosAulaModuleContext(request: Request, env: Env) {
-  const caller = await fetchSupabaseUser(request, env);
-  if (!caller?.id) throw new Error('Nao autenticado.');
-
-  const profile = await getLatestUserProfile(caller.id, env);
+  const { caller, profile } = await getUserProfileForRequest(request, env, { preferredTypes: ['professor'] });
   if (!profile?.id) throw new Error('Perfil nao encontrado.');
 
   const tipo = String(profile.tipo || '').trim().toLowerCase();
@@ -2083,15 +2121,6 @@ async function getProfessorModuleData(request: Request, env: Env) {
   let entregasRaw: Array<Record<string, unknown>> = [];
 
   if (atividadeIds.length > 0) {
-    if (!UUID_PATTERN.test(userId)) {
-      await supabaseAdminRequest(env, `/rest/v1/tenant_admin_invites?${new URLSearchParams({ id: `eq.${reservedInvite.id}` }).toString()}`, {
-        method: 'PATCH',
-        body: { usado_em: null, usado_por: null },
-        headers: { Prefer: 'return=minimal' },
-      }).catch(() => null);
-      return jsonResponse({ success: false, error: 'Falha ao identificar a conta do gestor no Auth.' }, 500);
-    }
-
     try {
       const entregasPayload = await supabaseAdminRequest(
         env,
@@ -2537,6 +2566,7 @@ const routes: Record<string, RouteHandler> = {
       const titulo = String(body?.titulo || '').trim();
       const descricao = body?.descricao ? String(body.descricao) : null;
       const alunoId = String(body?.aluno_id || '').trim();
+      const livroId = String(body?.livro_id || '').trim();
       const targetMode = String(body?.target_mode || 'aluno').trim();
       const turma = String(body?.turma || '').trim();
       const dataBase = {
@@ -2544,12 +2574,16 @@ const routes: Record<string, RouteHandler> = {
         descricao,
         pontos_extras: Number(body?.pontos_extras || 0),
         data_entrega: body?.data_entrega ? String(body.data_entrega) : null,
-        livro_id: body?.livro_id ? String(body.livro_id) : null,
+        livro_id: livroId || null,
         professor_id: context.professorProfileIds[0],
       };
 
       if (!titulo) {
         return jsonResponse({ success: false, error: 'Titulo obrigatorio.' }, 400);
+      }
+
+      if (!livroId) {
+        return jsonResponse({ success: false, error: 'Livro obrigatorio.' }, 400);
       }
 
       if (targetMode === 'turma' || targetMode === 'todas_turmas') {
@@ -2629,10 +2663,14 @@ const routes: Record<string, RouteHandler> = {
       const context = await getProfessorModuleData(request, env);
       const id = getPathParam(request, /^\/v1\/professor\/atividades\/([^/]+)$/i);
       const body = await request.json().catch(() => ({}));
+      const livroId = String(body?.livro_id || '').trim();
       const record = await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: 'id,professor_id', id: `eq.${id}`, limit: '1' }).toString()}`);
       const atividade = ensureArray<Record<string, unknown>>(record)[0] || null;
       if (!atividade?.id || !context.professorProfileIds.includes(String(atividade?.professor_id || '').trim())) {
         return jsonResponse({ success: false, error: 'Atividade nao encontrada.' }, 404);
+      }
+      if (!livroId) {
+        return jsonResponse({ success: false, error: 'Livro obrigatorio.' }, 400);
       }
       await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ id: `eq.${id}` }).toString()}`, {
         method: 'PATCH',
@@ -2641,7 +2679,7 @@ const routes: Record<string, RouteHandler> = {
           descricao: body?.descricao ? String(body.descricao) : null,
           pontos_extras: Number(body?.pontos_extras || 0),
           data_entrega: body?.data_entrega ? String(body.data_entrega) : null,
-          livro_id: body?.livro_id ? String(body.livro_id) : null,
+          livro_id: livroId,
           aluno_id: body?.aluno_id ? String(body.aluno_id) : null,
         },
         headers: { Prefer: 'return=minimal' },

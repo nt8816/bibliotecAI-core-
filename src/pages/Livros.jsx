@@ -1467,14 +1467,14 @@ export default function Livros() {
                           {livro.sinopse ? (
                             <button
                               type="button"
-                              className="w-full rounded-2xl border border-border/70 bg-white/70 p-3 text-left transition-colors hover:border-primary/20 hover:bg-primary/5"
+                              className="w-full rounded-2xl border border-emerald-500/15 bg-slate-900/55 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-colors hover:border-primary/30 hover:bg-slate-900/70"
                               onClick={() => setSinopseExpandida(sinopseExpandida === livro.id ? null : livro.id)}
                             >
-                              <p className="line-clamp-4 text-sm leading-6 text-muted-foreground" translate="no">{livro.sinopse}</p>
-                              <p className="mt-2 text-xs font-medium text-primary">Ver sinopse completa</p>
+                              <p className="line-clamp-4 min-h-[96px] text-sm leading-6 text-slate-200/88" translate="no">{livro.sinopse}</p>
+                              <p className="mt-2 text-xs font-semibold text-emerald-400">Ver sinopse completa</p>
                             </button>
                           ) : (
-                            <div className="rounded-2xl border border-dashed border-border/80 bg-muted/20 p-3">
+                            <div className="rounded-2xl border border-dashed border-border/70 bg-slate-900/35 p-3">
                               <p className="text-sm text-muted-foreground">Sem sinopse cadastrada.</p>
                             </div>
                           )}
@@ -2028,6 +2028,5 @@ export default function Livros() {
     </MainLayout>
   );
 }
-
 
 

@@ -1,7 +1,14 @@
 import { requestPlatformApi } from '@/lib/platformApi';
 
-export async function fetchComunidadeAlunoData() {
-  const payload = await requestPlatformApi('/v1/aluno/comunidade');
+function buildRoleHintHeaders(roleHint) {
+  const normalized = String(roleHint || '').trim().toLowerCase();
+  return normalized ? { 'x-profile-role-hint': normalized } : {};
+}
+
+export async function fetchComunidadeAlunoData({ roleHint } = {}) {
+  const payload = await requestPlatformApi('/v1/aluno/comunidade', {
+    headers: buildRoleHintHeaders(roleHint),
+  });
   return {
     perfil: payload?.perfil || null,
     livros: Array.isArray(payload?.livros) ? payload.livros : [],
@@ -13,22 +20,30 @@ export async function fetchComunidadeAlunoData() {
   };
 }
 
-export async function fetchComunidadeAlunoPostsPage({ offset = 0, limit = 20 } = {}) {
+export async function fetchComunidadeAlunoPostsPage({ offset = 0, limit = 20, roleHint } = {}) {
   const safeOffset = Number(offset) || 0;
   const safeLimit = Number(limit) || 20;
-  const payload = await requestPlatformApi(`/v1/aluno/comunidade/feed?offset=${safeOffset}&limit=${safeLimit}`);
+  const payload = await requestPlatformApi(`/v1/aluno/comunidade/feed?offset=${safeOffset}&limit=${safeLimit}`, {
+    headers: buildRoleHintHeaders(roleHint),
+  });
   return {
     success: true,
     posts: Array.isArray(payload?.posts) ? payload.posts : [],
   };
 }
 
-export async function createComunidadePost(payload) {
-  return requestPlatformApi('/v1/aluno/comunidade/posts', { method: 'POST', body: payload });
+export async function createComunidadePost(payload, { roleHint } = {}) {
+  return requestPlatformApi('/v1/aluno/comunidade/posts', {
+    method: 'POST',
+    body: payload,
+    headers: buildRoleHintHeaders(roleHint),
+  });
 }
 
-export async function fetchComunidadePostById(postId) {
-  const payload = await requestPlatformApi(`/v1/aluno/comunidade/posts/${postId}`);
+export async function fetchComunidadePostById(postId, { roleHint } = {}) {
+  const payload = await requestPlatformApi(`/v1/aluno/comunidade/posts/${postId}`, {
+    headers: buildRoleHintHeaders(roleHint),
+  });
   return {
     success: true,
     post: payload?.post || null,
@@ -42,14 +57,19 @@ export async function toggleComunidadeLike({ postId, usuarioId, liked }) {
   });
 }
 
-export async function updateComunidadePost(postId, payload) {
-  return requestPlatformApi(`/v1/aluno/comunidade/posts/${postId}`, { method: 'PATCH', body: payload });
+export async function updateComunidadePost(postId, payload, { roleHint } = {}) {
+  return requestPlatformApi(`/v1/aluno/comunidade/posts/${postId}`, {
+    method: 'PATCH',
+    body: payload,
+    headers: buildRoleHintHeaders(roleHint),
+  });
 }
 
-export async function deleteComunidadePost(postId, autorId) {
+export async function deleteComunidadePost(postId, autorId, { roleHint } = {}) {
   return requestPlatformApi(`/v1/aluno/comunidade/posts/${postId}/delete`, {
     method: 'POST',
     body: { autorId },
+    headers: buildRoleHintHeaders(roleHint),
   });
 }
 

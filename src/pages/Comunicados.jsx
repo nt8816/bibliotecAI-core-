@@ -138,6 +138,17 @@ export default function Comunicados() {
   const { toast } = useToast();
 
   const canPublish = (isProfessor || isGestor || isBibliotecaria) && !isSuperAdmin;
+  const profileRoleHint = isProfessor
+    ? 'professor'
+    : isGestor
+      ? 'gestor'
+      : isBibliotecaria
+        ? 'bibliotecaria'
+        : userRole === 'super_admin'
+          ? 'super_admin'
+          : isAluno
+            ? 'aluno'
+            : '';
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [perfil, setPerfil] = useState(null);
@@ -215,7 +226,7 @@ export default function Comunicados() {
     const load = async () => {
       setLoading(true);
       try {
-        const response = await fetchComunidadeAlunoData();
+        const response = await fetchComunidadeAlunoData({ roleHint: profileRoleHint });
         if (cancelled) return;
 
         const perfilAtual = response?.perfil || null;
@@ -243,7 +254,7 @@ export default function Comunicados() {
     return () => {
       cancelled = true;
     };
-  }, [toast]);
+  }, [profileRoleHint, toast]);
 
   const comunicadosVisiveis = useMemo(() => {
     const turmaAluno = normalizeTurmaKey(perfil?.turma);
@@ -615,7 +626,7 @@ export default function Comunicados() {
         audio_duration_seconds: audioFile?.durationSeconds || null,
       };
 
-      const result = await createComunidadePost(payload);
+      const result = await createComunidadePost(payload, { roleHint: profileRoleHint });
       const createdPost = await resolveComunicadoMedia({
         id: result?.postId || crypto.randomUUID(),
         ...payload,

@@ -180,11 +180,11 @@ function isMissingColumnError(error, columnName, tableName) {
   );
 }
 
-async function insertCommunityPostCompat(payload) {
+async function insertCommunityPostCompat(payload, options = {}) {
   const fetchInsertedPost = async (postId) => {
     if (!postId) return { data: null, error: null };
     try {
-      const response = await fetchCommunityPostById(postId);
+      const response = await fetchCommunityPostById(postId, options);
       return { data: response || null, error: null };
     } catch (error) {
       return { data: null, error };
@@ -193,7 +193,7 @@ async function insertCommunityPostCompat(payload) {
 
   const runInsert = async (insertPayload) => {
     try {
-      const insertResult = await createComunidadePost(insertPayload);
+      const insertResult = await createComunidadePost(insertPayload, options);
       const fetched = await fetchInsertedPost(insertResult?.postId);
       return fetched.error
         ? {
@@ -282,9 +282,9 @@ async function resolvePostMedia(post) {
   };
 }
 
-async function fetchCommunityPostById(postId) {
+async function fetchCommunityPostById(postId, { roleHint } = {}) {
   if (!postId) return null;
-  const response = await fetchComunidadePostByIdService(postId);
+  const response = await fetchComunidadePostByIdService(postId, { roleHint });
   return resolvePostMedia(response?.post);
 }
 
@@ -292,6 +292,15 @@ export default function ComunidadeAluno() {
   const { user, isProfessor, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
   const { toast } = useToast();
   const canPublicarComunicado = isProfessor || isGestor || isBibliotecaria || isSuperAdmin;
+  const profileRoleHint = isProfessor
+    ? 'professor'
+    : isGestor
+      ? 'gestor'
+      : isBibliotecaria
+        ? 'bibliotecaria'
+        : isSuperAdmin
+          ? 'super_admin'
+          : '';
 
   const [alunoId, setAlunoId] = useState(null);
   const [escolaId, setEscolaId] = useState(null);
@@ -359,7 +368,7 @@ export default function ComunidadeAluno() {
         setTurmasPublicacao([]);
         return;
       }
-      const response = await fetchComunidadeAlunoData();
+      const response = await fetchComunidadeAlunoData({ roleHint: profileRoleHint });
       const perfil = response?.perfil;
 
       if (String(perfil?.escola_id || '') !== String(escolaIdAtual || '')) {
@@ -371,7 +380,7 @@ export default function ComunidadeAluno() {
       setProfessorTurmas(ensureArray(response?.professorTurmas));
       setTurmasPublicacao(ensureArray(response?.turmasPublicacao));
     },
-    [canPublicarComunicado],
+    [canPublicarComunicado, profileRoleHint],
   );
 
   const quizRankingFromDate = useMemo(() => {
@@ -404,7 +413,7 @@ export default function ComunidadeAluno() {
       }
       setPostsLoadingMore(true);
       try {
-        const response = await fetchComunidadeAlunoPostsPage({ offset, limit: POSTS_PAGE_SIZE });
+        const response = await fetchComunidadeAlunoPostsPage({ offset, limit: POSTS_PAGE_SIZE, roleHint: profileRoleHint });
         const items = await Promise.all(
           ensureArray(response?.posts)
             .filter((item) => !isExpiredComunicado(item))
@@ -419,7 +428,7 @@ export default function ComunidadeAluno() {
         setPostsLoadingMore(false);
       }
     },
-    [enabled, postsOffset],
+    [enabled, postsOffset, profileRoleHint],
   );
 
   const loadQuizRankingForPosts = useCallback(
@@ -450,7 +459,7 @@ export default function ComunidadeAluno() {
 
     setLoading(true);
     try {
-      const response = await fetchComunidadeAlunoData();
+      const response = await fetchComunidadeAlunoData({ roleHint: profileRoleHint });
       const perfil = response?.perfil;
 
       if (!perfil?.id) throw new Error('Perfil do aluno nao encontrado.');
@@ -506,7 +515,7 @@ export default function ComunidadeAluno() {
     } finally {
       setLoading(false);
     }
-  }, [canPublicarComunicado, enabled, loadQuizRankingForPosts, loadTurmasPublicacao, toast, user]);
+  }, [canPublicarComunicado, enabled, loadQuizRankingForPosts, loadTurmasPublicacao, profileRoleHint, toast, user]);
 
   useEffect(() => {
     fetchData();
@@ -778,7 +787,7 @@ export default function ComunidadeAluno() {
           ...(postComIA ? ['ia'] : []),
           ...(livroManual && !livroRelacionado ? ['livro-manual'] : []),
         ])),
-      });
+      }, { roleHint: profileRoleHint });
 
       if (error) throw error;
 
@@ -864,7 +873,7 @@ export default function ComunidadeAluno() {
         conteudo: conteudoCompartilhado,
         imagem_urls: imagemUrls,
         tags: Array.from(new Set([...(ensureArray(sharePost?.tags)), 'compartilhado'])),
-      });
+      }, { roleHint: profileRoleHint });
 
       if (error) throw error;
 
@@ -1041,7 +1050,7 @@ export default function ComunidadeAluno() {
       await updateComunidadePost(postEmEdicao.id, {
         titulo: tituloLimpo || null,
         conteudo: conteudoLimpo,
-      });
+      }, { roleHint: profileRoleHint });
 
       setPosts((prev) => {
         const nextList = ensureArray(prev).map((item) =>
@@ -1072,7 +1081,7 @@ export default function ComunidadeAluno() {
 
     setSaving(true);
     try {
-      const response = await deleteComunidadePost(post.id, alunoId);
+      const response = await deleteComunidadePost(post.id, alunoId, { roleHint: profileRoleHint });
       if (response?.deleted === false) {
         throw new Error('Você so pode apagar publicacoes feitas por você.');
       }
@@ -1842,10 +1851,6 @@ export default function ComunidadeAluno() {
     </MainLayout>
   );
 }
-
-
-
-
 
 
 

@@ -86,6 +86,7 @@ export default function ArquivosAula() {
   const { user, isProfessor } = useAuth();
   const { toast } = useToast();
   const fileInputRef = useRef(null);
+  const profileRoleHint = isProfessor ? 'professor' : '';
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -107,7 +108,7 @@ export default function ArquivosAula() {
 
     setLoading(true);
     try {
-      const data = await fetchArquivosAulaData();
+      const data = await fetchArquivosAulaData({ roleHint: profileRoleHint });
       setEnabled(data?.enabled !== false);
       setPerfilId(data?.perfilId || null);
       setEscolaId(data?.escolaId || null);
@@ -124,7 +125,7 @@ export default function ArquivosAula() {
     } finally {
       setLoading(false);
     }
-  }, [toast, user?.id]);
+  }, [profileRoleHint, toast, user?.id]);
 
   useEffect(() => {
     fetchData();
@@ -235,7 +236,7 @@ export default function ArquivosAula() {
         arquivos,
       };
 
-      await createArquivosAulaPost(payload);
+      await createArquivosAulaPost(payload, { roleHint: profileRoleHint });
 
       setMensagem('');
       setTurmaPublico('');
@@ -300,7 +301,7 @@ export default function ArquivosAula() {
         }
       }
 
-      await deleteArquivosAulaPost(post.id);
+      await deleteArquivosAulaPost(post.id, { roleHint: profileRoleHint });
       setPosts((prev) => ensureArray(prev).filter((item) => item.id !== post.id));
       setDeletePostTarget(null);
       toast({ title: 'Publicacao excluida!' });
@@ -516,4 +517,3 @@ export default function ArquivosAula() {
     </MainLayout>
   );
 }
-

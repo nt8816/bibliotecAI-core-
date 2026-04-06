@@ -4573,11 +4573,11 @@ export default function PainelAluno() {
                               <div>
                                 <button
                                   type="button"
-                                  className="w-full text-left"
+                                  className="w-full rounded-2xl border border-emerald-500/15 bg-slate-900/55 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-colors hover:border-primary/30 hover:bg-slate-900/70"
                                   onClick={() => abrirSinopseCompleta(livro)}
                                 >
-                                  <p className="text-xs text-muted-foreground line-clamp-3 min-h-[48px]" translate="no">{livro.sinopse}</p>
-                                  <p className="text-xs text-primary mt-1">Ver sinopse completa</p>
+                                  <p className="text-xs leading-5 text-slate-200/88 line-clamp-3 min-h-[60px]" translate="no">{livro.sinopse}</p>
+                                  <p className="mt-2 text-xs font-semibold text-emerald-400">Ver sinopse completa</p>
                                 </button>
                                 <Button size="sm" variant="ghost" className="h-6 px-1 text-xs mt-1" onClick={() => speakText(livro.id, livro.sinopse || '')}>
                                   {isLoadingThis ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : isPlayingThis ? <VolumeX className="w-3 h-3 mr-1" /> : <Volume2 className="w-3 h-3 mr-1" />}
@@ -5410,7 +5410,6 @@ export default function PainelAluno() {
     </MainLayout>
   );
 }
-
 
 
 
