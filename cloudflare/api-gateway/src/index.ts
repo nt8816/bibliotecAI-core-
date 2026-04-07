@@ -713,20 +713,41 @@ async function fetchSchoolAudienceProfiles(
     .filter((item) => item.id && item.id !== excludedId);
 }
 
-async function fetchProfileDisplayName(env: Env, profileId?: string | null) {
+function formatNotificationAuthorLabel(role?: string | null, name?: string | null) {
+  const normalizedRole = String(role || '').trim().toLowerCase();
+  const normalizedName = String(name || '').trim();
+  const roleMap: Record<string, { article: string; label: string }> = {
+    professor: { article: 'O', label: 'professor' },
+    gestor: { article: 'O', label: 'gestor' },
+    bibliotecaria: { article: 'A', label: 'bibliotecaria' },
+    super_admin: { article: 'O', label: 'super admin' },
+  };
+
+  const mappedRole = roleMap[normalizedRole];
+  if (mappedRole && normalizedName) {
+    return `${mappedRole.article} ${mappedRole.label} ${normalizedName}`;
+  }
+
+  return normalizedName || 'A escola';
+}
+
+async function fetchProfileNotificationAuthor(env: Env, profileId?: string | null) {
   const normalizedId = String(profileId || '').trim();
-  if (!normalizedId) return '';
+  if (!normalizedId) return { nome: '', tipo: '' };
 
   const [profile] = await supabaseAdminRequest(
     env,
     `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
-      select: 'nome',
+      select: 'nome,tipo',
       id: `eq.${normalizedId}`,
       limit: '1',
     }).toString()}`,
   ) as Array<Record<string, unknown>>;
 
-  return String(profile?.nome || '').trim();
+  return {
+    nome: String(profile?.nome || '').trim(),
+    tipo: String(profile?.tipo || '').trim().toLowerCase(),
+  };
 }
 
 async function fetchSchoolDisplayName(env: Env, escolaId?: string | null) {
@@ -748,34 +769,27 @@ async function fetchSchoolDisplayName(env: Env, escolaId?: string | null) {
 function buildComunicadoPushCopy({
   recipientName,
   authorName,
+  authorRole,
   schoolName,
   turmaPublico,
 }: {
   recipientName?: string | null;
   authorName?: string | null;
+  authorRole?: string | null;
   schoolName?: string | null;
   turmaPublico?: string | null;
 }) {
   const normalizedRecipient = String(recipientName || '').trim();
-  const normalizedAuthor = String(authorName || '').trim();
   const normalizedSchool = String(schoolName || '').trim();
   const isTurma = Boolean(String(turmaPublico || '').trim());
 
   const title = isTurma ? 'Comunicado da sua sala' : 'Comunicado da escola';
   const greeting = normalizedRecipient ? `${normalizedRecipient}, ` : '';
-  const sender = normalizedAuthor || (isTurma ? 'Sua escola' : 'A escola');
-
-  if (isTurma) {
-    return {
-      title,
-      body: `${greeting}${sender} enviou um comunicado para a sua sala. Va verificar!`,
-    };
-  }
-
-  const destination = normalizedSchool || 'a escola';
+  const sender = formatNotificationAuthorLabel(authorRole, authorName);
+  const schoolContext = normalizedSchool ? ` na ${normalizedSchool}` : '';
   return {
     title,
-    body: `${greeting}${sender} enviou um comunicado para ${destination}. Va verificar!`,
+    body: `${greeting}${sender} mandou um novo comunicado${schoolContext}. Verifique agora!`,
   };
 }
 
@@ -915,9 +929,9 @@ async function notifyComunicadoAudience(
   const profileIds = audienceProfiles.map((item) => item.id);
   if (profileIds.length === 0) return;
 
-  const [pushRows, authorName, schoolName] = await Promise.all([
+  const [pushRows, author, schoolName] = await Promise.all([
     fetchActivePushRowsByProfileIds(env, profileIds),
-    fetchProfileDisplayName(env, autorProfileId),
+    fetchProfileNotificationAuthor(env, autorProfileId),
     fetchSchoolDisplayName(env, escolaId),
   ]);
 
@@ -942,7 +956,8 @@ async function notifyComunicadoAudience(
 
     const copy = buildComunicadoPushCopy({
       recipientName: recipient.nome,
-      authorName,
+      authorName: author?.nome,
+      authorRole: author?.tipo,
       schoolName,
       turmaPublico,
     });
