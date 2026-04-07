@@ -753,11 +753,14 @@ export default function Emprestimos() {
       u.nome.toLowerCase().includes(oldSearchUsuario.toLowerCase()) ||
       String(u.email || '').toLowerCase().includes(oldSearchUsuario.toLowerCase()),
   );
-  const filteredOldLivrosDialog = oldLoanLivrosBase.filter(
-    (l) =>
-      l.titulo.toLowerCase().includes(oldSearchLivro.toLowerCase()) ||
-      l.autor.toLowerCase().includes(oldSearchLivro.toLowerCase()),
-  );
+  const filteredOldLivrosDialog = oldLoanLivrosBase.filter((l) => {
+    const searchTerm = oldSearchLivro.toLowerCase();
+    return (
+      String(l.titulo || '').toLowerCase().includes(searchTerm) ||
+      String(l.autor || '').toLowerCase().includes(searchTerm) ||
+      String(l.tombo || '').toLowerCase().includes(searchTerm)
+    );
+  });
 
   const today = new Date();
   const maxDate = addMonths(today, 1);
@@ -1270,7 +1273,7 @@ export default function Emprestimos() {
                         <div className="relative">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                           <Input
-                            placeholder={oldLoanStatus === 'ativo' ? 'Pesquisar livro disponível...' : 'Pesquisar livro...'}
+                            placeholder={oldLoanStatus === 'ativo' ? 'Pesquisar livro disponível ou tombo...' : 'Pesquisar livro ou tombo...'}
                             className="pl-9"
                             value={oldSearchLivro}
                             onChange={(e) => {
@@ -1281,8 +1284,18 @@ export default function Emprestimos() {
                         </div>
 
                         {oldLoanLivro ? (
-                          <div className="flex items-center justify-between rounded-md border bg-primary/10 p-2">
-                            <span className="text-sm font-medium">{oldLoanLivrosBase.find((l) => l.id === oldLoanLivro)?.titulo}</span>
+                          <div className="flex items-start justify-between gap-3 rounded-md border bg-primary/10 p-2">
+                            <div className="min-w-0">
+                              <span className="block text-sm font-medium truncate">{oldLoanLivrosBase.find((l) => l.id === oldLoanLivro)?.titulo}</span>
+                              <span className="block text-xs text-muted-foreground truncate">
+                                {oldLoanLivrosBase.find((l) => l.id === oldLoanLivro)?.autor || 'Autor não informado'}
+                              </span>
+                            </div>
+                            {formatLivroTombo(oldLoanLivrosBase.find((l) => l.id === oldLoanLivro)) ? (
+                              <span className="shrink-0 rounded-full bg-primary/15 px-2.5 py-1 text-[11px] font-semibold text-primary">
+                                {formatLivroTombo(oldLoanLivrosBase.find((l) => l.id === oldLoanLivro))}
+                              </span>
+                            ) : null}
                             <Button variant="ghost" size="sm" onClick={() => { setOldLoanLivro(''); setOldSearchLivro(''); }}>
                               Trocar
                             </Button>
@@ -1303,8 +1316,17 @@ export default function Emprestimos() {
                                     setOldSearchLivro(l.titulo);
                                   }}
                                 >
-                                  <p className="font-medium">{l.titulo}</p>
-                                  <p className="text-xs text-muted-foreground">{l.autor}</p>
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="font-medium truncate">{l.titulo}</p>
+                                      <p className="text-xs text-muted-foreground truncate">{l.autor || 'Autor não informado'}</p>
+                                    </div>
+                                    {formatLivroTombo(l) ? (
+                                      <span className="shrink-0 rounded-full bg-primary/15 px-2.5 py-1 text-[11px] font-semibold text-primary">
+                                        {formatLivroTombo(l)}
+                                      </span>
+                                    ) : null}
+                                  </div>
                                 </button>
                               ))
                             )}
