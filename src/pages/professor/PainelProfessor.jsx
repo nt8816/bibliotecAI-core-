@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Check,
   CheckCircle,
+  ChevronsUpDown,
   ClipboardList,
   FileQuestion,
   Lightbulb,
@@ -25,6 +27,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -88,6 +92,72 @@ function createEmptyAtividade() {
     perguntas: [],
     formulario_ativo: false,
   };
+}
+
+function formatAlunoOptionLabel(aluno) {
+  if (!aluno) return '';
+  return aluno.turma ? `${aluno.nome} (${aluno.turma})` : aluno.nome;
+}
+
+function AlunoCombobox({
+  alunos,
+  value,
+  onChange,
+  placeholder = 'Selecione um aluno',
+  emptyMessage = 'Nenhum aluno encontrado.',
+}) {
+  const [open, setOpen] = useState(false);
+
+  const alunoSelecionado = useMemo(
+    () => alunos.find((item) => item.id === value) || null,
+    [alunos, value],
+  );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between rounded-2xl border-input px-3 font-normal"
+        >
+          <span className={cn('truncate', !alunoSelecionado && 'text-muted-foreground')}>
+            {alunoSelecionado ? formatAlunoOptionLabel(alunoSelecionado) : placeholder}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Pesquisar aluno por nome ou turma..." />
+          <CommandList>
+            <CommandEmpty>{emptyMessage}</CommandEmpty>
+            <CommandGroup>
+              {alunos.map((item) => (
+                <CommandItem
+                  key={item.id}
+                  value={`${item.nome || ''} ${item.turma || ''}`.trim()}
+                  onSelect={() => {
+                    onChange(item.id);
+                    setOpen(false);
+                  }}
+                >
+                  <Check className={cn('mr-2 h-4 w-4', value === item.id ? 'opacity-100' : 'opacity-0')} />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate">{item.nome || 'Aluno sem nome'}</span>
+                    {item.turma ? (
+                      <span className="text-xs text-muted-foreground">Turma {item.turma}</span>
+                    ) : null}
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 function extractAtividadeFormConfig(descricao) {
@@ -2080,19 +2150,11 @@ export default function PainelProfessor() {
                       {atividadeForm.target_mode === 'aluno' ? (
                         <div className="space-y-2">
                           <Label>Aluno</Label>
-                          <Select
+                          <AlunoCombobox
+                            alunos={usuarios}
                             value={atividadeForm.aluno_id || ''}
-                            onValueChange={(value) => setAtividadeForm((prev) => ({ ...prev, aluno_id: value }))}
-                          >
-                            <SelectTrigger><SelectValue placeholder="Selecione um aluno" /></SelectTrigger>
-                            <SelectContent>
-                              {usuarios.map((item) => (
-                                <SelectItem key={item.id} value={item.id}>
-                                  {item.nome} {item.turma ? `(${item.turma})` : ''}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            onChange={(value) => setAtividadeForm((prev) => ({ ...prev, aluno_id: value }))}
+                          />
                         </div>
                       ) : atividadeForm.target_mode === 'turma' ? (
                         <div className="space-y-2">
