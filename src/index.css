@@ -178,6 +178,11 @@ html.a11y-reduce-motion *::after {
   scroll-behavior: auto !important;
 }
 
+html.a11y-reduce-motion .auth-login-form .auth-field {
+  opacity: 1 !important;
+  transform: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -636,6 +641,11 @@ html.a11y-reduce-motion *::after {
   .auth-login-button,
   .auth-input {
     transition: none !important;
+  }
+
+  .auth-login-form .auth-field {
+    opacity: 1 !important;
+    transform: none !important;
   }
 }
 
