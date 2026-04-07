@@ -71,6 +71,7 @@ function createEmptyQuestion() {
     tipo: 'texto',
     pergunta: '',
     opcoes: ['', ''],
+    correta: null,
   };
 }
 
@@ -110,12 +111,24 @@ function normalizeQuestion(rawQuestion, index) {
   const opcoes = Array.isArray(rawQuestion?.opcoes)
     ? rawQuestion.opcoes.map((item) => String(item || '')).filter(Boolean)
     : [];
+  const correta = Number.isInteger(rawQuestion?.correta)
+    ? rawQuestion.correta
+    : Number.isInteger(rawQuestion?.correta_indice)
+      ? rawQuestion.correta_indice
+      : Number.isInteger(rawQuestion?.indice_correto)
+        ? rawQuestion.indice_correto
+        : Number.isInteger(rawQuestion?.resposta_correta)
+          ? rawQuestion.resposta_correta
+          : null;
 
   return {
     id: String(rawQuestion?.id || `q_${index + 1}`),
     tipo,
     pergunta: String(rawQuestion?.pergunta || ''),
     opcoes: tipo === 'multipla_escolha' ? (opcoes.length >= 2 ? opcoes : ['', '']) : ['', ''],
+    correta: tipo === 'multipla_escolha' && Number.isInteger(correta) && correta >= 0 && correta < (opcoes.length >= 2 ? opcoes.length : 2)
+      ? correta
+      : null,
   };
 }
 
@@ -130,6 +143,9 @@ function serializeAtividadeDescricao(descricao, perguntas) {
       opcoes: pergunta.tipo === 'multipla_escolha'
         ? pergunta.opcoes.map((item) => String(item || '').trim()).filter(Boolean)
         : [],
+      correta: pergunta.tipo === 'multipla_escolha' && Number.isInteger(pergunta.correta)
+        ? pergunta.correta
+        : null,
     }))
     .filter((pergunta) => pergunta.pergunta);
 
@@ -285,8 +301,22 @@ function extractQuestionsFromBrokenJson(raw) {
     const opcoes = [...optionsBlock.matchAll(/"((?:\\.|[^"\\])*)"/g)]
       .map((match) => decodePossiblyEscapedText(match[1]))
       .filter(Boolean);
+    const correta = extractNumericJsonField(item, 'correta');
+    const indice_correto = extractNumericJsonField(item, 'indice_correto');
+    const resposta_correta = extractNumericJsonField(item, 'resposta_correta');
 
-    return { tipo, pergunta, opcoes };
+    return {
+      tipo,
+      pergunta,
+      opcoes,
+      correta: Number.isInteger(correta)
+        ? correta
+        : Number.isInteger(indice_correto)
+          ? indice_correto
+          : Number.isInteger(resposta_correta)
+            ? resposta_correta
+            : null,
+    };
   }).filter((item) => item.pergunta);
 }
 
@@ -375,6 +405,7 @@ function buildQuestionsFromAI(rawQuestions) {
       tipo: item?.tipo === 'multipla_escolha' ? 'multipla_escolha' : 'texto',
       pergunta: String(item?.pergunta || item?.enunciado || '').trim(),
       opcoes: Array.isArray(item?.opcoes) ? item.opcoes : [],
+      correta: item?.correta ?? item?.correta_indice ?? item?.indice_correto ?? item?.resposta_correta ?? null,
     }, index))
     .filter((item) => item.pergunta);
 }
@@ -568,8 +599,8 @@ function buildActivityGenerationPrompt({
     'Crie uma atividade em portugues do Brasil a partir do pedido do professor.',
     'Responda SOMENTE com JSON valido.',
     continuation
-      ? 'Formato esperado: {"perguntas":[{"tipo":"texto","pergunta":"..."},{"tipo":"multipla_escolha","pergunta":"...","opcoes":["...","...","..."]}]}'
-      : 'Formato esperado: {"titulo":"...","descricao":"...","pontos_extras":10,"perguntas":[{"tipo":"texto","pergunta":"..."},{"tipo":"multipla_escolha","pergunta":"...","opcoes":["...","...","..."]}],"livro_sugerido_titulo":"..."}',
+      ? 'Formato esperado: {"perguntas":[{"tipo":"texto","pergunta":"..."},{"tipo":"multipla_escolha","pergunta":"...","opcoes":["...","...","..."],"correta":0}]}'
+      : 'Formato esperado: {"titulo":"...","descricao":"...","pontos_extras":10,"perguntas":[{"tipo":"texto","pergunta":"..."},{"tipo":"multipla_escolha","pergunta":"...","opcoes":["...","...","..."],"correta":0}],"livro_sugerido_titulo":"..."}',
     'Regras:',
     Number.isInteger(effectiveConstraints?.total)
       ? `- gere exatamente ${effectiveConstraints.total} perguntas`
@@ -581,6 +612,7 @@ function buildActivityGenerationPrompt({
       ? `- gere exatamente ${effectiveConstraints.openCount} questoes abertas`
       : '- use tipo "texto" para respostas abertas',
     '- em questoes de marcar, inclua ao menos 3 opcoes curtas',
+    '- em toda questao de multipla escolha, informe o indice da alternativa correta no campo "correta" começando em 0',
     '- nao inclua explicacoes fora do JSON',
     '- respeite exatamente a quantidade pedida pelo professor quando ela for informada',
     '- nao confunda quantidade de perguntas com pontos_extras',
@@ -955,6 +987,7 @@ export default function PainelProfessor() {
           opcoes: tipo === 'multipla_escolha'
             ? (question.opcoes?.length >= 2 ? question.opcoes : ['', ''])
             : ['', ''],
+          correta: tipo === 'multipla_escolha' ? question.correta : null,
         };
       }),
     }));
@@ -967,8 +1000,26 @@ export default function PainelProfessor() {
         if (question.id !== questionId) return question;
         const nextOptions = [...question.opcoes];
         nextOptions[optionIndex] = value;
-        return { ...question, opcoes: nextOptions };
+        const validOptionsCount = nextOptions.map((item) => String(item || '').trim()).filter(Boolean).length;
+        return {
+          ...question,
+          opcoes: nextOptions,
+          correta: Number.isInteger(question.correta) && question.correta < validOptionsCount
+            ? question.correta
+            : question.correta,
+        };
       }),
+    }));
+  };
+
+  const handleCorrectOptionChange = (questionId, optionIndex) => {
+    setAtividadeForm((prev) => ({
+      ...prev,
+      perguntas: prev.perguntas.map((question) => (
+        question.id === questionId
+          ? { ...question, correta: optionIndex }
+          : question
+      )),
     }));
   };
 
@@ -989,7 +1040,12 @@ export default function PainelProfessor() {
       perguntas: prev.perguntas.map((question) => {
         if (question.id !== questionId) return question;
         const nextOptions = question.opcoes.filter((_, index) => index !== optionIndex);
-        return { ...question, opcoes: nextOptions.length >= 2 ? nextOptions : ['', ''] };
+        const normalizedOptions = nextOptions.length >= 2 ? nextOptions : ['', ''];
+        let nextCorrect = question.correta;
+        if (question.correta === optionIndex) nextCorrect = null;
+        else if (Number.isInteger(question.correta) && question.correta > optionIndex) nextCorrect = question.correta - 1;
+        if (Number.isInteger(nextCorrect) && nextCorrect >= normalizedOptions.length) nextCorrect = null;
+        return { ...question, opcoes: normalizedOptions, correta: nextCorrect };
       }),
     }));
   };
@@ -1233,14 +1289,15 @@ export default function PainelProfessor() {
       const perguntasInvalidas = atividadeForm.perguntas.some((question) => {
         if (!String(question.pergunta || '').trim()) return true;
         if (question.tipo !== 'multipla_escolha') return false;
-        return question.opcoes.map((item) => String(item || '').trim()).filter(Boolean).length < 2;
+        const validOptions = question.opcoes.map((item) => String(item || '').trim()).filter(Boolean);
+        return validOptions.length < 2 || !Number.isInteger(question.correta) || question.correta < 0 || question.correta >= validOptions.length;
       });
 
       if (perguntasInvalidas) {
         toast({
           variant: 'destructive',
-          title: 'Formulário incompleto',
-          description: 'Preencha todas as perguntas e deixe ao menos 2 opções nas questões de marcar.',
+          title: 'Formulario incompleto',
+          description: 'Preencha todas as perguntas, deixe ao menos 2 opcoes e marque a alternativa correta nas questoes de marcar.',
         });
         return;
       }
@@ -1901,12 +1958,25 @@ export default function PainelProfessor() {
 
                               {question.tipo === 'multipla_escolha' && (
                                 <div className="space-y-3">
-                                  <Label>Opções</Label>
+                                  <div className="flex items-center justify-between gap-3">
+                                    <Label>Opcoes</Label>
+                                    <p className="text-xs text-muted-foreground">Marque a correta para facilitar a correcao.</p>
+                                  </div>
                                   {question.opcoes.map((option, optionIndex) => (
                                     <div key={`${question.id}-${optionIndex}`} className="flex items-center gap-2">
+                                      <Button
+                                        type="button"
+                                        variant={question.correta === optionIndex ? 'default' : 'outline'}
+                                        size="icon"
+                                        className="shrink-0 rounded-xl"
+                                        onClick={() => handleCorrectOptionChange(question.id, optionIndex)}
+                                        title={question.correta === optionIndex ? 'Alternativa correta' : 'Marcar como correta'}
+                                      >
+                                        <CheckCircle className="h-4 w-4" />
+                                      </Button>
                                       <Input
                                         value={option}
-                                        placeholder={`Opção ${optionIndex + 1}`}
+                                        placeholder={`Opcao ${optionIndex + 1}`}
                                         onChange={(e) => handleQuestionOptionChange(question.id, optionIndex, e.target.value)}
                                       />
                                       {question.opcoes.length > 2 && (
