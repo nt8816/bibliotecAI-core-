@@ -1281,7 +1281,7 @@ export default function ComunidadeAluno() {
           />
         </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <Badge variant="outline" className="gap-1 shrink-0">
             <Filter className="w-3 h-3" /> Filtrar
           </Badge>
@@ -1486,27 +1486,28 @@ export default function ComunidadeAluno() {
                         </div>
                       )}
 
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => toggleLikePost(post.id)}
                           disabled={!enabled || likingPostIds.has(post.id)}
+                          className="w-full sm:w-auto"
                         >
                           <Heart className={`w-4 h-4 mr-1 ${likedPostIds.has(post.id) ? 'fill-destructive text-destructive' : ''}`} />
                           {likesByPost.get(post.id) || 0}
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => openShareDialog(post)} disabled={!enabled}>
+                        <Button variant="ghost" size="sm" onClick={() => openShareDialog(post)} disabled={!enabled} className="w-full sm:w-auto">
                           Compartilhar
                         </Button>
                         {podeEditarPost(post) && (
-                          <Button variant="ghost" size="sm" onClick={() => abrirEdicao(post)} disabled={!enabled || saving}>
+                          <Button variant="ghost" size="sm" onClick={() => abrirEdicao(post)} disabled={!enabled || saving} className="w-full sm:w-auto">
                             <Pencil className="w-4 h-4 mr-1" />
                             Editar
                           </Button>
                         )}
                         {podeGerenciarPost(post) && (
-                          <Button variant="ghost" size="sm" onClick={() => setDeleteConfirmPost(post)} disabled={!enabled || saving}>
+                          <Button variant="ghost" size="sm" onClick={() => setDeleteConfirmPost(post)} disabled={!enabled || saving} className="w-full sm:w-auto">
                             <Trash2 className="w-4 h-4 mr-1 text-destructive" />
                             Apagar
                           </Button>
@@ -1530,7 +1531,7 @@ export default function ComunidadeAluno() {
 
       <Button
         type="button"
-        className="fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full shadow-lg"
+        className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)] right-4 z-40 h-14 w-14 rounded-full shadow-lg sm:bottom-6 sm:right-6"
         onClick={() => setPostDialogOpen(true)}
         disabled={!enabled}
       >
@@ -1538,7 +1539,7 @@ export default function ComunidadeAluno() {
       </Button>
 
       <Dialog open={postDialogOpen} onOpenChange={setPostDialogOpen}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4" /> Nova publicacao
@@ -1747,11 +1748,11 @@ export default function ComunidadeAluno() {
               )}
             </div>
 
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setPostDialogOpen(false)}>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button variant="outline" onClick={() => setPostDialogOpen(false)} className="w-full sm:w-auto">
                 Cancelar
               </Button>
-              <Button onClick={handleCriarPost} disabled={saving || !enabled}>
+              <Button onClick={handleCriarPost} disabled={saving || !enabled} className="w-full sm:w-auto">
                 <Send className="w-4 h-4 mr-2" /> {saving ? 'Publicando...' : 'Publicar'}
               </Button>
             </div>
@@ -1770,7 +1771,7 @@ export default function ComunidadeAluno() {
           }
         }}
       >
-        <DialogContent className="max-w-xl">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-xl rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="w-4 h-4" /> Editar publicacao
@@ -1792,11 +1793,11 @@ export default function ComunidadeAluno() {
                 placeholder="Atualize sua publicacao..."
               />
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)} className="w-full sm:w-auto">
                 Cancelar
               </Button>
-              <Button onClick={salvarEdicaoPost} disabled={saving}>
+              <Button onClick={salvarEdicaoPost} disabled={saving} className="w-full sm:w-auto">
                 <Send className="w-4 h-4 mr-2" />
                 {saving ? 'Salvando...' : 'Salvar alteracoes'}
               </Button>
@@ -1811,7 +1812,7 @@ export default function ComunidadeAluno() {
           if (!open && !saving) setDeleteConfirmPost(null);
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-md rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Excluir publicacao</DialogTitle>
             <DialogDescription>
@@ -1833,11 +1834,11 @@ export default function ComunidadeAluno() {
             )}
           </div>
 
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setDeleteConfirmPost(null)} disabled={saving}>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setDeleteConfirmPost(null)} disabled={saving} className="w-full sm:w-auto">
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={() => apagarPost(deleteConfirmPost)} disabled={saving}>
+            <Button variant="destructive" onClick={() => apagarPost(deleteConfirmPost)} disabled={saving} className="w-full sm:w-auto">
               <Trash2 className="w-4 h-4 mr-2" />
               {saving ? 'Apagando...' : 'Confirmar exclusao'}
             </Button>
@@ -1856,7 +1857,7 @@ export default function ComunidadeAluno() {
           }
         }}
       >
-        <DialogContent className="max-w-xl">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-xl rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Send className="w-4 h-4" /> Compartilhar post
@@ -1895,11 +1896,11 @@ export default function ComunidadeAluno() {
               )}
             </div>
 
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShareDialogOpen(false)} disabled={sharing}>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button variant="outline" onClick={() => setShareDialogOpen(false)} disabled={sharing} className="w-full sm:w-auto">
                 Cancelar
               </Button>
-              <Button onClick={handleCompartilharPost} disabled={sharing || !enabled || !sharePost}>
+              <Button onClick={handleCompartilharPost} disabled={sharing || !enabled || !sharePost} className="w-full sm:w-auto">
                 <Send className="w-4 h-4 mr-2" /> {sharing ? 'Compartilhando...' : 'Compartilhar'}
               </Button>
             </div>
@@ -1914,7 +1915,7 @@ export default function ComunidadeAluno() {
           if (!open) setPostPreviewItem(null);
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>{safeText(postPreviewItem?.titulo, 'Publicacao')}</DialogTitle>
             <DialogDescription>
@@ -1936,7 +1937,7 @@ export default function ComunidadeAluno() {
       </Dialog>
 
       <Dialog open={Boolean(selectedImageUrl)} onOpenChange={(open) => !open && setSelectedImageUrl('')}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-4xl rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Visualizacao da imagem</DialogTitle>
             <DialogDescription>Imagem ampliada do post selecionado.</DialogDescription>

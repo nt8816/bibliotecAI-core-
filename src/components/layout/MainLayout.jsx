@@ -26,12 +26,12 @@ export function MainLayout({ children, title }) {
 
         <main className="flex min-w-0 flex-1 flex-col">
           <header
-            className="main-shell-header sticky top-0 z-30 flex min-h-14 items-center justify-between gap-3 border-b px-3 py-2 sm:h-16 sm:min-h-16 sm:gap-4 sm:px-4 sm:py-0"
+            className="main-shell-header sticky top-0 z-30 flex min-h-14 items-center justify-between gap-2 border-b px-2.5 py-2 sm:h-16 sm:min-h-16 sm:gap-4 sm:px-4 sm:py-0"
             style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 0.85rem)' }}
           >
-            <div className="flex min-w-0 items-center gap-3 pt-2 sm:gap-4 sm:pt-0">
+            <div className="flex min-w-0 items-center gap-2 pt-2 sm:gap-4 sm:pt-0">
               <SidebarTrigger
-                className="mt-3 h-14 w-14 shrink-0 rounded-2xl border border-border/70 bg-background/90 text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground sm:mt-0 sm:h-10 sm:w-10 sm:rounded-2xl"
+                className="mt-2 h-11 w-11 shrink-0 rounded-2xl border border-border/70 bg-background/90 text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground sm:mt-0 sm:h-10 sm:w-10 sm:rounded-2xl"
                 aria-label="Abrir ou fechar menu lateral"
               />
               <div className="min-w-0">
@@ -45,7 +45,7 @@ export function MainLayout({ children, title }) {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-9 gap-2 rounded-full px-3 text-xs sm:text-sm"
+                  className="h-9 gap-2 rounded-full px-2.5 text-xs sm:px-3 sm:text-sm"
                   onClick={() => navigate('/reclamacoes')}
                 >
                   <MessageSquareWarning className="h-4 w-4" />
@@ -57,7 +57,7 @@ export function MainLayout({ children, title }) {
 
           <div
             id="main-content"
-            className="main-shell-content flex-1 overflow-auto px-3 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-6"
+            className="main-shell-content flex-1 overflow-auto px-2.5 py-3 sm:px-5 sm:py-5 lg:px-6 lg:py-6"
           >
             <div className="mx-auto w-full max-w-screen-2xl">
               {children}

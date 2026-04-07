@@ -4946,7 +4946,7 @@ export default function PainelAluno() {
       </div>
 
       <Dialog open={reviewDialog} onOpenChange={setReviewDialog}>
-        <DialogContent>
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-lg rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Avaliar: {reviewLivro?.titulo}</DialogTitle>
             <DialogDescription>Dê uma nota e escreva sua resenha.</DialogDescription>
@@ -4977,11 +4977,11 @@ export default function PainelAluno() {
             </label>
           </div>
 
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setReviewDialog(false)}>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setReviewDialog(false)} className="w-full sm:w-auto">
               Cancelar
             </Button>
-            <Button onClick={handleSaveReview} disabled={saving}>
+            <Button onClick={handleSaveReview} disabled={saving} className="w-full sm:w-auto">
               {saving ? 'Salvando...' : 'Salvar'}
             </Button>
           </div>
@@ -4989,7 +4989,7 @@ export default function PainelAluno() {
       </Dialog>
 
       <Dialog open={requestDialog} onOpenChange={setRequestDialog}>
-        <DialogContent>
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-lg rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Solicitar empréstimo</DialogTitle>
             <DialogDescription>Solicitar: {requestLivro?.titulo}</DialogDescription>
@@ -5017,8 +5017,8 @@ export default function PainelAluno() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setRequestDialog(false)}>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setRequestDialog(false)} className="w-full sm:w-auto">
               Cancelar
             </Button>
             <Button
@@ -5027,6 +5027,7 @@ export default function PainelAluno() {
                 saving
                 || (requestLivro && (hasSolicitacaoEmAndamento(requestLivro.id) || hasEmprestimoAtivo(requestLivro.id)))
               }
+              className="w-full sm:w-auto"
             >
               {saving ? 'Enviando...' : 'Enviar solicitação'}
             </Button>
@@ -5045,7 +5046,7 @@ export default function PainelAluno() {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-lg rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Pedir extensão de prazo</DialogTitle>
             <DialogDescription>
@@ -5079,11 +5080,11 @@ export default function PainelAluno() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setExtensionDialogOpen(false)}>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setExtensionDialogOpen(false)} className="w-full sm:w-auto">
               Cancelar
             </Button>
-            <Button onClick={handleRequestLoanExtension} disabled={saving}>
+            <Button onClick={handleRequestLoanExtension} disabled={saving} className="w-full sm:w-auto">
               {saving ? 'Enviando...' : 'Enviar pedido'}
             </Button>
           </div>
@@ -5097,7 +5098,7 @@ export default function PainelAluno() {
           if (!open) setResumoSelecionado(null);
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>{resumoSelecionado?.titulo || 'Resumo completo'}</DialogTitle>
             {resumoSelecionado?.criadoEm && (
@@ -5117,7 +5118,7 @@ export default function PainelAluno() {
           if (!open) setSinopseLivroSelecionado(null);
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>{sinopseLivroSelecionado?.titulo || 'Sinopse completa'}</DialogTitle>
             {sinopseLivroSelecionado?.autor && (
@@ -5137,7 +5138,7 @@ export default function PainelAluno() {
           if (!open) setResumoRapidoData(null);
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>{resumoRapidoData?.titulo || 'Resumo rapido'}</DialogTitle>
             {resumoRapidoData?.autor && (
@@ -5162,7 +5163,7 @@ export default function PainelAluno() {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-xl rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Compartilhar criação na comunidade</DialogTitle>
             <DialogDescription>
@@ -5216,8 +5217,8 @@ export default function PainelAluno() {
             )}
           </div>
 
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShareCriacaoDialogOpen(false)}>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setShareCriacaoDialogOpen(false)} className="w-full sm:w-auto">
               Cancelar
             </Button>
             <Button
@@ -5229,6 +5230,7 @@ export default function PainelAluno() {
                 })
               }
               disabled={saving || !shareCriacaoItem}
+              className="w-full sm:w-auto"
             >
               {saving ? 'Compartilhando...' : 'Publicar na comunidade'}
             </Button>
@@ -5245,7 +5247,7 @@ export default function PainelAluno() {
           }
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-md rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Excluir criação salva</DialogTitle>
             <DialogDescription>
@@ -5263,14 +5265,15 @@ export default function PainelAluno() {
             </p>
           </div>
 
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setDeleteCriacaoDialogOpen(false)} disabled={saving}>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setDeleteCriacaoDialogOpen(false)} disabled={saving} className="w-full sm:w-auto">
               Cancelar
             </Button>
             <Button
               variant="destructive"
               onClick={() => apagarCriacaoLaboratorio(deleteCriacaoItem)}
               disabled={saving || !deleteCriacaoItem}
+              className="w-full sm:w-auto"
             >
               {saving ? 'Apagando...' : 'Confirmar exclusão'}
             </Button>
@@ -5287,7 +5290,7 @@ export default function PainelAluno() {
           }
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-md rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Excluir imagem</DialogTitle>
             <DialogDescription>
@@ -5299,11 +5302,11 @@ export default function PainelAluno() {
             Essa imagem será removida da montagem atual antes de salvar ou compartilhar.
           </div>
 
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setDeleteStudioSlideDialogOpen(false)}>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setDeleteStudioSlideDialogOpen(false)} className="w-full sm:w-auto">
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={confirmarExclusaoSlide} disabled={!deleteStudioSlideItem}>
+            <Button variant="destructive" onClick={confirmarExclusaoSlide} disabled={!deleteStudioSlideItem} className="w-full sm:w-auto">
               Remover imagem
             </Button>
           </div>
@@ -5311,7 +5314,7 @@ export default function PainelAluno() {
       </Dialog>
 
       <Dialog open={Boolean(selectedStudioImageUrl)} onOpenChange={(open) => !open && setSelectedStudioImageUrl('')}>
-        <DialogContent className="max-w-5xl">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-5xl rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Visualização ampliada</DialogTitle>
             <DialogDescription>Clique fora para fechar. Use a imagem em tamanho maior para analisar detalhes.</DialogDescription>
@@ -5335,7 +5338,7 @@ export default function PainelAluno() {
         <DialogContent
           onPointerDownOutside={(event) => event.preventDefault()}
           onEscapeKeyDown={(event) => event.preventDefault()}
-          className="[&>button:last-child]:hidden"
+          className="w-[calc(100vw-1rem)] max-w-lg rounded-2xl p-4 sm:p-6 [&>button:last-child]:hidden"
         >
           {onboardingStep === 0 && !alunoSenhaDefinida ? (
             <>
@@ -5376,6 +5379,7 @@ export default function PainelAluno() {
                 <Button
                   onClick={handlePrimeiroAcessoPassword}
                   disabled={updatingPrimeiroAcessoPassword}
+                  className="w-full sm:w-auto"
                 >
                   {updatingPrimeiroAcessoPassword ? 'Salvando...' : 'Salvar e continuar'}
                 </Button>
@@ -5394,11 +5398,11 @@ export default function PainelAluno() {
               </div>
               <div className="flex justify-end gap-2">
                 {onboardingStep < ALUNO_ONBOARDING_CARDS.length ? (
-                  <Button type="button" onClick={() => setOnboardingStep((prev) => prev + 1)}>
+                  <Button type="button" onClick={() => setOnboardingStep((prev) => prev + 1)} className="w-full sm:w-auto">
                     Próximo
                   </Button>
                 ) : (
-                  <Button type="button" onClick={finalizeAlunoOnboarding}>
+                  <Button type="button" onClick={finalizeAlunoOnboarding} className="w-full sm:w-auto">
                     Finalizar
                   </Button>
                 )}
