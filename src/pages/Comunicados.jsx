@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { AudioLines, BellRing, CalendarClock, Download, ImagePlus, Mic, Megaphone, PauseCircle, Send, Upload, Users, X } from 'lucide-react';
+import { AudioLines, BellRing, CalendarClock, Download, ImagePlus, Mic, Megaphone, PauseCircle, Send, Trash2, Upload, Users, X } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { AudioMessagePlayer } from '@/components/community/AudioMessagePlayer';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { createComunidadePost, fetchComunidadeAlunoData } from '@/services/comunidadeAlunoService';
+import { createComunidadePost, deleteComunidadePost, fetchComunidadeAlunoData } from '@/services/comunidadeAlunoService';
 import { deleteR2Object, getR2DownloadUrl, uploadFileToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
 import { cn } from '@/lib/utils';
@@ -128,6 +129,7 @@ async function resolveComunicadoMedia(post) {
   return {
     ...(post || {}),
     imagem_urls_r2_keys: ensureArray(post?.imagem_urls),
+    audio_url_r2_key: String(post?.audio_url || '').trim(),
     imagem_urls: await resolveR2MediaUrls(ensureArray(post?.imagem_urls), `comunicado-${post?.id || 'item'}`),
     audio_url: await resolveR2MediaUrl(post?.audio_url, `comunicado-${post?.id || 'item'}.webm`),
   };
@@ -163,6 +165,7 @@ export default function Comunicados() {
   const [busca, setBusca] = useState('');
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [selectedImagePreview, setSelectedImagePreview] = useState({ src: '', title: 'Visualizacao da imagem' });
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingLevels, setRecordingLevels] = useState(() => Array.from({ length: 24 }, () => 0.18));
@@ -669,6 +672,40 @@ export default function Comunicados() {
     }
   };
 
+  const handleDeleteComunicado = async () => {
+    const post = deleteTarget || null;
+    if (!post?.id || !perfil?.id) return;
+
+    setSaving(true);
+    try {
+      const response = await deleteComunidadePost(post.id, perfil.id, { roleHint: profileRoleHint });
+      if (!response?.deleted) {
+        throw new Error('Voce so pode apagar comunicados enviados por voce.');
+      }
+
+      const cleanupTargets = [
+        ...ensureArray(post?.imagem_urls_r2_keys),
+        post?.audio_url_r2_key || null,
+      ].map((item) => String(item || '').trim()).filter(Boolean);
+
+      if (cleanupTargets.length > 0) {
+        await Promise.all(cleanupTargets.map((objectKey) => deleteR2Object(objectKey).catch(() => null)));
+      }
+
+      setPosts((current) => current.filter((item) => item?.id !== post.id));
+      setDeleteTarget(null);
+      toast({ title: 'Comunicado apagado!' });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao apagar comunicado',
+        description: error?.message || 'Nao foi possivel apagar o comunicado.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (isSuperAdmin || userRole === 'super_admin') {
     return <Navigate to="/admin/tenants" replace />;
   }
@@ -952,6 +989,21 @@ export default function Comunicados() {
                           {formatDateTimeBR(post.created_at)}
                         </div>
                         {post.expires_at ? <p className="mt-1">Sai em {formatDateTimeBR(post.expires_at)}</p> : null}
+                        {canPublish && String(post?.autor_id || '').trim() === String(perfil?.id || '').trim() ? (
+                          <div className="mt-3 flex justify-end">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="rounded-xl text-destructive hover:text-destructive"
+                              onClick={() => setDeleteTarget(post)}
+                              disabled={saving}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Apagar
+                            </Button>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
 
@@ -999,6 +1051,32 @@ export default function Comunicados() {
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && !saving && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apagar comunicado?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Este comunicado sera removido do mural e os anexos relacionados tambem serao apagados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="rounded-2xl border bg-muted/30 p-4 text-sm">
+            <p className="font-medium">{deleteTarget?.titulo || 'Novo comunicado'}</p>
+            <p className="mt-2 text-muted-foreground">{deleteTarget?.conteudo || 'Sem mensagem adicional.'}</p>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteComunicado}
+              disabled={saving}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {saving ? 'Apagando...' : 'Apagar comunicado'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
         <DialogContent className="max-w-5xl overflow-hidden border-emerald-100 bg-white/95 p-4 sm:p-6 dark:border-white/10 dark:bg-slate-950/95">
           <DialogHeader>
