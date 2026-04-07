@@ -6,7 +6,7 @@ import { AudioLines, Check, ChevronsUpDown, Filter, Heart, ImagePlus, MessageSqu
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -135,34 +135,61 @@ function LivroCombobox({
   livros,
   value,
   onChange,
+  searchValue = '',
+  onSearchChange,
   placeholder = 'Sem livro especifico',
   emptyMessage = 'Nenhum livro encontrado.',
 }) {
   const [open, setOpen] = useState(false);
+  const normalizedSearch = String(searchValue || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 
   const livroSelecionado = useMemo(
     () => livros.find((item) => item.id === value) || null,
     [livros, value],
   );
 
+  const livrosFiltrados = useMemo(() => {
+    if (!normalizedSearch) return livros;
+    return livros.filter((item) => {
+      const haystack = `${item?.titulo || ''} ${item?.autor || ''}`
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+      return haystack.includes(normalizedSearch);
+    });
+  }, [livros, normalizedSearch]);
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className="w-full justify-between border-input font-normal"
-        >
-          <span className={cn('truncate text-left', !livroSelecionado && 'text-muted-foreground')}>
-            {livroSelecionado ? formatLivroOptionLabel(livroSelecionado) : placeholder}
-          </span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
+      <div className="space-y-2">
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between border-input font-normal"
+          >
+            <span className={cn('truncate text-left', !livroSelecionado && 'text-muted-foreground')}>
+              {livroSelecionado ? formatLivroOptionLabel(livroSelecionado) : placeholder}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <Input
+          value={searchValue}
+          onChange={(e) => {
+            onSearchChange?.(e.target.value);
+            if (!open) setOpen(true);
+          }}
+          placeholder="Pesquisar livro por titulo ou autor"
+        />
+      </div>
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
         <Command>
-          <CommandInput placeholder="Pesquisar livro por titulo ou autor..." />
           <CommandList>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
@@ -176,12 +203,13 @@ function LivroCombobox({
                 <Check className={cn('mr-2 h-4 w-4', !value ? 'opacity-100' : 'opacity-0')} />
                 Sem livro especifico
               </CommandItem>
-              {livros.map((livro) => (
+              {livrosFiltrados.map((livro) => (
                 <CommandItem
                   key={livro.id}
                   value={`${livro.titulo || ''} ${livro.autor || ''}`.trim()}
                   onSelect={() => {
                     onChange(livro.id);
+                    onSearchChange?.(formatLivroOptionLabel(livro));
                     setOpen(false);
                   }}
                 >
@@ -1542,14 +1570,11 @@ export default function ComunidadeAluno() {
                   livros={livros}
                   value={postLivroId}
                   onChange={setPostLivroId}
-                />
-                <Input
-                  value={postLivroNomeManual}
-                  onChange={(e) => setPostLivroNomeManual(e.target.value)}
-                  placeholder="Ou digite o nome do livro que você quer citar"
+                  searchValue={postLivroNomeManual}
+                  onSearchChange={setPostLivroNomeManual}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Você pode selecionar um livro da biblioteca ou escrever o nome manualmente.
+                  Use o campo abaixo para pesquisar por titulo ou autor. Se nao selecionar um livro, o texto digitado continua como referencia manual.
                 </p>
               </div>
               {(isProfessor || (canPublicarComunicado && postTipo === 'comunicado')) && (
