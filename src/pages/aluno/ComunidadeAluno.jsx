@@ -1,13 +1,15 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { AudioLines, Filter, Heart, ImagePlus, MessageSquare, Pencil, Plus, Send, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import { AudioLines, Check, ChevronsUpDown, Filter, Heart, ImagePlus, MessageSquare, Pencil, Plus, Send, Sparkles, Trash2, Upload, X } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -26,6 +28,7 @@ import {
 } from '@/services/comunidadeAlunoService';
 import { uploadDataUrlToR2, uploadFileToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
+import { cn } from '@/lib/utils';
 import { AudioMessagePlayer } from '@/components/community/AudioMessagePlayer';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
@@ -120,6 +123,83 @@ function safeNestedName(value, fallback = 'Usuario') {
     return safeText(first?.nome, fallback);
   }
   return safeText(value?.nome, fallback);
+}
+
+function formatLivroOptionLabel(livro) {
+  if (!livro) return '';
+  const autor = String(livro.autor || '').trim();
+  return autor ? `${livro.titulo} - ${autor}` : livro.titulo;
+}
+
+function LivroCombobox({
+  livros,
+  value,
+  onChange,
+  placeholder = 'Sem livro especifico',
+  emptyMessage = 'Nenhum livro encontrado.',
+}) {
+  const [open, setOpen] = useState(false);
+
+  const livroSelecionado = useMemo(
+    () => livros.find((item) => item.id === value) || null,
+    [livros, value],
+  );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between border-input font-normal"
+        >
+          <span className={cn('truncate text-left', !livroSelecionado && 'text-muted-foreground')}>
+            {livroSelecionado ? formatLivroOptionLabel(livroSelecionado) : placeholder}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Pesquisar livro por titulo ou autor..." />
+          <CommandList>
+            <CommandEmpty>{emptyMessage}</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="Sem livro especifico"
+                onSelect={() => {
+                  onChange('');
+                  setOpen(false);
+                }}
+              >
+                <Check className={cn('mr-2 h-4 w-4', !value ? 'opacity-100' : 'opacity-0')} />
+                Sem livro especifico
+              </CommandItem>
+              {livros.map((livro) => (
+                <CommandItem
+                  key={livro.id}
+                  value={`${livro.titulo || ''} ${livro.autor || ''}`.trim()}
+                  onSelect={() => {
+                    onChange(livro.id);
+                    setOpen(false);
+                  }}
+                >
+                  <Check className={cn('mr-2 h-4 w-4', value === livro.id ? 'opacity-100' : 'opacity-0')} />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate">{livro.titulo || 'Livro sem titulo'}</span>
+                    {livro.autor ? (
+                      <span className="text-xs text-muted-foreground">{livro.autor}</span>
+                    ) : null}
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 function decodeJsonBase64(value) {
@@ -1458,18 +1538,11 @@ export default function ComunidadeAluno() {
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label>Livro da biblioteca (opcional)</Label>
-                <select
-                  value={postLivroId || 'none'}
-                  onChange={(e) => setPostLivroId(e.target.value === 'none' ? '' : e.target.value)}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="none">Sem livro especifico</option>
-                  {livros.map((livro) => (
-                    <option key={livro.id} value={livro.id}>
-                      {livro.titulo}
-                    </option>
-                    ))}
-                </select>
+                <LivroCombobox
+                  livros={livros}
+                  value={postLivroId}
+                  onChange={setPostLivroId}
+                />
                 <Input
                   value={postLivroNomeManual}
                   onChange={(e) => setPostLivroNomeManual(e.target.value)}
