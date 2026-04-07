@@ -1,5 +1,5 @@
 ﻿import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { Loader2, Eye, EyeOff, QrCode, ShieldCheck, Smartphone, MonitorSmartphone, MailCheck } from 'lucide-react';
 
@@ -910,9 +910,14 @@ export default function Auth() {
           <div className="rounded-lg border border-border/70 bg-muted/30 px-4 py-3 text-left">
             <p className="text-sm text-muted-foreground">
               Ao fazer login, você aceita os{' '}
-              <Link to="/privacidade" className="font-medium text-primary underline underline-offset-4">
+              <a
+                href="/privacy-policy.html"
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-primary underline underline-offset-4"
+              >
                 termos de privacidade
-              </Link>
+              </a>
               .
             </p>
           </div>
