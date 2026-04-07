@@ -501,6 +501,55 @@ function getAutoBatchSizes(total) {
   return [8, 6, 4, 3, 2, 1];
 }
 
+function buildParallelBatchPlan(constraints, maxChunkSize = 6) {
+  const total = Number.isInteger(constraints?.total) ? Math.max(0, constraints.total) : 0;
+  const choiceCount = Number.isInteger(constraints?.choiceCount) ? Math.max(0, constraints.choiceCount) : null;
+  const openCount = Number.isInteger(constraints?.openCount) ? Math.max(0, constraints.openCount) : null;
+  const chunks = [];
+
+  if (!total) return chunks;
+
+  let remainingTotal = total;
+  let remainingChoice = choiceCount;
+  let remainingOpen = openCount;
+
+  while (remainingTotal > 0) {
+    const chunkTotal = Math.min(maxChunkSize, remainingTotal);
+    let chunkChoice = null;
+    let chunkOpen = null;
+
+    if (Number.isInteger(remainingChoice) && Number.isInteger(remainingOpen)) {
+      chunkChoice = Math.min(remainingChoice, chunkTotal);
+      chunkOpen = Math.min(remainingOpen, Math.max(0, chunkTotal - chunkChoice));
+
+      if ((chunkChoice + chunkOpen) < chunkTotal) {
+        const missing = chunkTotal - (chunkChoice + chunkOpen);
+        if ((remainingChoice - chunkChoice) >= (remainingOpen - chunkOpen)) chunkChoice += missing;
+        else chunkOpen += missing;
+      }
+
+      remainingChoice -= chunkChoice;
+      remainingOpen -= chunkOpen;
+    } else if (Number.isInteger(remainingChoice)) {
+      chunkChoice = Math.min(remainingChoice, chunkTotal);
+      remainingChoice -= chunkChoice;
+    } else if (Number.isInteger(remainingOpen)) {
+      chunkOpen = Math.min(remainingOpen, chunkTotal);
+      remainingOpen -= chunkOpen;
+    }
+
+    chunks.push({
+      total: chunkTotal,
+      choiceCount: chunkChoice,
+      openCount: chunkOpen,
+    });
+
+    remainingTotal -= chunkTotal;
+  }
+
+  return chunks;
+}
+
 function buildActivityGenerationPrompt({
   teacherPrompt,
   constraints,
@@ -510,6 +559,7 @@ function buildActivityGenerationPrompt({
   remainingQuestions = 0,
   existingQuestions = [],
   overallConstraints = null,
+  batchLabel = '',
 }) {
   const effectiveConstraints = constraints || {};
   const referenceConstraints = overallConstraints || effectiveConstraints;
@@ -541,6 +591,7 @@ function buildActivityGenerationPrompt({
     lines.push(`- gere somente as ${remainingQuestions} perguntas faltantes`);
     lines.push('- nao repita perguntas ja criadas');
     lines.push('- nao devolva titulo, descricao ou pontos_extras novamente');
+    if (batchLabel) lines.push(`- este lote interno e identificado como ${batchLabel}; entregue perguntas diferentes das demais`);
     lines.push(`Perguntas ja criadas: ${JSON.stringify(existingQuestions)}`);
   }
 
@@ -572,61 +623,71 @@ async function completeQuestionsWithAI({
   const countChoice = () => perguntas.filter((item) => item.tipo === 'multipla_escolha').length;
   const countOpen = () => perguntas.filter((item) => item.tipo !== 'multipla_escolha').length;
   const requestedTotal = Number.isInteger(requestedConstraints?.total) ? requestedConstraints.total : null;
-  const batchSizes = getAutoBatchSizes(requestedTotal);
+  const appendUniqueQuestions = (nextQuestions) => {
+    const uniqueQuestions = nextQuestions.filter((candidate) => (
+      candidate.pergunta
+      && !perguntas.some((existing) => normalizeAiLookup(existing.pergunta) === normalizeAiLookup(candidate.pergunta))
+    ));
+
+    if (uniqueQuestions.length > 0) {
+      perguntas = [...perguntas, ...uniqueQuestions];
+    }
+
+    return uniqueQuestions.length;
+  };
 
   if (Number.isInteger(requestedTotal)) {
     let stalledRounds = 0;
 
-    while (perguntas.length < requestedTotal && stalledRounds < 8) {
-      const beforeRound = perguntas.length;
+    while (perguntas.length < requestedTotal && stalledRounds < 3) {
+      const faltantes = requestedTotal - perguntas.length;
+      const remainingConstraints = {
+        total: faltantes,
+        choiceCount: Number.isInteger(requestedConstraints.choiceCount)
+          ? Math.max(0, requestedConstraints.choiceCount - countChoice())
+          : null,
+        openCount: Number.isInteger(requestedConstraints.openCount)
+          ? Math.max(0, requestedConstraints.openCount - countOpen())
+          : null,
+      };
 
-      for (const batchSize of batchSizes) {
-        if (perguntas.length >= requestedTotal) break;
-        const faltantes = requestedTotal - perguntas.length;
+      const maxChunkSize = faltantes > 10 ? 6 : faltantes > 6 ? 4 : 3;
+      const parallelChunks = buildParallelBatchPlan(remainingConstraints, maxChunkSize).slice(0, 3);
+      if (parallelChunks.length === 0) break;
 
-        const remainingConstraints = {
-          total: faltantes,
-          choiceCount: Number.isInteger(requestedConstraints.choiceCount)
-            ? Math.max(0, requestedConstraints.choiceCount - countChoice())
-            : null,
-          openCount: Number.isInteger(requestedConstraints.openCount)
-            ? Math.max(0, requestedConstraints.openCount - countOpen())
-            : null,
-        };
-        const batchConstraints = buildBatchConstraints(remainingConstraints, Math.min(batchSize, faltantes));
+      const existingQuestions = perguntas.map((item) => ({
+        tipo: item.tipo,
+        pergunta: item.pergunta,
+      }));
+
+      const generatedBatches = await Promise.all(parallelChunks.map(async (chunk, index) => {
         const continuationPrompt = buildActivityGenerationPrompt({
           teacherPrompt,
-          constraints: batchConstraints,
+          constraints: chunk,
           livrosDisponiveis,
           professorTurmasPermitidas,
           continuation: true,
-          remainingQuestions: batchConstraints.total || faltantes,
-          existingQuestions: perguntas.map((item) => ({
-            tipo: item.tipo,
-            pergunta: item.pergunta,
-          })),
+          remainingQuestions: chunk.total || faltantes,
+          existingQuestions,
           overallConstraints: requestedConstraints,
+          batchLabel: `lote_${index + 1}`,
         });
 
-        const continuationGenerated = await generateTextWithCloudflare({
+        return generateTextWithCloudflare({
           prompt: continuationPrompt,
           skipCache: true,
           fallbackErrorMessage: 'Nao foi possivel completar todas as questoes com IA agora.',
         });
+      }));
 
-        const continuationDraft = extractActivityDraftFromIAResponse(continuationGenerated);
+      let addedThisRound = 0;
+      generatedBatches.forEach((generatedBatch) => {
+        const continuationDraft = extractActivityDraftFromIAResponse(generatedBatch);
         const continuationQuestions = buildQuestionsFromAI(continuationDraft.perguntas);
-        const uniqueQuestions = continuationQuestions.filter((candidate) => (
-          candidate.pergunta
-          && !perguntas.some((existing) => normalizeAiLookup(existing.pergunta) === normalizeAiLookup(candidate.pergunta))
-        ));
+        addedThisRound += appendUniqueQuestions(continuationQuestions);
+      });
 
-        if (uniqueQuestions.length > 0) {
-          perguntas = [...perguntas, ...uniqueQuestions];
-        }
-      }
-
-      if (perguntas.length === beforeRound) stalledRounds += 1;
+      if (addedThisRound === 0) stalledRounds += 1;
       else stalledRounds = 0;
     }
   }
@@ -634,7 +695,7 @@ async function completeQuestionsWithAI({
   if (Number.isInteger(requestedTotal) && perguntas.length < requestedTotal) {
     let stalledAttempts = 0;
 
-    while (perguntas.length < requestedTotal && stalledAttempts < 20) {
+    while (perguntas.length < requestedTotal && stalledAttempts < 6) {
       const remainingChoice = Number.isInteger(requestedConstraints.choiceCount)
         ? Math.max(0, requestedConstraints.choiceCount - countChoice())
         : null;
@@ -675,17 +736,12 @@ async function completeQuestionsWithAI({
 
       const singleDraft = extractActivityDraftFromIAResponse(singleGenerated);
       const singleQuestions = buildQuestionsFromAI(singleDraft.perguntas);
-      const uniqueSingle = singleQuestions.filter((candidate) => (
-        candidate.pergunta
-        && !perguntas.some((existing) => normalizeAiLookup(existing.pergunta) === normalizeAiLookup(candidate.pergunta))
-      ));
+      const uniqueSingle = singleQuestions.filter((candidate) => candidate.pergunta);
 
-      if (uniqueSingle.length === 0) {
+      if (appendUniqueQuestions(uniqueSingle) === 0) {
         stalledAttempts += 1;
         continue;
       }
-
-      perguntas = [...perguntas, uniqueSingle[0]];
       stalledAttempts = 0;
     }
   }
@@ -797,6 +853,19 @@ export default function PainelProfessor() {
     () => entregas.filter((item) => item.status !== 'aprovada').length,
     [entregas],
   );
+
+  const canPublishActivity = useMemo(() => {
+    if (!atividadeForm.titulo.trim()) return false;
+    if (atividadeForm.target_mode === 'aluno') return Boolean(atividadeForm.aluno_id);
+    if (atividadeForm.target_mode === 'turma') return Boolean(atividadeForm.turma);
+    return destinoResumo > 0;
+  }, [
+    atividadeForm.aluno_id,
+    atividadeForm.target_mode,
+    atividadeForm.titulo,
+    atividadeForm.turma,
+    destinoResumo,
+  ]);
 
   const pontosDistribuidos = useMemo(
     () => entregas
@@ -2025,7 +2094,16 @@ export default function PainelProfessor() {
                   </div>
 
                   <div className="sticky bottom-0 mt-5 flex flex-col gap-2 border-t bg-muted/95 pt-4 backdrop-blur supports-[backdrop-filter]:bg-muted/80">
-                    <Button onClick={handleSaveAtividade} disabled={saving} className="rounded-2xl">
+                    {canPublishActivity && (
+                      <p className="text-center text-xs font-medium text-primary">
+                        A atividade está pronta para publicar.
+                      </p>
+                    )}
+                    <Button
+                      onClick={handleSaveAtividade}
+                      disabled={saving}
+                      className={`rounded-2xl transition-all ${canPublishActivity ? 'bg-primary shadow-lg shadow-primary/25 ring-2 ring-primary/20 hover:bg-primary/90' : ''}`}
+                    >
                       {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       {editingAtividade ? 'Salvar alterações' : 'Publicar atividade'}
                     </Button>
