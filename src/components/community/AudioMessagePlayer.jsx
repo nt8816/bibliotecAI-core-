@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pause, Play, Radio, Volume2 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -35,6 +36,7 @@ export function AudioMessagePlayer({
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [loadedDuration, setLoadedDuration] = useState(Number(durationSeconds) || 0);
+  const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 
   const totalDuration = loadedDuration || Number(durationSeconds) || 0;
   const progressValue = totalDuration > 0 ? Math.min(100, (currentTime / totalDuration) * 100) : 0;
@@ -72,6 +74,7 @@ export function AudioMessagePlayer({
   const startPlaybackVisualization = async () => {
     const audio = audioRef.current;
     if (!audio) return;
+    if (isNativeAndroid) return;
 
     if (typeof window === 'undefined') return;
     const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
@@ -185,7 +188,7 @@ export function AudioMessagePlayer({
       audio.removeEventListener('pause', handlePause);
       audio.removeEventListener('play', handlePlay);
     };
-  }, [durationSeconds]);
+  }, [durationSeconds, isNativeAndroid]);
 
   useEffect(() => {
     setCurrentTime(0);
@@ -220,6 +223,9 @@ export function AudioMessagePlayer({
 
     if (audio.paused) {
       try {
+        if (audio.readyState === 0) {
+          audio.load();
+        }
         await audio.play();
       } catch {
         setIsPlaying(false);
@@ -248,7 +254,7 @@ export function AudioMessagePlayer({
         className,
       )}
     >
-      <audio ref={audioRef} src={src} preload="metadata" crossOrigin="anonymous" />
+      <audio ref={audioRef} src={src} preload="metadata" {...(isNativeAndroid ? {} : { crossOrigin: 'anonymous' })} />
 
       <div className="flex items-center gap-3">
         <Button
