@@ -29,7 +29,7 @@ import {
   toggleAdminTenantStatus,
 } from '@/services/adminTenantsService';
 
-const DEFAULT_BASE_DOMAIN = import.meta.env.VITE_APP_BASE_DOMAIN || 'bibliotec-ai-core.vercel.app';
+const DEFAULT_BASE_DOMAIN = import.meta.env.VITE_APP_BASE_DOMAIN || 'bibliotecai.com.br';
 
 function isMissingProvisionTenantSignature(error) {
   const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
