@@ -18,6 +18,7 @@ import { ConnectivityStatus } from '@/components/ConnectivityStatus';
 import { NativePushBridge } from '@/components/NativePushBridge';
 
 const Auth = lazy(() => import('./pages/Auth'));
+const Privacidade = lazy(() => import('./pages/Privacidade'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Livros = lazy(() => import('./pages/Livros.jsx'));
 const Usuarios = lazy(() => import('./pages/Usuarios.jsx'));
@@ -73,6 +74,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/auth" element={<Auth />} />
+      <Route path="/privacidade" element={<Privacidade />} />
       <Route path="/admin/acesso" element={<AdminAcesso />} />
       <Route path="/admin/login" element={<Navigate to="/admin/acesso" replace />} />
       <Route path="/acesso-admin" element={<Navigate to="/admin/acesso" replace />} />
