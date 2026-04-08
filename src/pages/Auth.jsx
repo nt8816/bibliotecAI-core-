@@ -715,7 +715,7 @@ export default function Auth() {
         );
       }
 
-      if (!localAuthenticatorAvailable && isMobileDevice()) {
+      if (!localAuthenticatorAvailable && isMobileDevice() && securityStep !== 'passkey_enrollment') {
         throw new Error('O navegador informou que o autenticador local do aparelho nao esta disponivel para passkeys neste dominio.');
       }
 

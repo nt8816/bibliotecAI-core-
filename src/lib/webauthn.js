@@ -161,7 +161,9 @@ function normalizePasskeyError(error, actionLabel) {
 
   if (normalized.includes('the operation either timed out or was not allowed')) {
     return withOriginalMetadata(new Error(
-      `A validacao da passkey nao foi concluida neste aparelho. Se nao houver chave de acesso salva para este dominio, cadastre uma nova passkey no bloqueio de tela do dispositivo.`,
+      actionLabel === 'cadastrar'
+        ? 'O cadastro da nova passkey nao foi concluido neste aparelho. O gerenciador de credenciais cancelou ou recusou a criacao da chave de acesso para este dominio.'
+        : 'A validacao da passkey nao foi concluida neste aparelho.',
     ));
   }
 
