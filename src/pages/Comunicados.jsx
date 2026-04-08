@@ -649,6 +649,9 @@ export default function Comunicados() {
       const createdPost = await resolveComunicadoMedia({
         id: result?.postId || crypto.randomUUID(),
         ...payload,
+        autor_id: perfil.id,
+        autor_nome: perfil.nome || null,
+        usuarios_biblioteca: perfil?.nome ? { nome: perfil.nome } : null,
         created_at: new Date().toISOString(),
       });
 

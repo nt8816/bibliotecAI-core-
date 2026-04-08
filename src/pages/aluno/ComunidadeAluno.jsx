@@ -151,6 +151,9 @@ function LivroCombobox({
     () => livros.find((item) => item.id === value) || null,
     [livros, value],
   );
+  const displayedValue = String(
+    searchValue || (livroSelecionado ? formatLivroOptionLabel(livroSelecionado) : ''),
+  );
 
   const livrosFiltrados = useMemo(() => {
     if (!normalizedSearch) return livros;
@@ -165,28 +168,28 @@ function LivroCombobox({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <div className="space-y-2">
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            role="combobox"
-            aria-expanded={open}
-            className="w-full justify-between border-input font-normal"
-          >
-            <span className={cn('truncate text-left', !livroSelecionado && 'text-muted-foreground')}>
-              {livroSelecionado ? formatLivroOptionLabel(livroSelecionado) : placeholder}
-            </span>
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-          </Button>
-        </PopoverTrigger>
+      <div className="relative">
         <Input
-          value={searchValue}
+          value={displayedValue}
           onChange={(e) => {
-            onSearchChange?.(e.target.value);
+            const nextValue = e.target.value;
+            onSearchChange?.(nextValue);
+            if (!nextValue.trim()) onChange('');
             if (!open) setOpen(true);
           }}
+          onFocus={() => setOpen(true)}
           placeholder="Pesquisar livro por titulo ou autor"
+          className="pr-10"
         />
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label="Abrir lista de livros"
+            className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-muted-foreground"
+          >
+            <ChevronsUpDown className="h-4 w-4 opacity-50" />
+          </button>
+        </PopoverTrigger>
       </div>
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
         <Command>
@@ -197,6 +200,7 @@ function LivroCombobox({
                 value="Sem livro especifico"
                 onSelect={() => {
                   onChange('');
+                  onSearchChange?.('');
                   setOpen(false);
                 }}
               >
@@ -1573,9 +1577,10 @@ export default function ComunidadeAluno() {
                   onChange={setPostLivroId}
                   searchValue={postLivroNomeManual}
                   onSearchChange={setPostLivroNomeManual}
+                  placeholder="Pesquisar livro por titulo ou autor"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Use o campo abaixo para pesquisar por titulo ou autor. Se nao selecionar um livro, o texto digitado continua como referencia manual.
+                  Pesquise por titulo ou autor. Se nao selecionar um livro da lista, o texto digitado continua como referencia manual.
                 </p>
               </div>
               {(isProfessor || (canPublicarComunicado && postTipo === 'comunicado')) && (
