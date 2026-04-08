@@ -55,7 +55,32 @@ const queryClient = new QueryClient({
   },
 });
 
+function isLegacyDisabledHost() {
+  if (typeof window === 'undefined') return false;
+  return String(window.location.hostname || '').toLowerCase() === 'bibliotec-ai-core.vercel.app';
+}
+
+function LegacyHostShutdownNotice() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-6">
+      <div className="w-full max-w-2xl rounded-3xl border border-destructive/35 bg-card/95 p-8 text-center shadow-[0_20px_50px_hsl(var(--destructive)/0.12)] backdrop-blur-sm">
+        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-destructive/80">Host desativado</p>
+        <h1 className="mt-4 text-3xl font-black tracking-tight text-destructive sm:text-4xl">
+          APLICACAO FORA DO AR PERMANENTEMENTE
+        </h1>
+        <p className="mt-4 text-base leading-7 text-muted-foreground sm:text-lg">
+          Contate rapidamente o responsavel mais proximo.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function AppRoutes() {
+  if (isLegacyDisabledHost()) {
+    return <LegacyHostShutdownNotice />;
+  }
+
   const { loading, isTenantHost, tenant, error } = useTenant();
 
   if (loading) {
