@@ -4,6 +4,7 @@ const TEXT_CACHE_TTL_MS = 10 * 60 * 1000;
 const textResponseCache = new Map();
 
 const ensureObject = (value) => (value && typeof value === 'object' ? value : {});
+const hasOwnKeys = (value) => Boolean(value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0);
 
 const SECRET_PATTERNS = [
   /api[_-]?key/i,
@@ -341,7 +342,12 @@ export const generateTextWithCloudflare = async ({
     const rawText = fragments.join('\n\n').trim();
     const structuredData = extractStructuredDataFromPayload(payload);
     const textJson = extractJsonFromText(rawText);
-    const data = ensureObject(payload.data || structuredData || textJson);
+    const data = ensureObject(
+      (hasOwnKeys(payload.data) && payload.data)
+        || (hasOwnKeys(structuredData) && structuredData)
+        || (hasOwnKeys(textJson) && textJson)
+        || {},
+    );
     const text = String(
       payload.text
         || data.text
