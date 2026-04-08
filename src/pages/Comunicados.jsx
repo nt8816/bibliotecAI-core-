@@ -129,6 +129,16 @@ function downloadFromUrl(url, fileName = 'arquivo') {
   document.body.removeChild(link);
 }
 
+function repairMojibakeText(value) {
+  const text = String(value ?? '');
+  if (!text || !/[ÃÂ]/.test(text)) return text;
+  try {
+    return decodeURIComponent(escape(text));
+  } catch {
+    return text;
+  }
+}
+
 async function resolveComunicadoMedia(post) {
   return {
     ...(post || {}),
@@ -1203,7 +1213,7 @@ export default function Comunicados() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="grid gap-3 md:grid-cols-[56px_minmax(0,1fr)]">
                   <FileQuestion className="h-5 w-5 text-primary" />
-                  <CardTitle className="text-base">Formulários enviados</CardTitle>
+                  <CardTitle className="text-base">{repairMojibakeText('Formulários enviados')}</CardTitle>
                 </div>
                 <Button
                   type="button"
@@ -1214,20 +1224,20 @@ export default function Comunicados() {
                   }}
                 >
                   <Plus className="mr-2 h-4 w-4" />
-                  Adicionar formulário
+                  {repairMojibakeText('Adicionar formulário')}
                 </Button>
               </div>
               <p className="text-sm text-muted-foreground">
-                Esta área acompanha os formulários reais que você publicou para os alunos, dentro do fluxo de comunicados.
+                {repairMojibakeText('Esta área acompanha os formulários reais que você publicou para os alunos, dentro do fluxo de comunicados.')}
               </p>
             </CardHeader>
             <CardContent>
               {loading ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">Carregando formulários...</p>
+                <p className="py-6 text-center text-sm text-muted-foreground">{repairMojibakeText('Carregando formulários...')}</p>
               ) : formulariosProfessor.length === 0 ? (
                 <div className="rounded-[28px] border border-dashed p-8 text-center">
                   <FileQuestion className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Nenhum formulário publicado por você no momento.</p>
+                  <p className="text-sm text-muted-foreground">{repairMojibakeText('Nenhum formulário publicado por você no momento.')}</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -1237,10 +1247,10 @@ export default function Comunicados() {
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                              {atividade.titulo || 'Formulário sem título'}
+                              {repairMojibakeText(atividade.titulo || 'Formulário sem título')}
                             </p>
                             <Badge className="bg-primary/10 text-primary hover:bg-primary/10">
-                              {atividade.meta.perguntas.length} questões
+                              {atividade.meta.perguntas.length} {repairMojibakeText('questões')}
                             </Badge>
                             <Badge variant="outline">
                               {atividade.respostas.length} respostas
@@ -1429,7 +1439,7 @@ export default function Comunicados() {
       <Dialog open={isFormularioDialogOpen} onOpenChange={setIsFormularioDialogOpen}>
         <DialogContent className="flex h-[min(92vh,960px)] w-[min(96vw,1240px)] max-w-none flex-col overflow-hidden rounded-[28px] border border-primary/10 bg-background p-0 shadow-[0_28px_120px_rgba(15,23,42,0.28)]">
           <DialogHeader className="border-b border-border/60 bg-gradient-to-r from-primary/8 via-background to-emerald-500/8 px-8 py-6">
-            <DialogTitle className="text-2xl font-semibold tracking-tight">Novo formulário</DialogTitle>
+            <DialogTitle className="text-2xl font-semibold tracking-tight">{repairMojibakeText('Novo formulário')}</DialogTitle>
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto px-8 py-7">
@@ -1437,27 +1447,27 @@ export default function Comunicados() {
               <div className="rounded-[26px] border border-primary/10 bg-card/80 p-6 shadow-sm">
                 <div className="grid gap-6 lg:grid-cols-2">
                   <div className="space-y-3 lg:col-span-2">
-                    <Label className="text-sm font-medium text-foreground/85">Título</Label>
+                    <Label className="text-sm font-medium text-foreground/85">{repairMojibakeText('Título')}</Label>
                     <Input
                       className="h-14 rounded-2xl border-primary/15 bg-background px-5 text-base shadow-sm"
                       value={formularioForm.titulo}
                       onChange={(e) => setFormularioForm((prev) => ({ ...prev, titulo: e.target.value }))}
-                      placeholder="Ex.: Reflexão sobre o capítulo 3"
+                      placeholder={repairMojibakeText('Ex.: Reflexão sobre o capítulo 3')}
                     />
                   </div>
 
                   <div className="space-y-3">
-                    <Label className="text-sm font-medium text-foreground/85">Destino</Label>
+                    <Label className="text-sm font-medium text-foreground/85">{repairMojibakeText('Destino')}</Label>
                     <Select
                       value={formularioForm.turma || 'none'}
                       onValueChange={(value) => setFormularioForm((prev) => ({ ...prev, turma: value === 'none' ? '' : value }))}
                     >
                       <SelectTrigger className="h-14 rounded-2xl border-primary/20 bg-muted/20 px-5 text-left text-base shadow-sm transition focus:ring-2 focus:ring-primary/20">
-                        <SelectValue placeholder="Selecione a turma" />
+                        <SelectValue placeholder={repairMojibakeText('Selecione a turma')} />
                       </SelectTrigger>
                       <SelectContent className="rounded-2xl border-primary/20 bg-background/95 shadow-[0_18px_40px_rgba(16,24,40,0.16)] backdrop-blur">
-                        <SelectItem value="none">Selecione a turma</SelectItem>
-                        <SelectItem value={ALL_TURMAS_OPTION}>Todas as turmas</SelectItem>
+                        <SelectItem value="none">{repairMojibakeText('Selecione a turma')}</SelectItem>
+                        <SelectItem value={ALL_TURMAS_OPTION}>{repairMojibakeText('Todas as turmas')}</SelectItem>
                         {turmasPublicacao.map((turma) => (
                           <SelectItem key={turma} value={turma}>{turma}</SelectItem>
                         ))}
@@ -1466,7 +1476,7 @@ export default function Comunicados() {
                   </div>
 
                   <div className="space-y-3">
-                    <Label className="text-sm font-medium text-foreground/85">Prazo</Label>
+                    <Label className="text-sm font-medium text-foreground/85">{repairMojibakeText('Prazo')}</Label>
                     <Input
                       className="h-14 rounded-2xl border-primary/15 bg-background px-5 text-base shadow-sm"
                       type="date"
@@ -1476,13 +1486,13 @@ export default function Comunicados() {
                   </div>
 
                   <div className="space-y-3 lg:col-span-2">
-                    <Label className="text-sm font-medium text-foreground/85">Orientação</Label>
+                    <Label className="text-sm font-medium text-foreground/85">{repairMojibakeText('Orientação')}</Label>
                     <Textarea
                       className="min-h-[180px] rounded-[24px] border-primary/15 bg-background px-5 py-4 text-base shadow-sm"
                       rows={6}
                       value={formularioForm.descricao}
                       onChange={(e) => setFormularioForm((prev) => ({ ...prev, descricao: e.target.value }))}
-                      placeholder="Explique com clareza o objetivo do formulário, o que o aluno precisa responder e como ele deve preencher."
+                      placeholder={repairMojibakeText('Explique com clareza o objetivo do formulário, o que o aluno precisa responder e como ele deve preencher.')}
                     />
                   </div>
                 </div>
@@ -1497,8 +1507,8 @@ export default function Comunicados() {
                     <div className="flex flex-col gap-5">
                       <div className="flex flex-col gap-3 border-b border-border/60 pb-5 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70">Questão {index + 1}</p>
-                          <p className="mt-1 text-lg font-semibold text-foreground">Configure o enunciado e o tipo de resposta</p>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70">{repairMojibakeText(`Questão ${index + 1}`)}</p>
+                          <p className="mt-1 text-lg font-semibold text-foreground">{repairMojibakeText('Configure o enunciado e o tipo de resposta')}</p>
                         </div>
                         {formularioForm.perguntas.length > 1 ? (
                           <Button
@@ -1510,23 +1520,23 @@ export default function Comunicados() {
                               perguntas: prev.perguntas.filter((item) => item.id !== question.id),
                             }))}
                           >
-                            Remover questão
+                            {repairMojibakeText('Remover questão')}
                           </Button>
                         ) : null}
                       </div>
 
                       <div className="space-y-3">
-                        <Label className="text-sm font-medium text-foreground/85">Pergunta</Label>
+                        <Label className="text-sm font-medium text-foreground/85">{repairMojibakeText('Pergunta')}</Label>
                         <Input
                           className="h-14 rounded-2xl border-primary/15 bg-background px-5 text-base shadow-sm"
                           value={question.pergunta}
                           onChange={(e) => handleFormQuestionChange(question.id, 'pergunta', e.target.value)}
-                          placeholder="Digite a pergunta"
+                          placeholder={repairMojibakeText('Digite a pergunta')}
                         />
                       </div>
 
                       <div className="space-y-4">
-                        <Label className="text-sm font-medium text-foreground/85">Tipo</Label>
+                        <Label className="text-sm font-medium text-foreground/85">{repairMojibakeText('Tipo')}</Label>
                         <div className="grid gap-4 lg:grid-cols-2">
                           <Button
                             type="button"
@@ -1534,7 +1544,7 @@ export default function Comunicados() {
                             className="h-14 rounded-2xl text-base"
                             onClick={() => handleFormQuestionTypeChange(question.id, 'texto')}
                           >
-                            Resposta aberta
+                            {repairMojibakeText('Resposta aberta')}
                           </Button>
                           <Button
                             type="button"
@@ -1542,14 +1552,14 @@ export default function Comunicados() {
                             className="h-14 rounded-2xl text-base"
                             onClick={() => handleFormQuestionTypeChange(question.id, 'multipla_escolha')}
                           >
-                            Múltipla escolha
+                            {repairMojibakeText('Múltipla escolha')}
                           </Button>
                         </div>
                       </div>
 
                       {question.tipo === 'multipla_escolha' ? (
                         <div className="rounded-[24px] border border-border/70 bg-background/70 p-5">
-                          <p className="mb-4 text-sm font-semibold text-foreground">Alternativas</p>
+                          <p className="mb-4 text-sm font-semibold text-foreground">{repairMojibakeText('Alternativas')}</p>
                           <div className="space-y-4">
                             {question.opcoes.map((option, optionIndex) => (
                               <div key={`${question.id}-${optionIndex}`} className="grid gap-3 md:grid-cols-[56px_minmax(0,1fr)]">
@@ -1565,7 +1575,7 @@ export default function Comunicados() {
                                   className="h-14 rounded-2xl border-primary/15 bg-background px-5 text-base shadow-sm"
                                   value={option}
                                   onChange={(e) => handleFormOptionChange(question.id, optionIndex, e.target.value)}
-                                  placeholder={`Opção ${optionIndex + 1}`}
+                                  placeholder={repairMojibakeText(`Opção ${optionIndex + 1}`)}
                                 />
                               </div>
                             ))}
@@ -1573,7 +1583,7 @@ export default function Comunicados() {
                         </div>
                       ) : (
                         <div className="rounded-[24px] border border-dashed border-border bg-muted/15 p-5 text-sm leading-6 text-muted-foreground">
-                          O aluno responderá livremente. Use a orientação do formulário para contextualizar a resposta esperada.
+                          {repairMojibakeText('O aluno responderá livremente. Use a orientação do formulário para contextualizar a resposta esperada.')}
                         </div>
                       )}
                     </div>
@@ -1588,29 +1598,29 @@ export default function Comunicados() {
                     onClick={handleAddFormQuestion}
                   >
                     <Plus className="mr-2 h-4 w-4" />
-                    Adicionar questão
+                    {repairMojibakeText('Adicionar questão')}
                   </Button>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border/60 bg-background/95 px-8 py-5 backdrop-blur">
+          <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border/60 bg-background/95 px-8 py-5 shadow-[0_-18px_48px_rgba(15,23,42,0.14)] backdrop-blur">
             <Button
               type="button"
               variant="outline"
               className="h-12 rounded-2xl px-6"
               onClick={() => setIsFormularioDialogOpen(false)}
             >
-              Cancelar
+              {repairMojibakeText('Cancelar')}
             </Button>
             <Button
               type="button"
-              className="h-12 rounded-2xl px-6"
+              className="h-12 rounded-2xl bg-emerald-600 px-7 text-white shadow-[0_14px_32px_rgba(22,163,74,0.28)] hover:bg-emerald-700"
               onClick={handleSaveFormulario}
               disabled={formularioSaving}
             >
-              {formularioSaving ? 'Salvando...' : 'Salvar formulário'}
+              {formularioSaving ? repairMojibakeText('Publicando...') : repairMojibakeText('Publicar formulário')}
             </Button>
           </div>
         </DialogContent>
@@ -1619,14 +1629,14 @@ export default function Comunicados() {
       <Dialog open={Boolean(selectedFormulario)} onOpenChange={(open) => !open && setSelectedFormulario(null)}>
         <DialogContent className="max-w-5xl overflow-hidden rounded-[28px] border border-primary/10 bg-background p-0">
           <DialogHeader className="border-b border-border/60 bg-gradient-to-r from-primary/8 via-background to-emerald-500/8 px-8 py-6">
-            <DialogTitle className="text-2xl font-semibold tracking-tight">Respostas do formulário</DialogTitle>
+            <DialogTitle className="text-2xl font-semibold tracking-tight">{repairMojibakeText('Respostas do formulário')}</DialogTitle>
           </DialogHeader>
 
           {selectedFormulario ? (
             <div className="max-h-[82vh] overflow-y-auto px-8 py-7">
               <div className="space-y-5">
                 <div className="rounded-[24px] border border-primary/10 bg-card/80 p-5 shadow-sm">
-                  <p className="text-lg font-semibold">{selectedFormulario.titulo || 'Formulário'}</p>
+                  <p className="text-lg font-semibold">{repairMojibakeText(selectedFormulario.titulo || 'Formulário')}</p>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {selectedFormulario.respostas.length} resposta(s) recebida(s)
                   </p>
@@ -1634,7 +1644,7 @@ export default function Comunicados() {
 
                 {selectedFormulario.respostas.length === 0 ? (
                   <div className="rounded-[24px] border border-dashed border-border bg-muted/20 p-6 text-sm text-muted-foreground">
-                    Nenhum aluno respondeu este formulário ainda.
+                    {repairMojibakeText('Nenhum aluno respondeu este formulário ainda.')}
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -1654,7 +1664,7 @@ export default function Comunicados() {
                               const answerKey = pergunta.id || `q_${idx + 1}`;
                               return (
                                 <div key={`${entrega.id}-${answerKey}`} className="rounded-xl bg-muted/30 p-3">
-                                  <p className="text-sm font-medium">{pergunta.pergunta || `Questão ${idx + 1}`}</p>
+                                  <p className="text-sm font-medium">{repairMojibakeText(pergunta.pergunta || `Questão ${idx + 1}`)}</p>
                                   <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
                                     {String(payload.respostas?.[answerKey] || 'Sem resposta')}
                                   </p>
@@ -1664,7 +1674,7 @@ export default function Comunicados() {
 
                             {payload.texto ? (
                               <div className="rounded-xl bg-muted/30 p-3">
-                                <p className="text-sm font-medium">Texto complementar</p>
+                                <p className="text-sm font-medium">{repairMojibakeText('Texto complementar')}</p>
                                 <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{payload.texto}</p>
                               </div>
                             ) : null}
