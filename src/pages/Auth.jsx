@@ -142,6 +142,7 @@ export default function Auth() {
   const [desktopStatus, setDesktopStatus] = useState(null);
   const [finalizingDesktop, setFinalizingDesktop] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState(getBrowserNotificationPermission);
+  const [passkeyDebugError, setPasskeyDebugError] = useState(null);
 
   const desktopApprovalTokenRef = useRef(getDesktopApprovalToken());
   const { signIn, user } = useAuth();
@@ -191,6 +192,12 @@ export default function Auth() {
   useEffect(() => {
     setNotificationPermission(getBrowserNotificationPermission());
   }, []);
+
+  useEffect(() => {
+    if (securityStep !== 'passkey_enrollment' && securityStep !== 'mobile_biometric') {
+      setPasskeyDebugError(null);
+    }
+  }, [securityStep]);
 
   useEffect(() => {
     if (!pendingSecurity?.desktopToken || !pendingSecurity?.approved || securityStep !== 'desktop_resuming' || finalizingDesktop) {
@@ -658,6 +665,7 @@ export default function Auth() {
   const handleBiometricStep = async () => {
     if (!pendingSecurity) return;
     setLoading(true);
+    setPasskeyDebugError(null);
     try {
       if (isAndroidDevice() && !isAndroidChromeFamily()) {
         throw new Error(
@@ -680,6 +688,12 @@ export default function Auth() {
         message: error?.message || null,
         rawMessage: error?.rawMessage || null,
         name: error?.name || null,
+      });
+      setPasskeyDebugError({
+        message: String(error?.message || '').trim() || null,
+        rawMessage: String(error?.rawMessage || '').trim() || null,
+        name: String(error?.name || '').trim() || null,
+        userAgent: String(navigator?.userAgent || '').trim() || null,
       });
       toast({
         variant: 'destructive',
@@ -777,6 +791,20 @@ export default function Auth() {
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {enrolling ? 'Cadastrar passkey e validar biometria' : 'Validar biometria agora'}
           </Button>
+          {passkeyDebugError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-left">
+              <p className="text-xs font-semibold text-destructive">Diagnostico da passkey</p>
+              {passkeyDebugError.name && (
+                <p className="mt-1 text-xs text-destructive/90">Erro: {passkeyDebugError.name}</p>
+              )}
+              {passkeyDebugError.message && (
+                <p className="mt-1 text-xs text-destructive/90">Mensagem tratada: {passkeyDebugError.message}</p>
+              )}
+              {passkeyDebugError.rawMessage && (
+                <p className="mt-1 text-xs text-destructive/90">Mensagem bruta: {passkeyDebugError.rawMessage}</p>
+              )}
+            </div>
+          )}
         </div>
       );
     }
