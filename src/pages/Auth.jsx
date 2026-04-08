@@ -676,6 +676,11 @@ export default function Auth() {
         await runPasskeyAuthentication(pendingSecurity);
       }
     } catch (error) {
+      console.error('Falha bruta na passkey do Super Admin:', {
+        message: error?.message || null,
+        rawMessage: error?.rawMessage || null,
+        name: error?.name || null,
+      });
       toast({
         variant: 'destructive',
         title: 'Falha na biometria',

@@ -18,6 +18,11 @@ function arrayBufferToBase64Url(buffer) {
   return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
+function isAndroidChromeCredentialManager() {
+  const userAgent = String(navigator?.userAgent || '').toLowerCase();
+  return userAgent.includes('android') && (userAgent.includes('chrome') || userAgent.includes('crios'));
+}
+
 function normalizeCredential(credential) {
   const response = credential?.response || {};
   return {
@@ -144,6 +149,9 @@ function normalizePasskeyError(error, actionLabel) {
     if (originalName) {
       nextError.name = originalName;
     }
+    if (rawMessage) {
+      nextError.rawMessage = rawMessage;
+    }
     return nextError;
   };
 
@@ -175,11 +183,15 @@ export async function createPlatformPasskey(publicKeyOptions) {
 
   try {
     let credential;
+    const preferCompatMode = isAndroidChromeCredentialManager();
     try {
       credential = await navigator.credentials.create({
-        publicKey: buildCreateOptions(publicKeyOptions, 'strict'),
+        publicKey: buildCreateOptions(publicKeyOptions, preferCompatMode ? 'compat' : 'strict'),
       });
-    } catch (strictError) {
+    } catch (firstError) {
+      if (preferCompatMode) {
+        throw firstError;
+      }
       credential = await navigator.credentials.create({
         publicKey: buildCreateOptions(publicKeyOptions, 'compat'),
       });
@@ -198,11 +210,15 @@ export async function getPlatformPasskeyAssertion(publicKeyOptions) {
 
   try {
     let credential;
+    const preferCompatMode = isAndroidChromeCredentialManager();
     try {
       credential = await navigator.credentials.get({
-        publicKey: buildGetOptions(publicKeyOptions, 'strict'),
+        publicKey: buildGetOptions(publicKeyOptions, preferCompatMode ? 'compat' : 'strict'),
       });
-    } catch (strictError) {
+    } catch (firstError) {
+      if (preferCompatMode) {
+        throw firstError;
+      }
       credential = await navigator.credentials.get({
         publicKey: buildGetOptions(publicKeyOptions, 'compat'),
       });
