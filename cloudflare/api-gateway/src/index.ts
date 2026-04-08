@@ -1700,6 +1700,29 @@ async function getActivePasskeyByCredential(accountId: string, credentialId: str
   return Array.isArray(payload) ? (payload[0] || null) : null;
 }
 
+async function revokeActivePasskeys(accountId: string, env: Env, exceptCredentialId?: string | null) {
+  const params = new URLSearchParams({
+    account_id: `eq.${accountId}`,
+    revoked_at: 'is.null',
+  });
+
+  if (exceptCredentialId) {
+    params.set('credential_id', `neq.${exceptCredentialId}`);
+  }
+
+  await supabaseAdminRequest(
+    env,
+    `/rest/v1/super_admin_passkeys?${params.toString()}`,
+    {
+      method: 'PATCH',
+      body: {
+        revoked_at: new Date().toISOString(),
+      },
+      headers: { Prefer: 'return=minimal' },
+    },
+  );
+}
+
 function filterPasskeysByRpId(passkeys: Record<string, unknown>[], rpId: string) {
   const normalizedRpId = String(rpId || '').trim().toLowerCase();
   if (!normalizedRpId) return passkeys;
@@ -3730,14 +3753,12 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Conta de Super Admin nao encontrada.' }, 404);
     }
 
-    const existingPasskeys = await listActivePasskeys(String(account.id), env);
     const body = await request.json().catch(() => ({}));
     const requestContext = body?.context && typeof body.context === 'object' ? body.context : null;
     const risk = buildRiskContext(request, requestContext);
     const challenge = randomToken(32);
     const origin = getRequestOrigin(request, env, requestContext);
     const rpId = resolvePasskeyRpId(request, env, requestContext);
-    const compatiblePasskeys = filterPasskeysByRpId(existingPasskeys, rpId);
 
     const challengeRow = await createSuperAdminChallenge(env, {
       account_id: account.id,
@@ -3779,10 +3800,6 @@ const routes: Record<string, RouteHandler> = {
           userVerification: 'required',
         },
         hints: ['client-device'],
-        excludeCredentials: compatiblePasskeys.map((item) => ({
-          id: item.credential_id,
-          type: 'public-key',
-        })),
       },
     });
   },
@@ -3819,6 +3836,7 @@ const routes: Record<string, RouteHandler> = {
 
     const alreadyExists = await getActivePasskeyByCredential(String(account.id), verification.credentialId, env);
     if (alreadyExists?.id) {
+      await revokeActivePasskeys(String(account.id), env, verification.credentialId);
       return jsonResponse({ success: true, alreadyRegistered: true });
     }
 
@@ -3842,6 +3860,8 @@ const routes: Record<string, RouteHandler> = {
         Prefer: 'return=minimal',
       },
     });
+
+    await revokeActivePasskeys(String(account.id), env, verification.credentialId);
 
     await supabaseAdminRequest(
       env,
