@@ -121,24 +121,33 @@ function buildGetOptions(publicKeyOptions, mode = 'strict') {
 function normalizePasskeyError(error, actionLabel) {
   const rawMessage = String(error?.message || '').trim();
   const normalized = rawMessage.toLowerCase();
+  const originalName = String(error?.name || '').trim();
+  const withOriginalMetadata = (nextError) => {
+    if (originalName) {
+      nextError.name = originalName;
+    }
+    return nextError;
+  };
 
   if (normalized.includes('unknown error occurred while talking to the credential manager')) {
-    return new Error(
+    return withOriginalMetadata(new Error(
       `O gerenciador de credenciais do celular falhou ao ${actionLabel} a passkey. Ative o bloqueio de tela, cadastre biometria no aparelho e tente novamente no Chrome atualizado.`,
-    );
+    ));
   }
 
   if (normalized.includes('the operation either timed out or was not allowed')) {
-    return new Error(`A confirmação biométrica foi cancelada ou expirou ao ${actionLabel} a passkey.`);
+    return withOriginalMetadata(new Error(
+      `A validacao da passkey nao foi concluida neste aparelho. Se nao houver chave de acesso salva para este dominio, cadastre uma nova passkey no bloqueio de tela do dispositivo.`,
+    ));
   }
 
   if (normalized.includes('notallowederror') || normalized.includes('not supported')) {
-    return new Error(
+    return withOriginalMetadata(new Error(
       `O celular não ofereceu a biometria local para ${actionLabel} a passkey. Verifique se há bloqueio de tela ativo, biometria cadastrada e o gerenciador de senhas do Google habilitado no Chrome.`,
-    );
+    ));
   }
 
-  return error instanceof Error ? error : new Error(rawMessage || 'Falha ao processar a passkey.');
+  return error instanceof Error ? error : withOriginalMetadata(new Error(rawMessage || 'Falha ao processar a passkey.'));
 }
 
 export async function createPlatformPasskey(publicKeyOptions) {

@@ -60,6 +60,30 @@ function isAndroidChromeFamily() {
   return isAndroid && isChromeFamily;
 }
 
+function shouldFallbackToPasskeyEnrollment(error) {
+  const message = String(error?.message || '').trim().toLowerCase();
+  const name = String(error?.name || '').trim().toLowerCase();
+
+  if (
+    message.includes('nenhuma chave de acesso')
+    || message.includes('no passkeys available')
+    || message.includes('no passkey')
+    || message.includes('cadastre uma nova passkey')
+    || message.includes('this device does not have a passkey')
+    || message.includes('not supported on this device')
+  ) {
+    return true;
+  }
+
+  // On Android/Chrome, Google Credential Manager may surface "no passkey available"
+  // to the user and still reject WebAuthn as a generic NotAllowedError afterwards.
+  if (isAndroidChromeFamily() && name === 'notallowederror') {
+    return true;
+  }
+
+  return false;
+}
+
 function buildSecurityContext() {
   return {
     app_origin: window?.location?.origin || null,
@@ -384,8 +408,7 @@ export default function Auth() {
     try {
       assertion = await getPlatformPasskeyAssertion(authOptions.publicKey);
     } catch (error) {
-      const message = String(error?.message || '').toLowerCase();
-      if (message.includes('nenhuma chave de acesso') || message.includes('no passkeys available')) {
+      if (shouldFallbackToPasskeyEnrollment(error)) {
         setPendingSecurity({
           ...nextPending,
           needsPasskeyEnrollment: true,
@@ -393,7 +416,7 @@ export default function Auth() {
         setSecurityStep('passkey_enrollment');
         toast({
           title: 'Nenhuma passkey encontrada',
-          description: 'Este celular nao tem uma passkey valida para o dominio atual. Vamos cadastrar uma nova agora.',
+          description: 'Este celular nao tem uma passkey valida para o dominio atual. Vamos cadastrar uma nova agora usando o bloqueio de tela do aparelho.',
         });
         return;
       }
