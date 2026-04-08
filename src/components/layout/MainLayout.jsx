@@ -26,38 +26,44 @@ export function MainLayout({ children, title }) {
 
         <main className="flex min-w-0 flex-1 flex-col">
           <header
-            className="main-shell-header sticky top-0 z-30 flex min-h-14 items-center justify-between gap-2 border-b px-2.5 py-2 sm:h-16 sm:min-h-16 sm:gap-4 sm:px-4 sm:py-0"
+            className="main-shell-header sticky top-0 z-30 border-b bg-background/92 px-2.5 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-4 sm:py-0"
             style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 0.85rem)' }}
           >
-            <div className="flex min-w-0 items-center gap-2 pt-2 sm:gap-4 sm:pt-0">
-              <SidebarTrigger
-                className="mt-2 h-11 w-11 shrink-0 rounded-2xl border border-border/70 bg-background/90 text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground sm:mt-0 sm:h-10 sm:w-10 sm:rounded-2xl"
-                aria-label="Abrir ou fechar menu lateral"
-              />
-              <div className="min-w-0">
-                <h1 className="truncate text-base font-bold text-foreground sm:text-xl">{title}</h1>
+            <div className="flex min-h-14 flex-col justify-center gap-2 sm:h-16 sm:min-h-16 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+                <SidebarTrigger
+                  className="h-11 w-11 shrink-0 rounded-2xl border border-border/70 bg-background/90 text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground sm:h-10 sm:w-10"
+                  aria-label="Abrir ou fechar menu lateral"
+                />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground sm:hidden">
+                    BibliotecAI
+                  </p>
+                  <h1 className="truncate text-base font-bold text-foreground sm:text-xl">{title}</h1>
+                </div>
               </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <NotificationsPopover userRole={userRole} />
-              {canCreateComplaint && !isComplaintsPage && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-2 rounded-full px-2.5 text-xs sm:px-3 sm:text-sm"
-                  onClick={() => navigate('/reclamacoes')}
-                >
-                  <MessageSquareWarning className="h-4 w-4" />
-                  <span className="hidden sm:inline">Faça uma reclamação</span>
-                </Button>
-              )}
+              <div className="flex shrink-0 items-center justify-end gap-2">
+                <NotificationsPopover userRole={userRole} />
+                {canCreateComplaint && !isComplaintsPage && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-10 gap-2 rounded-full px-3 text-xs shadow-sm sm:h-9 sm:px-3 sm:text-sm"
+                    onClick={() => navigate('/reclamacoes')}
+                  >
+                    <MessageSquareWarning className="h-4 w-4" />
+                    <span className="hidden md:inline">Faça uma reclamação</span>
+                    <span className="md:hidden">Reclamar</span>
+                  </Button>
+                )}
+              </div>
             </div>
           </header>
 
           <div
             id="main-content"
-            className="main-shell-content flex-1 overflow-auto px-2.5 py-3 sm:px-5 sm:py-5 lg:px-6 lg:py-6"
+            className="main-shell-content flex-1 overflow-auto px-3 py-3 sm:px-5 sm:py-5 lg:px-6 lg:py-6"
           >
             <div className="mx-auto w-full max-w-screen-2xl">
               {children}

@@ -154,7 +154,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar className="border-r-0 bg-transparent" collapsible="icon">
-      <SidebarHeader className={`${collapsed ? 'p-2' : 'p-4'} border-b border-sidebar-border/80 bg-sidebar/95 backdrop-blur`}>
+      <SidebarHeader className={`${collapsed ? 'p-2' : 'p-4'} border-b border-sidebar-border/80 bg-sidebar/95 backdrop-blur ${isMobile ? 'pt-6' : ''}`}>
         <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
           <div className={`${collapsed ? 'w-8 h-8 rounded-[1.1rem]' : 'w-11 h-11 rounded-[1.4rem]'} bg-gradient-to-br from-sidebar-accent to-sidebar-primary/40 ring-1 ring-sidebar-border shadow-[0_12px_24px_rgba(0,0,0,0.18)] flex items-center justify-center overflow-hidden p-0.5`}>
             <img src="/app-logo.png" alt="BibliotecAI" className={`${collapsed ? 'w-7 h-7' : 'w-10 h-10'} rounded-[1rem] object-cover`} />
@@ -179,7 +179,7 @@ export function AppSidebar() {
                       to={item.url}
                       end
                       onClick={handleMenuItemClick}
-                      className={`flex min-w-0 items-center transition-all duration-200 ${collapsed ? 'mx-auto size-9 justify-center rounded-xl' : 'h-11 w-full gap-3 rounded-2xl px-3'} hover:translate-x-1`}
+                      className={`flex min-w-0 items-center transition-all duration-200 ${collapsed ? 'mx-auto size-9 justify-center rounded-xl' : `${isMobile ? 'min-h-[52px]' : 'h-11'} w-full gap-3 rounded-2xl px-3`} hover:translate-x-1`}
                       activeClassName="rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_12px_24px_rgba(0,0,0,0.16)]"
                     >
                       <span className={`${collapsed ? '' : 'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-sidebar-accent/60 ring-1 ring-sidebar-border shadow-sm'}`}>
@@ -215,7 +215,7 @@ export function AppSidebar() {
                         to={item.url}
                         end
                         onClick={handleMenuItemClick}
-                        className={`flex min-w-0 items-center transition-all duration-200 ${collapsed ? 'mx-auto size-9 justify-center rounded-xl' : 'h-11 w-full gap-3 rounded-2xl px-3'} hover:translate-x-1`}
+                        className={`flex min-w-0 items-center transition-all duration-200 ${collapsed ? 'mx-auto size-9 justify-center rounded-xl' : `${isMobile ? 'min-h-[52px]' : 'h-11'} w-full gap-3 rounded-2xl px-3`} hover:translate-x-1`}
                         activeClassName="rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_12px_24px_rgba(0,0,0,0.16)]"
                       >
                         <span className={`${collapsed ? '' : 'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-sidebar-accent/60 ring-1 ring-sidebar-border shadow-sm'}`}>
@@ -232,7 +232,7 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      <SidebarFooter className={`${collapsed ? 'p-2' : 'p-4'} border-t border-sidebar-border/80 bg-sidebar/95 backdrop-blur`}>
+      <SidebarFooter className={`${collapsed ? 'p-2' : 'p-4'} border-t border-sidebar-border/80 bg-sidebar/95 backdrop-blur ${isMobile ? 'pb-6' : ''}`}>
         {!collapsed && user && (
           <div className="mb-3 px-2 space-y-2">
             <Badge className={getRoleBadge().className}>{getRoleBadge().label}</Badge>
@@ -247,7 +247,7 @@ export function AppSidebar() {
             size={collapsed ? 'icon' : 'sm'}
             className={collapsed
               ? 'mx-auto text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-              : 'h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
+              : `${isMobile ? 'h-11 rounded-2xl' : 'h-9 rounded-lg'} w-full justify-start gap-2.5 px-2.5 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground`}
             onClick={() => navigate(settingsPath)}
             aria-label="Abrir configurações"
           >
@@ -261,7 +261,7 @@ export function AppSidebar() {
           size={collapsed ? 'icon' : 'default'}
           className={collapsed
             ? 'mx-auto mt-2 justify-center text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-            : 'mt-2 h-10 w-full justify-start gap-3 rounded-lg px-2.5 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
+            : `mt-2 ${isMobile ? 'h-11 rounded-2xl' : 'h-10 rounded-lg'} w-full justify-start gap-3 px-2.5 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground`}
           onClick={handleSignOut}
         >
           <LogOut className="size-4 sm:size-5" />
