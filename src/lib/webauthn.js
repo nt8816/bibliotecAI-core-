@@ -67,12 +67,7 @@ function buildCreateOptions(publicKeyOptions, mode = 'strict') {
         id: base64UrlToArrayBuffer(item.id),
       };
 
-      if (mode === 'strict') {
-        return { ...normalized, transports: ['internal'] };
-      }
-
-      const { transports, ...rest } = normalized;
-      return rest;
+      return { ...normalized, transports: ['internal'] };
     })
     : [];
 
@@ -95,10 +90,6 @@ function buildCreateOptions(publicKeyOptions, mode = 'strict') {
       : ['client-device'],
   };
 
-  if (mode === 'loose') {
-    delete next.hints;
-  }
-
   return next;
 }
 
@@ -110,28 +101,19 @@ function buildGetOptions(publicKeyOptions, mode = 'strict') {
         id: base64UrlToArrayBuffer(item.id),
       };
 
-      if (mode === 'strict') {
-        return { ...normalized, transports: ['internal'] };
-      }
-
-      const { transports, ...rest } = normalized;
-      return rest;
+      return { ...normalized, transports: ['internal'] };
     })
     : [];
 
   const next = {
     ...publicKeyOptions,
     challenge: base64UrlToArrayBuffer(publicKeyOptions.challenge),
-    allowCredentials: mode === 'loose' ? [] : allowCredentials,
+    allowCredentials,
     userVerification: publicKeyOptions.userVerification || 'required',
     hints: Array.isArray(publicKeyOptions.hints) && publicKeyOptions.hints.length > 0
       ? publicKeyOptions.hints
       : ['client-device'],
   };
-
-  if (mode === 'loose') {
-    delete next.hints;
-  }
 
   return next;
 }
@@ -171,15 +153,9 @@ export async function createPlatformPasskey(publicKeyOptions) {
         publicKey: buildCreateOptions(publicKeyOptions, 'strict'),
       });
     } catch (strictError) {
-      try {
-        credential = await navigator.credentials.create({
-          publicKey: buildCreateOptions(publicKeyOptions, 'compat'),
-        });
-      } catch (compatError) {
-        credential = await navigator.credentials.create({
-          publicKey: buildCreateOptions(publicKeyOptions, 'loose'),
-        });
-      }
+      credential = await navigator.credentials.create({
+        publicKey: buildCreateOptions(publicKeyOptions, 'compat'),
+      });
     }
 
     return normalizeCredential(credential);
@@ -200,15 +176,9 @@ export async function getPlatformPasskeyAssertion(publicKeyOptions) {
         publicKey: buildGetOptions(publicKeyOptions, 'strict'),
       });
     } catch (strictError) {
-      try {
-        credential = await navigator.credentials.get({
-          publicKey: buildGetOptions(publicKeyOptions, 'compat'),
-        });
-      } catch (compatError) {
-        credential = await navigator.credentials.get({
-          publicKey: buildGetOptions(publicKeyOptions, 'loose'),
-        });
-      }
+      credential = await navigator.credentials.get({
+        publicKey: buildGetOptions(publicKeyOptions, 'compat'),
+      });
     }
 
     return normalizeCredential(credential);
