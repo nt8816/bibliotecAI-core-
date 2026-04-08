@@ -40,7 +40,6 @@ const Comunicados = lazy(() => import('./pages/Comunicados'));
 const ArquivosAula = lazy(() => import('./pages/ArquivosAula'));
 const MeusAlunos = lazy(() => import('./pages/professor/MeusAlunos'));
 const PainelProfessor = lazy(() => import('./pages/professor/PainelProfessor'));
-const FormulariosProfessor = lazy(() => import('./pages/professor/FormulariosProfessor'));
 const RelatoriosLeitura = lazy(() => import('./pages/professor/RelatoriosLeitura'));
 const PainelAluno = lazy(() => import('./pages/aluno/PainelAluno'));
 const RankingAluno = lazy(() => import('./pages/aluno/RankingAluno'));
@@ -266,14 +265,6 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <PainelProfessor />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/professor/formularios"
-        element={
-          <ProtectedRoute>
-            <FormulariosProfessor />
           </ProtectedRoute>
         }
       />

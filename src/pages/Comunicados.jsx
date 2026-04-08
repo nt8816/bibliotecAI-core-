@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { AudioLines, BellRing, CalendarClock, Download, ImagePlus, Mic, Megaphone, PauseCircle, Send, Trash2, Upload, Users, X } from 'lucide-react';
+import { AudioLines, BellRing, CalendarClock, Download, FileQuestion, ImagePlus, Mic, Megaphone, PauseCircle, Send, Trash2, Upload, Users, X } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -17,11 +17,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { createComunidadePost, deleteComunidadePost, fetchComunidadeAlunoData } from '@/services/comunidadeAlunoService';
+import { fetchProfessorPainelData } from '@/services/professorService';
 import { deleteR2Object, getR2DownloadUrl, uploadFileToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
 import { cn } from '@/lib/utils';
 
 const ALL_TURMAS_OPTION = '__all_turmas__';
+const FORM_MARKER = '[FORM_CONFIG_V1]';
 
 function ensureArray(value) {
   return Array.isArray(value) ? value : [];
@@ -135,6 +137,46 @@ async function resolveComunicadoMedia(post) {
   };
 }
 
+function decodeJsonBase64(value) {
+  try {
+    const decoded = decodeURIComponent(escape(atob(String(value || ''))));
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
+function extractAtividadeFormConfig(descricao) {
+  const source = String(descricao || '');
+  const idx = source.indexOf(FORM_MARKER);
+
+  if (idx < 0) {
+    return { descricaoLimpa: source, perguntas: [] };
+  }
+
+  const descricaoLimpa = source.slice(0, idx).trim();
+  const encoded = source.slice(idx + FORM_MARKER.length).trim();
+  const parsed = decodeJsonBase64(encoded);
+  const perguntas = ensureArray(parsed?.perguntas);
+
+  return { descricaoLimpa, perguntas };
+}
+
+function formatDateLabel(value) {
+  if (!value) return 'Sem prazo';
+  try {
+    return format(new Date(value), 'dd/MM/yyyy', { locale: ptBR });
+  } catch {
+    return 'Sem prazo';
+  }
+}
+
+function getAtividadeTargetSummary(atividade) {
+  const turma = atividade?.usuarios_biblioteca?.turma;
+  const aluno = atividade?.usuarios_biblioteca?.nome;
+  return aluno ? `${aluno}${turma ? ` • ${turma}` : ''}` : (turma || 'Destino individual');
+}
+
 export default function Comunicados() {
   const { userRole, isAluno, isProfessor, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
   const { toast } = useToast();
@@ -155,6 +197,8 @@ export default function Comunicados() {
   const [saving, setSaving] = useState(false);
   const [perfil, setPerfil] = useState(null);
   const [posts, setPosts] = useState([]);
+  const [professorAtividades, setProfessorAtividades] = useState([]);
+  const [professorEntregas, setProfessorEntregas] = useState([]);
   const [turmasPublicacao, setTurmasPublicacao] = useState([]);
   const [titulo, setTitulo] = useState('');
   const [conteudo, setConteudo] = useState('');
@@ -229,7 +273,10 @@ export default function Comunicados() {
     const load = async () => {
       setLoading(true);
       try {
-        const response = await fetchComunidadeAlunoData({ roleHint: profileRoleHint });
+        const [response, professorData] = await Promise.all([
+          fetchComunidadeAlunoData({ roleHint: profileRoleHint }),
+          isProfessor ? fetchProfessorPainelData() : Promise.resolve(null),
+        ]);
         if (cancelled) return;
 
         const perfilAtual = response?.perfil || null;
@@ -241,6 +288,8 @@ export default function Comunicados() {
         setPerfil(perfilAtual);
         setPosts(resolvedPosts);
         setTurmasPublicacao(ensureArray(response?.turmasPublicacao));
+        setProfessorAtividades(ensureArray(professorData?.atividades));
+        setProfessorEntregas(ensureArray(professorData?.entregas));
       } catch (error) {
         if (cancelled) return;
         toast({
@@ -281,6 +330,22 @@ export default function Comunicados() {
 
     return list.sort((a, b) => new Date(b?.created_at || 0).getTime() - new Date(a?.created_at || 0).getTime());
   }, [busca, isAluno, perfil?.turma, posts]);
+
+  const formulariosProfessor = useMemo(() => (
+    ensureArray(professorAtividades)
+      .map((atividade) => {
+        const meta = extractAtividadeFormConfig(atividade?.descricao);
+        const respostas = ensureArray(professorEntregas)
+          .filter((entrega) => String(entrega?.atividade_id || '').trim() === String(atividade?.id || '').trim());
+        return {
+          ...atividade,
+          meta,
+          respostas,
+        };
+      })
+      .filter((atividade) => atividade.meta.perguntas.length > 0)
+      .sort((a, b) => new Date(b?.created_at || 0).getTime() - new Date(a?.created_at || 0).getTime())
+  ), [professorAtividades, professorEntregas]);
 
   const setSelectedAudioFile = async (file) => {
     if (!file) return;
@@ -948,6 +1013,67 @@ export default function Comunicados() {
                   {saving ? 'Publicando...' : 'Publicar comunicado'}
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {isProfessor && (
+          <Card>
+            <CardHeader className="gap-3">
+              <div className="flex items-center gap-2">
+                <FileQuestion className="h-5 w-5 text-primary" />
+                <CardTitle className="text-base">Formulários enviados</CardTitle>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Esta área acompanha os formulários reais que você publicou para os alunos, dentro do fluxo de comunicados.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">Carregando formulários...</p>
+              ) : formulariosProfessor.length === 0 ? (
+                <div className="rounded-[28px] border border-dashed p-8 text-center">
+                  <FileQuestion className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Nenhum formulário publicado por você no momento.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {formulariosProfessor.map((atividade) => (
+                    <div key={atividade.id} className="rounded-[30px] border border-border/70 bg-card/95 p-5 shadow-sm">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                              {atividade.titulo || 'Formulário sem título'}
+                            </p>
+                            <Badge className="bg-primary/10 text-primary hover:bg-primary/10">
+                              {atividade.meta.perguntas.length} questões
+                            </Badge>
+                            <Badge variant="outline">
+                              {atividade.respostas.length} respostas
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">{getAtividadeTargetSummary(atividade)}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {atividade.livros?.titulo || 'Sem livro vinculado'} • entrega em {formatDateLabel(atividade.data_entrega)}
+                          </p>
+                          {atividade.meta.descricaoLimpa ? (
+                            <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">
+                              {atividade.meta.descricaoLimpa}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="shrink-0 rounded-2xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                          <p>Publicado em {formatDateTimeBR(atividade.created_at)}</p>
+                          <p className="mt-1">
+                            {atividade.respostas.filter((item) => item.status === 'aprovada').length} aprovadas
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

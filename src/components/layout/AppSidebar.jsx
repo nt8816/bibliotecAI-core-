@@ -18,7 +18,6 @@
   Settings,
   ShieldCheck,
   ClipboardList,
-  FileQuestion,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -101,7 +100,6 @@ export function AppSidebar() {
         { title: 'Livros', url: '/livros', icon: BookOpen },
         { title: 'Meus Alunos', url: '/professor/alunos', icon: GraduationCap },
         { title: 'Sugestões e Atividades', url: '/professor/painel', icon: Lightbulb },
-        { title: 'Formulários', url: '/professor/formularios', icon: FileQuestion },
         { title: 'Relatórios de Leitura', url: '/professor/relatorios', icon: BarChart3 },
         { title: 'Comunicados', url: '/comunicados', icon: Bell },
         { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
