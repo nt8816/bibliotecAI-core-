@@ -36,7 +36,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/hooks/useAuth';
@@ -1173,6 +1173,7 @@ export default function PainelAluno() {
   const [atividadeTexto, setAtividadeTexto] = useState({});
   const [atividadeImagens, setAtividadeImagens] = useState({});
   const [atividadeRespostas, setAtividadeRespostas] = useState({});
+  const [atividadeView, setAtividadeView] = useState('pendentes');
   const [mensagemSolicitacaoPorId, setMensagemSolicitacaoPorId] = useState({});
   const [saving, setSaving] = useState(false);
   const [showAccessChoice, setShowAccessChoice] = useState(false);
@@ -1585,6 +1586,41 @@ export default function PainelAluno() {
     () => atividadesComEntrega.filter((a) => !a.entrega || a.entrega.status !== 'aprovada').length,
     [atividadesComEntrega],
   );
+
+  const atividadesPendentesLista = useMemo(
+    () => atividadesComEntrega.filter((atividade) => {
+      if (atividade?.entrega) return false;
+      const prazo = atividade?.data_entrega ? new Date(atividade.data_entrega) : null;
+      return !prazo || Number.isNaN(prazo.getTime()) || prazo >= new Date();
+    }),
+    [atividadesComEntrega],
+  );
+
+  const atividadesEnviadasLista = useMemo(
+    () => atividadesComEntrega.filter((atividade) => Boolean(atividade?.entrega)),
+    [atividadesComEntrega],
+  );
+
+  const atividadesForaDoPrazoLista = useMemo(
+    () => atividadesComEntrega.filter((atividade) => {
+      if (atividade?.entrega) return false;
+      const prazo = atividade?.data_entrega ? new Date(atividade.data_entrega) : null;
+      return Boolean(prazo && !Number.isNaN(prazo.getTime()) && prazo < new Date());
+    }),
+    [atividadesComEntrega],
+  );
+
+  const atividadesVisiveis = useMemo(() => {
+    if (atividadeView === 'enviadas') return atividadesEnviadasLista;
+    if (atividadeView === 'fora_prazo') return atividadesForaDoPrazoLista;
+    return atividadesPendentesLista;
+  }, [atividadeView, atividadesEnviadasLista, atividadesForaDoPrazoLista, atividadesPendentesLista]);
+
+  const atividadeEmptyMessage = useMemo(() => {
+    if (atividadeView === 'enviadas') return 'Nenhuma atividade enviada ainda.';
+    if (atividadeView === 'fora_prazo') return 'Nenhuma atividade fora do prazo.';
+    return 'Nenhuma atividade pendente no momento.';
+  }, [atividadeView]);
 
   const atrasos = useMemo(
     () =>
@@ -2489,6 +2525,24 @@ export default function PainelAluno() {
         status: payload.status,
         enviadoEm: payload.enviado_em,
       });
+
+      setEntregas((prev) => {
+        const nextItem = {
+          ...(prev.find((item) => String(item?.atividade_id) === String(atividade.id)) || {}),
+          atividade_id: atividade.id,
+          aluno_id: alunoId,
+          texto_entrega: payload.texto_entrega,
+          status: payload.status,
+          enviado_em: payload.enviado_em,
+          pontos_ganhos: 0,
+        };
+        const filtered = prev.filter((item) => String(item?.atividade_id) !== String(atividade.id));
+        return [nextItem, ...filtered];
+      });
+      setAtividadeTexto((prev) => ({ ...prev, [atividade.id]: '' }));
+      setAtividadeImagens((prev) => ({ ...prev, [atividade.id]: [] }));
+      setAtividadeRespostas((prev) => ({ ...prev, [atividade.id]: {} }));
+      setAtividadeView('enviadas');
 
       toast({ title: 'Entrega enviada', description: 'Seu professor já pode avaliar e liberar pontos.' });
     } catch (error) {
@@ -3801,7 +3855,23 @@ export default function PainelAluno() {
                     <p className="text-center text-muted-foreground py-8">Nenhuma atividade recebida.</p>
                   ) : (
                     <div className="space-y-4">
-                      {atividadesComEntrega.map((atividade) => (
+                      <Tabs value={atividadeView} onValueChange={setAtividadeView}>
+                        <TabsList className="grid w-full grid-cols-3">
+                          <TabsTrigger value="pendentes">
+                            Atividades pendentes ({atividadesPendentesLista.length})
+                          </TabsTrigger>
+                          <TabsTrigger value="enviadas">
+                            Atividades enviadas ({atividadesEnviadasLista.length})
+                          </TabsTrigger>
+                          <TabsTrigger value="fora_prazo">
+                            Fora do prazo ({atividadesForaDoPrazoLista.length})
+                          </TabsTrigger>
+                        </TabsList>
+                      </Tabs>
+
+                      {atividadesVisiveis.length === 0 ? (
+                        <p className="text-center text-muted-foreground py-8">{atividadeEmptyMessage}</p>
+                      ) : atividadesVisiveis.map((atividade) => (
                         <div
                           key={atividade.id}
                           className="space-y-4 rounded-3xl border border-border/80 bg-gradient-to-br from-background via-background to-primary/5 p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-[0_18px_40px_rgba(0,0,0,0.08)]"
@@ -3834,6 +3904,11 @@ export default function PainelAluno() {
                               <p className="text-xs text-muted-foreground">
                                 Entrega: {formatDateBR(atividade.data_entrega)}
                               </p>
+                              {!atividade.entrega && atividadeView === 'fora_prazo' && (
+                                <Badge variant="destructive" className="rounded-full px-3 py-1">
+                                  Prazo encerrado
+                                </Badge>
+                              )}
                             </div>
                           </div>
 
