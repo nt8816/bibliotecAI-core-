@@ -3837,7 +3837,11 @@ const routes: Record<string, RouteHandler> = {
     const alreadyExists = await getActivePasskeyByCredential(String(account.id), verification.credentialId, env);
     if (alreadyExists?.id) {
       await revokeActivePasskeys(String(account.id), env, verification.credentialId);
-      return jsonResponse({ success: true, alreadyRegistered: true });
+      await patchSuperAdminChallenge(String(challengeRow.id), env, {
+        consumed_at: new Date().toISOString(),
+        approved_at: new Date().toISOString(),
+      });
+      return jsonResponse({ success: true, alreadyRegistered: true, challengeId: challengeRow.id });
     }
 
     await supabaseAdminRequest(env, '/rest/v1/super_admin_passkeys', {
@@ -3880,7 +3884,7 @@ const routes: Record<string, RouteHandler> = {
       approved_at: new Date().toISOString(),
     });
 
-    return jsonResponse({ success: true });
+    return jsonResponse({ success: true, challengeId: challengeRow.id });
   },
   'POST /v1/auth/super-admin/passkeys/authenticate/options': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);
@@ -4176,7 +4180,12 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Desafio do computador expirado ou invalido.' }, 410);
     }
 
-    if (!authChallenge?.id || String(authChallenge.account_id) !== String(account.id) || String(authChallenge.kind) !== 'passkey_authentication' || !authChallenge.approved_at) {
+    if (
+      !authChallenge?.id
+      || String(authChallenge.account_id) !== String(account.id)
+      || !['passkey_authentication', 'passkey_registration'].includes(String(authChallenge.kind))
+      || !authChallenge.approved_at
+    ) {
       return jsonResponse({ success: false, error: 'Autenticacao biometrica do celular nao foi confirmada.' }, 400);
     }
 
@@ -4319,7 +4328,14 @@ const routes: Record<string, RouteHandler> = {
       });
     } else {
       const mfaChallenge = await getSuperAdminChallengeById(mfaChallengeId, env);
-      if (!mfaChallenge?.id || String(mfaChallenge.account_id) !== String(match.account_id) || String(mfaChallenge.kind) !== 'passkey_authentication' || !mfaChallenge.approved_at || mfaChallenge.consumed_at || isChallengeExpired(mfaChallenge)) {
+      if (
+        !mfaChallenge?.id
+        || String(mfaChallenge.account_id) !== String(match.account_id)
+        || !['passkey_authentication', 'passkey_registration'].includes(String(mfaChallenge.kind))
+        || !mfaChallenge.approved_at
+        || mfaChallenge.consumed_at
+        || isChallengeExpired(mfaChallenge)
+      ) {
         return jsonResponse({ success: false, error: 'Autenticacao biometrica ainda nao foi validada.' }, 403);
       }
       if (mfaChallenge.requires_email_verification === true && !mfaChallenge.email_verified_at) {

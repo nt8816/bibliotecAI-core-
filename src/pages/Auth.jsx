@@ -454,18 +454,49 @@ export default function Auth() {
 
     const registerOptions = await beginSuperAdminPasskeyRegistration(nextPending.pendingAccessToken, nextPending.context);
     const credential = await createPlatformPasskey(registerOptions.publicKey);
-    await finishSuperAdminPasskeyRegistration(nextPending.pendingAccessToken, {
+    const registration = await finishSuperAdminPasskeyRegistration(nextPending.pendingAccessToken, {
       challenge: registerOptions.publicKey.challenge,
       credential,
       deviceLabel: isMobileDevice() ? 'Celular biometrico do Super Admin' : 'Dispositivo biometrico do Super Admin',
     });
 
+    const updatedPending = {
+      ...nextPending,
+      mfaChallengeId: registration?.challengeId || null,
+      requiresEmailVerification: false,
+    };
+
+    if (!updatedPending.mfaChallengeId) {
+      throw new Error('A nova passkey foi cadastrada, mas a confirmacao de seguranca nao foi concluida. Tente entrar novamente.');
+    }
+
     toast({
       title: 'Passkey cadastrada',
-      description: 'Agora vamos validar sua biometria para concluir o acesso.',
+      description: 'Cadastro concluido. Vamos usar essa nova passkey como autenticacao inicial do Super Admin.',
     });
 
-    await runPasskeyAuthentication(nextPending);
+    if (desktopApprovalTokenRef.current) {
+      await approveSuperAdminDesktopAccess(
+        updatedPending.pendingAccessToken,
+        desktopApprovalTokenRef.current,
+        updatedPending.mfaChallengeId,
+      );
+      saveDesktopResumeState(null);
+      setPendingSecurity(null);
+      setSecurityStep('mobile_approved');
+      toast({
+        title: 'Computador liberado',
+        description: 'A nova passkey foi cadastrada e enviada como aprovacao para o computador.',
+      });
+      return;
+    }
+
+    await finishSuperAdminLogin({
+      pendingSession: updatedPending.pendingSession,
+      email: updatedPending.email,
+      context: updatedPending.context,
+      mfaChallengeId: updatedPending.mfaChallengeId,
+    });
   };
 
   const loginWithIdentifier = async (login, password) => {
