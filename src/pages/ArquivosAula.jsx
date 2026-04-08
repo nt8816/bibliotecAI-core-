@@ -82,6 +82,18 @@ function downloadBlob(blob, fileName) {
   URL.revokeObjectURL(url);
 }
 
+function downloadFromUrl(url, fileName = 'arquivo') {
+  if (!url) return;
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName || 'arquivo';
+  link.target = '_blank';
+  link.rel = 'noreferrer';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
 export default function ArquivosAula() {
   const { user, isProfessor } = useAuth();
   const { toast } = useToast();
@@ -270,18 +282,12 @@ export default function ArquivosAula() {
     try {
       if (String(arquivo?.provider || '').toLowerCase() === 'r2' || String(path).startsWith('escolas/')) {
         const downloadUrl = await getR2DownloadUrl(path, safeText(arquivo?.nome, 'arquivo'));
-        const response = await fetch(downloadUrl);
-        if (!response.ok) throw new Error(`Falha ao baixar do Cloudflare R2 (HTTP ${response.status}).`);
-        const blob = await response.blob();
-        downloadBlob(blob, safeText(arquivo?.nome, 'arquivo'));
+        downloadFromUrl(downloadUrl, safeText(arquivo?.nome, 'arquivo'));
         return;
       }
 
       if (String(arquivo?.public_url || '').trim()) {
-        const response = await fetch(String(arquivo.public_url));
-        if (!response.ok) throw new Error(`Falha ao baixar o arquivo (HTTP ${response.status}).`);
-        const blob = await response.blob();
-        downloadBlob(blob, safeText(arquivo?.nome, 'arquivo'));
+        downloadFromUrl(String(arquivo.public_url), safeText(arquivo?.nome, 'arquivo'));
         return;
       }
       throw new Error('Arquivo sem rota de download suportada.');
