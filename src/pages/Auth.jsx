@@ -411,10 +411,6 @@ export default function Auth() {
   const loginWithIdentifier = async (login, password) => {
     const normalized = login.trim();
 
-    if (normalized.includes('@')) {
-      return signIn(normalized.toLowerCase(), password);
-    }
-
     try {
       const superAdminStart = await beginSuperAdminLogin(normalized, password, {
         ...buildSecurityContext(),
@@ -489,6 +485,10 @@ export default function Auth() {
           },
         };
       }
+    }
+
+    if (normalized.includes('@')) {
+      return signIn(normalized.toLowerCase(), password);
     }
 
     const cpfDigits = normalized.replace(/\D/g, '');

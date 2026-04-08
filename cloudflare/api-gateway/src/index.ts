@@ -64,6 +64,18 @@ function getUserToken(request: Request) {
   return String(manualToken || authHeader.replace(/^Bearer\s+/i, '')).trim();
 }
 
+function parseJwtPayload(token: string) {
+  const parts = String(token || '').split('.');
+  if (parts.length < 2) return null;
+
+  try {
+    const decoded = base64UrlDecode(parts[1]);
+    return JSON.parse(new TextDecoder().decode(decoded));
+  } catch {
+    return null;
+  }
+}
+
 function getPathParam(request: Request, pattern: RegExp, groupIndex = 1) {
   const url = new URL(request.url);
   const match = url.pathname.match(pattern);
@@ -318,6 +330,45 @@ async function isSuperAdmin(userId: string, env: Env) {
 
   const payload = await supabaseAdminRequest(env, `/rest/v1/user_roles?${params.toString()}`);
   return Array.isArray(payload) && payload.length > 0;
+}
+
+async function isAuthorizedSuperAdminRequest(
+  request: Request,
+  env: Env,
+  user: Record<string, unknown> | null = null,
+) {
+  const caller = user || await fetchSupabaseUser(request, env);
+  if (!caller?.id) {
+    return false;
+  }
+
+  if (!(await isSuperAdmin(String(caller.id), env))) {
+    return false;
+  }
+
+  const token = getUserToken(request);
+  const jwtPayload = parseJwtPayload(token);
+  const issuedAtSeconds = Number(jwtPayload?.iat || 0);
+  if (!Number.isFinite(issuedAtSeconds) || issuedAtSeconds <= 0) {
+    return false;
+  }
+
+  const account =
+    await getSuperAdminAccountByAuthUserId(String(caller.id), env) ||
+    await resolveSuperAdminMatch(String(caller.email || ''), env).then((match) => (
+      match?.account_id ? getSuperAdminAccountById(String(match.account_id), env) : null
+    ));
+
+  if (!account?.id || account.bloqueado === true || account.ativo === false) {
+    return false;
+  }
+
+  const lastMfaAt = Date.parse(String(account.ultimo_mfa_em || ''));
+  if (Number.isNaN(lastMfaAt)) {
+    return false;
+  }
+
+  return lastMfaAt >= ((issuedAtSeconds * 1000) - 5000);
 }
 
 async function getLatestUserProfile(userId: string, env: Env) {
@@ -2809,6 +2860,18 @@ const routes: Record<string, RouteHandler> = {
       );
     }
 
+    const authenticatedUserId = String(authPayload?.user?.id || '').trim();
+    if (authenticatedUserId && await isSuperAdmin(authenticatedUserId, env)) {
+      return jsonResponse(
+        {
+          success: false,
+          error: 'Super Admin deve entrar pelo fluxo reforcado com passkey, biometria e aprovacao protegida.',
+          requires_super_admin_security: true,
+        },
+        403,
+      );
+    }
+
     return jsonResponse({
       success: true,
       session: authPayload,
@@ -4424,11 +4487,18 @@ const routes: Record<string, RouteHandler> = {
       }).toString()}`,
     );
 
+    const roles = Array.isArray(roleRows)
+      ? [...new Set(roleRows.map((item) => String(item?.role || '')).filter(Boolean))]
+      : [];
+    const superAdminAuthorized = roles.includes('super_admin')
+      ? await isAuthorizedSuperAdminRequest(request, env, user)
+      : false;
+
     return jsonResponse({
       success: true,
       session: { access_token_present: true },
       user,
-      roles: Array.isArray(roleRows) ? [...new Set(roleRows.map((item) => String(item?.role || '')).filter(Boolean))] : [],
+      roles: roles.filter((role) => role !== 'super_admin' || superAdminAuthorized),
     });
   },
   'GET /v1/me/profile': async (request, env) => {
@@ -4807,7 +4877,7 @@ const routes: Record<string, RouteHandler> = {
   },
   'POST /v1/admin/comunidade/posts': async (request, env) => {
     const caller = await fetchSupabaseUser(request, env);
-    if (!caller?.id || !(await isSuperAdmin(caller.id, env))) {
+    if (!caller?.id || !(await isAuthorizedSuperAdminRequest(request, env, caller))) {
       return jsonResponse({ success: false, error: 'Sem permissao para publicar comunicado global.' }, 403);
     }
     const body = await request.json().catch(() => ({}));
@@ -5212,7 +5282,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
     }
 
-    const allowed = await isSuperAdmin(user.id, env);
+    const allowed = await isAuthorizedSuperAdminRequest(request, env, user);
     if (!allowed) {
       return jsonResponse({ success: false, error: 'Sem permissao para atualizar reclamacoes.' }, 403);
     }
@@ -5264,7 +5334,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
     }
 
-    const allowed = await isSuperAdmin(user.id, env);
+    const allowed = await isAuthorizedSuperAdminRequest(request, env, user);
     if (!allowed) {
       return jsonResponse({ success: false, error: 'Sem permissao para acessar Super Admins.' }, 403);
     }
@@ -5287,7 +5357,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
     }
 
-    const allowed = await isSuperAdmin(user.id, env);
+    const allowed = await isAuthorizedSuperAdminRequest(request, env, user);
     if (!allowed) {
       return jsonResponse({ success: false, error: 'Sem permissao para criar Super Admin.' }, 403);
     }
@@ -5397,7 +5467,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
     }
 
-    const allowed = await isSuperAdmin(user.id, env);
+    const allowed = await isAuthorizedSuperAdminRequest(request, env, user);
     if (!allowed) {
       return jsonResponse({ success: false, error: 'Sem permissao para liberar Super Admin.' }, 403);
     }
@@ -5466,7 +5536,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
     }
 
-    const allowed = await isSuperAdmin(user.id, env);
+    const allowed = await isAuthorizedSuperAdminRequest(request, env, user);
     if (!allowed) {
       return jsonResponse({ success: false, error: 'Sem permissao para acessar tenants.' }, 403);
     }
@@ -5506,7 +5576,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
     }
 
-    const allowed = await isSuperAdmin(user.id, env);
+    const allowed = await isAuthorizedSuperAdminRequest(request, env, user);
     if (!allowed) {
       return jsonResponse({ success: false, error: 'Sem permissao para provisionar tenant.' }, 403);
     }
@@ -5563,7 +5633,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
     }
 
-    const allowed = await isSuperAdmin(user.id, env);
+    const allowed = await isAuthorizedSuperAdminRequest(request, env, user);
     if (!allowed) {
       return jsonResponse({ success: false, error: 'Sem permissao para alterar status do tenant.' }, 403);
     }
@@ -5596,7 +5666,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
     }
 
-    const allowed = await isSuperAdmin(user.id, env);
+    const allowed = await isAuthorizedSuperAdminRequest(request, env, user);
     if (!allowed) {
       return jsonResponse({ success: false, error: 'Sem permissao para gerar audios em massa.' }, 403);
     }
@@ -5661,7 +5731,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
     }
 
-    const allowed = await isSuperAdmin(user.id, env);
+    const allowed = await isAuthorizedSuperAdminRequest(request, env, user);
     if (!allowed) {
       return jsonResponse({ success: false, error: 'Sem permissao para gerar convite do tenant.' }, 403);
     }
@@ -5687,7 +5757,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
     }
 
-    const allowed = await isSuperAdmin(user.id, env);
+    const allowed = await isAuthorizedSuperAdminRequest(request, env, user);
     if (!allowed) {
       return jsonResponse({ success: false, error: 'Sem permissao para excluir tenant.' }, 403);
     }
@@ -5739,7 +5809,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
     }
 
-    const allowed = await isSuperAdmin(user.id, env);
+    const allowed = await isAuthorizedSuperAdminRequest(request, env, user);
     if (!allowed) {
       return jsonResponse({ success: false, error: 'Sem permissao para excluir escola.' }, 403);
     }
@@ -5871,7 +5941,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
     }
 
-    const allowed = await isSuperAdmin(user.id, env);
+    const allowed = await isAuthorizedSuperAdminRequest(request, env, user);
     if (!allowed) {
       return jsonResponse({ success: false, error: 'Sem permissao para criar audiobook administrativo.' }, 403);
     }
@@ -5891,7 +5961,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
     }
 
-    const allowed = await isSuperAdmin(user.id, env);
+    const allowed = await isAuthorizedSuperAdminRequest(request, env, user);
     if (!allowed) {
       return jsonResponse({ success: false, error: 'Sem permissao para listar gestores.' }, 403);
     }
@@ -5911,7 +5981,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
     }
 
-    const allowed = await isSuperAdmin(user.id, env);
+    const allowed = await isAuthorizedSuperAdminRequest(request, env, user);
     if (!allowed) {
       return jsonResponse({ success: false, error: 'Sem permissao para redefinir senha de gestor.' }, 403);
     }
@@ -5961,7 +6031,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
     }
 
-    const allowed = await isSuperAdmin(user.id, env);
+    const allowed = await isAuthorizedSuperAdminRequest(request, env, user);
     if (!allowed) {
       return jsonResponse({ success: false, error: 'Sem permissao para excluir gestor.' }, 403);
     }
@@ -6135,7 +6205,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
     }
 
-    const allowed = await isSuperAdmin(user.id, env);
+    const allowed = await isAuthorizedSuperAdminRequest(request, env, user);
     if (!allowed) {
       return jsonResponse({ success: false, error: 'Sem permissao para excluir contas fantasmas.' }, 403);
     }
