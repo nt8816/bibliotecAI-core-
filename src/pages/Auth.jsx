@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Loader2, Eye, EyeOff, QrCode, ShieldCheck, Smartphone, MonitorSmartphone, MailCheck } from 'lucide-react';
 
 import { useAuth } from '@/hooks/useAuth';
+import { buildTenantAccessUrl, shouldRedirectToTenantHost } from '@/lib/tenantRouting';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -144,7 +145,7 @@ export default function Auth() {
   const [passkeyEnvironmentInfo, setPasskeyEnvironmentInfo] = useState(null);
 
   const desktopApprovalTokenRef = useRef(getDesktopApprovalToken());
-  const { signIn, user } = useAuth();
+  const { signIn, user, tenantContext, userRole } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -166,6 +167,11 @@ export default function Auth() {
 
   useEffect(() => {
     if (user && !pendingSecurity) {
+      if (userRole && userRole !== 'super_admin' && tenantContext?.subdominio && shouldRedirectToTenantHost(tenantContext)) {
+        window.location.assign(buildTenantAccessUrl(tenantContext));
+        return;
+      }
+
       fetchPlatformCurrentRoles()
         .then((roles) => {
           if (roles.includes('super_admin')) {
@@ -178,7 +184,7 @@ export default function Auth() {
           navigate('/dashboard', { replace: true });
         });
     }
-  }, [navigate, pendingSecurity, user]);
+  }, [navigate, pendingSecurity, tenantContext, user, userRole]);
 
   useEffect(() => {
     if (!pendingSecurity?.desktopToken || !pendingSecurity?.pendingSession) return;
@@ -641,6 +647,12 @@ export default function Auth() {
           setAuthAlert({
             title: 'USUARIO BLOQUEADO',
             description: 'Fale com seu parceiro ou superior para solicitar a liberacao da conta.',
+          });
+        }
+        if (error?.payload?.school_inactive || String(error?.message || '').toLowerCase().includes('escola inativada')) {
+          setAuthAlert({
+            title: 'ESCOLA INATIVADA',
+            description: 'Escola inativada. Aguarde normalizar ou informe a direção.',
           });
         }
 

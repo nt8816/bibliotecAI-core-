@@ -3,7 +3,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 import { addPlatformSessionListener, clearPlatformSession, getPlatformSession } from '@/lib/platformSession';
 import {
-  fetchPlatformCurrentRoles,
   fetchPlatformSessionProfile,
   signInWithPlatform,
   signOutWithPlatform,
@@ -23,6 +22,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState(null);
   const [roles, setRoles] = useState([]);
+  const [tenantContext, setTenantContext] = useState(null);
 
   const syncAuthState = useCallback(async () => {
     const localSession = getPlatformSession();
@@ -32,6 +32,7 @@ export function AuthProvider({ children }) {
       setUser(null);
       setRoles([]);
       setUserRole(null);
+      setTenantContext(null);
       return;
     }
 
@@ -42,6 +43,7 @@ export function AuthProvider({ children }) {
       setUser(payload?.user || localSession?.user || null);
       setRoles(uniqueRoles);
       setUserRole(pickPrimaryRole(uniqueRoles));
+      setTenantContext(payload?.tenant || null);
     } catch (error) {
       console.error('Error syncing auth state:', error);
       clearPlatformSession();
@@ -49,6 +51,7 @@ export function AuthProvider({ children }) {
       setUser(null);
       setRoles([]);
       setUserRole(null);
+      setTenantContext(null);
     }
   }, []);
 
@@ -73,14 +76,10 @@ export function AuthProvider({ children }) {
   const signIn = useCallback(async (email, password) => {
     const result = await signInWithPlatform(email, password);
     if (!result.error) {
-      const currentRoles = await fetchPlatformCurrentRoles().catch(() => []);
-      setSession(getPlatformSession());
-      setUser(result.user || getPlatformSession()?.user || null);
-      setRoles(currentRoles);
-      setUserRole(pickPrimaryRole(currentRoles));
+      await syncAuthState();
     }
     return { error: result.error };
-  }, []);
+  }, [syncAuthState]);
 
   const signUp = useCallback(async (email, password, nome) => {
     const result = await signUpWithPlatform(email, password, nome);
@@ -92,10 +91,11 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     await signOutWithPlatform();
-    setSession(null);
-    setUser(null);
-    setRoles([]);
-    setUserRole(null);
+      setSession(null);
+      setUser(null);
+      setRoles([]);
+      setUserRole(null);
+      setTenantContext(null);
   }, []);
 
   const value = useMemo(() => ({
@@ -104,6 +104,7 @@ export function AuthProvider({ children }) {
     loading,
     userRole,
     roles,
+    tenantContext,
     isGestor: userRole === 'gestor',
     isProfessor: userRole === 'professor',
     isBibliotecaria: userRole === 'bibliotecaria',
@@ -112,7 +113,7 @@ export function AuthProvider({ children }) {
     signIn,
     signUp,
     signOut,
-  }), [loading, roles, session, signIn, signOut, signUp, user, userRole]);
+  }), [loading, roles, session, signIn, signOut, signUp, tenantContext, user, userRole]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

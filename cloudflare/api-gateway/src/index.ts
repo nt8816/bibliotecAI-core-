@@ -1700,6 +1700,19 @@ async function getActivePasskeyByCredential(accountId: string, credentialId: str
   return Array.isArray(payload) ? (payload[0] || null) : null;
 }
 
+async function getTenantBySchoolId(escolaId: string, env: Env) {
+  const normalizedSchoolId = String(escolaId || '').trim();
+  if (!normalizedSchoolId) return null;
+
+  const payload = await supabaseAdminRequest(env, `/rest/v1/tenants?${new URLSearchParams({
+    select: 'id,ativo,escola_id,nome,subdominio',
+    escola_id: `eq.${normalizedSchoolId}`,
+    limit: '1',
+  }).toString()}`).catch(() => []);
+
+  return Array.isArray(payload) ? (payload[0] || null) : null;
+}
+
 async function revokeActivePasskeys(accountId: string, env: Env, exceptCredentialId?: string | null) {
   const params = new URLSearchParams({
     account_id: `eq.${accountId}`,
@@ -2935,6 +2948,24 @@ const routes: Record<string, RouteHandler> = {
         },
         403,
       );
+    }
+
+    if (authenticatedUserId) {
+      const profile = await getLatestUserProfile(authenticatedUserId, env).catch(() => null);
+      const escolaId = String(profile?.escola_id || '').trim();
+      if (escolaId) {
+        const tenant = await getTenantBySchoolId(escolaId, env);
+        if (tenant?.id && tenant?.ativo === false) {
+          return jsonResponse(
+            {
+              success: false,
+              error: 'Escola inativada. Aguarde normalizar ou informe a direção.',
+              school_inactive: true,
+            },
+            403,
+          );
+        }
+      }
     }
 
     return jsonResponse({
@@ -4566,7 +4597,7 @@ const routes: Record<string, RouteHandler> = {
   'GET /v1/auth/session': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);
     if (!user?.id) {
-      return jsonResponse({ success: true, session: null, user: null, roles: [] });
+      return jsonResponse({ success: true, session: null, user: null, roles: [], tenant: null });
     }
 
     const roleRows = await supabaseAdminRequest(
@@ -4583,11 +4614,24 @@ const routes: Record<string, RouteHandler> = {
     const superAdminAuthorized = roles.includes('super_admin')
       ? await isAuthorizedSuperAdminRequest(request, env, user)
       : false;
+    const profile = roles.includes('super_admin')
+      ? null
+      : await getLatestUserProfile(String(user.id), env).catch(() => null);
+    const tenant = profile?.escola_id
+      ? await getTenantBySchoolId(String(profile.escola_id), env)
+      : null;
 
     return jsonResponse({
       success: true,
       session: { access_token_present: true },
       user,
+      tenant: tenant?.id ? {
+        id: tenant.id,
+        escola_id: tenant.escola_id || null,
+        nome: tenant.nome || null,
+        subdominio: tenant.subdominio || null,
+        ativo: tenant.ativo !== false,
+      } : null,
       roles: roles.filter((role) => role !== 'super_admin' || superAdminAuthorized),
     });
   },
