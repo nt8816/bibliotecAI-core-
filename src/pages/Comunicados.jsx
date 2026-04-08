@@ -1012,7 +1012,8 @@ export default function Comunicados() {
               <CardTitle className="text-base">Novo comunicado</CardTitle>
             </CardHeader>
             <CardContent className="max-h-[calc(94vh-92px)] overflow-y-auto px-8 py-7">
-              <div className="grid gap-6 rounded-[26px] border border-primary/10 bg-card/80 p-6 shadow-sm xl:grid-cols-[minmax(0,1.15fr)_380px]">
+              <div className="space-y-8">
+                <div className="grid gap-6 rounded-[26px] border border-primary/10 bg-card/80 p-6 shadow-sm xl:grid-cols-[minmax(0,1.15fr)_380px]">
                 <div className="space-y-2">
                   <Label>Titulo</Label>
                   <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ex.: Aviso sobre a prova de leitura" />
@@ -1035,28 +1036,36 @@ export default function Comunicados() {
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-
-              <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
-                <div className="space-y-2">
-                  <Label>Mensagem</Label>
-                  <Textarea className="min-h-[180px] rounded-[24px] border-primary/15 bg-background px-5 py-4 text-base shadow-sm"
-                    rows={5}
-                    value={conteudo}
-                    onChange={(e) => setConteudo(e.target.value)}
-                    placeholder="Escreva o aviso principal para os alunos e a equipe."
-                  />
                 </div>
-                <div className="space-y-2">
-                  <Label>Remover em</Label>
-                  <Input type="date" min={minComunicadoDate} value={expiraEm} onChange={(e) => setExpiraEm(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">Opcional. Depois dessa data o comunicado some automaticamente.</p>
-                </div>
-              </div>
 
-              <div className="rounded-[28px] border border-emerald-200/80 bg-emerald-50/70 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/20">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
+                <div className="grid items-start gap-8 rounded-[26px] border border-primary/10 bg-card/70 p-6 shadow-sm xl:grid-cols-[minmax(0,1fr)_320px]">
+                  <div className="space-y-3">
+                    <Label>Mensagem</Label>
+                    <Textarea className="min-h-[220px] rounded-[24px] border-primary/15 bg-background px-5 py-4 text-base shadow-sm"
+                      rows={6}
+                      value={conteudo}
+                      onChange={(e) => setConteudo(e.target.value)}
+                      placeholder="Escreva o aviso principal para os alunos e a equipe."
+                    />
+                  </div>
+                  <div className="rounded-[22px] border border-emerald-100/80 bg-white/75 p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/35">
+                    <div className="space-y-3">
+                      <Label>Remover em</Label>
+                      <Input
+                        className="h-12 rounded-2xl"
+                        type="date"
+                        min={minComunicadoDate}
+                        value={expiraEm}
+                        onChange={(e) => setExpiraEm(e.target.value)}
+                      />
+                      <p className="text-xs leading-6 text-muted-foreground">Opcional. Depois dessa data o comunicado some automaticamente.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[28px] border border-emerald-200/80 bg-emerald-50/70 p-5 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-950/20">
+                  <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-2">
                     <Label className="flex items-center gap-2 text-base text-emerald-900 dark:text-emerald-100">
                       <AudioLines className="h-4 w-4" /> Audio do comunicado
                     </Label>
@@ -1085,7 +1094,7 @@ export default function Comunicados() {
                       e.target.value = '';
                     }}
                   />
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-3">
                     <Button
                       type="button"
                       variant={isRecording ? 'destructive' : 'default'}
@@ -1115,8 +1124,8 @@ export default function Comunicados() {
                   </div>
                 </div>
 
-                {isRecording ? (
-                  <div className="record-status-enter mt-4 rounded-2xl border border-rose-200 bg-white/85 px-4 py-3 text-sm text-rose-700 shadow-[0_12px_24px_rgba(244,63,94,0.08)] dark:border-rose-900/60 dark:bg-slate-950/60 dark:text-rose-200">
+                  {isRecording ? (
+                  <div className="record-status-enter mt-5 rounded-2xl border border-rose-200 bg-white/85 px-4 py-3 text-sm text-rose-700 shadow-[0_12px_24px_rgba(244,63,94,0.08)] dark:border-rose-900/60 dark:bg-slate-950/60 dark:text-rose-200">
                     <div className="grid gap-3 md:grid-cols-[56px_minmax(0,1fr)]">
                       <span className="inline-flex h-2.5 w-2.5 rounded-full bg-rose-500 animate-pulse" />
                       <span className="font-medium">Gravando agora: {formatRecordingClock(recordingSeconds)}</span>
@@ -1139,10 +1148,10 @@ export default function Comunicados() {
                       O aplicativo/navegador pode pedir permissao do microfone nesta etapa.
                     </p>
                   </div>
-                ) : null}
+                  ) : null}
 
-                {audioFile ? (
-                  <div className="mt-4 space-y-3">
+                  {audioFile ? (
+                  <div className="mt-5 space-y-3">
                     <AudioMessagePlayer
                       src={audioFile.previewUrl}
                       title="Previa do audio"
@@ -1155,10 +1164,10 @@ export default function Comunicados() {
                       </Button>
                     </div>
                   </div>
-                ) : null}
+                  ) : null}
 
-                {pendingImages.length > 0 ? (
-                  <div className="mt-4 space-y-3">
+                  {pendingImages.length > 0 ? (
+                  <div className="mt-5 space-y-3">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Imagens anexadas</p>
                       <Button type="button" variant="ghost" size="sm" onClick={clearPendingImages}>
@@ -1207,14 +1216,15 @@ export default function Comunicados() {
                       ))}
                     </div>
                   </div>
-                ) : null}
-              </div>
+                  ) : null}
+                </div>
 
-              <div className="flex justify-end">
-                <Button onClick={handlePublish} disabled={saving}>
-                  <Send className="mr-2 h-4 w-4" />
-                  {saving ? 'Publicando...' : 'Publicar comunicado'}
-                </Button>
+                <div className="flex justify-end pt-2">
+                  <Button className="h-14 rounded-2xl px-7 shadow-[0_16px_34px_rgba(22,163,74,0.24)]" onClick={handlePublish} disabled={saving}>
+                    <Send className="mr-2 h-4 w-4" />
+                    {saving ? 'Publicando...' : 'Publicar comunicado'}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
