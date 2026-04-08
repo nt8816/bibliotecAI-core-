@@ -1427,197 +1427,252 @@ export default function Comunicados() {
       </Dialog>
 
       <Dialog open={isFormularioDialogOpen} onOpenChange={setIsFormularioDialogOpen}>
-        <DialogContent className="w-[min(96vw,1280px)] max-w-none max-h-[94vh] overflow-hidden rounded-[28px] border border-primary/10 bg-background p-0 shadow-[0_28px_120px_rgba(15,23,42,0.28)]">
+        <DialogContent className="w-[min(96vw,1240px)] max-w-none overflow-hidden rounded-[28px] border border-primary/10 bg-background p-0 shadow-[0_28px_120px_rgba(15,23,42,0.28)]">
           <DialogHeader className="border-b border-border/60 bg-gradient-to-r from-primary/8 via-background to-emerald-500/8 px-8 py-6">
-            <DialogTitle>Novo formulÃ¡rio</DialogTitle>
+            <DialogTitle className="text-2xl font-semibold tracking-tight">Novo formulário</DialogTitle>
           </DialogHeader>
-          <div className="max-h-[calc(94vh-92px)] overflow-y-auto px-8 py-7">
-            <div className="grid gap-6 rounded-[26px] border border-primary/10 bg-card/80 p-6 shadow-sm xl:grid-cols-[minmax(0,1.15fr)_380px]">
-              <div className="space-y-2">
-                <Label>TÃ­tulo</Label>
-                <Input
-                  value={formularioForm.titulo}
-                  onChange={(e) => setFormularioForm((prev) => ({ ...prev, titulo: e.target.value }))}
-                  placeholder="Ex.: ReflexÃ£o sobre o capÃ­tulo 3"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Destino</Label>
-                <Select
-                  value={formularioForm.turma || 'none'}
-                  onValueChange={(value) => setFormularioForm((prev) => ({ ...prev, turma: value === 'none' ? '' : value }))}
-                >
-                  <SelectTrigger className="h-14 rounded-2xl border-primary/20 bg-muted/20 px-5 text-left text-base shadow-sm transition focus:ring-2 focus:ring-primary/20">
-                    <SelectValue placeholder="Selecione a turma" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-2xl border-primary/20 bg-background/95 shadow-[0_18px_40px_rgba(16,24,40,0.16)] backdrop-blur">
-                    <SelectItem value="none">Selecione a turma</SelectItem>
-                    <SelectItem value={ALL_TURMAS_OPTION}>Todas as turmas</SelectItem>
-                    {turmasPublicacao.map((turma) => (
-                      <SelectItem key={turma} value={turma}>{turma}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
 
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
-              <div className="space-y-2">
-                <Label>OrientaÃ§Ã£o</Label>
-                <Textarea className="min-h-[180px] rounded-[24px] border-primary/15 bg-background px-5 py-4 text-base shadow-sm"
-                  rows={4}
-                  value={formularioForm.descricao}
-                  onChange={(e) => setFormularioForm((prev) => ({ ...prev, descricao: e.target.value }))}
-                  placeholder="Explique o objetivo do formulÃ¡rio para os alunos."
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Prazo</Label>
-                <Input
-                  type="date"
-                  value={formularioForm.data_entrega}
-                  onChange={(e) => setFormularioForm((prev) => ({ ...prev, data_entrega: e.target.value }))}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {formularioForm.perguntas.map((question, index) => (
-                <div key={question.id} className="rounded-[28px] border border-primary/10 bg-card/85 p-6 space-y-5 shadow-[0_12px_40px_rgba(15,23,42,0.06)]">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-medium">QuestÃ£o {index + 1}</p>
-                    {formularioForm.perguntas.length > 1 ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive"
-                        onClick={() => setFormularioForm((prev) => ({
-                          ...prev,
-                          perguntas: prev.perguntas.filter((item) => item.id !== question.id),
-                        }))}
-                      >
-                        Remover
-                      </Button>
-                    ) : null}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Pergunta</Label>
+          <div className="max-h-[88vh] overflow-y-auto px-8 py-7">
+            <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
+              <div className="rounded-[26px] border border-primary/10 bg-card/80 p-6 shadow-sm">
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <div className="space-y-3 lg:col-span-2">
+                    <Label className="text-sm font-medium text-foreground/85">Título</Label>
                     <Input
-                      value={question.pergunta}
-                      onChange={(e) => handleFormQuestionChange(question.id, 'pergunta', e.target.value)}
-                      placeholder="Digite a pergunta"
+                      className="h-14 rounded-2xl border-primary/15 bg-background px-5 text-base shadow-sm"
+                      value={formularioForm.titulo}
+                      onChange={(e) => setFormularioForm((prev) => ({ ...prev, titulo: e.target.value }))}
+                      placeholder="Ex.: Reflexão sobre o capítulo 3"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Tipo</Label>
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      <Button
-                        type="button"
-                        variant={question.tipo === 'texto' ? 'default' : 'outline'}
-                        onClick={() => handleFormQuestionTypeChange(question.id, 'texto')}
-                      >
-                        Resposta aberta
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={question.tipo === 'multipla_escolha' ? 'default' : 'outline'}
-                        onClick={() => handleFormQuestionTypeChange(question.id, 'multipla_escolha')}
-                      >
-                        MÃºltipla escolha
-                      </Button>
-                    </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-sm font-medium text-foreground/85">Destino</Label>
+                    <Select
+                      value={formularioForm.turma || 'none'}
+                      onValueChange={(value) => setFormularioForm((prev) => ({ ...prev, turma: value === 'none' ? '' : value }))}
+                    >
+                      <SelectTrigger className="h-14 rounded-2xl border-primary/20 bg-muted/20 px-5 text-left text-base shadow-sm transition focus:ring-2 focus:ring-primary/20">
+                        <SelectValue placeholder="Selecione a turma" />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-2xl border-primary/20 bg-background/95 shadow-[0_18px_40px_rgba(16,24,40,0.16)] backdrop-blur">
+                        <SelectItem value="none">Selecione a turma</SelectItem>
+                        <SelectItem value={ALL_TURMAS_OPTION}>Todas as turmas</SelectItem>
+                        {turmasPublicacao.map((turma) => (
+                          <SelectItem key={turma} value={turma}>{turma}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  {question.tipo === 'multipla_escolha' ? (
-                    <div className="space-y-4">
-                      {question.opcoes.map((option, optionIndex) => (
-                        <div key={`${question.id}-${optionIndex}`} className="grid gap-3 md:grid-cols-[56px_minmax(0,1fr)]">
+
+                  <div className="space-y-3">
+                    <Label className="text-sm font-medium text-foreground/85">Prazo</Label>
+                    <Input
+                      className="h-14 rounded-2xl border-primary/15 bg-background px-5 text-base shadow-sm"
+                      type="date"
+                      value={formularioForm.data_entrega}
+                      onChange={(e) => setFormularioForm((prev) => ({ ...prev, data_entrega: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="space-y-3 lg:col-span-2">
+                    <Label className="text-sm font-medium text-foreground/85">Orientação</Label>
+                    <Textarea
+                      className="min-h-[180px] rounded-[24px] border-primary/15 bg-background px-5 py-4 text-base shadow-sm"
+                      rows={6}
+                      value={formularioForm.descricao}
+                      onChange={(e) => setFormularioForm((prev) => ({ ...prev, descricao: e.target.value }))}
+                      placeholder="Explique com clareza o objetivo do formulário, o que o aluno precisa responder e como ele deve preencher."
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-5">
+                {formularioForm.perguntas.map((question, index) => (
+                  <div
+                    key={question.id}
+                    className="rounded-[28px] border border-primary/10 bg-card/85 p-7 shadow-[0_12px_40px_rgba(15,23,42,0.06)]"
+                  >
+                    <div className="flex flex-col gap-5">
+                      <div className="flex flex-col gap-3 border-b border-border/60 pb-5 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70">Questão {index + 1}</p>
+                          <p className="mt-1 text-lg font-semibold text-foreground">Configure o enunciado e o tipo de resposta</p>
+                        </div>
+                        {formularioForm.perguntas.length > 1 ? (
                           <Button
                             type="button"
-                            variant={question.correta === optionIndex ? 'default' : 'outline'}
-                            className="h-14 rounded-2xl"
-                            onClick={() => handleFormQuestionChange(question.id, 'correta', optionIndex)}
+                            variant="outline"
+                            className="h-11 rounded-2xl border-destructive/20 px-5 text-destructive hover:bg-destructive/10"
+                            onClick={() => setFormularioForm((prev) => ({
+                              ...prev,
+                              perguntas: prev.perguntas.filter((item) => item.id !== question.id),
+                            }))}
                           >
-                            <CheckCircle2 className="h-4 w-4" />
+                            Remover questão
                           </Button>
-                          <Input
-                            value={option}
-                            onChange={(e) => handleFormOptionChange(question.id, optionIndex, e.target.value)}
-                            placeholder={`OpÃ§Ã£o ${optionIndex + 1}`}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-              <Button type="button" variant="outline" className="h-14 w-full rounded-2xl border-dashed text-base sm:w-auto sm:px-6" onClick={handleAddFormQuestion}>
-                <Plus className="mr-2 h-4 w-4" />
-                Adicionar questÃ£o
-              </Button>
-            </div>
+                        ) : null}
+                      </div>
 
-            <div className="sticky bottom-0 z-10 flex justify-end gap-3 border-t border-border/60 bg-background/95 pt-5 backdrop-blur">
-              <Button type="button" variant="outline" className="h-12 rounded-2xl px-6" onClick={() => setIsFormularioDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button type="button" className="h-12 rounded-2xl px-6" onClick={handleSaveFormulario} disabled={formularioSaving}>
-                {formularioSaving ? 'Salvando...' : 'Salvar formulÃ¡rio'}
-              </Button>
+                      <div className="space-y-3">
+                        <Label className="text-sm font-medium text-foreground/85">Pergunta</Label>
+                        <Input
+                          className="h-14 rounded-2xl border-primary/15 bg-background px-5 text-base shadow-sm"
+                          value={question.pergunta}
+                          onChange={(e) => handleFormQuestionChange(question.id, 'pergunta', e.target.value)}
+                          placeholder="Digite a pergunta"
+                        />
+                      </div>
+
+                      <div className="space-y-3">
+                        <Label className="text-sm font-medium text-foreground/85">Tipo</Label>
+                        <div className="grid gap-4 lg:grid-cols-2">
+                          <Button
+                            type="button"
+                            variant={question.tipo === 'texto' ? 'default' : 'outline'}
+                            className="h-14 rounded-2xl text-base"
+                            onClick={() => handleFormQuestionTypeChange(question.id, 'texto')}
+                          >
+                            Resposta aberta
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={question.tipo === 'multipla_escolha' ? 'default' : 'outline'}
+                            className="h-14 rounded-2xl text-base"
+                            onClick={() => handleFormQuestionTypeChange(question.id, 'multipla_escolha')}
+                          >
+                            Múltipla escolha
+                          </Button>
+                        </div>
+                      </div>
+
+                      {question.tipo === 'multipla_escolha' ? (
+                        <div className="rounded-[24px] border border-border/70 bg-background/70 p-5">
+                          <p className="mb-4 text-sm font-semibold text-foreground">Alternativas</p>
+                          <div className="space-y-4">
+                            {question.opcoes.map((option, optionIndex) => (
+                              <div key={`${question.id}-${optionIndex}`} className="grid gap-3 md:grid-cols-[56px_minmax(0,1fr)]">
+                                <Button
+                                  type="button"
+                                  variant={question.correta === optionIndex ? 'default' : 'outline'}
+                                  className="h-14 rounded-2xl"
+                                  onClick={() => handleFormQuestionChange(question.id, 'correta', optionIndex)}
+                                >
+                                  <CheckCircle2 className="h-4 w-4" />
+                                </Button>
+                                <Input
+                                  className="h-14 rounded-2xl border-primary/15 bg-background px-5 text-base shadow-sm"
+                                  value={option}
+                                  onChange={(e) => handleFormOptionChange(question.id, optionIndex, e.target.value)}
+                                  placeholder={`Opção ${optionIndex + 1}`}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="rounded-[24px] border border-dashed border-border bg-muted/15 p-5 text-sm leading-6 text-muted-foreground">
+                          O aluno responderá livremente. Use a orientação do formulário para contextualizar a resposta esperada.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-14 w-full rounded-2xl border-dashed text-base sm:w-auto sm:px-6"
+                  onClick={handleAddFormQuestion}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Adicionar questão
+                </Button>
+              </div>
             </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 border-t border-border/60 bg-background/95 px-8 py-5 backdrop-blur">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 rounded-2xl px-6"
+              onClick={() => setIsFormularioDialogOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              className="h-12 rounded-2xl px-6"
+              onClick={handleSaveFormulario}
+              disabled={formularioSaving}
+            >
+              {formularioSaving ? 'Salvando...' : 'Salvar formulário'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={Boolean(selectedFormulario)} onOpenChange={(open) => !open && setSelectedFormulario(null)}>
-        <DialogContent className="max-w-5xl">
+        <DialogContent className="max-w-5xl overflow-hidden rounded-[28px] border border-primary/10 bg-background p-0">
           <DialogHeader className="border-b border-border/60 bg-gradient-to-r from-primary/8 via-background to-emerald-500/8 px-8 py-6">
-            <DialogTitle>Respostas do formulÃ¡rio</DialogTitle>
+            <DialogTitle className="text-2xl font-semibold tracking-tight">Respostas do formulário</DialogTitle>
           </DialogHeader>
+
           {selectedFormulario ? (
-            <div className="space-y-4">
-              <div className="rounded-2xl border bg-muted/30 p-4">
-                <p className="font-semibold">{selectedFormulario.titulo || 'FormulÃ¡rio'}</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {selectedFormulario.respostas.length} resposta(s) recebida(s)
-                </p>
-              </div>
-              {selectedFormulario.respostas.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhum aluno respondeu este formulÃ¡rio ainda.</p>
-              ) : (
-                <div className="space-y-4">
-                  {selectedFormulario.respostas.map((entrega) => {
-                    const payload = parseEntregaPayload(entrega?.texto_entrega);
-                    return (
-                      <div key={entrega.id} className="rounded-2xl border p-4 space-y-3">
-                        <div>
-                          <p className="font-medium">{entrega.usuarios_biblioteca?.nome || 'Aluno'}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {entrega.usuarios_biblioteca?.turma || '-'} â€¢ {formatDateTimeBR(entrega.enviado_em || entrega.updated_at)}
-                          </p>
-                        </div>
-                        {selectedFormulario.meta.perguntas.map((pergunta, idx) => {
-                          const answerKey = pergunta.id || `q_${idx + 1}`;
-                          return (
-                            <div key={`${entrega.id}-${answerKey}`} className="rounded-xl bg-muted/30 p-3">
-                              <p className="text-sm font-medium">{pergunta.pergunta || `QuestÃ£o ${idx + 1}`}</p>
-                              <p className="mt-1 text-sm text-muted-foreground">
-                                {String(payload.respostas?.[answerKey] || 'Sem resposta')}
-                              </p>
-                            </div>
-                          );
-                        })}
-                        {payload.texto ? (
-                          <div className="rounded-xl bg-muted/30 p-3">
-                            <p className="text-sm font-medium">Texto complementar</p>
-                            <p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">{payload.texto}</p>
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
+            <div className="max-h-[82vh] overflow-y-auto px-8 py-7">
+              <div className="space-y-5">
+                <div className="rounded-[24px] border border-primary/10 bg-card/80 p-5 shadow-sm">
+                  <p className="text-lg font-semibold">{selectedFormulario.titulo || 'Formulário'}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {selectedFormulario.respostas.length} resposta(s) recebida(s)
+                  </p>
                 </div>
-              )}
+
+                {selectedFormulario.respostas.length === 0 ? (
+                  <div className="rounded-[24px] border border-dashed border-border bg-muted/20 p-6 text-sm text-muted-foreground">
+                    Nenhum aluno respondeu este formulário ainda.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {selectedFormulario.respostas.map((entrega) => {
+                      const payload = parseEntregaPayload(entrega?.texto_entrega);
+                      return (
+                        <div key={entrega.id} className="rounded-[24px] border border-primary/10 bg-card/80 p-5 shadow-sm">
+                          <div>
+                            <p className="font-medium">{entrega.usuarios_biblioteca?.nome || 'Aluno'}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {entrega.usuarios_biblioteca?.turma || '-'} • {formatDateTimeBR(entrega.enviado_em || entrega.updated_at)}
+                            </p>
+                          </div>
+
+                          <div className="mt-4 space-y-3">
+                            {selectedFormulario.meta.perguntas.map((pergunta, idx) => {
+                              const answerKey = pergunta.id || `q_${idx + 1}`;
+                              return (
+                                <div key={`${entrega.id}-${answerKey}`} className="rounded-xl bg-muted/30 p-3">
+                                  <p className="text-sm font-medium">{pergunta.pergunta || `Questão ${idx + 1}`}</p>
+                                  <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                                    {String(payload.respostas?.[answerKey] || 'Sem resposta')}
+                                  </p>
+                                </div>
+                              );
+                            })}
+
+                            {payload.texto ? (
+                              <div className="rounded-xl bg-muted/30 p-3">
+                                <p className="text-sm font-medium">Texto complementar</p>
+                                <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{payload.texto}</p>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           ) : null}
         </DialogContent>
