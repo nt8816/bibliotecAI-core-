@@ -90,9 +90,12 @@ function buildCreateOptions(publicKeyOptions, mode = 'strict') {
       residentKey: 'required',
       userVerification: 'required',
     },
+    hints: Array.isArray(publicKeyOptions.hints) && publicKeyOptions.hints.length > 0
+      ? publicKeyOptions.hints
+      : ['client-device'],
   };
 
-  if (mode !== 'strict') {
+  if (mode === 'loose') {
     delete next.hints;
   }
 
@@ -119,10 +122,14 @@ function buildGetOptions(publicKeyOptions, mode = 'strict') {
   const next = {
     ...publicKeyOptions,
     challenge: base64UrlToArrayBuffer(publicKeyOptions.challenge),
-    allowCredentials,
+    allowCredentials: mode === 'loose' ? [] : allowCredentials,
+    userVerification: publicKeyOptions.userVerification || 'required',
+    hints: Array.isArray(publicKeyOptions.hints) && publicKeyOptions.hints.length > 0
+      ? publicKeyOptions.hints
+      : ['client-device'],
   };
 
-  if (mode !== 'strict') {
+  if (mode === 'loose') {
     delete next.hints;
   }
 
@@ -164,9 +171,15 @@ export async function createPlatformPasskey(publicKeyOptions) {
         publicKey: buildCreateOptions(publicKeyOptions, 'strict'),
       });
     } catch (strictError) {
-      credential = await navigator.credentials.create({
-        publicKey: buildCreateOptions(publicKeyOptions, 'compat'),
-      });
+      try {
+        credential = await navigator.credentials.create({
+          publicKey: buildCreateOptions(publicKeyOptions, 'compat'),
+        });
+      } catch (compatError) {
+        credential = await navigator.credentials.create({
+          publicKey: buildCreateOptions(publicKeyOptions, 'loose'),
+        });
+      }
     }
 
     return normalizeCredential(credential);

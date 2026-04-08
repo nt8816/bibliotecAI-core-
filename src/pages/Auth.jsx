@@ -383,15 +383,6 @@ export default function Auth() {
       );
     }
 
-    const localAuthenticatorAvailable = await isLocalPlatformAuthenticatorAvailable();
-    if (!localAuthenticatorAvailable) {
-      throw new Error(
-        isAndroidChromeFamily()
-          ? 'O Android não liberou a biometria local deste aparelho para a passkey. Verifique se o bloqueio de tela e a digital estão ativos e se o Gerenciador de senhas do Google está habilitado no Chrome.'
-          : 'Este navegador não liberou a biometria local do aparelho para a passkey. Tente no Chrome do celular com bloqueio de tela e digital ativos.',
-      );
-    }
-
     const registerOptions = await beginSuperAdminPasskeyRegistration(nextPending.pendingAccessToken, nextPending.context);
     const credential = await createPlatformPasskey(registerOptions.publicKey);
     await finishSuperAdminPasskeyRegistration(nextPending.pendingAccessToken, {
@@ -614,11 +605,7 @@ export default function Auth() {
 
       const localAuthenticatorAvailable = await isLocalPlatformAuthenticatorAvailable();
       if (!localAuthenticatorAvailable && isMobileDevice()) {
-        throw new Error(
-          isAndroidChromeFamily()
-            ? 'O celular não disponibilizou o autenticador interno. Ative bloqueio de tela, digital e o Gerenciador de senhas do Google no Chrome para usar a biometria do próprio aparelho.'
-            : 'O navegador atual não disponibilizou a biometria local do aparelho. Use o Chrome no celular com biometria e bloqueio de tela ativos.',
-        );
+        console.warn('Passkey local authenticator availability check returned false; proceeding to credential request anyway.');
       }
 
       if (securityStep === 'passkey_enrollment') {
