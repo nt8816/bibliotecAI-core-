@@ -120,6 +120,7 @@ export default function Auth() {
   const [notificationPermission, setNotificationPermission] = useState(getBrowserNotificationPermission);
 
   const desktopApprovalTokenRef = useRef(getDesktopApprovalToken());
+  const passkeyAutoPromptKeyRef = useRef('');
   const { signIn, user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -167,6 +168,34 @@ export default function Auth() {
   useEffect(() => {
     setNotificationPermission(getBrowserNotificationPermission());
   }, []);
+
+  useEffect(() => {
+    if (!pendingSecurity) {
+      passkeyAutoPromptKeyRef.current = '';
+      return;
+    }
+
+    if (securityStep !== 'passkey_enrollment' && securityStep !== 'mobile_biometric') {
+      return;
+    }
+
+    const promptKey = [
+      securityStep,
+      pendingSecurity.pendingAccessToken,
+      pendingSecurity.email,
+      pendingSecurity.desktopToken || 'local',
+    ].join(':');
+
+    if (passkeyAutoPromptKeyRef.current === promptKey) {
+      return;
+    }
+
+    passkeyAutoPromptKeyRef.current = promptKey;
+
+    window.setTimeout(() => {
+      handleBiometricStep();
+    }, 120);
+  }, [pendingSecurity, securityStep]);
 
   useEffect(() => {
     if (!pendingSecurity?.desktopToken || !pendingSecurity?.approved || securityStep !== 'desktop_resuming' || finalizingDesktop) {
@@ -740,8 +769,8 @@ export default function Auth() {
               <p className="text-sm font-semibold">{enrolling ? 'Cadastre a passkey biometrica' : 'Confirme sua biometria digital'}</p>
               <p className="text-sm text-muted-foreground">
                 {enrolling
-                  ? 'O primeiro acesso do Super Admin no celular exige o cadastro da chave biometrica do aparelho.'
-                  : 'A senha ja foi validada. Agora so a biometria libera o painel global.'}
+                  ? 'O primeiro acesso do Super Admin no celular exige o cadastro da chave biometrica do aparelho. Vamos abrir o bloqueio de tela automaticamente.'
+                  : 'A senha ja foi validada. Agora o aparelho vai pedir a digital, o rosto, o PIN ou a senha do bloqueio de tela para liberar o painel global.'}
               </p>
             </div>
           </div>
