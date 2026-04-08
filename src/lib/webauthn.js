@@ -62,12 +62,11 @@ export async function isLocalPlatformAuthenticatorAvailable() {
 function buildCreateOptions(publicKeyOptions, mode = 'strict') {
   const excludeCredentials = Array.isArray(publicKeyOptions.excludeCredentials)
     ? publicKeyOptions.excludeCredentials.map((item) => {
-      const normalized = {
-        ...item,
-        id: base64UrlToArrayBuffer(item.id),
-      };
-
-      return { ...normalized, transports: ['internal'] };
+      const normalized = { ...item, id: base64UrlToArrayBuffer(item.id) };
+      if (mode === 'strict') {
+        return { ...normalized, transports: ['internal'] };
+      }
+      return normalized;
     })
     : [];
 
@@ -78,16 +77,30 @@ function buildCreateOptions(publicKeyOptions, mode = 'strict') {
       ...publicKeyOptions.user,
       id: base64UrlToArrayBuffer(publicKeyOptions.user.id),
     },
-    excludeCredentials,
-    authenticatorSelection: {
+  };
+
+  if (excludeCredentials.length > 0) {
+    next.excludeCredentials = excludeCredentials;
+  }
+
+  if (mode === 'strict') {
+    next.authenticatorSelection = {
       ...(publicKeyOptions.authenticatorSelection || {}),
       authenticatorAttachment: 'platform',
       residentKey: 'required',
       userVerification: 'required',
-    },
-    hints: Array.isArray(publicKeyOptions.hints) && publicKeyOptions.hints.length > 0
+    };
+    next.hints = Array.isArray(publicKeyOptions.hints) && publicKeyOptions.hints.length > 0
       ? publicKeyOptions.hints
-      : ['client-device'],
+      : ['client-device'];
+    return next;
+  }
+
+  next.pubKeyCredParams = [{ type: 'public-key', alg: -7 }];
+  next.authenticatorSelection = {
+    authenticatorAttachment: 'platform',
+    residentKey: 'preferred',
+    userVerification: 'required',
   };
 
   return next;
@@ -96,24 +109,29 @@ function buildCreateOptions(publicKeyOptions, mode = 'strict') {
 function buildGetOptions(publicKeyOptions, mode = 'strict') {
   const allowCredentials = Array.isArray(publicKeyOptions.allowCredentials)
     ? publicKeyOptions.allowCredentials.map((item) => {
-      const normalized = {
-        ...item,
-        id: base64UrlToArrayBuffer(item.id),
-      };
-
-      return { ...normalized, transports: ['internal'] };
+      const normalized = { ...item, id: base64UrlToArrayBuffer(item.id) };
+      if (mode === 'strict') {
+        return { ...normalized, transports: ['internal'] };
+      }
+      return normalized;
     })
     : [];
 
   const next = {
     ...publicKeyOptions,
     challenge: base64UrlToArrayBuffer(publicKeyOptions.challenge),
-    allowCredentials,
     userVerification: publicKeyOptions.userVerification || 'required',
-    hints: Array.isArray(publicKeyOptions.hints) && publicKeyOptions.hints.length > 0
-      ? publicKeyOptions.hints
-      : ['client-device'],
   };
+
+  if (allowCredentials.length > 0) {
+    next.allowCredentials = allowCredentials;
+  }
+
+  if (mode === 'strict') {
+    next.hints = Array.isArray(publicKeyOptions.hints) && publicKeyOptions.hints.length > 0
+      ? publicKeyOptions.hints
+      : ['client-device'];
+  }
 
   return next;
 }
