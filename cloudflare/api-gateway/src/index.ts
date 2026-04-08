@@ -8334,6 +8334,7 @@ const routes: Record<string, RouteHandler> = {
     const body = await request.json().catch(() => ({}));
     const desafio = body?.desafio && typeof body.desafio === 'object' ? body.desafio : null;
     const xpBonus = Math.max(0, Number(body?.xpBonus || 0));
+    const concluidoEm = String(body?.concluidoEm || desafio?.concluido_em || '').trim() || null;
 
     await supabaseAdminRequest(env, '/rest/v1/preferencias_aluno?on_conflict=usuario_id', {
       method: 'POST',
@@ -8341,7 +8342,7 @@ const routes: Record<string, RouteHandler> = {
         usuario_id: profile.id,
         desafio_ia_ativo: desafio,
         desafio_ia_gerado_em: desafio?.gerado_em || null,
-        desafio_ia_concluido_em: desafio?.concluido_em || null,
+        desafio_ia_concluido_em: concluidoEm,
         desafio_ia_xp_bonus: xpBonus,
       }],
       headers: {

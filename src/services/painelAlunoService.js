@@ -105,10 +105,10 @@ export async function markPainelAlunoNotificationsReadBatch(notificationIds) {
   });
 }
 
-export async function savePainelAlunoChallenge({ desafio, xpBonus }) {
+export async function savePainelAlunoChallenge({ desafio, xpBonus, concluidoEm = null }) {
   return requestPlatformApi('/v1/aluno/preferencias/desafio', {
     method: 'POST',
-    body: { desafio, xpBonus },
+    body: { desafio, xpBonus, concluidoEm },
   });
 }
 

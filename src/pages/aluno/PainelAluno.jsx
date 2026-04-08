@@ -73,7 +73,7 @@ import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 const CACHE_TTL_MS = 5 * 60 * 1000;
-const DESAFIO_IA_TTL_MS = 24 * 60 * 60 * 1000;
+const DESAFIO_IA_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function formatDateBR(dateValue) {
   if (!dateValue) return '-';
@@ -431,6 +431,71 @@ function getDesafioPerfilPorNivel(nivel) {
         rotulo: 'concluir 1 nova leitura mais desafiadora',
       },
     ],
+  };
+}
+
+function getBookReadingBandForLevel(nivel) {
+  const safeNivel = Math.max(1, Number(nivel) || 1);
+  if (safeNivel <= 2) {
+    return {
+      chave: 'curto_facil',
+      descricao: 'livros curtos, linguagem simples e entrada acolhedora para ganhar ritmo de leitura',
+      maxSynopsisChars: 220,
+      preferredAreas: ['infantil', 'literatura', 'contos', 'fabula', 'poesia'],
+    };
+  }
+
+  if (safeNivel <= 4) {
+    return {
+      chave: 'curto_medio',
+      descricao: 'livros curtos ou medianos, com vocabulário um pouco mais rico e temas levemente mais densos',
+      maxSynopsisChars: 420,
+      preferredAreas: ['literatura', 'aventura', 'contos', 'cronica', 'fantasia'],
+    };
+  }
+
+  if (safeNivel <= 7) {
+    return {
+      chave: 'medio',
+      descricao: 'livros de tamanho médio, com mais interpretação, personagens e construção temática',
+      maxSynopsisChars: 700,
+      preferredAreas: ['literatura', 'aventura', 'fantasia', 'misterio', 'biografia', 'historia'],
+    };
+  }
+
+  return {
+    chave: 'medio_longo_desafiador',
+    descricao: 'livros mais densos ou desafiadores, com leitura sustentada e reflexão mais profunda',
+    maxSynopsisChars: 1200,
+    preferredAreas: ['literatura', 'historia', 'biografia', 'ciencias', 'filosofia', 'romance'],
+  };
+}
+
+function estimateBookComplexityForLevel(livro, nivel) {
+  const area = canonicalizeBookArea(livro?.area) || '';
+  const synopsisLength = String(livro?.sinopse || '').trim().length;
+  const titleLength = String(livro?.titulo || '').trim().length;
+  const readingBand = getBookReadingBandForLevel(nivel);
+  let score = 0;
+
+  if (readingBand.preferredAreas.includes(area)) score += 4;
+  if (synopsisLength > 0 && synopsisLength <= readingBand.maxSynopsisChars) score += 3;
+  else if (synopsisLength === 0) score += 1;
+  else if (synopsisLength <= readingBand.maxSynopsisChars * 1.5) score += 1;
+  else score -= 2;
+
+  if (titleLength > 0 && titleLength <= 28) score += 1;
+
+  const complexityBand =
+    synopsisLength <= 220 ? 'curto' :
+    synopsisLength <= 500 ? 'medio' :
+    'mais_denso';
+
+  return {
+    score,
+    area,
+    complexityBand,
+    readingBand,
   };
 }
 
@@ -1652,19 +1717,27 @@ export default function PainelAluno() {
     });
   }, [catalogoAreaFilter, catalogoAutorFilter, catalogoDisponibilidadeFilter, filteredLivros]);
 
-  const livrosSugeriveisDesafio = useMemo(
-    () =>
-      ensureArray(livros)
-        .filter((livro) => livro?.titulo)
-        .slice(0, 12)
-        .map((livro) => ({
+  const livrosSugeriveisDesafio = useMemo(() => {
+    const readingBand = getBookReadingBandForLevel(nivelAtual);
+
+    return ensureArray(livros)
+      .filter((livro) => livro?.titulo)
+      .map((livro) => {
+        const complexity = estimateBookComplexityForLevel(livro, nivelAtual);
+        return {
           titulo: livro.titulo,
           autor: livro.autor || '',
-          area: canonicalizeBookArea(livro.area) || '',
+          area: complexity.area || '',
           sinopse: livro.sinopse || '',
-        })),
-    [livros],
-  );
+          faixa_indicada: readingBand.chave,
+          motivo_indicacao: complexity.readingBand.descricao,
+          porte_estimado: complexity.complexityBand,
+          prioridade_nivel: complexity.score,
+        };
+      })
+      .sort((a, b) => Number(b.prioridade_nivel || 0) - Number(a.prioridade_nivel || 0))
+      .slice(0, 12);
+  }, [livros, nivelAtual]);
 
   const meusLivros = useMemo(() => emprestimos.filter((e) => e.status === 'ativo'), [emprestimos]);
 
@@ -3276,21 +3349,17 @@ export default function PainelAluno() {
     setSalvandoDesafioIA(true);
     try {
       const xpRecompensa = Math.max(0, Number(desafioIA.xp_recompensa || extractXpFromRewardText(desafioIA.recompensa)));
-      const desafioConcluido = {
-        ...desafioIA,
-        xp_recompensa: xpRecompensa,
-        concluido_em: new Date().toISOString(),
-      };
+      const concluidoEm = new Date().toISOString();
       const proximoXpBonus = desafioXpBonus + xpRecompensa;
 
-      await persistirDesafioIA({ desafio: desafioConcluido, xpBonus: proximoXpBonus });
-      setDesafioIA(desafioConcluido);
+      await persistirDesafioIA({ desafio: null, xpBonus: proximoXpBonus, concluidoEm });
+      setDesafioIA(null);
       setDesafioXpBonus(proximoXpBonus);
-      if (desafioCacheKey) writeCache(desafioCacheKey, desafioConcluido);
+      if (desafioCacheKey) removeCache(desafioCacheKey);
 
       toast({
         title: 'Desafio concluído',
-        description: xpRecompensa > 0 ? `Você recebeu ${xpRecompensa} XP pelo desafio do dia.` : 'Sua conclusão foi registrada.',
+        description: xpRecompensa > 0 ? `Você recebeu ${xpRecompensa} XP pelo desafio semanal.` : 'Sua conclusão foi registrada.',
       });
       navigate('/aluno');
     } catch (error) {
@@ -3454,21 +3523,26 @@ export default function PainelAluno() {
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <Flame className="w-4 h-4" />
-                  Desafio IA do dia
+                  Desafio IA da semana
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Button type="button" variant="outline" onClick={gerarDesafioGamificacao} disabled={gerandoDesafioIA || Boolean(desafioIA)}>
                   <Sparkles className="w-4 h-4 mr-2" />
-                  {gerandoDesafioIA ? 'Gerando desafio...' : 'Gerar desafio de gamificacao'}
+                  {gerandoDesafioIA ? 'Gerando desafio semanal...' : 'Gerar desafio semanal'}
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  Quando a meta for cumprida na plataforma, a recompensa em XP entra automaticamente no seu total.
+                  O desafio semanal so some quando a meta for cumprida na plataforma ou depois de 7 dias. Ao concluir, o XP entra automaticamente no seu total.
                 </p>
                 {desafioIA && (
                   <div className="rounded-lg border p-3 space-y-1">
                     <p className="text-sm font-semibold">{desafioIA.titulo}</p>
                     <p className="text-sm text-muted-foreground">{desafioIA.desafio}</p>
+                    {desafioIA.expira_em && !desafioIA.concluido_em && (
+                      <p className="text-xs text-muted-foreground">
+                        Disponivel ate {formatDateBR(desafioIA.expira_em)}
+                      </p>
+                    )}
                     {(desafioIA.livro_diferenciado?.titulo || desafioIA.livro_recomendado?.titulo) && (
                       <p className="text-xs text-muted-foreground">
                         Livro sugerido pela IA:{' '}
