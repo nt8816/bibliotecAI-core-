@@ -102,11 +102,9 @@ function buildCreateOptions(publicKeyOptions, mode = 'strict') {
   }
 
   next.pubKeyCredParams = [{ type: 'public-key', alg: -7 }];
-  next.authenticatorSelection = {
-    authenticatorAttachment: 'platform',
-    residentKey: 'preferred',
-    userVerification: 'required',
-  };
+  // Android Credential Manager is more reliable with a minimal create payload.
+  delete next.authenticatorSelection;
+  delete next.hints;
 
   return next;
 }
@@ -157,7 +155,7 @@ function normalizePasskeyError(error, actionLabel) {
 
   if (normalized.includes('unknown error occurred while talking to the credential manager')) {
     return withOriginalMetadata(new Error(
-      `O gerenciador de credenciais do celular falhou ao ${actionLabel} a passkey. Ative o bloqueio de tela, cadastre biometria no aparelho e tente novamente no Chrome atualizado.`,
+      `O gerenciador de credenciais do celular falhou ao ${actionLabel} a passkey. O aparelho recusou a operacao antes de concluir o cadastro. Verifique se o Gerenciador de senhas do Google esta ativo no Chrome e tente novamente.`,
     ));
   }
 
