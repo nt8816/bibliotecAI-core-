@@ -63,6 +63,7 @@ function isAndroidChromeFamily() {
 function buildSecurityContext() {
   return {
     app_origin: window?.location?.origin || null,
+    app_base_domain: import.meta.env.VITE_APP_BASE_DOMAIN || null,
     user_agent: navigator?.userAgent || null,
     language: navigator?.language || null,
   };
@@ -330,8 +331,46 @@ export default function Auth() {
   };
 
   const runPasskeyAuthentication = async (nextPending, overrideContext) => {
-    const authOptions = await beginSuperAdminPasskeyAuthentication(nextPending.pendingAccessToken, overrideContext || nextPending.context);
-    const assertion = await getPlatformPasskeyAssertion(authOptions.publicKey);
+    let authOptions;
+    try {
+      authOptions = await beginSuperAdminPasskeyAuthentication(nextPending.pendingAccessToken, overrideContext || nextPending.context);
+    } catch (error) {
+      const message = String(error?.message || '').toLowerCase();
+      if (error?.status === 409 || message.includes('nenhuma chave de acesso disponivel') || message.includes('cadastre uma nova passkey')) {
+        setPendingSecurity({
+          ...nextPending,
+          needsPasskeyEnrollment: true,
+        });
+        setSecurityStep('passkey_enrollment');
+        toast({
+          title: 'Recadastre sua passkey',
+          description: 'A chave antiga nao esta disponivel neste dominio. Cadastre uma nova passkey neste celular para continuar.',
+        });
+        return;
+      }
+      throw error;
+    }
+
+    let assertion;
+    try {
+      assertion = await getPlatformPasskeyAssertion(authOptions.publicKey);
+    } catch (error) {
+      const message = String(error?.message || '').toLowerCase();
+      if (message.includes('nenhuma chave de acesso') || message.includes('no passkeys available')) {
+        setPendingSecurity({
+          ...nextPending,
+          needsPasskeyEnrollment: true,
+        });
+        setSecurityStep('passkey_enrollment');
+        toast({
+          title: 'Nenhuma passkey encontrada',
+          description: 'Este celular nao tem uma passkey valida para o dominio atual. Vamos cadastrar uma nova agora.',
+        });
+        return;
+      }
+      throw error;
+    }
+
     const verification = await finishSuperAdminPasskeyAuthentication(nextPending.pendingAccessToken, {
       challenge: authOptions.publicKey.challenge,
       credential: assertion,

@@ -16,6 +16,7 @@ import {
 export interface Env {
   APP_ENV?: string;
   API_BASE_URL?: string;
+  APP_BASE_DOMAIN?: string;
   SUPABASE_URL?: string;
   SUPABASE_PUBLISHABLE_KEY?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
@@ -380,6 +381,33 @@ async function getLatestUserProfile(userId: string, env: Env) {
   }).toString()}`);
 
   return Array.isArray(payload) ? (payload[0] || null) : null;
+}
+
+function resolvePasskeyRpId(
+  request: Request,
+  env: Env,
+  bodyContext?: Record<string, unknown> | null,
+) {
+  const explicitBaseDomain = String(bodyContext?.app_base_domain || env.APP_BASE_DOMAIN || '').trim().toLowerCase();
+  if (explicitBaseDomain) {
+    return explicitBaseDomain.replace(/^\.+/, '').replace(/\.+$/, '');
+  }
+
+  const origin = getRequestOrigin(request, env, bodyContext);
+  const hostname = getRpId(origin).toLowerCase();
+  if (!hostname) return '';
+  if (hostname === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) return hostname;
+
+  const parts = hostname.split('.');
+  if (hostname.endsWith('.com.br') && parts.length >= 3) {
+    return parts.slice(-3).join('.');
+  }
+
+  if (parts.length >= 2) {
+    return parts.slice(-2).join('.');
+  }
+
+  return hostname;
 }
 
 function normalizeProfileRoleHint(value: unknown) {
@@ -1623,6 +1651,8 @@ async function fetchSuperAdminSecurityProfileByToken(
 
   const passkeys = await listActivePasskeys(String(account.id), env);
   const risk = buildRiskContext(request, context);
+  const rpId = resolvePasskeyRpId(request, env, context);
+  const compatiblePasskeys = filterPasskeysByRpId(passkeys, rpId);
 
   return {
     account: {
@@ -1632,10 +1662,11 @@ async function fetchSuperAdminSecurityProfileByToken(
       passkey_required: account.passkey_required !== false,
       passkey_enrolled_at: account.passkey_enrolled_at || null,
     },
-    passkeysCount: passkeys.length,
-    needsPasskeyEnrollment: passkeys.length === 0,
+    passkeysCount: compatiblePasskeys.length,
+    needsPasskeyEnrollment: compatiblePasskeys.length === 0,
     requiresEmailVerification: false,
     deviceType: risk.deviceType,
+    rpId,
     risk,
   };
 }
@@ -1644,7 +1675,7 @@ async function listActivePasskeys(accountId: string, env: Env) {
   const payload = await supabaseAdminRequest(
     env,
     `/rest/v1/super_admin_passkeys?${new URLSearchParams({
-      select: 'id,credential_id,credential_public_key_jwk,counter,transports,device_label,created_at,last_used_at,revoked_at',
+      select: 'id,credential_id,credential_public_key_jwk,counter,transports,device_label,created_at,last_used_at,revoked_at,metadata',
       account_id: `eq.${accountId}`,
       revoked_at: 'is.null',
       order: 'created_at.asc',
@@ -1658,7 +1689,7 @@ async function getActivePasskeyByCredential(accountId: string, credentialId: str
   const payload = await supabaseAdminRequest(
     env,
     `/rest/v1/super_admin_passkeys?${new URLSearchParams({
-      select: 'id,credential_id,credential_public_key_jwk,counter,transports,device_label,created_at,last_used_at,revoked_at',
+      select: 'id,credential_id,credential_public_key_jwk,counter,transports,device_label,created_at,last_used_at,revoked_at,metadata',
       account_id: `eq.${accountId}`,
       credential_id: `eq.${credentialId}`,
       revoked_at: 'is.null',
@@ -1667,6 +1698,17 @@ async function getActivePasskeyByCredential(accountId: string, credentialId: str
   );
 
   return Array.isArray(payload) ? (payload[0] || null) : null;
+}
+
+function filterPasskeysByRpId(passkeys: Record<string, unknown>[], rpId: string) {
+  const normalizedRpId = String(rpId || '').trim().toLowerCase();
+  if (!normalizedRpId) return passkeys;
+
+  return passkeys.filter((item) => {
+    const metadata = item?.metadata && typeof item.metadata === 'object' ? item.metadata as Record<string, unknown> : {};
+    const storedRpId = String(metadata?.rp_id || '').trim().toLowerCase();
+    return storedRpId === normalizedRpId;
+  });
 }
 
 async function createSuperAdminChallenge(
@@ -3694,7 +3736,8 @@ const routes: Record<string, RouteHandler> = {
     const risk = buildRiskContext(request, requestContext);
     const challenge = randomToken(32);
     const origin = getRequestOrigin(request, env, requestContext);
-    const rpId = getRpId(origin);
+    const rpId = resolvePasskeyRpId(request, env, requestContext);
+    const compatiblePasskeys = filterPasskeysByRpId(existingPasskeys, rpId);
 
     const challengeRow = await createSuperAdminChallenge(env, {
       account_id: account.id,
@@ -3736,7 +3779,7 @@ const routes: Record<string, RouteHandler> = {
           userVerification: 'required',
         },
         hints: ['client-device'],
-        excludeCredentials: existingPasskeys.map((item) => ({
+        excludeCredentials: compatiblePasskeys.map((item) => ({
           id: item.credential_id,
           type: 'public-key',
         })),
@@ -3791,6 +3834,8 @@ const routes: Record<string, RouteHandler> = {
         backed_up: verification.backedUp,
         metadata: {
           authenticator_attachment: credential?.authenticatorAttachment || null,
+          origin: String(challengeRow?.metadata?.origin || ''),
+          rp_id: String(challengeRow?.metadata?.rpId || ''),
         },
       },
       headers: {
@@ -3838,7 +3883,17 @@ const routes: Record<string, RouteHandler> = {
     const risk = buildRiskContext(request, requestContext);
     const challenge = randomToken(32);
     const origin = getRequestOrigin(request, env, requestContext);
-    const rpId = getRpId(origin);
+    const rpId = resolvePasskeyRpId(request, env, requestContext);
+    const compatiblePasskeys = filterPasskeysByRpId(passkeys, rpId);
+
+    if (compatiblePasskeys.length === 0) {
+      return jsonResponse({
+        success: false,
+        error: 'Nenhuma chave de acesso disponivel para este dominio. Cadastre uma nova passkey neste aparelho.',
+        needsPasskeyEnrollment: true,
+        rpId,
+      }, 409);
+    }
 
     const challengeRow = await createSuperAdminChallenge(env, {
       account_id: account.id,
@@ -3865,7 +3920,7 @@ const routes: Record<string, RouteHandler> = {
         timeout: 60000,
         userVerification: 'required',
         hints: ['client-device'],
-        allowCredentials: passkeys.map((item) => ({
+        allowCredentials: compatiblePasskeys.map((item) => ({
           id: item.credential_id,
           type: 'public-key',
         })),
