@@ -295,7 +295,7 @@ export default function Dashboard() {
     },
     {
       title: 'Contas Super Admin',
-      description: 'Criar contas, revisar bloqueios, passkeys pendentes e ultimos acessos.',
+      description: 'Criar contas, revisar bloqueios e acompanhar os ultimos acessos.',
       action: '/admin/super-admins',
       actionLabel: 'Abrir Super Admins',
       icon: Shield,

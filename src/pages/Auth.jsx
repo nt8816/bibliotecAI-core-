@@ -17,13 +17,11 @@ import {
   beginSuperAdminPasskeyRegistration,
   fetchPlatformCurrentRoles,
   fetchSuperAdminDesktopApprovalStatus,
-  fetchSuperAdminSecurityProfile,
   finalizePlatformSession,
   finishSuperAdminPasskeyAuthentication,
   finishSuperAdminPasskeyRegistration,
   registerPlatformSuperAdminLoginSuccess,
   sendSuperAdminEmailCode,
-  startSuperAdminDesktopApproval,
   verifySuperAdminEmailCode,
 } from '@/services/authService';
 import {
@@ -534,30 +532,12 @@ export default function Auth() {
           };
         }
 
-        setPendingSecurity(nextPending);
-
-        if (desktopApprovalTokenRef.current) {
-          setSecurityStep(nextPending.needsPasskeyEnrollment ? 'passkey_enrollment' : 'mobile_biometric');
-          return { success: true };
-        }
-
-        if (nextPending.deviceType === 'desktop') {
-          const desktopChallenge = await startSuperAdminDesktopApproval(nextPending.pendingAccessToken, nextPending.context);
-          setPendingSecurity({
-            ...nextPending,
-            desktopToken: desktopChallenge.token,
-            desktopQrCodeUrl: desktopChallenge.qrCodeUrl,
-            desktopApprovalUrl: desktopChallenge.approvalUrl,
-            desktopExpiresAt: desktopChallenge.expiresAt,
-            approved: false,
-          });
-          setDesktopStatus(null);
-          setSecurityStep('desktop_waiting');
-          return { success: true };
-        }
-
-        setSecurityStep(nextPending.needsPasskeyEnrollment ? 'passkey_enrollment' : 'mobile_biometric');
-        return { success: true };
+        await finishSuperAdminLogin({
+          pendingSession: nextPending.pendingSession,
+          email: nextPending.email,
+          context: nextPending.context,
+        });
+        return { success: true, superAdminDirect: true };
       }
     } catch (error) {
       const errorMessage = String(error?.message || '');
@@ -655,7 +635,7 @@ export default function Auth() {
         return;
       }
 
-      const { error } = await loginWithIdentifier(formData.login, formData.password);
+      const { error, superAdminDirect } = await loginWithIdentifier(formData.login, formData.password);
       if (error) {
         if (error.blocked) {
           setAuthAlert({
@@ -677,7 +657,7 @@ export default function Auth() {
         setNotificationPermission(nextPermission || getBrowserNotificationPermission());
       }
 
-      if (securityStep === 'login') {
+      if (securityStep === 'login' && !superAdminDirect) {
         toast({
           title: 'Bem-vindo!',
           description: 'Login realizado com sucesso.',

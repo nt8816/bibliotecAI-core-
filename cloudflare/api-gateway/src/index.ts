@@ -4312,12 +4312,10 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: true, successMatched: false, matched: false });
     }
 
-    if (!mfaChallengeId && !desktopChallengeToken) {
-      return jsonResponse({ success: false, error: 'Confirmacao biometrica obrigatoria para Super Admin.' }, 403);
-    }
-
     let emailVerified = false;
-    if (desktopChallengeToken) {
+    if (!mfaChallengeId && !desktopChallengeToken) {
+      emailVerified = false;
+    } else if (desktopChallengeToken) {
       const desktopChallenge = await getSuperAdminChallengeByToken(desktopChallengeToken, env);
       if (!desktopChallenge?.id || String(desktopChallenge.account_id) !== String(match.account_id) || !desktopChallenge.approved_at || desktopChallenge.consumed_at || isChallengeExpired(desktopChallenge)) {
         return jsonResponse({ success: false, error: 'Aprovacao do computador ainda nao foi validada.' }, 403);
@@ -4388,6 +4386,7 @@ const routes: Record<string, RouteHandler> = {
         country: risk.country,
         device_type: resolvedDeviceType,
         email_verified: emailVerified,
+        passkey_temporarily_disabled: !mfaChallengeId && !desktopChallengeToken,
       },
     });
 
