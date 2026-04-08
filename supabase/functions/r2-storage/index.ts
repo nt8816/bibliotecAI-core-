@@ -16,10 +16,11 @@ const jsonResponse = (body: unknown, status = 200) =>
   });
 
 type Payload = {
-  operation?: 'create_upload_url' | 'create_download_url' | 'delete_object';
+  operation?: 'create_upload_url' | 'create_download_url' | 'delete_object' | 'upload_object';
   objectKey?: string;
   contentType?: string;
   fileName?: string;
+  fileDataBase64?: string;
 };
 
 function getUserToken(req: Request) {
@@ -44,6 +45,18 @@ function sanitizeObjectKey(objectKey: string) {
 function extractSchoolIdFromObjectKey(objectKey: string) {
   const match = String(objectKey || '').match(/^escolas\/([^/]+)\//);
   return match?.[1] || null;
+}
+
+function decodeBase64ToUint8Array(value: string) {
+  const normalized = String(value || '').replace(/^data:[^,]+,/, '').trim();
+  const binary = atob(normalized);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return bytes;
 }
 
 Deno.serve(async (req) => {
@@ -159,6 +172,30 @@ Deno.serve(async (req) => {
         provider: 'r2',
         objectKey,
         uploadUrl,
+        publicUrl: buildPublicUrl(r2PublicBaseUrl, objectKey),
+      });
+    }
+
+    if (operation === 'upload_object') {
+      const contentType = String(payload?.contentType || 'application/octet-stream').trim();
+      const fileDataBase64 = String(payload?.fileDataBase64 || '').trim();
+      if (!fileDataBase64) {
+        return jsonResponse({ success: false, error: 'Conteudo do arquivo ausente.' }, 400);
+      }
+
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: r2Bucket,
+          Key: objectKey,
+          Body: decodeBase64ToUint8Array(fileDataBase64),
+          ContentType: contentType,
+        }),
+      );
+
+      return jsonResponse({
+        success: true,
+        provider: 'r2',
+        objectKey,
         publicUrl: buildPublicUrl(r2PublicBaseUrl, objectKey),
       });
     }

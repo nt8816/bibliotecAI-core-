@@ -30,6 +30,42 @@ function buildR2NetworkErrorMessage(error, action) {
   return message || `Não foi possível ${action} no Cloudflare R2.`;
 }
 
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      resolve(result.includes(',') ? result.split(',')[1] : result);
+    };
+    reader.onerror = () => reject(reader.error || new Error('Nao foi possivel ler o arquivo para upload.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadFileToR2ThroughApi({ file, objectKey, accessToken }) {
+  const fileDataBase64 = await fileToBase64(file);
+  const payload = await requestPlatformApi('/v1/media/r2-storage', {
+    method: 'POST',
+    body: {
+      operation: 'upload_object',
+      objectKey,
+      contentType: file.type || 'application/octet-stream',
+      fileName: file.name,
+      fileDataBase64,
+    },
+    headers: {
+      'x-user-access-token': accessToken,
+    },
+    auth: false,
+  });
+
+  return {
+    provider: 'r2',
+    objectKey: payload.objectKey || objectKey,
+    publicUrl: payload.publicUrl || null,
+  };
+}
+
 export async function uploadFileToR2({ file, escolaId, ownerId, scope = 'arquivos-aula' }) {
   if (!file) throw new Error('Arquivo nao informado.');
   if (!escolaId || !ownerId) throw new Error('Contexto do upload incompleto.');
@@ -66,10 +102,13 @@ export async function uploadFileToR2({ file, escolaId, ownerId, scope = 'arquivo
       body: file,
     });
   } catch (error) {
-    throw new Error(buildR2NetworkErrorMessage(error, 'enviar o arquivo'));
+    return uploadFileToR2ThroughApi({ file, objectKey, accessToken });
   }
 
   if (!uploadResponse.ok) {
+    if ([0, 403, 405].includes(Number(uploadResponse.status))) {
+      return uploadFileToR2ThroughApi({ file, objectKey, accessToken });
+    }
     throw new Error(`Falha ao enviar arquivo para o Cloudflare R2 (HTTP ${uploadResponse.status}).`);
   }
 
