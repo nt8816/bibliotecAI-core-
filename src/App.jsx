@@ -85,7 +85,6 @@ function LegacyHostShutdownNotice() {
         <div className="mt-6 rounded-2xl border border-border/70 bg-muted/30 px-5 py-4 text-left">
           <p className="text-sm font-semibold text-foreground">Acessos oficiais</p>
           <p className="mt-2 text-sm text-muted-foreground">Plataforma: <span className="font-medium text-foreground">https://bibliotecai.com.br</span></p>
-          <p className="mt-1 text-sm text-muted-foreground">Admin: <span className="font-medium text-foreground">https://admin.bibliotecai.com.br</span></p>
         </div>
       </div>
     </div>
