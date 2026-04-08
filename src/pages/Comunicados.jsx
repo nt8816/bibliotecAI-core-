@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { AudioLines, BellRing, CalendarClock, CheckCircle2, Download, FileQuestion, ImagePlus, Mic, Megaphone, PauseCircle, Plus, Send, Trash2, Upload, Users, X } from 'lucide-react';
@@ -232,7 +232,7 @@ function formatDateLabel(value) {
 function getAtividadeTargetSummary(atividade) {
   const turma = atividade?.usuarios_biblioteca?.turma;
   const aluno = atividade?.usuarios_biblioteca?.nome;
-  return aluno ? `${aluno}${turma ? ` • ${turma}` : ''}` : (turma || 'Destino individual');
+  return aluno ? `${aluno}${turma ? ` â€¢ ${turma}` : ''}` : (turma || 'Destino individual');
 }
 
 export default function Comunicados() {
@@ -478,7 +478,7 @@ export default function Comunicados() {
       if (discardedFiles.length > 0) {
         toast({
           title: 'Limite de imagens atingido',
-          description: 'Cada comunicado aceita no máximo 4 imagens.',
+          description: 'Cada comunicado aceita no mÃ¡ximo 4 imagens.',
         });
       }
 
@@ -769,12 +769,12 @@ export default function Comunicados() {
 
   const handleSaveFormulario = async () => {
     if (!formularioForm.titulo.trim()) {
-      toast({ variant: 'destructive', title: 'Titulo obrigatorio', description: 'Informe o nome do formulário.' });
+      toast({ variant: 'destructive', title: 'Titulo obrigatorio', description: 'Informe o nome do formulÃ¡rio.' });
       return;
     }
 
     if (!formularioForm.turma) {
-      toast({ variant: 'destructive', title: 'Destino obrigatorio', description: 'Escolha a turma que vai receber o formulário.' });
+      toast({ variant: 'destructive', title: 'Destino obrigatorio', description: 'Escolha a turma que vai receber o formulÃ¡rio.' });
       return;
     }
 
@@ -787,12 +787,12 @@ export default function Comunicados() {
       .filter((question) => question.pergunta);
 
     if (perguntasValidas.length === 0) {
-      toast({ variant: 'destructive', title: 'Formulario vazio', description: 'Adicione pelo menos uma questão.' });
+      toast({ variant: 'destructive', title: 'Formulario vazio', description: 'Adicione pelo menos uma questÃ£o.' });
       return;
     }
 
     if (perguntasValidas.some((question) => question.tipo === 'multipla_escolha' && question.opcoes.filter(Boolean).length < 2)) {
-      toast({ variant: 'destructive', title: 'Opções incompletas', description: 'Perguntas de marcar precisam de ao menos duas opções.' });
+      toast({ variant: 'destructive', title: 'OpÃ§Ãµes incompletas', description: 'Perguntas de marcar precisam de ao menos duas opÃ§Ãµes.' });
       return;
     }
 
@@ -808,12 +808,12 @@ export default function Comunicados() {
         aluno_id: '',
         pontos_extras: 0,
       });
-      toast({ title: 'Formulario criado', description: 'O formulário já está disponível para os alunos da turma.' });
+      toast({ title: 'Formulario criado', description: 'O formulÃ¡rio jÃ¡ estÃ¡ disponÃ­vel para os alunos da turma.' });
       setIsFormularioDialogOpen(false);
       resetFormularioForm();
       await loadData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Nao foi possivel criar o formulário.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Nao foi possivel criar o formulÃ¡rio.' });
     } finally {
       setFormularioSaving(false);
     }
@@ -988,8 +988,8 @@ export default function Comunicados() {
             <CardHeader>
               <CardTitle className="text-base">Novo comunicado</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="grid gap-4 md:grid-cols-2">
+            <CardContent className="max-h-[calc(94vh-92px)] overflow-y-auto px-8 py-7">
+              <div className="grid gap-6 rounded-[26px] border border-primary/10 bg-card/80 p-6 shadow-sm xl:grid-cols-[minmax(0,1.15fr)_380px]">
                 <div className="space-y-2">
                   <Label>Titulo</Label>
                   <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ex.: Aviso sobre a prova de leitura" />
@@ -1014,10 +1014,10 @@ export default function Comunicados() {
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-[1fr_220px]">
+              <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
                 <div className="space-y-2">
                   <Label>Mensagem</Label>
-                  <Textarea
+                  <Textarea className="min-h-[180px] rounded-[24px] border-primary/15 bg-background px-5 py-4 text-base shadow-sm"
                     rows={5}
                     value={conteudo}
                     onChange={(e) => setConteudo(e.target.value)}
@@ -1094,7 +1094,7 @@ export default function Comunicados() {
 
                 {isRecording ? (
                   <div className="record-status-enter mt-4 rounded-2xl border border-rose-200 bg-white/85 px-4 py-3 text-sm text-rose-700 shadow-[0_12px_24px_rgba(244,63,94,0.08)] dark:border-rose-900/60 dark:bg-slate-950/60 dark:text-rose-200">
-                    <div className="flex items-center gap-2">
+                    <div className="grid gap-3 md:grid-cols-[56px_minmax(0,1fr)]">
                       <span className="inline-flex h-2.5 w-2.5 rounded-full bg-rose-500 animate-pulse" />
                       <span className="font-medium">Gravando agora: {formatRecordingClock(recordingSeconds)}</span>
                     </div>
@@ -1157,7 +1157,6 @@ export default function Comunicados() {
                           <div className="absolute right-2 top-2 flex gap-2">
                             <Button
                               type="button"
-                              size="icon"
                               variant="secondary"
                               className="h-9 w-9 rounded-full bg-white/92 shadow-sm backdrop-blur"
                               onClick={(event) => {
@@ -1170,7 +1169,6 @@ export default function Comunicados() {
                             </Button>
                             <Button
                               type="button"
-                              size="icon"
                               variant="secondary"
                               className="h-9 w-9 rounded-full bg-white/92 shadow-sm backdrop-blur"
                               onClick={(event) => {
@@ -1203,9 +1201,9 @@ export default function Comunicados() {
           <Card>
             <CardHeader className="gap-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-2">
+                <div className="grid gap-3 md:grid-cols-[56px_minmax(0,1fr)]">
                   <FileQuestion className="h-5 w-5 text-primary" />
-                  <CardTitle className="text-base">Formulários enviados</CardTitle>
+                  <CardTitle className="text-base">FormulÃ¡rios enviados</CardTitle>
                 </div>
                 <Button
                   type="button"
@@ -1216,20 +1214,20 @@ export default function Comunicados() {
                   }}
                 >
                   <Plus className="mr-2 h-4 w-4" />
-                  Adicionar formulário
+                  Adicionar formulÃ¡rio
                 </Button>
               </div>
               <p className="text-sm text-muted-foreground">
-                Esta área acompanha os formulários reais que você publicou para os alunos, dentro do fluxo de comunicados.
+                Esta Ã¡rea acompanha os formulÃ¡rios reais que vocÃª publicou para os alunos, dentro do fluxo de comunicados.
               </p>
             </CardHeader>
             <CardContent>
               {loading ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">Carregando formulários...</p>
+                <p className="py-6 text-center text-sm text-muted-foreground">Carregando formulÃ¡rios...</p>
               ) : formulariosProfessor.length === 0 ? (
                 <div className="rounded-[28px] border border-dashed p-8 text-center">
                   <FileQuestion className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Nenhum formulário publicado por você no momento.</p>
+                  <p className="text-sm text-muted-foreground">Nenhum formulÃ¡rio publicado por vocÃª no momento.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -1239,10 +1237,10 @@ export default function Comunicados() {
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                              {atividade.titulo || 'Formulário sem título'}
+                              {atividade.titulo || 'FormulÃ¡rio sem tÃ­tulo'}
                             </p>
                             <Badge className="bg-primary/10 text-primary hover:bg-primary/10">
-                              {atividade.meta.perguntas.length} questões
+                              {atividade.meta.perguntas.length} questÃµes
                             </Badge>
                             <Badge variant="outline">
                               {atividade.respostas.length} respostas
@@ -1250,7 +1248,7 @@ export default function Comunicados() {
                           </div>
                           <p className="text-sm text-muted-foreground">{getAtividadeTargetSummary(atividade)}</p>
                           <p className="text-sm text-muted-foreground">
-                            {atividade.livros?.titulo || 'Sem livro vinculado'} • entrega em {formatDateLabel(atividade.data_entrega)}
+                            {atividade.livros?.titulo || 'Sem livro vinculado'} â€¢ entrega em {formatDateLabel(atividade.data_entrega)}
                           </p>
                           {atividade.meta.descricaoLimpa ? (
                             <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">
@@ -1364,7 +1362,6 @@ export default function Comunicados() {
                             />
                             <Button
                               type="button"
-                              size="icon"
                               variant="secondary"
                               className="absolute right-2 top-2 h-9 w-9 rounded-full bg-white/92 shadow-sm backdrop-blur"
                               onClick={(event) => {
@@ -1414,7 +1411,7 @@ export default function Comunicados() {
 
       <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
         <DialogContent className="max-w-5xl overflow-hidden border-emerald-100 bg-white/95 p-4 sm:p-6 dark:border-white/10 dark:bg-slate-950/95">
-          <DialogHeader>
+          <DialogHeader className="border-b border-border/60 bg-gradient-to-r from-primary/8 via-background to-emerald-500/8 px-8 py-6">
             <DialogTitle>{selectedImagePreview.title || 'Visualizacao da imagem'}</DialogTitle>
           </DialogHeader>
           <div className="overflow-hidden rounded-[28px] border border-emerald-100 bg-emerald-50/40 dark:border-white/10 dark:bg-slate-900/70">
@@ -1430,18 +1427,18 @@ export default function Comunicados() {
       </Dialog>
 
       <Dialog open={isFormularioDialogOpen} onOpenChange={setIsFormularioDialogOpen}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>Novo formulário</DialogTitle>
+        <DialogContent className="w-[min(96vw,1280px)] max-w-none max-h-[94vh] overflow-hidden rounded-[28px] border border-primary/10 bg-background p-0 shadow-[0_28px_120px_rgba(15,23,42,0.28)]">
+          <DialogHeader className="border-b border-border/60 bg-gradient-to-r from-primary/8 via-background to-emerald-500/8 px-8 py-6">
+            <DialogTitle>Novo formulÃ¡rio</DialogTitle>
           </DialogHeader>
-          <div className="space-y-5">
-            <div className="grid gap-4 md:grid-cols-2">
+          <div className="max-h-[calc(94vh-92px)] overflow-y-auto px-8 py-7">
+            <div className="grid gap-6 rounded-[26px] border border-primary/10 bg-card/80 p-6 shadow-sm xl:grid-cols-[minmax(0,1.15fr)_380px]">
               <div className="space-y-2">
-                <Label>Título</Label>
+                <Label>TÃ­tulo</Label>
                 <Input
                   value={formularioForm.titulo}
                   onChange={(e) => setFormularioForm((prev) => ({ ...prev, titulo: e.target.value }))}
-                  placeholder="Ex.: Reflexão sobre o capítulo 3"
+                  placeholder="Ex.: ReflexÃ£o sobre o capÃ­tulo 3"
                 />
               </div>
               <div className="space-y-2">
@@ -1450,7 +1447,7 @@ export default function Comunicados() {
                   value={formularioForm.turma || 'none'}
                   onValueChange={(value) => setFormularioForm((prev) => ({ ...prev, turma: value === 'none' ? '' : value }))}
                 >
-                  <SelectTrigger className="h-12 rounded-2xl border-primary/20 bg-muted/30 text-left shadow-sm transition focus:ring-2 focus:ring-primary/20">
+                  <SelectTrigger className="h-14 rounded-2xl border-primary/20 bg-muted/20 px-5 text-left text-base shadow-sm transition focus:ring-2 focus:ring-primary/20">
                     <SelectValue placeholder="Selecione a turma" />
                   </SelectTrigger>
                   <SelectContent className="rounded-2xl border-primary/20 bg-background/95 shadow-[0_18px_40px_rgba(16,24,40,0.16)] backdrop-blur">
@@ -1464,14 +1461,14 @@ export default function Comunicados() {
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-[1fr_220px]">
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
               <div className="space-y-2">
-                <Label>Orientação</Label>
-                <Textarea
+                <Label>OrientaÃ§Ã£o</Label>
+                <Textarea className="min-h-[180px] rounded-[24px] border-primary/15 bg-background px-5 py-4 text-base shadow-sm"
                   rows={4}
                   value={formularioForm.descricao}
                   onChange={(e) => setFormularioForm((prev) => ({ ...prev, descricao: e.target.value }))}
-                  placeholder="Explique o objetivo do formulário para os alunos."
+                  placeholder="Explique o objetivo do formulÃ¡rio para os alunos."
                 />
               </div>
               <div className="space-y-2">
@@ -1486,9 +1483,9 @@ export default function Comunicados() {
 
             <div className="space-y-4">
               {formularioForm.perguntas.map((question, index) => (
-                <div key={question.id} className="rounded-2xl border p-4 space-y-4">
+                <div key={question.id} className="rounded-[28px] border border-primary/10 bg-card/85 p-6 space-y-5 shadow-[0_12px_40px_rgba(15,23,42,0.06)]">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="font-medium">Questão {index + 1}</p>
+                    <p className="font-medium">QuestÃ£o {index + 1}</p>
                     {formularioForm.perguntas.length > 1 ? (
                       <Button
                         type="button"
@@ -1514,7 +1511,7 @@ export default function Comunicados() {
                   </div>
                   <div className="space-y-2">
                     <Label>Tipo</Label>
-                    <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="grid gap-4 lg:grid-cols-2">
                       <Button
                         type="button"
                         variant={question.tipo === 'texto' ? 'default' : 'outline'}
@@ -1527,18 +1524,18 @@ export default function Comunicados() {
                         variant={question.tipo === 'multipla_escolha' ? 'default' : 'outline'}
                         onClick={() => handleFormQuestionTypeChange(question.id, 'multipla_escolha')}
                       >
-                        Múltipla escolha
+                        MÃºltipla escolha
                       </Button>
                     </div>
                   </div>
                   {question.tipo === 'multipla_escolha' ? (
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                       {question.opcoes.map((option, optionIndex) => (
-                        <div key={`${question.id}-${optionIndex}`} className="flex items-center gap-2">
+                        <div key={`${question.id}-${optionIndex}`} className="grid gap-3 md:grid-cols-[56px_minmax(0,1fr)]">
                           <Button
                             type="button"
                             variant={question.correta === optionIndex ? 'default' : 'outline'}
-                            size="icon"
+                            className="h-14 rounded-2xl"
                             onClick={() => handleFormQuestionChange(question.id, 'correta', optionIndex)}
                           >
                             <CheckCircle2 className="h-4 w-4" />
@@ -1546,7 +1543,7 @@ export default function Comunicados() {
                           <Input
                             value={option}
                             onChange={(e) => handleFormOptionChange(question.id, optionIndex, e.target.value)}
-                            placeholder={`Opção ${optionIndex + 1}`}
+                            placeholder={`OpÃ§Ã£o ${optionIndex + 1}`}
                           />
                         </div>
                       ))}
@@ -1554,18 +1551,18 @@ export default function Comunicados() {
                   ) : null}
                 </div>
               ))}
-              <Button type="button" variant="outline" onClick={handleAddFormQuestion}>
+              <Button type="button" variant="outline" className="h-14 w-full rounded-2xl border-dashed text-base sm:w-auto sm:px-6" onClick={handleAddFormQuestion}>
                 <Plus className="mr-2 h-4 w-4" />
-                Adicionar questão
+                Adicionar questÃ£o
               </Button>
             </div>
 
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsFormularioDialogOpen(false)}>
+            <div className="sticky bottom-0 z-10 flex justify-end gap-3 border-t border-border/60 bg-background/95 pt-5 backdrop-blur">
+              <Button type="button" variant="outline" className="h-12 rounded-2xl px-6" onClick={() => setIsFormularioDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button type="button" onClick={handleSaveFormulario} disabled={formularioSaving}>
-                {formularioSaving ? 'Salvando...' : 'Salvar formulário'}
+              <Button type="button" className="h-12 rounded-2xl px-6" onClick={handleSaveFormulario} disabled={formularioSaving}>
+                {formularioSaving ? 'Salvando...' : 'Salvar formulÃ¡rio'}
               </Button>
             </div>
           </div>
@@ -1574,19 +1571,19 @@ export default function Comunicados() {
 
       <Dialog open={Boolean(selectedFormulario)} onOpenChange={(open) => !open && setSelectedFormulario(null)}>
         <DialogContent className="max-w-5xl">
-          <DialogHeader>
-            <DialogTitle>Respostas do formulário</DialogTitle>
+          <DialogHeader className="border-b border-border/60 bg-gradient-to-r from-primary/8 via-background to-emerald-500/8 px-8 py-6">
+            <DialogTitle>Respostas do formulÃ¡rio</DialogTitle>
           </DialogHeader>
           {selectedFormulario ? (
             <div className="space-y-4">
               <div className="rounded-2xl border bg-muted/30 p-4">
-                <p className="font-semibold">{selectedFormulario.titulo || 'Formulário'}</p>
+                <p className="font-semibold">{selectedFormulario.titulo || 'FormulÃ¡rio'}</p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {selectedFormulario.respostas.length} resposta(s) recebida(s)
                 </p>
               </div>
               {selectedFormulario.respostas.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhum aluno respondeu este formulário ainda.</p>
+                <p className="text-sm text-muted-foreground">Nenhum aluno respondeu este formulÃ¡rio ainda.</p>
               ) : (
                 <div className="space-y-4">
                   {selectedFormulario.respostas.map((entrega) => {
@@ -1596,14 +1593,14 @@ export default function Comunicados() {
                         <div>
                           <p className="font-medium">{entrega.usuarios_biblioteca?.nome || 'Aluno'}</p>
                           <p className="text-sm text-muted-foreground">
-                            {entrega.usuarios_biblioteca?.turma || '-'} • {formatDateTimeBR(entrega.enviado_em || entrega.updated_at)}
+                            {entrega.usuarios_biblioteca?.turma || '-'} â€¢ {formatDateTimeBR(entrega.enviado_em || entrega.updated_at)}
                           </p>
                         </div>
                         {selectedFormulario.meta.perguntas.map((pergunta, idx) => {
                           const answerKey = pergunta.id || `q_${idx + 1}`;
                           return (
                             <div key={`${entrega.id}-${answerKey}`} className="rounded-xl bg-muted/30 p-3">
-                              <p className="text-sm font-medium">{pergunta.pergunta || `Questão ${idx + 1}`}</p>
+                              <p className="text-sm font-medium">{pergunta.pergunta || `QuestÃ£o ${idx + 1}`}</p>
                               <p className="mt-1 text-sm text-muted-foreground">
                                 {String(payload.respostas?.[answerKey] || 'Sem resposta')}
                               </p>
@@ -1628,3 +1625,7 @@ export default function Comunicados() {
     </MainLayout>
   );
 }
+
+
+
+
