@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { AudioLines, BellRing, CalendarClock, Download, FileQuestion, ImagePlus, Mic, Megaphone, PauseCircle, Send, Trash2, Upload, Users, X } from 'lucide-react';
+import { AudioLines, BellRing, CalendarClock, CheckCircle2, Download, FileQuestion, ImagePlus, Mic, Megaphone, PauseCircle, Plus, Send, Trash2, Upload, Users, X } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -17,13 +17,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { createComunidadePost, deleteComunidadePost, fetchComunidadeAlunoData } from '@/services/comunidadeAlunoService';
-import { fetchProfessorPainelData } from '@/services/professorService';
+import { fetchProfessorPainelData, saveProfessorAtividade } from '@/services/professorService';
 import { deleteR2Object, getR2DownloadUrl, uploadFileToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
 import { cn } from '@/lib/utils';
 
 const ALL_TURMAS_OPTION = '__all_turmas__';
 const FORM_MARKER = '[FORM_CONFIG_V1]';
+const COMUNICADOS_FORM_MARKER = '[FORM_ORIGIN_COMUNICADOS_V1]';
 
 function ensureArray(value) {
   return Array.isArray(value) ? value : [];
@@ -162,6 +163,62 @@ function extractAtividadeFormConfig(descricao) {
   return { descricaoLimpa, perguntas };
 }
 
+function isComunicadosFormActivity(descricao) {
+  return String(descricao || '').includes(COMUNICADOS_FORM_MARKER);
+}
+
+function serializeFormularioDescricao(descricao, perguntas) {
+  const descricaoLimpa = String(descricao || '').trim();
+  const perguntasNormalizadas = ensureArray(perguntas)
+    .map((pergunta, index) => ({
+      id: String(pergunta?.id || `q_${index + 1}`),
+      tipo: pergunta?.tipo === 'multipla_escolha' ? 'multipla_escolha' : 'texto',
+      pergunta: String(pergunta?.pergunta || '').trim(),
+      opcoes: pergunta?.tipo === 'multipla_escolha'
+        ? ensureArray(pergunta?.opcoes).map((item) => String(item || '').trim()).filter(Boolean)
+        : [],
+      correta: Number.isInteger(pergunta?.correta) ? pergunta.correta : null,
+    }))
+    .filter((pergunta) => pergunta.pergunta);
+
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify({ perguntas: perguntasNormalizadas }))));
+  const prefix = `${COMUNICADOS_FORM_MARKER}\n${descricaoLimpa}`.trim();
+  return `${prefix}${prefix ? '\n\n' : ''}${FORM_MARKER}${encoded}`;
+}
+
+function createQuestionId() {
+  return `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createEmptyFormQuestion() {
+  return {
+    id: createQuestionId(),
+    tipo: 'texto',
+    pergunta: '',
+    opcoes: ['', ''],
+    correta: null,
+  };
+}
+
+function parseEntregaPayload(rawText) {
+  const source = String(rawText || '');
+  const marker = '[ENTREGA_PAYLOAD_V1]';
+  if (!source.startsWith(marker)) {
+    return {
+      texto: source,
+      imagens: [],
+      respostas: {},
+    };
+  }
+
+  const parsed = decodeJsonBase64(source.slice(marker.length).trim()) || {};
+  return {
+    texto: String(parsed?.texto || ''),
+    imagens: Array.isArray(parsed?.imagens) ? parsed.imagens.filter((item) => typeof item === 'string') : [],
+    respostas: parsed?.respostas && typeof parsed.respostas === 'object' ? parsed.respostas : {},
+  };
+}
+
 function formatDateLabel(value) {
   if (!value) return 'Sem prazo';
   try {
@@ -210,6 +267,16 @@ export default function Comunicados() {
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [selectedImagePreview, setSelectedImagePreview] = useState({ src: '', title: 'Visualizacao da imagem' });
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isFormularioDialogOpen, setIsFormularioDialogOpen] = useState(false);
+  const [formularioSaving, setFormularioSaving] = useState(false);
+  const [selectedFormulario, setSelectedFormulario] = useState(null);
+  const [formularioForm, setFormularioForm] = useState({
+    titulo: '',
+    descricao: '',
+    turma: '',
+    data_entrega: '',
+    perguntas: [createEmptyFormQuestion()],
+  });
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingLevels, setRecordingLevels] = useState(() => Array.from({ length: 24 }, () => 0.18));
@@ -267,46 +334,50 @@ export default function Comunicados() {
     }
   }, [audioFile, pendingImages]);
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     let cancelled = false;
-
-    const load = async () => {
+    try {
       setLoading(true);
-      try {
-        const [response, professorData] = await Promise.all([
-          fetchComunidadeAlunoData({ roleHint: profileRoleHint }),
-          isProfessor ? fetchProfessorPainelData() : Promise.resolve(null),
-        ]);
-        if (cancelled) return;
+      const [response, professorData] = await Promise.all([
+        fetchComunidadeAlunoData({ roleHint: profileRoleHint }),
+        isProfessor ? fetchProfessorPainelData() : Promise.resolve(null),
+      ]);
+      if (cancelled) return;
 
-        const perfilAtual = response?.perfil || null;
-        const comunicados = ensureArray(response?.posts)
-          .filter((item) => item?.tipo === 'comunicado' && !isExpiredComunicado(item));
-        const resolvedPosts = await Promise.all(comunicados.map(resolveComunicadoMedia));
-        if (cancelled) return;
+      const perfilAtual = response?.perfil || null;
+      const comunicados = ensureArray(response?.posts)
+        .filter((item) => item?.tipo === 'comunicado' && !isExpiredComunicado(item));
+      const resolvedPosts = await Promise.all(comunicados.map(resolveComunicadoMedia));
+      if (cancelled) return;
 
-        setPerfil(perfilAtual);
-        setPosts(resolvedPosts);
-        setTurmasPublicacao(ensureArray(response?.turmasPublicacao));
-        setProfessorAtividades(ensureArray(professorData?.atividades));
-        setProfessorEntregas(ensureArray(professorData?.entregas));
-      } catch (error) {
-        if (cancelled) return;
-        toast({
-          variant: 'destructive',
-          title: 'Erro ao carregar comunicados',
-          description: error?.message || 'Nao foi possivel carregar os comunicados agora.',
-        });
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    load();
+      setPerfil(perfilAtual);
+      setPosts(resolvedPosts);
+      setTurmasPublicacao(ensureArray(response?.turmasPublicacao));
+      setProfessorAtividades(ensureArray(professorData?.atividades));
+      setProfessorEntregas(ensureArray(professorData?.entregas));
+    } catch (error) {
+      if (cancelled) return;
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao carregar comunicados',
+        description: error?.message || 'Nao foi possivel carregar os comunicados agora.',
+      });
+    } finally {
+      if (!cancelled) setLoading(false);
+    }
     return () => {
       cancelled = true;
     };
-  }, [profileRoleHint, toast]);
+  }, [isProfessor, profileRoleHint, toast]);
+
+  useEffect(() => {
+    let active = true;
+    loadData();
+    return () => {
+      active = false;
+      if (!active) return;
+    };
+  }, [loadData]);
 
   const comunicadosVisiveis = useMemo(() => {
     const turmaAluno = normalizeTurmaKey(perfil?.turma);
@@ -343,7 +414,7 @@ export default function Comunicados() {
           respostas,
         };
       })
-      .filter((atividade) => atividade.meta.perguntas.length > 0)
+      .filter((atividade) => isComunicadosFormActivity(atividade?.descricao) && atividade.meta.perguntas.length > 0)
       .sort((a, b) => new Date(b?.created_at || 0).getTime() - new Date(a?.created_at || 0).getTime())
   ), [professorAtividades, professorEntregas]);
 
@@ -639,6 +710,112 @@ export default function Comunicados() {
     setExpiraEm('');
     clearAudio();
     clearPendingImages();
+  };
+
+  const resetFormularioForm = () => {
+    setFormularioForm({
+      titulo: '',
+      descricao: '',
+      turma: '',
+      data_entrega: '',
+      perguntas: [createEmptyFormQuestion()],
+    });
+  };
+
+  const handleAddFormQuestion = () => {
+    setFormularioForm((prev) => ({
+      ...prev,
+      perguntas: [...prev.perguntas, createEmptyFormQuestion()],
+    }));
+  };
+
+  const handleFormQuestionChange = (questionId, field, value) => {
+    setFormularioForm((prev) => ({
+      ...prev,
+      perguntas: prev.perguntas.map((question) => (
+        question.id === questionId ? { ...question, [field]: value } : question
+      )),
+    }));
+  };
+
+  const handleFormQuestionTypeChange = (questionId, tipo) => {
+    setFormularioForm((prev) => ({
+      ...prev,
+      perguntas: prev.perguntas.map((question) => (
+        question.id === questionId
+          ? {
+            ...question,
+            tipo,
+            opcoes: tipo === 'multipla_escolha' ? (question.opcoes?.length >= 2 ? question.opcoes : ['', '']) : ['', ''],
+            correta: tipo === 'multipla_escolha' ? question.correta : null,
+          }
+          : question
+      )),
+    }));
+  };
+
+  const handleFormOptionChange = (questionId, optionIndex, value) => {
+    setFormularioForm((prev) => ({
+      ...prev,
+      perguntas: prev.perguntas.map((question) => {
+        if (question.id !== questionId) return question;
+        const nextOptions = [...question.opcoes];
+        nextOptions[optionIndex] = value;
+        return { ...question, opcoes: nextOptions };
+      }),
+    }));
+  };
+
+  const handleSaveFormulario = async () => {
+    if (!formularioForm.titulo.trim()) {
+      toast({ variant: 'destructive', title: 'Titulo obrigatorio', description: 'Informe o nome do formulário.' });
+      return;
+    }
+
+    if (!formularioForm.turma) {
+      toast({ variant: 'destructive', title: 'Destino obrigatorio', description: 'Escolha a turma que vai receber o formulário.' });
+      return;
+    }
+
+    const perguntasValidas = ensureArray(formularioForm.perguntas)
+      .map((question) => ({
+        ...question,
+        pergunta: String(question?.pergunta || '').trim(),
+        opcoes: ensureArray(question?.opcoes).map((item) => String(item || '').trim()),
+      }))
+      .filter((question) => question.pergunta);
+
+    if (perguntasValidas.length === 0) {
+      toast({ variant: 'destructive', title: 'Formulario vazio', description: 'Adicione pelo menos uma questão.' });
+      return;
+    }
+
+    if (perguntasValidas.some((question) => question.tipo === 'multipla_escolha' && question.opcoes.filter(Boolean).length < 2)) {
+      toast({ variant: 'destructive', title: 'Opções incompletas', description: 'Perguntas de marcar precisam de ao menos duas opções.' });
+      return;
+    }
+
+    setFormularioSaving(true);
+    try {
+      await saveProfessorAtividade({
+        titulo: formularioForm.titulo.trim(),
+        descricao: serializeFormularioDescricao(formularioForm.descricao, perguntasValidas),
+        data_entrega: formularioForm.data_entrega || null,
+        target_mode: formularioForm.turma === ALL_TURMAS_OPTION ? 'todas_turmas' : 'turma',
+        turma: formularioForm.turma === ALL_TURMAS_OPTION ? '' : formularioForm.turma,
+        livro_id: '',
+        aluno_id: '',
+        pontos_extras: 0,
+      });
+      toast({ title: 'Formulario criado', description: 'O formulário já está disponível para os alunos da turma.' });
+      setIsFormularioDialogOpen(false);
+      resetFormularioForm();
+      await loadData();
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Nao foi possivel criar o formulário.' });
+    } finally {
+      setFormularioSaving(false);
+    }
   };
 
   const handlePublish = async () => {
@@ -1020,9 +1197,22 @@ export default function Comunicados() {
         {isProfessor && (
           <Card>
             <CardHeader className="gap-3">
-              <div className="flex items-center gap-2">
-                <FileQuestion className="h-5 w-5 text-primary" />
-                <CardTitle className="text-base">Formulários enviados</CardTitle>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <FileQuestion className="h-5 w-5 text-primary" />
+                  <CardTitle className="text-base">Formulários enviados</CardTitle>
+                </div>
+                <Button
+                  type="button"
+                  className="rounded-2xl"
+                  onClick={() => {
+                    resetFormularioForm();
+                    setIsFormularioDialogOpen(true);
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Adicionar formulário
+                </Button>
               </div>
               <p className="text-sm text-muted-foreground">
                 Esta área acompanha os formulários reais que você publicou para os alunos, dentro do fluxo de comunicados.
@@ -1068,6 +1258,17 @@ export default function Comunicados() {
                           <p className="mt-1">
                             {atividade.respostas.filter((item) => item.status === 'aprovada').length} aprovadas
                           </p>
+                          <div className="mt-3">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="rounded-xl"
+                              onClick={() => setSelectedFormulario(atividade)}
+                            >
+                              Ver respostas
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1220,6 +1421,199 @@ export default function Comunicados() {
               />
             ) : null}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isFormularioDialogOpen} onOpenChange={setIsFormularioDialogOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Novo formulário</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Título</Label>
+                <Input
+                  value={formularioForm.titulo}
+                  onChange={(e) => setFormularioForm((prev) => ({ ...prev, titulo: e.target.value }))}
+                  placeholder="Ex.: Reflexão sobre o capítulo 3"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Destino</Label>
+                <select
+                  value={formularioForm.turma || 'none'}
+                  onChange={(e) => setFormularioForm((prev) => ({ ...prev, turma: e.target.value === 'none' ? '' : e.target.value }))}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="none">Selecione a turma</option>
+                  <option value={ALL_TURMAS_OPTION}>Todas as turmas</option>
+                  {turmasPublicacao.map((turma) => (
+                    <option key={turma} value={turma}>{turma}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-[1fr_220px]">
+              <div className="space-y-2">
+                <Label>Orientação</Label>
+                <Textarea
+                  rows={4}
+                  value={formularioForm.descricao}
+                  onChange={(e) => setFormularioForm((prev) => ({ ...prev, descricao: e.target.value }))}
+                  placeholder="Explique o objetivo do formulário para os alunos."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Prazo</Label>
+                <Input
+                  type="date"
+                  value={formularioForm.data_entrega}
+                  onChange={(e) => setFormularioForm((prev) => ({ ...prev, data_entrega: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {formularioForm.perguntas.map((question, index) => (
+                <div key={question.id} className="rounded-2xl border p-4 space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-medium">Questão {index + 1}</p>
+                    {formularioForm.perguntas.length > 1 ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive"
+                        onClick={() => setFormularioForm((prev) => ({
+                          ...prev,
+                          perguntas: prev.perguntas.filter((item) => item.id !== question.id),
+                        }))}
+                      >
+                        Remover
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Pergunta</Label>
+                    <Input
+                      value={question.pergunta}
+                      onChange={(e) => handleFormQuestionChange(question.id, 'pergunta', e.target.value)}
+                      placeholder="Digite a pergunta"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tipo</Label>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <Button
+                        type="button"
+                        variant={question.tipo === 'texto' ? 'default' : 'outline'}
+                        onClick={() => handleFormQuestionTypeChange(question.id, 'texto')}
+                      >
+                        Resposta aberta
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={question.tipo === 'multipla_escolha' ? 'default' : 'outline'}
+                        onClick={() => handleFormQuestionTypeChange(question.id, 'multipla_escolha')}
+                      >
+                        Múltipla escolha
+                      </Button>
+                    </div>
+                  </div>
+                  {question.tipo === 'multipla_escolha' ? (
+                    <div className="space-y-3">
+                      {question.opcoes.map((option, optionIndex) => (
+                        <div key={`${question.id}-${optionIndex}`} className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant={question.correta === optionIndex ? 'default' : 'outline'}
+                            size="icon"
+                            onClick={() => handleFormQuestionChange(question.id, 'correta', optionIndex)}
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                          </Button>
+                          <Input
+                            value={option}
+                            onChange={(e) => handleFormOptionChange(question.id, optionIndex, e.target.value)}
+                            placeholder={`Opção ${optionIndex + 1}`}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              <Button type="button" variant="outline" onClick={handleAddFormQuestion}>
+                <Plus className="mr-2 h-4 w-4" />
+                Adicionar questão
+              </Button>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsFormularioDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="button" onClick={handleSaveFormulario} disabled={formularioSaving}>
+                {formularioSaving ? 'Salvando...' : 'Salvar formulário'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(selectedFormulario)} onOpenChange={(open) => !open && setSelectedFormulario(null)}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Respostas do formulário</DialogTitle>
+          </DialogHeader>
+          {selectedFormulario ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border bg-muted/30 p-4">
+                <p className="font-semibold">{selectedFormulario.titulo || 'Formulário'}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {selectedFormulario.respostas.length} resposta(s) recebida(s)
+                </p>
+              </div>
+              {selectedFormulario.respostas.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhum aluno respondeu este formulário ainda.</p>
+              ) : (
+                <div className="space-y-4">
+                  {selectedFormulario.respostas.map((entrega) => {
+                    const payload = parseEntregaPayload(entrega?.texto_entrega);
+                    return (
+                      <div key={entrega.id} className="rounded-2xl border p-4 space-y-3">
+                        <div>
+                          <p className="font-medium">{entrega.usuarios_biblioteca?.nome || 'Aluno'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {entrega.usuarios_biblioteca?.turma || '-'} • {formatDateTimeBR(entrega.enviado_em || entrega.updated_at)}
+                          </p>
+                        </div>
+                        {selectedFormulario.meta.perguntas.map((pergunta, idx) => {
+                          const answerKey = pergunta.id || `q_${idx + 1}`;
+                          return (
+                            <div key={`${entrega.id}-${answerKey}`} className="rounded-xl bg-muted/30 p-3">
+                              <p className="text-sm font-medium">{pergunta.pergunta || `Questão ${idx + 1}`}</p>
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                {String(payload.respostas?.[answerKey] || 'Sem resposta')}
+                              </p>
+                            </div>
+                          );
+                        })}
+                        {payload.texto ? (
+                          <div className="rounded-xl bg-muted/30 p-3">
+                            <p className="text-sm font-medium">Texto complementar</p>
+                            <p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">{payload.texto}</p>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </MainLayout>
