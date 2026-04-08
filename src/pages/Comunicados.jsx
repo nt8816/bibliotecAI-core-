@@ -777,6 +777,19 @@ export default function Comunicados() {
     }));
   };
 
+  const handleFormCorrectOptionToggle = (questionId, optionIndex) => {
+    setFormularioForm((prev) => ({
+      ...prev,
+      perguntas: prev.perguntas.map((question) => {
+        if (question.id !== questionId) return question;
+        return {
+          ...question,
+          correta: question.correta === optionIndex ? null : optionIndex,
+        };
+      }),
+    }));
+  };
+
   const handleSaveFormulario = async () => {
     if (!formularioForm.titulo.trim()) {
       toast({ variant: 'destructive', title: 'Título obrigatório', description: 'Informe o nome do formulário.' });
@@ -1567,7 +1580,7 @@ export default function Comunicados() {
                                   type="button"
                                   variant={question.correta === optionIndex ? 'default' : 'outline'}
                                   className="h-14 rounded-2xl"
-                                  onClick={() => handleFormQuestionChange(question.id, 'correta', optionIndex)}
+                                  onClick={() => handleFormCorrectOptionToggle(question.id, optionIndex)}
                                 >
                                   <CheckCircle2 className="h-4 w-4" />
                                 </Button>
