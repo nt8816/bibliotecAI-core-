@@ -478,7 +478,7 @@ export default function Comunicados() {
       if (discardedFiles.length > 0) {
         toast({
           title: 'Limite de imagens atingido',
-          description: 'Cada comunicado aceita no mÃ¡ximo 4 imagens.',
+          description: 'Cada comunicado aceita no máximo 4 imagens.',
         });
       }
 
@@ -769,12 +769,12 @@ export default function Comunicados() {
 
   const handleSaveFormulario = async () => {
     if (!formularioForm.titulo.trim()) {
-      toast({ variant: 'destructive', title: 'Titulo obrigatorio', description: 'Informe o nome do formulÃ¡rio.' });
+      toast({ variant: 'destructive', title: 'Título obrigatório', description: 'Informe o nome do formulário.' });
       return;
     }
 
     if (!formularioForm.turma) {
-      toast({ variant: 'destructive', title: 'Destino obrigatorio', description: 'Escolha a turma que vai receber o formulÃ¡rio.' });
+      toast({ variant: 'destructive', title: 'Destino obrigatório', description: 'Escolha a turma que vai receber o formulário.' });
       return;
     }
 
@@ -787,12 +787,12 @@ export default function Comunicados() {
       .filter((question) => question.pergunta);
 
     if (perguntasValidas.length === 0) {
-      toast({ variant: 'destructive', title: 'Formulario vazio', description: 'Adicione pelo menos uma questÃ£o.' });
+      toast({ variant: 'destructive', title: 'Formulário vazio', description: 'Adicione pelo menos uma questão.' });
       return;
     }
 
     if (perguntasValidas.some((question) => question.tipo === 'multipla_escolha' && question.opcoes.filter(Boolean).length < 2)) {
-      toast({ variant: 'destructive', title: 'OpÃ§Ãµes incompletas', description: 'Perguntas de marcar precisam de ao menos duas opÃ§Ãµes.' });
+      toast({ variant: 'destructive', title: 'Opções incompletas', description: 'Perguntas de marcar precisam de ao menos duas opções.' });
       return;
     }
 
@@ -808,12 +808,12 @@ export default function Comunicados() {
         aluno_id: '',
         pontos_extras: 0,
       });
-      toast({ title: 'Formulario criado', description: 'O formulÃ¡rio jÃ¡ estÃ¡ disponÃ­vel para os alunos da turma.' });
+      toast({ title: 'Formulário criado', description: 'O formulário já está disponível para os alunos da turma.' });
       setIsFormularioDialogOpen(false);
       resetFormularioForm();
       await loadData();
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Nao foi possivel criar o formulÃ¡rio.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível criar o formulário.' });
     } finally {
       setFormularioSaving(false);
     }
@@ -1203,7 +1203,7 @@ export default function Comunicados() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="grid gap-3 md:grid-cols-[56px_minmax(0,1fr)]">
                   <FileQuestion className="h-5 w-5 text-primary" />
-                  <CardTitle className="text-base">FormulÃ¡rios enviados</CardTitle>
+                  <CardTitle className="text-base">Formulários enviados</CardTitle>
                 </div>
                 <Button
                   type="button"
@@ -1214,20 +1214,20 @@ export default function Comunicados() {
                   }}
                 >
                   <Plus className="mr-2 h-4 w-4" />
-                  Adicionar formulÃ¡rio
+                  Adicionar formulário
                 </Button>
               </div>
               <p className="text-sm text-muted-foreground">
-                Esta Ã¡rea acompanha os formulÃ¡rios reais que vocÃª publicou para os alunos, dentro do fluxo de comunicados.
+                Esta área acompanha os formulários reais que você publicou para os alunos, dentro do fluxo de comunicados.
               </p>
             </CardHeader>
             <CardContent>
               {loading ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">Carregando formulÃ¡rios...</p>
+                <p className="py-6 text-center text-sm text-muted-foreground">Carregando formulários...</p>
               ) : formulariosProfessor.length === 0 ? (
                 <div className="rounded-[28px] border border-dashed p-8 text-center">
                   <FileQuestion className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Nenhum formulÃ¡rio publicado por vocÃª no momento.</p>
+                  <p className="text-sm text-muted-foreground">Nenhum formulário publicado por você no momento.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -1237,10 +1237,10 @@ export default function Comunicados() {
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                              {atividade.titulo || 'FormulÃ¡rio sem tÃ­tulo'}
+                              {atividade.titulo || 'Formulário sem título'}
                             </p>
                             <Badge className="bg-primary/10 text-primary hover:bg-primary/10">
-                              {atividade.meta.perguntas.length} questÃµes
+                              {atividade.meta.perguntas.length} questões
                             </Badge>
                             <Badge variant="outline">
                               {atividade.respostas.length} respostas
@@ -1427,12 +1427,12 @@ export default function Comunicados() {
       </Dialog>
 
       <Dialog open={isFormularioDialogOpen} onOpenChange={setIsFormularioDialogOpen}>
-        <DialogContent className="w-[min(96vw,1240px)] max-w-none overflow-hidden rounded-[28px] border border-primary/10 bg-background p-0 shadow-[0_28px_120px_rgba(15,23,42,0.28)]">
+        <DialogContent className="flex h-[min(92vh,960px)] w-[min(96vw,1240px)] max-w-none flex-col overflow-hidden rounded-[28px] border border-primary/10 bg-background p-0 shadow-[0_28px_120px_rgba(15,23,42,0.28)]">
           <DialogHeader className="border-b border-border/60 bg-gradient-to-r from-primary/8 via-background to-emerald-500/8 px-8 py-6">
             <DialogTitle className="text-2xl font-semibold tracking-tight">Novo formulário</DialogTitle>
           </DialogHeader>
 
-          <div className="max-h-[88vh] overflow-y-auto px-8 py-7">
+          <div className="flex-1 overflow-y-auto px-8 py-7">
             <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
               <div className="rounded-[26px] border border-primary/10 bg-card/80 p-6 shadow-sm">
                 <div className="grid gap-6 lg:grid-cols-2">
@@ -1488,7 +1488,7 @@ export default function Comunicados() {
                 </div>
               </div>
 
-              <div className="space-y-5">
+              <div className="space-y-6 pb-4">
                 {formularioForm.perguntas.map((question, index) => (
                   <div
                     key={question.id}
@@ -1525,7 +1525,7 @@ export default function Comunicados() {
                         />
                       </div>
 
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         <Label className="text-sm font-medium text-foreground/85">Tipo</Label>
                         <div className="grid gap-4 lg:grid-cols-2">
                           <Button
@@ -1580,20 +1580,22 @@ export default function Comunicados() {
                   </div>
                 ))}
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-14 w-full rounded-2xl border-dashed text-base sm:w-auto sm:px-6"
-                  onClick={handleAddFormQuestion}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Adicionar questão
-                </Button>
+                <div className="flex justify-start">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-14 w-full rounded-2xl border-dashed text-base sm:w-auto sm:px-6"
+                    onClick={handleAddFormQuestion}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Adicionar questão
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 border-t border-border/60 bg-background/95 px-8 py-5 backdrop-blur">
+          <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border/60 bg-background/95 px-8 py-5 backdrop-blur">
             <Button
               type="button"
               variant="outline"
