@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -995,17 +996,21 @@ export default function Comunicados() {
                 </div>
                 <div className="space-y-2">
                   <Label>Destino</Label>
-                  <select
+                  <Select
                     value={turmaPublico || 'none'}
-                    onChange={(e) => setTurmaPublico(e.target.value === 'none' ? '' : e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    onValueChange={(value) => setTurmaPublico(value === 'none' ? '' : value)}
                   >
-                    <option value="none">Selecione o destino</option>
-                    <option value={ALL_TURMAS_OPTION}>Todas as turmas</option>
-                    {turmasPublicacao.map((turma) => (
-                      <option key={turma} value={turma}>{turma}</option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="h-12 rounded-2xl border-emerald-200/70 bg-white/80 text-left shadow-sm transition focus:ring-2 focus:ring-emerald-500/20 dark:border-emerald-900/50 dark:bg-slate-950/40">
+                      <SelectValue placeholder="Selecione o destino" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-2xl border-emerald-200/70 bg-white/95 shadow-[0_18px_40px_rgba(16,24,40,0.16)] backdrop-blur dark:border-emerald-900/50 dark:bg-slate-950/95">
+                      <SelectItem value="none">Selecione a turma</SelectItem>
+                      <SelectItem value={ALL_TURMAS_OPTION}>Todas as turmas</SelectItem>
+                      {turmasPublicacao.map((turma) => (
+                        <SelectItem key={turma} value={turma}>{turma}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -1441,17 +1446,21 @@ export default function Comunicados() {
               </div>
               <div className="space-y-2">
                 <Label>Destino</Label>
-                <select
+                <Select
                   value={formularioForm.turma || 'none'}
-                  onChange={(e) => setFormularioForm((prev) => ({ ...prev, turma: e.target.value === 'none' ? '' : e.target.value }))}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  onValueChange={(value) => setFormularioForm((prev) => ({ ...prev, turma: value === 'none' ? '' : value }))}
                 >
-                  <option value="none">Selecione a turma</option>
-                  <option value={ALL_TURMAS_OPTION}>Todas as turmas</option>
-                  {turmasPublicacao.map((turma) => (
-                    <option key={turma} value={turma}>{turma}</option>
-                  ))}
-                </select>
+                  <SelectTrigger className="h-12 rounded-2xl border-primary/20 bg-muted/30 text-left shadow-sm transition focus:ring-2 focus:ring-primary/20">
+                    <SelectValue placeholder="Selecione a turma" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-2xl border-primary/20 bg-background/95 shadow-[0_18px_40px_rgba(16,24,40,0.16)] backdrop-blur">
+                    <SelectItem value="none">Selecione a turma</SelectItem>
+                    <SelectItem value={ALL_TURMAS_OPTION}>Todas as turmas</SelectItem>
+                    {turmasPublicacao.map((turma) => (
+                      <SelectItem key={turma} value={turma}>{turma}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
