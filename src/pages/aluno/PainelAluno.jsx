@@ -3856,14 +3856,14 @@ export default function PainelAluno() {
                   ) : (
                     <div className="space-y-4">
                       <Tabs value={atividadeView} onValueChange={setAtividadeView}>
-                        <TabsList className="grid w-full grid-cols-3">
-                          <TabsTrigger value="pendentes">
+                        <TabsList className="grid h-auto w-full grid-cols-1 gap-2 rounded-2xl bg-muted/50 p-2 sm:grid-cols-3">
+                          <TabsTrigger value="pendentes" className="min-h-[52px] whitespace-normal rounded-2xl px-3 py-3 text-left text-xs leading-5 sm:text-center sm:text-sm">
                             Atividades pendentes ({atividadesPendentesLista.length})
                           </TabsTrigger>
-                          <TabsTrigger value="enviadas">
+                          <TabsTrigger value="enviadas" className="min-h-[52px] whitespace-normal rounded-2xl px-3 py-3 text-left text-xs leading-5 sm:text-center sm:text-sm">
                             Atividades enviadas ({atividadesEnviadasLista.length})
                           </TabsTrigger>
-                          <TabsTrigger value="fora_prazo">
+                          <TabsTrigger value="fora_prazo" className="min-h-[52px] whitespace-normal rounded-2xl px-3 py-3 text-left text-xs leading-5 sm:text-center sm:text-sm">
                             Fora do prazo ({atividadesForaDoPrazoLista.length})
                           </TabsTrigger>
                         </TabsList>
@@ -3874,9 +3874,9 @@ export default function PainelAluno() {
                       ) : atividadesVisiveis.map((atividade) => (
                         <div
                           key={atividade.id}
-                          className="space-y-4 rounded-3xl border border-border/80 bg-gradient-to-br from-background via-background to-primary/5 p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-[0_18px_40px_rgba(0,0,0,0.08)]"
+                          className="space-y-4 rounded-3xl border border-border/80 bg-gradient-to-br from-background via-background to-primary/5 p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-[0_18px_40px_rgba(0,0,0,0.08)] sm:p-5"
                         >
-                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                             <div className="space-y-2">
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="font-semibold">{atividade.titulo}</p>
@@ -3897,15 +3897,15 @@ export default function PainelAluno() {
                                 </p>
                               )}
                             </div>
-                            <div className="space-y-2 text-left md:text-right">
-                              <Badge variant="outline" className="rounded-full px-3 py-1">
+                            <div className="grid gap-2 text-left sm:max-w-xs sm:grid-cols-2 md:block md:text-right">
+                              <Badge variant="outline" className="w-fit rounded-full px-3 py-1 md:ml-auto">
                                 Pontos possiveis: {Number(atividade.pontos_extras || 0)}
                               </Badge>
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-xs leading-5 text-muted-foreground">
                                 Entrega: {formatDateBR(atividade.data_entrega)}
                               </p>
                               {!atividade.entrega && atividadeView === 'fora_prazo' && (
-                                <Badge variant="destructive" className="rounded-full px-3 py-1">
+                                <Badge variant="destructive" className="w-fit rounded-full px-3 py-1 md:ml-auto">
                                   Prazo encerrado
                                 </Badge>
                               )}
@@ -3915,7 +3915,7 @@ export default function PainelAluno() {
                           <div className="space-y-2">
                             <Label>Minha entrega</Label>
                             <Textarea
-                              rows={3}
+                              rows={4}
                               placeholder="Escreva sua resposta, resumo ou reflexão..."
                               value={atividadeTexto[atividade.id] ?? parseEntregaPayload(atividade.entrega?.texto_entrega).texto ?? ''}
                               onChange={(e) =>
@@ -3929,8 +3929,8 @@ export default function PainelAluno() {
 
                           {Array.isArray(atividade.atividadeMeta?.formulario?.perguntas)
                             && atividade.atividadeMeta.formulario.perguntas.length > 0 && (
-                            <div className="space-y-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
-                              <div className="flex items-center justify-between gap-3">
+                            <div className="space-y-4 rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:p-5">
+                              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                                 <p className="text-sm font-medium">Formulario da atividade</p>
                                 <span className="text-xs text-primary">Responda com calma</span>
                               </div>
@@ -3940,7 +3940,7 @@ export default function PainelAluno() {
                                 const opcoes = ensureArray(pergunta?.opcoes);
                                 const tipo = String(pergunta?.tipo || 'texto');
                                 return (
-                                  <div key={perguntaId} className="space-y-2 rounded-2xl border bg-background/95 p-4 shadow-sm animate-in fade-in-0 slide-in-from-bottom-2">
+                                  <div key={perguntaId} className="space-y-3 rounded-2xl border bg-background/95 p-4 shadow-sm animate-in fade-in-0 slide-in-from-bottom-2">
                                     <Label className="text-xs uppercase tracking-[0.18em] text-primary">
                                       {idx + 1}. {String(pergunta?.pergunta || 'Pergunta')}
                                     </Label>
@@ -3952,7 +3952,7 @@ export default function PainelAluno() {
                                             <button
                                               key={`${perguntaId}-${optionIndex}`}
                                               type="button"
-                                              className={`rounded-2xl border px-4 py-3 text-left text-sm transition-all duration-200 hover:-translate-y-0.5 ${
+                                              className={`rounded-2xl border px-4 py-3 text-left text-sm leading-5 transition-all duration-200 hover:-translate-y-0.5 ${
                                                 selected
                                                   ? 'border-primary bg-primary text-primary-foreground shadow-[0_12px_24px_rgba(0,0,0,0.12)]'
                                                   : 'border-border bg-background hover:border-primary/40'
@@ -4003,13 +4003,13 @@ export default function PainelAluno() {
                               onChange={(e) => handleSelectActivityImages(atividade.id, e.target.files)}
                             />
                             {ensureArray(atividadeImagens[atividade.id]).length > 0 && (
-                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                                 {ensureArray(atividadeImagens[atividade.id]).map((img, imageIndex) => (
                                   <div key={`${atividade.id}-img-${imageIndex}`} className="relative">
                                     <ResolvedMediaImage
                                       value={img}
                                       alt={`Atividade ${imageIndex + 1}`}
-                                      className="h-20 w-full rounded-md border object-cover"
+                                      className="h-24 w-full rounded-xl border object-cover"
                                     />
                                     <button
                                       type="button"
@@ -4029,7 +4029,7 @@ export default function PainelAluno() {
                             )}
                           </div>
 
-                          <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-background/80 p-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="flex flex-wrap items-center gap-2 text-sm">
                               {atividade.entrega ? (
                                 <>
@@ -4054,14 +4054,14 @@ export default function PainelAluno() {
                               )}
                             </div>
 
-                            <Button onClick={() => handleEnviarAtividade(atividade)} disabled={saving} className="rounded-2xl">
+                            <Button onClick={() => handleEnviarAtividade(atividade)} disabled={saving} className="h-11 w-full rounded-2xl sm:w-auto">
                               <Send className="w-4 h-4 mr-2" />
                               {atividade.entrega ? 'Atualizar entrega' : 'Enviar atividade'}
                             </Button>
                           </div>
 
                           {atividade.entrega?.feedback_professor && (
-                            <div className="rounded-2xl bg-muted p-3">
+                            <div className="rounded-2xl bg-muted p-3 sm:p-4">
                               <p className="text-xs text-muted-foreground">Feedback do professor</p>
                               <p className="text-sm">{atividade.entrega.feedback_professor}</p>
                             </div>

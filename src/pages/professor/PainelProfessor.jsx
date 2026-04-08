@@ -1509,10 +1509,10 @@ export default function PainelProfessor() {
         </div>
 
         <Tabs defaultValue="atividades">
-          <TabsList className="w-full justify-start overflow-x-auto whitespace-nowrap px-1 py-1">
-            <TabsTrigger value="atividades">Atividades</TabsTrigger>
-            <TabsTrigger value="entregas">Entregas</TabsTrigger>
-            <TabsTrigger value="sugestoes">Sugestões</TabsTrigger>
+          <TabsList className="grid h-auto w-full grid-cols-1 gap-2 rounded-2xl bg-muted/40 p-2 sm:flex sm:justify-start sm:overflow-x-auto sm:whitespace-nowrap sm:px-1 sm:py-1">
+            <TabsTrigger value="atividades" className="min-h-[50px] whitespace-normal rounded-2xl px-3 py-3 text-left text-sm leading-5 sm:min-h-0 sm:text-center">Atividades</TabsTrigger>
+            <TabsTrigger value="entregas" className="min-h-[50px] whitespace-normal rounded-2xl px-3 py-3 text-left text-sm leading-5 sm:min-h-0 sm:text-center">Entregas</TabsTrigger>
+            <TabsTrigger value="sugestoes" className="min-h-[50px] whitespace-normal rounded-2xl px-3 py-3 text-left text-sm leading-5 sm:min-h-0 sm:text-center">Sugest??es</TabsTrigger>
           </TabsList>
 
           <TabsContent value="atividades" className="space-y-4">
@@ -1524,7 +1524,7 @@ export default function PainelProfessor() {
                       <Sparkles className="h-3.5 w-3.5" />
                       Atividades personalizadas
                     </div>
-                    <CardTitle className="text-2xl">Monte tarefas do seu jeito</CardTitle>
+                    <CardTitle className="text-xl sm:text-2xl">Monte tarefas do seu jeito</CardTitle>
                     <p className="max-w-2xl text-sm text-muted-foreground">
                       Crie atividades com perguntas abertas ou de marcar, escolha uma turma específica, um aluno
                       ou envie para todas as turmas liberadas.
@@ -1532,7 +1532,7 @@ export default function PainelProfessor() {
                   </div>
                   <Button
                     size="lg"
-                    className="rounded-2xl px-5 shadow-[0_16px_35px_rgba(0,0,0,0.12)] transition-transform hover:-translate-y-0.5"
+                    className="w-full rounded-2xl px-5 shadow-[0_16px_35px_rgba(0,0,0,0.12)] transition-transform hover:-translate-y-0.5 sm:w-auto"
                     onClick={() => handleOpenAtividadeDialog()}
                   >
                     <Wand2 className="mr-2 h-4 w-4" />
@@ -1559,7 +1559,7 @@ export default function PainelProfessor() {
                     atividadesComMeta.map((atividade, index) => (
                       <div
                         key={atividade.id}
-                        className="rounded-2xl border bg-card/80 p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_16px_30px_rgba(0,0,0,0.06)] animate-in fade-in-0 slide-in-from-bottom-2"
+                        className="rounded-2xl border bg-card/80 p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_16px_30px_rgba(0,0,0,0.06)] animate-in fade-in-0 slide-in-from-bottom-2 sm:p-5"
                         style={{ animationDelay: `${index * 40}ms` }}
                       >
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -1582,13 +1582,14 @@ export default function PainelProfessor() {
                             )}
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => handleOpenAtividadeDialog(atividade)}>
+                          <div className="flex items-center gap-2 self-start sm:self-auto">
+                            <Button variant="ghost" size="icon" className="h-10 w-10 rounded-2xl" onClick={() => handleOpenAtividadeDialog(atividade)}>
                               <Pencil className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
+                              className="h-10 w-10 rounded-2xl"
                               onClick={() => setDeleteTarget({ kind: 'atividade', id: atividade.id, label: atividade.titulo || 'atividade' })}
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
@@ -1648,15 +1649,15 @@ export default function PainelProfessor() {
                     };
 
                     return (
-                      <div key={entrega.id} className="rounded-2xl border p-4 space-y-3">
-                        <div>
+                      <div key={entrega.id} className="space-y-4 rounded-3xl border p-4 sm:p-5">
+                        <div className="space-y-1">
                           <p className="font-medium">{entrega.atividades_leitura?.titulo || 'Atividade'}</p>
                           <p className="text-sm text-muted-foreground">
                             {entrega.usuarios_biblioteca?.nome || 'Aluno'} • {entrega.usuarios_biblioteca?.turma || '-'}
                           </p>
                         </div>
 
-                        <div className="grid gap-3 md:grid-cols-3">
+                        <div className="grid gap-4 lg:grid-cols-3">
                           <div className="space-y-2">
                             <Label>Status</Label>
                             <Select
@@ -1666,7 +1667,7 @@ export default function PainelProfessor() {
                                 [entrega.id]: { ...prev[entrega.id], status: value },
                               }))}
                             >
-                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectTrigger className="min-h-[46px] rounded-2xl"><SelectValue /></SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="enviada">Enviada</SelectItem>
                                 <SelectItem value="aprovada">Aprovada</SelectItem>
@@ -1679,6 +1680,7 @@ export default function PainelProfessor() {
                             <Input
                               type="number"
                               min="0"
+                              className="min-h-[46px] rounded-2xl"
                               value={state.pontos_ganhos}
                               onChange={(e) => setAvaliacaoForm((prev) => ({
                                 ...prev,
@@ -1689,7 +1691,7 @@ export default function PainelProfessor() {
                           <div className="space-y-2">
                             <Label>Feedback</Label>
                             <Textarea
-                              rows={2}
+                              rows={4}
                               value={state.feedback_professor || ''}
                               onChange={(e) => setAvaliacaoForm((prev) => ({
                                 ...prev,
@@ -1699,7 +1701,7 @@ export default function PainelProfessor() {
                           </div>
                         </div>
 
-                        <Button onClick={() => handleAvaliarEntrega(entrega)} disabled={saving}>
+                        <Button onClick={() => handleAvaliarEntrega(entrega)} disabled={saving} className="h-11 w-full rounded-2xl sm:w-auto">
                           Salvar avaliação
                         </Button>
                       </div>
@@ -1814,11 +1816,11 @@ export default function PainelProfessor() {
             if (!open) resetAtividadeDialog();
           }}
         >
-          <DialogContent className="w-[calc(100vw-1rem)] max-w-6xl overflow-hidden p-0 sm:w-[calc(100vw-2rem)] max-h-[92vh]">
-            <div className="grid max-h-[92vh] gap-0 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1.15fr)_340px]">
-              <div className="overflow-y-auto p-4 sm:p-6 lg:p-7">
+          <DialogContent className="h-[100dvh] w-screen max-w-none overflow-hidden rounded-none border-0 p-0 sm:h-auto sm:max-h-[92vh] sm:w-[calc(100vw-2rem)] sm:max-w-6xl sm:rounded-3xl sm:border">
+            <div className="grid h-full max-h-[100dvh] gap-0 xl:max-h-[92vh] xl:grid-cols-[minmax(0,1.15fr)_340px]">
+              <div className="overflow-y-auto p-4 pb-28 sm:p-6 sm:pb-32 lg:p-7 lg:pb-10">
                 <DialogHeader className="space-y-2 text-left">
-                  <DialogTitle className="text-2xl">
+                  <DialogTitle className="text-xl sm:text-2xl">
                     {editingAtividade ? 'Editar atividade' : 'Criar atividade personalizada'}
                   </DialogTitle>
                   <DialogDescription>
@@ -1841,7 +1843,7 @@ export default function PainelProfessor() {
                         value={aiPrompt}
                         onChange={(e) => setAiPrompt(e.target.value)}
                       />
-                      <div className="grid gap-3 md:grid-cols-3">
+                      <div className="grid gap-4 lg:grid-cols-3">
                         <div className="space-y-2">
                           <Label htmlFor="ai-question-count">Total de questoes</Label>
                           <Input
@@ -1905,7 +1907,7 @@ export default function PainelProfessor() {
                     </div>
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
+                  <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px]">
                     <div className="space-y-2">
                       <Label>Título *</Label>
                       <Input
@@ -1967,7 +1969,7 @@ export default function PainelProfessor() {
                             className="rounded-2xl border bg-background p-4 shadow-sm transition-all duration-300 animate-in fade-in-0 slide-in-from-bottom-2"
                           >
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                                 <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                                   <FileQuestion className="h-4 w-4" />
                                 </div>
@@ -1996,7 +1998,7 @@ export default function PainelProfessor() {
 
                               <div className="space-y-2">
                                 <Label>Tipo de resposta</Label>
-                                <div className="grid gap-2 sm:grid-cols-2">
+                                <div className="grid gap-2 lg:grid-cols-2">
                                   <button
                                     type="button"
                                     className={cn(
@@ -2033,12 +2035,12 @@ export default function PainelProfessor() {
                                     <p className="text-xs text-muted-foreground">Marque a correta para facilitar a correcao.</p>
                                   </div>
                                   {question.opcoes.map((option, optionIndex) => (
-                                    <div key={`${question.id}-${optionIndex}`} className="flex items-center gap-2">
+                                    <div key={`${question.id}-${optionIndex}`} className="flex flex-col gap-2 sm:flex-row sm:items-center">
                                       <Button
                                         type="button"
                                         variant={question.correta === optionIndex ? 'default' : 'outline'}
                                         size="icon"
-                                        className="shrink-0 rounded-xl"
+                                        className="h-11 w-full shrink-0 rounded-xl sm:h-10 sm:w-10"
                                         onClick={() => handleCorrectOptionChange(question.id, optionIndex)}
                                         title={question.correta === optionIndex ? 'Alternativa correta' : 'Marcar como correta'}
                                       >
@@ -2054,6 +2056,7 @@ export default function PainelProfessor() {
                                           type="button"
                                           variant="ghost"
                                           size="icon"
+                                          className="h-11 w-full rounded-xl sm:h-10 sm:w-10"
                                           onClick={() => handleRemoveQuestionOption(question.id, optionIndex)}
                                         >
                                           <Trash2 className="h-4 w-4 text-destructive" />
@@ -2118,7 +2121,7 @@ export default function PainelProfessor() {
                       </p>
                     </div>
 
-                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="mt-4 grid gap-3 lg:grid-cols-3">
                       {[
                         { value: 'aluno', title: 'Aluno', description: 'Entrega individual para um aluno.' },
                         { value: 'turma', title: 'Turma', description: 'Envio em lote para uma turma.' },
@@ -2184,7 +2187,7 @@ export default function PainelProfessor() {
                 </div>
               </div>
 
-              <aside className="overflow-y-auto border-t bg-muted/30 p-4 sm:p-6 lg:border-l lg:border-t-0">
+              <aside className="border-t bg-muted/30 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:p-6 xl:overflow-y-auto xl:border-l xl:border-t-0">
                 <div className="flex min-h-full flex-col">
                   <div className="space-y-5">
                   <div className="rounded-3xl border bg-background p-4">
@@ -2225,7 +2228,7 @@ export default function PainelProfessor() {
 
                   </div>
 
-                  <div className="sticky bottom-0 mt-5 flex flex-col gap-2 border-t bg-muted/95 pt-4 backdrop-blur supports-[backdrop-filter]:bg-muted/80">
+                  <div className="sticky bottom-0 mt-5 flex flex-col gap-2 border-t bg-muted/95 pt-4 backdrop-blur supports-[backdrop-filter]:bg-muted/80 xl:mt-auto">
                     {canPublishActivity && (
                       <p className="text-center text-xs font-medium text-primary">
                         A atividade está pronta para publicar.
@@ -2234,12 +2237,12 @@ export default function PainelProfessor() {
                     <Button
                       onClick={handleSaveAtividade}
                       disabled={saving}
-                      className={`rounded-2xl transition-all ${canPublishActivity ? 'bg-primary shadow-lg shadow-primary/25 ring-2 ring-primary/20 hover:bg-primary/90' : ''}`}
+                      className={`h-12 rounded-2xl transition-all ${canPublishActivity ? 'bg-primary shadow-lg shadow-primary/25 ring-2 ring-primary/20 hover:bg-primary/90' : ''}`}
                     >
                       {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       {editingAtividade ? 'Salvar alterações' : 'Publicar atividade'}
                     </Button>
-                    <Button variant="outline" onClick={() => setIsAtividadeDialogOpen(false)} className="rounded-2xl">
+                    <Button variant="outline" onClick={() => setIsAtividadeDialogOpen(false)} className="h-12 rounded-2xl">
                       Cancelar
                     </Button>
                   </div>
