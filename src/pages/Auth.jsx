@@ -143,6 +143,7 @@ export default function Auth() {
   const [finalizingDesktop, setFinalizingDesktop] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState(getBrowserNotificationPermission);
   const [passkeyDebugError, setPasskeyDebugError] = useState(null);
+  const [passkeyEnvironmentInfo, setPasskeyEnvironmentInfo] = useState(null);
 
   const desktopApprovalTokenRef = useRef(getDesktopApprovalToken());
   const { signIn, user } = useAuth();
@@ -698,15 +699,24 @@ export default function Auth() {
     setLoading(true);
     setPasskeyDebugError(null);
     try {
+      const localAuthenticatorAvailable = await isLocalPlatformAuthenticatorAvailable();
+      setPasskeyEnvironmentInfo({
+        origin: window?.location?.origin || null,
+        hostname: window?.location?.hostname || null,
+        appBaseDomain: import.meta.env.VITE_APP_BASE_DOMAIN || null,
+        secureContext: typeof window !== 'undefined' ? Boolean(window.isSecureContext) : null,
+        localAuthenticatorAvailable,
+        userAgent: navigator?.userAgent || null,
+      });
+
       if (isAndroidDevice() && !isAndroidChromeFamily()) {
         throw new Error(
           'O navegador atual do Android nao esta oferecendo a biometria local. Abra o login no Chrome do celular para que ele use a digital, o PIN ou a senha do proprio aparelho.',
         );
       }
 
-      const localAuthenticatorAvailable = await isLocalPlatformAuthenticatorAvailable();
       if (!localAuthenticatorAvailable && isMobileDevice()) {
-        console.warn('Passkey local authenticator availability check returned false; proceeding to credential request anyway.');
+        throw new Error('O navegador informou que o autenticador local do aparelho nao esta disponivel para passkeys neste dominio.');
       }
 
       if (securityStep === 'passkey_enrollment') {
@@ -834,6 +844,16 @@ export default function Auth() {
               {passkeyDebugError.rawMessage && (
                 <p className="mt-1 text-xs text-destructive/90">Mensagem bruta: {passkeyDebugError.rawMessage}</p>
               )}
+            </div>
+          )}
+          {passkeyEnvironmentInfo && (
+            <div className="rounded-lg border border-border/60 bg-background/60 p-3 text-left">
+              <p className="text-xs font-semibold text-foreground">Ambiente da passkey</p>
+              <p className="mt-1 text-xs text-muted-foreground">Origin: {passkeyEnvironmentInfo.origin || '-'}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Hostname: {passkeyEnvironmentInfo.hostname || '-'}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Base domain: {passkeyEnvironmentInfo.appBaseDomain || '-'}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Secure context: {String(passkeyEnvironmentInfo.secureContext)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Autenticador local disponivel: {String(passkeyEnvironmentInfo.localAuthenticatorAvailable)}</p>
             </div>
           )}
         </div>
