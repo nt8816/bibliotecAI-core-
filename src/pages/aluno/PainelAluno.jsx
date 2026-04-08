@@ -333,6 +333,20 @@ function extractXpFromRewardText(value) {
   return match ? Number(match[1]) : 0;
 }
 
+function normalizeDesafioCriterionType(value) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '_');
+
+  if (normalized === 'livros_lidos') return 'livros_lidos';
+  if (normalized === 'avaliacoes' || normalized === 'avaliacao' || normalized === 'avaliacoes_publicadas') return 'avaliacoes';
+  if (normalized === 'atividades_aprovadas' || normalized === 'atividade_aprovada') return 'atividades_aprovadas';
+  return '';
+}
+
 function normalizeDesafioIA(rawValue) {
   const raw = rawValue && typeof rawValue === 'object' ? rawValue : null;
   if (!raw?.titulo || !raw?.desafio) return null;
@@ -455,9 +469,7 @@ function escolherCriterioDesafioLegacy(metricas) {
 function normalizarCriterioDesafioLegacy(rawCriterio, metricasAtuais) {
   const fallback = escolherCriterioDesafioLegacy(metricasAtuais);
   const criterio = rawCriterio && typeof rawCriterio === 'object' ? rawCriterio : {};
-  const tipo = ['livros_lidos', 'avaliacoes', 'atividades_aprovadas'].includes(String(criterio.tipo))
-    ? String(criterio.tipo)
-    : fallback.tipo;
+  const tipo = normalizeDesafioCriterionType(criterio.tipo) || fallback.tipo;
   const valorInicial = Math.max(
     0,
     Number(criterio.valor_inicial ?? criterio.valorInicial ?? metricasAtuais?.[tipo] ?? fallback.valor_inicial),
@@ -505,9 +517,7 @@ function escolherCriterioDesafio(metricas, nivel = 1) {
 function normalizarCriterioDesafioPorNivel(rawCriterio, metricasAtuais, nivel = 1) {
   const fallback = escolherCriterioDesafio(metricasAtuais, nivel);
   const criterio = rawCriterio && typeof rawCriterio === 'object' ? rawCriterio : {};
-  const tipo = ['livros_lidos', 'avaliacoes', 'atividades_aprovadas'].includes(String(criterio.tipo))
-    ? String(criterio.tipo)
-    : fallback.tipo;
+  const tipo = normalizeDesafioCriterionType(criterio.tipo) || fallback.tipo;
   const valorInicial = Math.max(
     0,
     Number(criterio.valor_inicial ?? criterio.valorInicial ?? metricasAtuais?.[tipo] ?? fallback.valor_inicial),
@@ -972,6 +982,24 @@ function extractQuizPerguntasFromIAResponse(response) {
     })
     .filter((item) => item.enunciado && item.opcoes.length >= 2 && Number.isInteger(item.correta) && item.correta >= 0 && item.correta < item.opcoes.length)
     .slice(0, 10);
+}
+
+function extractDesafioIAFromResponse(response) {
+  const data = response?.data && typeof response.data === 'object' ? response.data : {};
+  const textJson = extractJsonFromIAPlainText(response?.text);
+
+  const desafio = [
+    data,
+    data?.desafio_ia,
+    data?.desafio,
+    data?.challenge,
+    textJson,
+    textJson?.desafio_ia,
+    textJson?.desafio,
+    textJson?.challenge,
+  ].find((item) => item && typeof item === 'object' && !Array.isArray(item));
+
+  return desafio && typeof desafio === 'object' ? desafio : {};
 }
 
 function extractQuizPerguntasFromPlainText(rawText) {
@@ -3212,10 +3240,11 @@ export default function PainelAluno() {
         },
         'Não foi possível gerar desafio de gamificação no momento.',
       );
+      const desafioPayload = extractDesafioIAFromResponse(data);
       const desafio = normalizeDesafioIA({
-        ...(data?.data || {}),
+        ...desafioPayload,
         gerado_em: new Date().toISOString(),
-        criterio: normalizarCriterioDesafioPorNivel(data?.data?.criterio, {
+        criterio: normalizarCriterioDesafioPorNivel(desafioPayload?.criterio, {
           ...desafioMetricas,
           [criterio.tipo]: criterio.valor_inicial,
         }, nivelAtual),
