@@ -13,6 +13,7 @@
     "build:android:release": "npm run build && cd android && gradlew.bat assembleRelease bundleRelease",
     "android:sync": "npx cap sync android",
     "android:open": "npx cap open android",
+    "admin:restore-super-admins": "node scripts/restore-super-admin-access.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
