@@ -2263,9 +2263,9 @@ export default function PainelProfessor() {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDeleteTarget} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                Excluir
+              <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction disabled={saving} onClick={handleDeleteTarget} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                {saving ? 'Excluindo...' : 'Excluir'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -2274,4 +2274,3 @@ export default function PainelProfessor() {
     </MainLayout>
   );
 }
-

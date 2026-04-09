@@ -197,6 +197,7 @@ export default function AtividadesLeitura() {
   };
 
   const handleDelete = async (id) => {
+    setSaving(true);
     try {
       await deleteProfessorAtividade(id);
       setDeleteAtividade(null);
@@ -204,6 +205,8 @@ export default function AtividadesLeitura() {
       await fetchData();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível excluir.' });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -469,9 +472,9 @@ export default function AtividadesLeitura() {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={() => deleteAtividade?.id && handleDelete(deleteAtividade.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                Excluir
+              <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction disabled={saving} onClick={() => deleteAtividade?.id && handleDelete(deleteAtividade.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                {saving ? 'Excluindo...' : 'Excluir'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

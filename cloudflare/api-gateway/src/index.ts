@@ -2911,6 +2911,13 @@ const routes: Record<string, RouteHandler> = {
       if (!atividade?.id || !context.professorProfileIds.includes(String(atividade?.professor_id || '').trim())) {
         return jsonResponse({ success: false, error: 'Atividade nao encontrada.' }, 404);
       }
+      await supabaseAdminRequest(env, `/rest/v1/atividades_entregas?${new URLSearchParams({ atividade_id: `eq.${id}` }).toString()}`, {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+      }).catch((error) => {
+        console.error('Falha ao limpar entregas vinculadas antes de excluir atividade:', error);
+        throw error;
+      });
       const deleted = await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: 'id', id: `eq.${id}` }).toString()}`, {
         method: 'DELETE',
         headers: { Prefer: 'return=representation' },
