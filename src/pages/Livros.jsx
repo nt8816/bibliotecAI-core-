@@ -222,8 +222,10 @@ export default function Livros() {
   const { toast } = useToast();
 
   const canManageBooks = isGestor || isBibliotecaria;
+  const canEditBooks = isBibliotecaria;
+  const canCreateBooks = canEditBooks;
   const canViewCatalogOnly = isProfessor && !canManageBooks;
-  const canManageAreas = canManageBooks;
+  const canManageAreas = canCreateBooks;
 
   const fetchLivros = useCallback(async () => {
     if (!user?.id) {
@@ -288,6 +290,15 @@ export default function Livros() {
   }, [fetchLivros]);
 
   const handleOpenDialog = (livro) => {
+    if (!canEditBooks) {
+      toast({
+        variant: 'destructive',
+        title: 'Acesso restrito',
+        description: 'Somente a bibliotecaria pode alterar o acervo.',
+      });
+      return;
+    }
+
     if (livro) {
       setEditingLivro(livro);
       setFormData({
@@ -517,6 +528,15 @@ export default function Livros() {
   };
 
   const handleSave = async () => {
+    if (!canEditBooks) {
+      toast({
+        variant: 'destructive',
+        title: 'Acesso restrito',
+        description: 'Somente a bibliotecaria pode alterar o acervo.',
+      });
+      return;
+    }
+
     if (!formData.titulo.trim()) {
       toast({ variant: 'destructive', title: 'Erro', description: 'O título é obrigatório.' });
       return;
@@ -554,6 +574,15 @@ export default function Livros() {
   };
 
   const handleToggleDisponibilidade = async (livro) => {
+    if (!canEditBooks) {
+      toast({
+        variant: 'destructive',
+        title: 'Acesso restrito',
+        description: 'Somente a bibliotecaria pode alterar o acervo.',
+      });
+      return;
+    }
+
     if (!livro?.id) return;
     if (livro?.isEmprestado) {
       toast({
@@ -586,6 +615,15 @@ export default function Livros() {
   };
 
   const handleDelete = async (id) => {
+    if (!canEditBooks) {
+      toast({
+        variant: 'destructive',
+        title: 'Acesso restrito',
+        description: 'Somente a bibliotecaria pode alterar o acervo.',
+      });
+      return;
+    }
+
     try {
       await deleteLivro(id);
       toast({ title: 'Sucesso', description: 'Livro excluído com sucesso.' });
@@ -1100,6 +1138,7 @@ export default function Livros() {
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               {activeTab === 'acervo' && (
                 <>
+              {canManageBooks && (
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm">
@@ -1112,8 +1151,9 @@ export default function Livros() {
                   <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => handleOpenExportDialog('pdf')}>PDF (.pdf)</Button>
                 </PopoverContent>
               </Popover>
+              )}
 
-              {canManageBooks && (
+              {canCreateBooks && (
                 <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline">
@@ -1198,7 +1238,7 @@ export default function Livros() {
                 </Dialog>
               )}
 
-              {canManageBooks && (
+              {canCreateBooks && (
                 <>
                   <Button onClick={() => handleOpenDialog()}>
                     <Plus className="w-4 h-4 mr-2" />
@@ -1662,7 +1702,7 @@ export default function Livros() {
                     <TableHead>Ano</TableHead>
                     <TableHead>Sinopse</TableHead>
                     <TableHead>Status</TableHead>
-                    {canManageBooks && <TableHead className="text-right">Ações</TableHead>}
+                    {canEditBooks && <TableHead className="text-right">Ações</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1696,7 +1736,7 @@ export default function Livros() {
                       <TableCell>
                         <Badge variant={getLivroStatusVariant(livro)}>{getLivroStatusLabel(livro)}</Badge>
                       </TableCell>
-                      {canManageBooks && (
+                      {canEditBooks && (
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button
@@ -2028,5 +2068,3 @@ export default function Livros() {
     </MainLayout>
   );
 }
-
-
