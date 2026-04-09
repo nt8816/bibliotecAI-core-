@@ -18,7 +18,16 @@ export async function signInWithPlatform(email, password) {
       throw new Error('Sessao invalida retornada pela Platform API.');
     }
 
-    return { error: null, user: payload?.user || session?.user || null };
+    return {
+      error: null,
+      user: payload?.user || session?.user || null,
+      data: {
+        session,
+        user: payload?.user || session?.user || null,
+        roles: Array.isArray(payload?.roles) ? payload.roles : [],
+        tenant: payload?.tenant || null,
+      },
+    };
   } catch (error) {
     return toErrorResult(error);
   }
@@ -80,7 +89,7 @@ export async function signOutWithPlatform() {
 export async function fetchPlatformSessionProfile() {
   const session = getPlatformSession();
   if (!session?.access_token) {
-    return { session: null, user: null, roles: [] };
+    return { session: null, user: null, roles: [], tenant: null };
   }
 
   const payload = await requestPlatformApi('/v1/auth/session');
@@ -88,6 +97,7 @@ export async function fetchPlatformSessionProfile() {
     session: getPlatformSession(),
     user: payload?.user || session?.user || null,
     roles: Array.isArray(payload?.roles) ? payload.roles : [],
+    tenant: payload?.tenant || null,
   };
 }
 

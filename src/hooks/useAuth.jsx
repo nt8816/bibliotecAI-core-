@@ -2,6 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { addPlatformSessionListener, clearPlatformSession, getPlatformSession } from '@/lib/platformSession';
+import { pickPrimaryRole } from '@/lib/defaultRoute';
 import {
   fetchPlatformSessionProfile,
   signInWithPlatform,
@@ -10,11 +11,6 @@ import {
 } from '@/services/authService';
 
 const AuthContext = createContext(undefined);
-const rolePriority = ['super_admin', 'gestor', 'bibliotecaria', 'professor', 'aluno'];
-
-function pickPrimaryRole(userRoles) {
-  return rolePriority.find((role) => userRoles.includes(role)) || null;
-}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -23,6 +19,15 @@ export function AuthProvider({ children }) {
   const [userRole, setUserRole] = useState(null);
   const [roles, setRoles] = useState([]);
   const [tenantContext, setTenantContext] = useState(null);
+
+  const applyAuthPayload = useCallback((payload, fallbackSession = null) => {
+    const uniqueRoles = [...new Set(payload?.roles || [])];
+    setSession(payload?.session || fallbackSession || getPlatformSession() || null);
+    setUser(payload?.user || fallbackSession?.user || null);
+    setRoles(uniqueRoles);
+    setUserRole(pickPrimaryRole(uniqueRoles));
+    setTenantContext(payload?.tenant || null);
+  }, []);
 
   const syncAuthState = useCallback(async () => {
     const localSession = getPlatformSession();
@@ -38,12 +43,7 @@ export function AuthProvider({ children }) {
 
     try {
       const payload = await fetchPlatformSessionProfile();
-      const uniqueRoles = [...new Set(payload?.roles || [])];
-      setSession(payload?.session || localSession);
-      setUser(payload?.user || localSession?.user || null);
-      setRoles(uniqueRoles);
-      setUserRole(pickPrimaryRole(uniqueRoles));
-      setTenantContext(payload?.tenant || null);
+      applyAuthPayload(payload, localSession);
     } catch (error) {
       console.error('Error syncing auth state:', error);
       clearPlatformSession();
@@ -53,7 +53,7 @@ export function AuthProvider({ children }) {
       setUserRole(null);
       setTenantContext(null);
     }
-  }, []);
+  }, [applyAuthPayload]);
 
   useEffect(() => {
     let mounted = true;
@@ -76,10 +76,11 @@ export function AuthProvider({ children }) {
   const signIn = useCallback(async (email, password) => {
     const result = await signInWithPlatform(email, password);
     if (!result.error) {
-      await syncAuthState();
+      applyAuthPayload(result.data || {}, getPlatformSession());
+      await syncAuthState().catch(() => null);
     }
     return { error: result.error };
-  }, [syncAuthState]);
+  }, [applyAuthPayload, syncAuthState]);
 
   const signUp = useCallback(async (email, password, nome) => {
     const result = await signUpWithPlatform(email, password, nome);

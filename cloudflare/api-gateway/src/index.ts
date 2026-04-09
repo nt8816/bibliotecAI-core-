@@ -31,20 +31,80 @@ export interface Env {
 
 type RouteHandler = (request: Request, env: Env) => Promise<Response> | Response;
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type, x-user-access-token, x-profile-role-hint',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-};
+const DEFAULT_CORS_ALLOW_HEADERS = 'authorization, content-type, x-user-access-token, x-profile-role-hint';
+const DEFAULT_CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
 
 let firebaseAccessTokenCache: { token: string; expiresAt: number } | null = null;
+
+function isAllowedCorsOrigin(origin: string, env: Env) {
+  const normalizedOrigin = String(origin || '').trim();
+  if (!normalizedOrigin) return false;
+
+  try {
+    const url = new URL(normalizedOrigin);
+    const hostname = String(url.hostname || '').trim().toLowerCase();
+    const protocol = String(url.protocol || '').trim().toLowerCase();
+    const appBaseDomain = String(env.APP_BASE_DOMAIN || '').trim().toLowerCase();
+    const apiBaseUrl = String(env.API_BASE_URL || '').trim();
+
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return protocol === 'http:' || protocol === 'https:';
+    }
+
+    if (appBaseDomain && (hostname === appBaseDomain || hostname.endsWith(`.${appBaseDomain}`))) {
+      return protocol === 'https:';
+    }
+
+    if (apiBaseUrl) {
+      try {
+        const apiOrigin = new URL(apiBaseUrl).origin;
+        if (normalizedOrigin === apiOrigin) return true;
+      } catch {
+        void 0;
+      }
+    }
+
+    if (String(env.APP_ENV || '').trim().toLowerCase() !== 'production' && hostname.endsWith('.vercel.app')) {
+      return protocol === 'https:';
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function buildCorsHeaders(request: Request, env: Env) {
+  const origin = String(request.headers.get('Origin') || '').trim();
+  const headers: Record<string, string> = {
+    'Access-Control-Allow-Headers': DEFAULT_CORS_ALLOW_HEADERS,
+    'Access-Control-Allow-Methods': DEFAULT_CORS_ALLOW_METHODS,
+    Vary: 'Origin',
+  };
+
+  if (isAllowedCorsOrigin(origin, env)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+
+  return headers;
+}
+
+function withCorsHeaders(response: Response, request: Request, env: Env) {
+  const nextHeaders = new Headers(response.headers);
+  const corsHeaders = buildCorsHeaders(request, env);
+  Object.entries(corsHeaders).forEach(([key, value]) => nextHeaders.set(key, value));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: nextHeaders,
+  });
+}
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       'Content-Type': 'application/json',
-      ...corsHeaders,
     },
   });
 }
@@ -62,7 +122,14 @@ async function notImplemented(feature: string) {
 function getUserToken(request: Request) {
   const manualToken = request.headers.get('x-user-access-token') || '';
   const authHeader = request.headers.get('authorization') || request.headers.get('Authorization') || '';
-  return String(manualToken || authHeader.replace(/^Bearer\s+/i, '')).trim();
+  const bearerToken = String(authHeader.replace(/^Bearer\s+/i, '')).trim();
+  const customToken = String(manualToken || '').trim();
+
+  if (customToken && bearerToken && customToken !== bearerToken) {
+    return '';
+  }
+
+  return String(bearerToken || customToken).trim();
 }
 
 function parseJwtPayload(token: string) {
@@ -2950,11 +3017,27 @@ const routes: Record<string, RouteHandler> = {
       );
     }
 
+    let tenant = null as Record<string, unknown> | null;
+    let roles: string[] = [];
     if (authenticatedUserId) {
-      const profile = await getLatestUserProfile(authenticatedUserId, env).catch(() => null);
+      const [profile, roleRows] = await Promise.all([
+        getLatestUserProfile(authenticatedUserId, env).catch(() => null),
+        supabaseAdminRequest(
+          env,
+          `/rest/v1/user_roles?${new URLSearchParams({
+            select: 'role',
+            user_id: `eq.${authenticatedUserId}`,
+          }).toString()}`,
+        ).catch(() => []),
+      ]);
+
+      roles = Array.isArray(roleRows)
+        ? [...new Set(roleRows.map((item) => String(item?.role || '')).filter(Boolean))]
+        : [];
+
       const escolaId = String(profile?.escola_id || '').trim();
       if (escolaId) {
-        const tenant = await getTenantBySchoolId(escolaId, env);
+        tenant = await getTenantBySchoolId(escolaId, env);
         if (tenant?.id && tenant?.ativo === false) {
           return jsonResponse(
             {
@@ -2972,6 +3055,14 @@ const routes: Record<string, RouteHandler> = {
       success: true,
       session: authPayload,
       user: authPayload?.user || null,
+      tenant: tenant?.id ? {
+        id: tenant.id,
+        escola_id: tenant.escola_id || null,
+        nome: tenant.nome || null,
+        subdominio: tenant.subdominio || null,
+        ativo: tenant.ativo !== false,
+      } : null,
+      roles,
     });
   },
   'POST /v1/auth/super-admin/begin': async (request, env) => {
@@ -8886,33 +8977,33 @@ function resolveRoute(request: Request) {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: corsHeaders });
+      return new Response(null, { status: 204, headers: buildCorsHeaders(request, env) });
     }
 
     const routeKey = resolveRoute(request);
     const handler = routes[routeKey];
 
     if (!handler) {
-      return jsonResponse(
+      return withCorsHeaders(jsonResponse(
         {
           success: false,
           error: 'Rota nao encontrada.',
           route: routeKey,
         },
         404,
-      );
+      ), request, env);
     }
 
     try {
-      return await handler(request, env);
+      return withCorsHeaders(await handler(request, env), request, env);
     } catch (error) {
-      return jsonResponse(
+      return withCorsHeaders(jsonResponse(
         {
           success: false,
           error: error instanceof Error ? error.message : 'Falha inesperada no worker.',
         },
         500,
-      );
+      ), request, env);
     }
   },
 };

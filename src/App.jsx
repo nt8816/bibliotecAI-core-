@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@/hooks/useAuth';
 import { TenantProvider, useTenant } from '@/hooks/useTenant';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { RoleProtectedRoute } from '@/components/RoleProtectedRoute';
 import { SuperAdminRoute } from '@/components/SuperAdminRoute';
 import { ThemeProvider } from '@/components/theme-provider';
 
@@ -92,11 +93,11 @@ function LegacyHostShutdownNotice() {
 }
 
 function AppRoutes() {
+  const { loading, isTenantHost, tenant, error } = useTenant();
+
   if (isLegacyDisabledHost()) {
     return <LegacyHostShutdownNotice />;
   }
-
-  const { loading, isTenantHost, tenant, error } = useTenant();
 
   if (loading) {
     return (
@@ -131,33 +132,33 @@ function AppRoutes() {
       <Route
         path="/comunidade"
         element={(
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['professor', 'gestor', 'bibliotecaria']}>
             <ComunidadeAluno />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         )}
       />
       <Route
         path="/comunicados"
         element={(
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['professor', 'gestor', 'bibliotecaria']}>
             <Comunicados />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         )}
       />
       <Route
         path="/arquivos-de-aula"
         element={(
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['professor']}>
             <ArquivosAula />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         )}
       />
       <Route
         path="/ranking"
         element={(
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['professor', 'gestor', 'bibliotecaria']}>
             <RankingAluno />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         )}
       />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -191,57 +192,57 @@ function AppRoutes() {
       <Route
         path="/dashboard"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['gestor', 'bibliotecaria', 'super_admin']}>
             <Dashboard />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/livros"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['professor', 'gestor', 'bibliotecaria']}>
             <Livros />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/usuarios"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['gestor', 'bibliotecaria']}>
             <Usuarios />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/emprestimos"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['gestor', 'bibliotecaria']}>
             <Emprestimos />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/relatorios"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['gestor', 'bibliotecaria']}>
             <Relatorios />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/tokens"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['gestor']}>
             <GerenciarTokens />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/configuracao-escola"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['gestor']}>
             <ConfiguracaoEscola />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
@@ -255,33 +256,33 @@ function AppRoutes() {
       <Route
         path="/professor/alunos"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['professor']}>
             <MeusAlunos />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/professor/painel"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['professor']}>
             <PainelProfessor />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/professor/dashboard"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['professor']}>
             <Dashboard />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/professor/relatorios"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['professor']}>
             <RelatoriosLeitura />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
@@ -303,81 +304,81 @@ function AppRoutes() {
       <Route
         path="/aluno/painel"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['aluno']}>
             <Navigate to="/aluno/perfil" replace />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/aluno"
         element={(
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['aluno']}>
             <Navigate to="/aluno/perfil" replace />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         )}
       />
       <Route
         path="/aluno/perfil"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['aluno']}>
             <PainelAluno />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/aluno/biblioteca"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['aluno']}>
             <PainelAluno />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/aluno/laboratorio"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['aluno']}>
             <PainelAluno />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/aluno/atividades"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['aluno']}>
             <PainelAluno />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/aluno/comunidade"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['aluno']}>
             <ComunidadeAluno />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/aluno/comunicados"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['aluno']}>
             <Comunicados />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/aluno/arquivos-de-aula"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['aluno']}>
             <ArquivosAula />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/aluno/ranking"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['aluno']}>
             <RankingAluno />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
@@ -444,4 +445,3 @@ const App = () => (
 );
 
 export default App;
-

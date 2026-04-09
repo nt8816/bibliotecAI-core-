@@ -1,7 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CheckCircle, ClipboardList, Clock, Pencil, Plus, Star, Trash2 } from 'lucide-react';
+import { Check, CheckCircle, ChevronDown, ChevronUp, ChevronsUpDown, ClipboardList, Clock, Pencil, Plus, Star, Trash2 } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,8 +14,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAuth } from '@/hooks/useAuth';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 import { deleteProfessorAtividade, fetchProfessorPainelData, saveProfessorAtividade, updateProfessorAtividadeStatus } from '@/services/professorService';
 
 const emptyAtividade = {
@@ -27,9 +32,76 @@ const emptyAtividade = {
   aluno_id: '',
 };
 
+function formatAlunoOptionLabel(aluno) {
+  if (!aluno) return '';
+  return aluno.turma ? `${aluno.nome} (${aluno.turma})` : aluno.nome;
+}
+
+function SearchableSelect({
+  items,
+  value,
+  onChange,
+  placeholder,
+  searchPlaceholder,
+  emptyMessage,
+  getItemValue,
+  renderItem,
+  renderSelected,
+}) {
+  const [open, setOpen] = useState(false);
+
+  const selectedItem = useMemo(
+    () => items.find((item) => item.id === value) || null,
+    [items, value],
+  );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between rounded-xl px-3 py-2 font-normal"
+        >
+          <span className={cn('truncate text-left', !selectedItem && 'text-muted-foreground')}>
+            {selectedItem ? renderSelected(selectedItem) : placeholder}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+        <Command shouldFilter>
+          <CommandInput placeholder={searchPlaceholder} />
+          <CommandList>
+            <CommandEmpty>{emptyMessage}</CommandEmpty>
+            <CommandGroup>
+              {items.map((item) => (
+                <CommandItem
+                  key={item.id}
+                  value={getItemValue(item)}
+                  onSelect={() => {
+                    onChange(item.id);
+                    setOpen(false);
+                  }}
+                >
+                  <Check className={cn('mr-2 h-4 w-4 shrink-0', value === item.id ? 'opacity-100' : 'opacity-0')} />
+                  {renderItem(item)}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function AtividadesLeitura() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [livros, setLivros] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
   const [atividades, setAtividades] = useState([]);
@@ -40,6 +112,7 @@ export default function AtividadesLeitura() {
   const [formData, setFormData] = useState(emptyAtividade);
   const [filterStatus, setFilterStatus] = useState('');
   const [deleteAtividade, setDeleteAtividade] = useState(null);
+  const [previewExpanded, setPreviewExpanded] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -84,6 +157,7 @@ export default function AtividadesLeitura() {
       setEditingAtividade(null);
       setFormData(emptyAtividade);
     }
+    setPreviewExpanded(!isMobile);
     setIsDialogOpen(true);
   };
 
@@ -148,6 +222,14 @@ export default function AtividadesLeitura() {
   const totalPontos = atividades.reduce((acc, item) => acc + (item.pontos_extras || 0), 0);
   const concluidas = atividades.filter((item) => item.status === 'concluido').length;
   const pendentes = atividades.filter((item) => item.status === 'pendente').length;
+  const alunoSelecionado = useMemo(
+    () => usuarios.find((item) => item.id === formData.aluno_id) || null,
+    [formData.aluno_id, usuarios],
+  );
+  const livroSelecionado = useMemo(
+    () => livros.find((item) => item.id === formData.livro_id) || null,
+    [formData.livro_id, livros],
+  );
 
   return (
     <MainLayout title="Atividades de Leitura">
@@ -166,9 +248,9 @@ export default function AtividadesLeitura() {
                 <CardTitle className="flex items-center gap-2"><ClipboardList className="w-5 h-5" />Gerenciar Atividades</CardTitle>
                 <CardDescription>Crie atividades como resenhas, resumos e atribua pontos aos alunos</CardDescription>
               </div>
-              <div className="flex gap-2">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                 <Select value={filterStatus || 'all'} onValueChange={(v) => setFilterStatus(v === 'all' ? '' : v)}>
-                  <SelectTrigger className="w-[150px]"><SelectValue placeholder="Filtrar status" /></SelectTrigger>
+                  <SelectTrigger className="w-full sm:w-[150px]"><SelectValue placeholder="Filtrar status" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="pendente">Pendente</SelectItem>
@@ -177,34 +259,104 @@ export default function AtividadesLeitura() {
                   </SelectContent>
                 </Select>
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                  <DialogTrigger asChild><Button onClick={() => handleOpenDialog()}><Plus className="w-4 h-4 mr-2" />Nova Atividade</Button></DialogTrigger>
-                  <DialogContent className="max-w-lg">
+                  <DialogTrigger asChild><Button className="w-full sm:w-auto" onClick={() => handleOpenDialog()}><Plus className="w-4 h-4 mr-2" />Nova Atividade</Button></DialogTrigger>
+                  <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-2xl overflow-y-auto rounded-2xl p-4 sm:p-6">
                     <DialogHeader><DialogTitle>{editingAtividade ? 'Editar Atividade' : 'Nova Atividade'}</DialogTitle><DialogDescription>Crie uma atividade de leitura para um aluno</DialogDescription></DialogHeader>
                     <div className="space-y-4 py-4">
                       <div className="space-y-2"><Label>Titulo da Atividade *</Label><Input value={formData.titulo} onChange={(e) => setFormData({ ...formData, titulo: e.target.value })} /></div>
                       <div className="space-y-2"><Label>Descricao</Label><Textarea value={formData.descricao} onChange={(e) => setFormData({ ...formData, descricao: e.target.value })} rows={3} /></div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div className="space-y-2">
                           <Label>Aluno *</Label>
-                          <Select value={formData.aluno_id} onValueChange={(v) => setFormData({ ...formData, aluno_id: v })}>
-                            <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                            <SelectContent>{usuarios.map((u) => <SelectItem key={u.id} value={u.id}>{u.nome} {u.turma ? `(${u.turma})` : ''}</SelectItem>)}</SelectContent>
-                          </Select>
+                          <SearchableSelect
+                            items={usuarios}
+                            value={formData.aluno_id}
+                            onChange={(aluno_id) => setFormData({ ...formData, aluno_id })}
+                            placeholder="Selecione um aluno"
+                            searchPlaceholder="Pesquisar aluno por nome ou turma..."
+                            emptyMessage="Nenhum aluno encontrado."
+                            getItemValue={(item) => `${item.nome || ''} ${item.turma || ''}`.trim()}
+                            renderSelected={(item) => formatAlunoOptionLabel(item)}
+                            renderItem={(item) => (
+                              <div className="flex min-w-0 flex-1 flex-col">
+                                <span className="truncate">{item.nome || 'Aluno sem nome'}</span>
+                                {item.turma ? <span className="text-xs text-muted-foreground">Turma {item.turma}</span> : null}
+                              </div>
+                            )}
+                          />
                         </div>
                         <div className="space-y-2">
                           <Label>Livro *</Label>
-                          <Select value={formData.livro_id} onValueChange={(v) => setFormData({ ...formData, livro_id: v })}>
-                            <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                            <SelectContent>{livros.map((l) => <SelectItem key={l.id} value={l.id}>{l.titulo}</SelectItem>)}</SelectContent>
-                          </Select>
+                          <SearchableSelect
+                            items={livros}
+                            value={formData.livro_id}
+                            onChange={(livro_id) => setFormData({ ...formData, livro_id })}
+                            placeholder="Selecione um livro"
+                            searchPlaceholder="Pesquisar livro por titulo ou autor..."
+                            emptyMessage="Nenhum livro encontrado."
+                            getItemValue={(item) => `${item.titulo || ''} ${item.autor || ''}`.trim()}
+                            renderSelected={(item) => item.titulo || 'Livro sem titulo'}
+                            renderItem={(item) => (
+                              <div className="flex min-w-0 flex-1 flex-col">
+                                <span className="truncate">{item.titulo || 'Livro sem titulo'}</span>
+                                {item.autor ? <span className="text-xs text-muted-foreground">{item.autor}</span> : null}
+                              </div>
+                            )}
+                          />
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div className="space-y-2"><Label>Pontos Extras</Label><Input type="number" min="0" value={formData.pontos_extras} onChange={(e) => setFormData({ ...formData, pontos_extras: parseInt(e.target.value, 10) || 0 })} /></div>
                         <div className="space-y-2"><Label>Data de Entrega</Label><Input type="date" value={formData.data_entrega} onChange={(e) => setFormData({ ...formData, data_entrega: e.target.value })} /></div>
                       </div>
+                      <Collapsible open={previewExpanded} onOpenChange={setPreviewExpanded}>
+                        <div className="rounded-2xl border bg-muted/30 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold">Previa da atividade</p>
+                              <p className="text-xs text-muted-foreground">
+                                {previewExpanded ? 'Confira os detalhes antes de salvar.' : 'Toque para expandir a visualizacao.'}
+                              </p>
+                            </div>
+                            <CollapsibleTrigger asChild>
+                              <Button type="button" variant="ghost" size="sm" className="shrink-0">
+                                {previewExpanded ? 'Retrair' : 'Expandir'}
+                                {previewExpanded ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
+                              </Button>
+                            </CollapsibleTrigger>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+                            <div className="rounded-xl bg-background p-3">
+                              <p className="font-medium text-foreground">Aluno</p>
+                              <p className="mt-1 line-clamp-2">{alunoSelecionado ? formatAlunoOptionLabel(alunoSelecionado) : 'Nao selecionado'}</p>
+                            </div>
+                            <div className="rounded-xl bg-background p-3">
+                              <p className="font-medium text-foreground">Livro</p>
+                              <p className="mt-1 line-clamp-2">{livroSelecionado?.titulo || 'Nao selecionado'}</p>
+                            </div>
+                            <div className="rounded-xl bg-background p-3">
+                              <p className="font-medium text-foreground">Entrega</p>
+                              <p className="mt-1">{formData.data_entrega ? format(new Date(`${formData.data_entrega}T12:00:00`), 'dd/MM/yyyy', { locale: ptBR }) : 'Sem data'}</p>
+                            </div>
+                            <div className="rounded-xl bg-background p-3">
+                              <p className="font-medium text-foreground">Pontos</p>
+                              <p className="mt-1">{formData.pontos_extras || 0} extra</p>
+                            </div>
+                          </div>
+                          <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+                            <div className="mt-3 rounded-xl bg-background p-4">
+                              <p className="text-sm font-semibold text-foreground">
+                                {formData.titulo?.trim() || 'Titulo da atividade'}
+                              </p>
+                              <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
+                                {formData.descricao?.trim() || 'A descricao da atividade vai aparecer aqui para facilitar a revisao antes de salvar.'}
+                              </p>
+                            </div>
+                          </CollapsibleContent>
+                        </div>
+                      </Collapsible>
                     </div>
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                       <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
                       <Button onClick={handleSave} disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</Button>
                     </div>
@@ -219,42 +371,92 @@ export default function AtividadesLeitura() {
             ) : filteredAtividades.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">Nenhuma atividade encontrada</p>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Atividade</TableHead>
-                      <TableHead>Aluno</TableHead>
-                      <TableHead>Turma</TableHead>
-                      <TableHead>Livro</TableHead>
-                      <TableHead>Pontos</TableHead>
-                      <TableHead>Entrega</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Acoes</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredAtividades.map((atividade) => (
-                      <TableRow key={atividade.id}>
-                        <TableCell className="font-medium">{atividade.titulo}</TableCell>
-                        <TableCell>{atividade.usuarios_biblioteca?.nome || 'N/A'}</TableCell>
-                        <TableCell>{atividade.usuarios_biblioteca?.turma || '-'}</TableCell>
-                        <TableCell>{atividade.livros?.titulo || 'N/A'}</TableCell>
-                        <TableCell><Badge variant="outline" className="gap-1"><Star className="w-3 h-3" />{atividade.pontos_extras || 0}</Badge></TableCell>
-                        <TableCell>{atividade.data_entrega ? format(new Date(atividade.data_entrega), 'dd/MM/yyyy', { locale: ptBR }) : '-'}</TableCell>
-                        <TableCell>{getStatusBadge(atividade.status)}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            {atividade.status !== 'concluido' && <Button variant="ghost" size="icon" title="Marcar como concluido" onClick={() => handleUpdateStatus(atividade.id, 'concluido')}><CheckCircle className="w-4 h-4 text-success" /></Button>}
-                            <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(atividade)}><Pencil className="w-4 h-4" /></Button>
-                            <Button variant="ghost" size="icon" onClick={() => setDeleteAtividade(atividade)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
-                          </div>
-                        </TableCell>
+              isMobile ? (
+                <div className="space-y-3">
+                  {filteredAtividades.map((atividade) => (
+                    <div key={atividade.id} className="rounded-2xl border p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-medium">{atividade.titulo}</p>
+                          <p className="text-sm text-muted-foreground">{atividade.usuarios_biblioteca?.nome || 'N/A'}</p>
+                        </div>
+                        {getStatusBadge(atividade.status)}
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                        <div className="rounded-xl bg-muted/40 p-3">
+                          <p className="font-medium text-foreground">Turma</p>
+                          <p className="mt-1">{atividade.usuarios_biblioteca?.turma || '-'}</p>
+                        </div>
+                        <div className="rounded-xl bg-muted/40 p-3">
+                          <p className="font-medium text-foreground">Livro</p>
+                          <p className="mt-1 line-clamp-2">{atividade.livros?.titulo || 'N/A'}</p>
+                        </div>
+                        <div className="rounded-xl bg-muted/40 p-3">
+                          <p className="font-medium text-foreground">Pontos</p>
+                          <p className="mt-1">{atividade.pontos_extras || 0}</p>
+                        </div>
+                        <div className="rounded-xl bg-muted/40 p-3">
+                          <p className="font-medium text-foreground">Entrega</p>
+                          <p className="mt-1">{atividade.data_entrega ? format(new Date(atividade.data_entrega), 'dd/MM/yyyy', { locale: ptBR }) : '-'}</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap justify-end gap-2">
+                        {atividade.status !== 'concluido' && (
+                          <Button variant="outline" size="sm" onClick={() => handleUpdateStatus(atividade.id, 'concluido')}>
+                            <CheckCircle className="mr-2 h-4 w-4 text-success" />
+                            Concluir
+                          </Button>
+                        )}
+                        <Button variant="outline" size="sm" onClick={() => handleOpenDialog(atividade)}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Editar
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => setDeleteAtividade(atividade)}>
+                          <Trash2 className="mr-2 h-4 w-4 text-destructive" />
+                          Excluir
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Atividade</TableHead>
+                        <TableHead>Aluno</TableHead>
+                        <TableHead>Turma</TableHead>
+                        <TableHead>Livro</TableHead>
+                        <TableHead>Pontos</TableHead>
+                        <TableHead>Entrega</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Acoes</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredAtividades.map((atividade) => (
+                        <TableRow key={atividade.id}>
+                          <TableCell className="font-medium">{atividade.titulo}</TableCell>
+                          <TableCell>{atividade.usuarios_biblioteca?.nome || 'N/A'}</TableCell>
+                          <TableCell>{atividade.usuarios_biblioteca?.turma || '-'}</TableCell>
+                          <TableCell>{atividade.livros?.titulo || 'N/A'}</TableCell>
+                          <TableCell><Badge variant="outline" className="gap-1"><Star className="w-3 h-3" />{atividade.pontos_extras || 0}</Badge></TableCell>
+                          <TableCell>{atividade.data_entrega ? format(new Date(atividade.data_entrega), 'dd/MM/yyyy', { locale: ptBR }) : '-'}</TableCell>
+                          <TableCell>{getStatusBadge(atividade.status)}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              {atividade.status !== 'concluido' && <Button variant="ghost" size="icon" title="Marcar como concluido" onClick={() => handleUpdateStatus(atividade.id, 'concluido')}><CheckCircle className="w-4 h-4 text-success" /></Button>}
+                              <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(atividade)}><Pencil className="w-4 h-4" /></Button>
+                              <Button variant="ghost" size="icon" onClick={() => setDeleteAtividade(atividade)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )
             )}
           </CardContent>
         </Card>
@@ -278,4 +480,3 @@ export default function AtividadesLeitura() {
     </MainLayout>
   );
 }
-

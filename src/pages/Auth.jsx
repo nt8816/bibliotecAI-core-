@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Loader2, Eye, EyeOff, QrCode, ShieldCheck, Smartphone, MonitorSmartphone, MailCheck } from 'lucide-react';
 
 import { useAuth } from '@/hooks/useAuth';
+import { getDefaultRouteForRole } from '@/lib/defaultRoute';
 import { buildTenantAccessUrl, shouldRedirectToTenantHost } from '@/lib/tenantRouting';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +17,6 @@ import {
   beginSuperAdminLogin,
   beginSuperAdminPasskeyAuthentication,
   beginSuperAdminPasskeyRegistration,
-  fetchPlatformCurrentRoles,
   fetchSuperAdminDesktopApprovalStatus,
   finalizePlatformSession,
   finishSuperAdminPasskeyAuthentication,
@@ -167,22 +167,15 @@ export default function Auth() {
 
   useEffect(() => {
     if (user && !pendingSecurity) {
-      if (userRole && userRole !== 'super_admin' && tenantContext?.subdominio && shouldRedirectToTenantHost(tenantContext)) {
-        window.location.assign(buildTenantAccessUrl(tenantContext));
+      if (!userRole) return;
+
+      const defaultRoute = getDefaultRouteForRole(userRole);
+      if (userRole !== 'super_admin' && tenantContext?.subdominio && shouldRedirectToTenantHost(tenantContext)) {
+        window.location.assign(buildTenantAccessUrl(tenantContext, defaultRoute));
         return;
       }
 
-      fetchPlatformCurrentRoles()
-        .then((roles) => {
-          if (roles.includes('super_admin')) {
-            navigate('/admin/tenants', { replace: true });
-            return;
-          }
-          navigate('/dashboard', { replace: true });
-        })
-        .catch(() => {
-          navigate('/dashboard', { replace: true });
-        });
+      navigate(defaultRoute, { replace: true });
     }
   }, [navigate, pendingSecurity, tenantContext, user, userRole]);
 
@@ -1053,4 +1046,3 @@ export default function Auth() {
     </div>
   );
 }
-
