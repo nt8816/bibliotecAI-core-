@@ -162,6 +162,11 @@ export default function AtividadesLeitura() {
   };
 
   const handleSave = async () => {
+    if (isMobile && !previewExpanded) {
+      setPreviewExpanded(true);
+      return;
+    }
+
     if (!formData.titulo.trim() || !formData.aluno_id || !formData.livro_id) {
       toast({ variant: 'destructive', title: 'Erro', description: 'Preencha todos os campos obrigatorios.' });
       return;
@@ -233,6 +238,7 @@ export default function AtividadesLeitura() {
     () => livros.find((item) => item.id === formData.livro_id) || null,
     [formData.livro_id, livros],
   );
+  const submitLabel = editingAtividade ? 'Salvar' : 'Publicar';
 
   return (
     <MainLayout title="Atividades de Leitura">
@@ -263,7 +269,10 @@ export default function AtividadesLeitura() {
                 </Select>
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                   <DialogTrigger asChild><Button className="w-full sm:w-auto" onClick={() => handleOpenDialog()}><Plus className="w-4 h-4 mr-2" />Nova Atividade</Button></DialogTrigger>
-                  <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-2xl overflow-y-auto rounded-2xl p-4 sm:p-6">
+                  <DialogContent className={cn(
+                    'max-h-[90vh] w-[calc(100vw-1rem)] max-w-2xl overflow-y-auto rounded-2xl p-4 sm:p-6',
+                    isMobile && !previewExpanded && 'pb-28',
+                  )}>
                     <DialogHeader><DialogTitle>{editingAtividade ? 'Editar Atividade' : 'Nova Atividade'}</DialogTitle><DialogDescription>Crie uma atividade de leitura para um aluno</DialogDescription></DialogHeader>
                     <div className="space-y-4 py-4">
                       <div className="space-y-2"><Label>Titulo da Atividade *</Label><Input value={formData.titulo} onChange={(e) => setFormData({ ...formData, titulo: e.target.value })} /></div>
@@ -313,56 +322,83 @@ export default function AtividadesLeitura() {
                         <div className="space-y-2"><Label>Data de Entrega</Label><Input type="date" value={formData.data_entrega} onChange={(e) => setFormData({ ...formData, data_entrega: e.target.value })} /></div>
                       </div>
                       <Collapsible open={previewExpanded} onOpenChange={setPreviewExpanded}>
-                        <div className="rounded-2xl border bg-muted/30 p-4">
-                          <div className="flex items-center justify-between gap-3">
+                        {(!isMobile || previewExpanded) && (
+                          <div className="rounded-2xl border bg-muted/30 p-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold">Previa da atividade</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Confira os detalhes antes de {editingAtividade ? 'salvar' : 'publicar'}.
+                                </p>
+                              </div>
+                              <CollapsibleTrigger asChild>
+                                <Button type="button" variant="ghost" size="sm" className="shrink-0">
+                                  Retrair
+                                  <ChevronUp className="ml-2 h-4 w-4" />
+                                </Button>
+                              </CollapsibleTrigger>
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+                              <div className="rounded-xl bg-background p-3">
+                                <p className="font-medium text-foreground">Aluno</p>
+                                <p className="mt-1 line-clamp-2">{alunoSelecionado ? formatAlunoOptionLabel(alunoSelecionado) : 'Nao selecionado'}</p>
+                              </div>
+                              <div className="rounded-xl bg-background p-3">
+                                <p className="font-medium text-foreground">Livro</p>
+                                <p className="mt-1 line-clamp-2">{livroSelecionado?.titulo || 'Nao selecionado'}</p>
+                              </div>
+                              <div className="rounded-xl bg-background p-3">
+                                <p className="font-medium text-foreground">Entrega</p>
+                                <p className="mt-1">{formData.data_entrega ? format(new Date(`${formData.data_entrega}T12:00:00`), 'dd/MM/yyyy', { locale: ptBR }) : 'Sem data'}</p>
+                              </div>
+                              <div className="rounded-xl bg-background p-3">
+                                <p className="font-medium text-foreground">Pontos</p>
+                                <p className="mt-1">{formData.pontos_extras || 0} extra</p>
+                              </div>
+                            </div>
+                            <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+                              <div className="mt-3 rounded-xl bg-background p-4">
+                                <p className="text-sm font-semibold text-foreground">
+                                  {formData.titulo?.trim() || 'Titulo da atividade'}
+                                </p>
+                                <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
+                                  {formData.descricao?.trim() || 'A descricao da atividade vai aparecer aqui para facilitar a revisao antes de salvar.'}
+                                </p>
+                              </div>
+                            </CollapsibleContent>
+                          </div>
+                        )}
+                      </Collapsible>
+                    </div>
+                    <div className={cn(
+                      'flex flex-col-reverse gap-2 sm:flex-row sm:justify-end',
+                      isMobile && !previewExpanded && 'hidden sm:flex',
+                    )}>
+                      <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                      <Button onClick={handleSave} disabled={saving}>{saving ? 'Salvando...' : submitLabel}</Button>
+                    </div>
+                    {isMobile && !previewExpanded && (
+                      <div className="sticky bottom-0 left-0 right-0 z-20 -mx-4 mt-2 border-t bg-background/95 px-4 pb-4 pt-3 backdrop-blur sm:hidden">
+                        <div className="rounded-2xl border bg-card/95 p-3 shadow-[0_-10px_30px_rgba(15,23,42,0.12)]">
+                          <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3">
                             <div className="min-w-0">
-                              <p className="text-sm font-semibold">Previa da atividade</p>
-                              <p className="text-xs text-muted-foreground">
-                                {previewExpanded ? 'Confira os detalhes antes de salvar.' : 'Toque para expandir a visualizacao.'}
+                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Previa</p>
+                              <p className="truncate text-sm font-semibold text-foreground">
+                                {formData.titulo?.trim() || 'Nome da atividade'}
                               </p>
                             </div>
                             <CollapsibleTrigger asChild>
-                              <Button type="button" variant="ghost" size="sm" className="shrink-0">
-                                {previewExpanded ? 'Retrair' : 'Expandir'}
-                                {previewExpanded ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
+                              <Button type="button" variant="outline" size="icon" className="h-10 w-10 rounded-full text-lg font-semibold">
+                                <span aria-hidden="true">&lt;</span>
                               </Button>
                             </CollapsibleTrigger>
+                            <Button onClick={handleSave} disabled={saving} className="rounded-xl px-4">
+                              {saving ? 'Salvando...' : 'Publicar'}
+                            </Button>
                           </div>
-                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:grid-cols-4">
-                            <div className="rounded-xl bg-background p-3">
-                              <p className="font-medium text-foreground">Aluno</p>
-                              <p className="mt-1 line-clamp-2">{alunoSelecionado ? formatAlunoOptionLabel(alunoSelecionado) : 'Nao selecionado'}</p>
-                            </div>
-                            <div className="rounded-xl bg-background p-3">
-                              <p className="font-medium text-foreground">Livro</p>
-                              <p className="mt-1 line-clamp-2">{livroSelecionado?.titulo || 'Nao selecionado'}</p>
-                            </div>
-                            <div className="rounded-xl bg-background p-3">
-                              <p className="font-medium text-foreground">Entrega</p>
-                              <p className="mt-1">{formData.data_entrega ? format(new Date(`${formData.data_entrega}T12:00:00`), 'dd/MM/yyyy', { locale: ptBR }) : 'Sem data'}</p>
-                            </div>
-                            <div className="rounded-xl bg-background p-3">
-                              <p className="font-medium text-foreground">Pontos</p>
-                              <p className="mt-1">{formData.pontos_extras || 0} extra</p>
-                            </div>
-                          </div>
-                          <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-                            <div className="mt-3 rounded-xl bg-background p-4">
-                              <p className="text-sm font-semibold text-foreground">
-                                {formData.titulo?.trim() || 'Titulo da atividade'}
-                              </p>
-                              <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
-                                {formData.descricao?.trim() || 'A descricao da atividade vai aparecer aqui para facilitar a revisao antes de salvar.'}
-                              </p>
-                            </div>
-                          </CollapsibleContent>
                         </div>
-                      </Collapsible>
-                    </div>
-                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                      <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                      <Button onClick={handleSave} disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</Button>
-                    </div>
+                      </div>
+                    )}
                   </DialogContent>
                 </Dialog>
               </div>

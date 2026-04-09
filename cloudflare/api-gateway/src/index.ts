@@ -8836,10 +8836,19 @@ const routes: Record<string, RouteHandler> = {
   'POST /v1/aluno/comunidade/posts/:id/delete': async (request, env) => {
     const { alunoId, escolaId, isGestor, isBibliotecaria, isSuperAdmin } = await getCommunityModuleContext(request, env);
     const postId = getPathParam(request, /^\/v1\/aluno\/comunidade\/posts\/([^/]+)\/delete$/i);
-    const params = new URLSearchParams({
-      select: 'id',
-      id: `eq.${postId}`,
-    });
+    const existingRows = await supabaseAdminRequest(
+      env,
+      `/rest/v1/comunidade_posts?${new URLSearchParams({
+        select: 'id,autor_id,escola_id,tipo',
+        id: `eq.${postId}`,
+        limit: '1',
+      }).toString()}`,
+    );
+    const post = Array.isArray(existingRows) ? (existingRows[0] || null) : null;
+
+    if (!post?.id) {
+      return jsonResponse({ success: false, deleted: false, error: 'Publicacao nao encontrada.' }, 404);
+    }
 
     if (isSuperAdmin) {
       // Super admin can remove the post without tenant scoping.
@@ -8847,14 +8856,16 @@ const routes: Record<string, RouteHandler> = {
       if (!escolaId) {
         return jsonResponse({ success: false, deleted: false, error: 'Escola da gestao nao encontrada.' }, 400);
       }
-      params.set('escola_id', `eq.${escolaId}`);
-    } else {
-      params.set('autor_id', `eq.${alunoId}`);
+      if (String(post?.escola_id || '').trim() !== String(escolaId || '').trim()) {
+        return jsonResponse({ success: false, deleted: false, error: 'Voce nao pode apagar publicacoes de outra escola.' }, 403);
+      }
+    } else if (String(post?.autor_id || '').trim() !== String(alunoId || '').trim()) {
+      return jsonResponse({ success: false, deleted: false, error: 'Voce so pode apagar publicacoes feitas por voce.' }, 403);
     }
 
     const [deleted] = await supabaseAdminRequest(
       env,
-      `/rest/v1/comunidade_posts?${params.toString()}`,
+      `/rest/v1/comunidade_posts?${new URLSearchParams({ select: 'id', id: `eq.${postId}` }).toString()}`,
       {
         method: 'DELETE',
         headers: { Prefer: 'return=representation' },

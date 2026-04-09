@@ -414,6 +414,11 @@ export default function Comunicados() {
     return list.sort((a, b) => new Date(b?.created_at || 0).getTime() - new Date(a?.created_at || 0).getTime());
   }, [busca, isAluno, perfil?.turma, posts]);
 
+  const canDeleteComunicado = useCallback((post) => (
+    canGestaoDeleteAnyComunicado
+      || String(post?.autor_id || '').trim() === String(perfil?.id || '').trim()
+  ), [canGestaoDeleteAnyComunicado, perfil?.id]);
+
   const formulariosProfessor = useMemo(() => (
     ensureArray(professorAtividades)
       .map((atividade) => {
@@ -944,7 +949,7 @@ export default function Comunicados() {
 
   const handleDeleteComunicado = async () => {
     const post = deleteTarget || null;
-    if (!post?.id || !perfil?.id) return;
+    if (!post?.id) return;
 
     setSaving(true);
     try {
@@ -1356,7 +1361,7 @@ export default function Comunicados() {
                           {formatDateTimeBR(post.created_at)}
                         </div>
                         {post.expires_at ? <p className="mt-1">Sai em {formatDateTimeBR(post.expires_at)}</p> : null}
-                        {canPublish && (canGestaoDeleteAnyComunicado || String(post?.autor_id || '').trim() === String(perfil?.id || '').trim()) ? (
+                        {canDeleteComunicado(post) ? (
                           <div className="mt-3 flex justify-end">
                             <Button
                               type="button"
@@ -1716,6 +1721,5 @@ export default function Comunicados() {
     </MainLayout>
   );
 }
-
 
 
