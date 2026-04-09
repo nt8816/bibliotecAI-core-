@@ -24,7 +24,16 @@ export function RoleProtectedRoute({ children, allowedRoles = [] }) {
     return <Navigate to="/auth" replace state={{ from: location }} />;
   }
 
-  if (!userRole || !normalizedAllowedRoles.includes(userRole)) {
+  if (!userRole) {
+    return (
+      <AppShellState
+        title="Finalizando acesso"
+        description="Estamos carregando o perfil da sua conta."
+      />
+    );
+  }
+
+  if (!normalizedAllowedRoles.includes(userRole)) {
     return <Navigate to={getDefaultRouteForRole(userRole)} replace />;
   }
 
