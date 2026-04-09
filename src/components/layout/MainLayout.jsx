@@ -26,35 +26,32 @@ export function MainLayout({ children, title }) {
 
         <main className="flex min-w-0 flex-1 flex-col">
           <header
-            className="main-shell-header sticky top-0 z-30 border-b bg-background/92 px-2.5 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-4 sm:py-0"
-            style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 0.85rem)' }}
+            className="main-shell-header sticky top-0 z-30 border-b bg-background/92 px-2.5 py-1.5 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-4 sm:py-0"
+            style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
           >
-            <div className="flex min-h-14 flex-col justify-center gap-2 sm:h-16 sm:min-h-16 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-h-12 items-center justify-between gap-2 sm:h-16 sm:min-h-16">
               <div className="flex min-w-0 items-center gap-2 sm:gap-4">
                 <SidebarTrigger
-                  className="h-11 w-11 shrink-0 rounded-2xl border border-border/70 bg-background/90 text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground sm:h-10 sm:w-10"
+                  className="h-10 w-10 shrink-0 rounded-2xl border border-border/70 bg-background/90 text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground"
                   aria-label="Abrir ou fechar menu lateral"
                 />
                 <div className="min-w-0">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground sm:hidden">
-                    BibliotecAI
-                  </p>
-                  <h1 className="truncate text-base font-bold text-foreground sm:text-xl">{title}</h1>
+                  <h1 className="truncate text-[15px] font-bold text-foreground sm:text-xl">{title}</h1>
                 </div>
               </div>
-              <div className="flex shrink-0 items-center justify-end gap-2">
+              <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
                 <NotificationsPopover userRole={userRole} />
                 {canCreateComplaint && !isComplaintsPage && (
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-10 gap-2 rounded-full px-3 text-xs shadow-sm sm:h-9 sm:px-3 sm:text-sm"
+                    className="h-10 w-10 rounded-full px-0 shadow-sm sm:h-9 sm:w-auto sm:gap-2 sm:px-3 sm:text-sm"
                     onClick={() => navigate('/reclamacoes')}
+                    aria-label="Abrir reclamações"
                   >
                     <MessageSquareWarning className="h-4 w-4" />
-                    <span className="hidden md:inline">Faça uma reclamação</span>
-                    <span className="md:hidden">Reclamar</span>
+                    <span className="hidden sm:inline">Faça uma reclamação</span>
                   </Button>
                 )}
               </div>
@@ -74,5 +71,4 @@ export function MainLayout({ children, title }) {
     </SidebarProvider>
   );
 }
-
 

@@ -8736,11 +8736,27 @@ const routes: Record<string, RouteHandler> = {
   },
 
   'POST /v1/aluno/comunidade/posts/:id/delete': async (request, env) => {
-    const { alunoId } = await getCommunityModuleContext(request, env);
+    const { alunoId, escolaId, isGestor, isBibliotecaria, isSuperAdmin } = await getCommunityModuleContext(request, env);
     const postId = getPathParam(request, /^\/v1\/aluno\/comunidade\/posts\/([^/]+)\/delete$/i);
+    const params = new URLSearchParams({
+      select: 'id',
+      id: `eq.${postId}`,
+    });
+
+    if (isSuperAdmin) {
+      // Super admin can remove the post without tenant scoping.
+    } else if (isGestor || isBibliotecaria) {
+      if (!escolaId) {
+        return jsonResponse({ success: false, deleted: false, error: 'Escola da gestao nao encontrada.' }, 400);
+      }
+      params.set('escola_id', `eq.${escolaId}`);
+    } else {
+      params.set('autor_id', `eq.${alunoId}`);
+    }
+
     const [deleted] = await supabaseAdminRequest(
       env,
-      `/rest/v1/comunidade_posts?${new URLSearchParams({ select: 'id', id: `eq.${postId}`, autor_id: `eq.${alunoId}` }).toString()}`,
+      `/rest/v1/comunidade_posts?${params.toString()}`,
       {
         method: 'DELETE',
         headers: { Prefer: 'return=representation' },

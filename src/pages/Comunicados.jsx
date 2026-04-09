@@ -250,6 +250,7 @@ export default function Comunicados() {
   const { toast } = useToast();
 
   const canPublish = (isProfessor || isGestor || isBibliotecaria) && !isSuperAdmin;
+  const canGestaoDeleteAnyComunicado = isGestor || isBibliotecaria;
   const profileRoleHint = isProfessor
     ? 'professor'
     : isGestor
@@ -949,7 +950,7 @@ export default function Comunicados() {
     try {
       const response = await deleteComunidadePost(post.id, perfil.id, { roleHint: profileRoleHint });
       if (!response?.deleted) {
-        throw new Error('Voce so pode apagar comunicados enviados por voce.');
+        throw new Error('Voce nao tem permissao para apagar este comunicado.');
       }
 
       const cleanupTargets = [
@@ -1355,7 +1356,7 @@ export default function Comunicados() {
                           {formatDateTimeBR(post.created_at)}
                         </div>
                         {post.expires_at ? <p className="mt-1">Sai em {formatDateTimeBR(post.expires_at)}</p> : null}
-                        {canPublish && String(post?.autor_id || '').trim() === String(perfil?.id || '').trim() ? (
+                        {canPublish && (canGestaoDeleteAnyComunicado || String(post?.autor_id || '').trim() === String(perfil?.id || '').trim()) ? (
                           <div className="mt-3 flex justify-end">
                             <Button
                               type="button"
@@ -1715,7 +1716,6 @@ export default function Comunicados() {
     </MainLayout>
   );
 }
-
 
 
 
