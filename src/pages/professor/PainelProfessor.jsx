@@ -1523,7 +1523,7 @@ export default function PainelProfessor() {
           <TabsList className="grid h-auto w-full grid-cols-1 gap-2 rounded-2xl bg-muted/40 p-2 sm:flex sm:justify-start sm:overflow-x-auto sm:whitespace-nowrap sm:px-1 sm:py-1">
             <TabsTrigger value="atividades" className="min-h-[50px] whitespace-normal rounded-2xl px-3 py-3 text-left text-sm leading-5 sm:min-h-0 sm:text-center">Atividades</TabsTrigger>
             <TabsTrigger value="entregas" className="min-h-[50px] whitespace-normal rounded-2xl px-3 py-3 text-left text-sm leading-5 sm:min-h-0 sm:text-center">Entregas</TabsTrigger>
-            <TabsTrigger value="sugestoes" className="min-h-[50px] whitespace-normal rounded-2xl px-3 py-3 text-left text-sm leading-5 sm:min-h-0 sm:text-center">Sugest??es</TabsTrigger>
+            <TabsTrigger value="sugestoes" className="min-h-[50px] whitespace-normal rounded-2xl px-3 py-3 text-left text-sm leading-5 sm:min-h-0 sm:text-center">Sugestões</TabsTrigger>
           </TabsList>
 
           <TabsContent value="atividades" className="space-y-4">

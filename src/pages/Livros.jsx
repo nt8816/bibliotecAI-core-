@@ -383,7 +383,7 @@ export default function Livros() {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: 'N??o foi poss??vel remover a pr??-categoria.',
+        description: 'Não foi possível remover a pré-categoria.',
       });
       fetchLivros();
     }
@@ -983,7 +983,7 @@ export default function Livros() {
   const importarLivros = async () => {
     if (importLivros.length === 0) return;
     if (!escolaId) {
-      toast({ variant: 'destructive', title: 'Escola n??o vinculada', description: 'N??o foi poss??vel identificar a escola para importa????o.' });
+      toast({ variant: 'destructive', title: 'Escola não vinculada', description: 'Não foi possível identificar a escola para importação.' });
       return;
     }
     setImporting(true);
@@ -992,7 +992,7 @@ export default function Livros() {
       const updated = response?.livros || [];
       setImportLivros(updated);
       const successCount = updated.filter((l) => l.status === 'sucesso').length;
-      toast({ title: 'Importa????o conclu??da', description: `${successCount} de ${updated.length} livros importados.` });
+      toast({ title: 'Importação concluída', description: `${successCount} de ${updated.length} livros importados.` });
       fetchLivros();
     } finally {
       setImporting(false);
