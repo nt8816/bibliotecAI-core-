@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { addPlatformSessionListener, clearPlatformSession, getPlatformSession } from '@/lib/platformSession';
 import { pickPrimaryRole } from '@/lib/defaultRoute';
 import {
+  consumeTenantSessionHandoff,
   fetchPlatformSessionProfile,
   signInWithPlatform,
   signOutWithPlatform,
@@ -58,7 +59,17 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true;
 
-    syncAuthState()
+    const bootstrapAuthState = async () => {
+      const handoffPayload = await consumeTenantSessionHandoff().catch(() => null);
+      if (handoffPayload) {
+        applyAuthPayload(handoffPayload, handoffPayload.session || getPlatformSession());
+        return;
+      }
+
+      await syncAuthState();
+    };
+
+    bootstrapAuthState()
       .finally(() => {
         if (mounted) setLoading(false);
       });
@@ -71,7 +82,7 @@ export function AuthProvider({ children }) {
       mounted = false;
       unsubscribe();
     };
-  }, [syncAuthState]);
+  }, [applyAuthPayload, syncAuthState]);
 
   const signIn = useCallback(async (email, password) => {
     const result = await signInWithPlatform(email, password);

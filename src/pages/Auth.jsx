@@ -17,6 +17,7 @@ import {
   beginSuperAdminLogin,
   beginSuperAdminPasskeyAuthentication,
   beginSuperAdminPasskeyRegistration,
+  createTenantSessionHandoff,
   fetchSuperAdminDesktopApprovalStatus,
   finalizePlatformSession,
   finishSuperAdminPasskeyAuthentication,
@@ -171,7 +172,15 @@ export default function Auth() {
 
       const defaultRoute = getDefaultRouteForRole(userRole);
       if (userRole !== 'super_admin' && tenantContext?.subdominio && shouldRedirectToTenantHost(tenantContext)) {
-        window.location.assign(buildTenantAccessUrl(tenantContext, defaultRoute));
+        createTenantSessionHandoff(tenantContext.subdominio, defaultRoute)
+          .then((handoff) => {
+            const redirectUrl = String(handoff?.redirectUrl || '').trim();
+            window.location.assign(redirectUrl || buildTenantAccessUrl(tenantContext, defaultRoute));
+          })
+          .catch((error) => {
+            console.error('Falha ao preparar handoff seguro para o tenant:', error);
+            window.location.assign(buildTenantAccessUrl(tenantContext, defaultRoute));
+          });
         return;
       }
 

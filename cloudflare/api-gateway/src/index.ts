@@ -1780,6 +1780,142 @@ async function getTenantBySchoolId(escolaId: string, env: Env) {
   return Array.isArray(payload) ? (payload[0] || null) : null;
 }
 
+function normalizeSessionPayloadForHandoff(
+  session: unknown,
+  authenticatedUserId?: string | null,
+) {
+  const source = session && typeof session === 'object' && 'session' in session
+    ? (session as Record<string, unknown>).session
+    : session;
+
+  if (!source || typeof source !== 'object') return null;
+
+  const rawSession = source as Record<string, unknown>;
+  const accessToken = String(rawSession.access_token || '').trim();
+  const refreshToken = String(rawSession.refresh_token || '').trim();
+  if (!accessToken || !refreshToken) return null;
+
+  const jwtPayload = parseJwtPayload(accessToken);
+  const sessionUser = rawSession.user && typeof rawSession.user === 'object'
+    ? rawSession.user as Record<string, unknown>
+    : null;
+  const sessionUserId = String(sessionUser?.id || jwtPayload?.sub || '').trim();
+  const expectedUserId = String(authenticatedUserId || '').trim();
+
+  if (expectedUserId && sessionUserId && sessionUserId !== expectedUserId) {
+    return null;
+  }
+
+  if (expectedUserId && !sessionUserId) {
+    return null;
+  }
+
+  return {
+    ...rawSession,
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    user: sessionUser || null,
+  };
+}
+
+function normalizeAppPath(value: unknown, fallback = '/dashboard') {
+  const normalized = String(value || '').trim();
+  if (!normalized) return fallback;
+  return normalized.startsWith('/') ? normalized : `/${normalized}`;
+}
+
+function buildTenantHandoffRedirectUrl(
+  request: Request,
+  env: Env,
+  targetSubdomain: string,
+  nextPath: string,
+  token: string,
+) {
+  const safeSubdomain = String(targetSubdomain || '').trim().toLowerCase();
+  const safePath = normalizeAppPath(nextPath);
+  const baseDomain = String(env.APP_BASE_DOMAIN || '').trim().toLowerCase();
+
+  if (baseDomain && safeSubdomain) {
+    const url = new URL(`https://${safeSubdomain}.${baseDomain}${safePath}`);
+    url.searchParams.set('sessionHandoff', token);
+    return url.toString();
+  }
+
+  const origin = getRequestOrigin(request, env);
+  const url = new URL(safePath, origin);
+  if (safeSubdomain) {
+    url.searchParams.set('tenant', safeSubdomain);
+  }
+  url.searchParams.set('sessionHandoff', token);
+  return url.toString();
+}
+
+function isAuthorizedTenantHandoffOrigin(request: Request, targetSubdomain: string, env: Env) {
+  const origin = String(request.headers.get('origin') || '').trim();
+  if (!origin) return false;
+
+  try {
+    const hostname = String(new URL(origin).hostname || '').trim().toLowerCase();
+    const expectedSubdomain = String(targetSubdomain || '').trim().toLowerCase();
+    const baseDomain = String(env.APP_BASE_DOMAIN || '').trim().toLowerCase();
+
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return true;
+    }
+
+    if (!baseDomain || !expectedSubdomain) {
+      return false;
+    }
+
+    return hostname === `${expectedSubdomain}.${baseDomain}`;
+  } catch {
+    return false;
+  }
+}
+
+async function createAuthSessionHandoff(
+  env: Env,
+  payload: Record<string, unknown>,
+) {
+  const created = await supabaseAdminRequest(env, '/rest/v1/auth_session_handoffs', {
+    method: 'POST',
+    body: payload,
+    headers: {
+      Prefer: 'return=representation',
+    },
+  });
+
+  return Array.isArray(created) ? (created[0] || null) : created;
+}
+
+async function getAuthSessionHandoffByToken(token: string, env: Env) {
+  const tokenHash = await sha256Base64Url(token);
+  const payload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/auth_session_handoffs?${new URLSearchParams({
+      select: 'id,user_id,tenant_id,target_subdomain,target_path,session_payload,origin_ip,user_agent,created_from_origin,expires_at,consumed_at,created_at',
+      token_hash: `eq.${tokenHash}`,
+      limit: '1',
+    }).toString()}`,
+  ).catch(() => []);
+
+  return Array.isArray(payload) ? (payload[0] || null) : null;
+}
+
+async function patchAuthSessionHandoff(handoffId: string, env: Env, body: Record<string, unknown>) {
+  await supabaseAdminRequest(
+    env,
+    `/rest/v1/auth_session_handoffs?${new URLSearchParams({ id: `eq.${handoffId}` }).toString()}`,
+    {
+      method: 'PATCH',
+      body,
+      headers: {
+        Prefer: 'return=minimal',
+      },
+    },
+  );
+}
+
 async function revokeActivePasskeys(accountId: string, env: Env, exceptCredentialId?: string | null) {
   const params = new URLSearchParams({
     account_id: `eq.${accountId}`,
@@ -3070,6 +3206,145 @@ const routes: Record<string, RouteHandler> = {
         ativo: tenant.ativo !== false,
       } : null,
       roles,
+    });
+  },
+  'POST /v1/auth/session-handoff/start': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const session = normalizeSessionPayloadForHandoff(body?.session, String(user.id));
+    if (!session?.access_token || !session?.refresh_token) {
+      return jsonResponse({ success: false, error: 'Sessao atual invalida para o redirecionamento seguro.' }, 400);
+    }
+
+    const profile = await getLatestUserProfile(String(user.id), env).catch(() => null);
+    const escolaId = String(profile?.escola_id || '').trim();
+    if (!escolaId) {
+      return jsonResponse({ success: false, error: 'Nao foi possivel identificar a escola da conta atual.' }, 400);
+    }
+
+    const tenant = await getTenantBySchoolId(escolaId, env);
+    if (!tenant?.id || !tenant?.subdominio) {
+      return jsonResponse({ success: false, error: 'Tenant nao encontrado para a escola atual.' }, 404);
+    }
+
+    if (tenant.ativo === false) {
+      return jsonResponse({ success: false, error: 'Escola inativada. Aguarde normalizar ou informe a direcao.' }, 403);
+    }
+
+    const requestedSubdomain = String(body?.targetSubdomain || '').trim().toLowerCase();
+    const targetSubdomain = String(tenant.subdominio || '').trim().toLowerCase();
+    if (requestedSubdomain && requestedSubdomain !== targetSubdomain) {
+      return jsonResponse({ success: false, error: 'Destino do tenant invalido para esta conta.' }, 403);
+    }
+
+    const nextPath = normalizeAppPath(body?.nextPath, '/dashboard');
+    const token = randomToken(32);
+    const tokenHash = await sha256Base64Url(token);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + (90 * 1000)).toISOString();
+
+    await createAuthSessionHandoff(env, {
+      token_hash: tokenHash,
+      user_id: String(user.id),
+      tenant_id: String(tenant.id),
+      target_subdomain: targetSubdomain,
+      target_path: nextPath,
+      session_payload: session,
+      origin_ip:
+        request.headers.get('cf-connecting-ip') ||
+        request.headers.get('x-real-ip') ||
+        request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+        null,
+      user_agent: request.headers.get('user-agent') || null,
+      created_from_origin: request.headers.get('origin') || null,
+      expires_at: expiresAt,
+    });
+
+    return jsonResponse({
+      success: true,
+      redirectUrl: buildTenantHandoffRedirectUrl(request, env, targetSubdomain, nextPath, token),
+      expiresAt,
+      tenant: {
+        id: tenant.id,
+        escola_id: tenant.escola_id || null,
+        nome: tenant.nome || null,
+        subdominio: tenant.subdominio || null,
+        ativo: tenant.ativo !== false,
+      },
+    });
+  },
+  'POST /v1/auth/session-handoff/consume': async (request, env) => {
+    const body = await request.json().catch(() => ({}));
+    const token = String(body?.token || '').trim();
+
+    if (!token) {
+      return jsonResponse({ success: false, error: 'Token do handoff ausente.' }, 400);
+    }
+
+    const handoff = await getAuthSessionHandoffByToken(token, env);
+    if (!handoff?.id) {
+      return jsonResponse({ success: false, error: 'Handoff de sessao nao encontrado.' }, 404);
+    }
+
+    const expiresAt = String(handoff.expires_at || '').trim();
+    const isExpired = !expiresAt || Number.isNaN(Date.parse(expiresAt)) || new Date(expiresAt).getTime() <= Date.now();
+    if (handoff.consumed_at || isExpired) {
+      return jsonResponse({ success: false, error: 'Handoff de sessao expirado.' }, 410);
+    }
+
+    if (!isAuthorizedTenantHandoffOrigin(request, String(handoff.target_subdomain || ''), env)) {
+      return jsonResponse({ success: false, error: 'Origem nao autorizada para consumir este handoff.' }, 403);
+    }
+
+    const session = normalizeSessionPayloadForHandoff(handoff.session_payload, String(handoff.user_id || ''));
+    if (!session?.access_token || !session?.refresh_token) {
+      return jsonResponse({ success: false, error: 'Sessao vinculada ao handoff esta invalida.' }, 410);
+    }
+
+    const userId = String(handoff.user_id || '').trim();
+    const [supabaseUser, roleRows, profile] = await Promise.all([
+      fetchSupabaseUserByToken(session.access_token, env).catch(() => null),
+      supabaseAdminRequest(
+        env,
+        `/rest/v1/user_roles?${new URLSearchParams({
+          select: 'role',
+          user_id: `eq.${userId}`,
+        }).toString()}`,
+      ).catch(() => []),
+      getLatestUserProfile(userId, env).catch(() => null),
+    ]);
+
+    if (!supabaseUser?.id || String(supabaseUser.id) !== userId) {
+      return jsonResponse({ success: false, error: 'Sessao do handoff nao corresponde mais ao usuario autenticado.' }, 410);
+    }
+
+    const roles = Array.isArray(roleRows)
+      ? [...new Set(roleRows.map((item) => String(item?.role || '')).filter(Boolean))]
+      : [];
+    const tenant = profile?.escola_id
+      ? await getTenantBySchoolId(String(profile.escola_id), env)
+      : null;
+
+    await patchAuthSessionHandoff(String(handoff.id), env, {
+      consumed_at: new Date().toISOString(),
+    });
+
+    return jsonResponse({
+      success: true,
+      session,
+      user: supabaseUser,
+      roles,
+      tenant: tenant?.id ? {
+        id: tenant.id,
+        escola_id: tenant.escola_id || null,
+        nome: tenant.nome || null,
+        subdominio: tenant.subdominio || null,
+        ativo: tenant.ativo !== false,
+      } : null,
     });
   },
   'POST /v1/auth/super-admin/begin': async (request, env) => {

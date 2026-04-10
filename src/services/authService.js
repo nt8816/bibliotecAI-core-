@@ -101,6 +101,61 @@ export async function fetchPlatformSessionProfile() {
   };
 }
 
+function getSessionHandoffTokenFromUrl() {
+  if (typeof window === 'undefined') return '';
+  return String(new URLSearchParams(window.location.search).get('sessionHandoff') || '').trim();
+}
+
+function removeSessionHandoffTokenFromUrl() {
+  if (typeof window === 'undefined') return;
+
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('sessionHandoff')) return;
+  url.searchParams.delete('sessionHandoff');
+  window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
+export async function createTenantSessionHandoff(targetSubdomain, nextPath = '/dashboard') {
+  const session = getPlatformSession();
+  if (!session?.access_token || !session?.refresh_token) {
+    throw new Error('Sessao atual indisponivel para redirecionamento seguro.');
+  }
+
+  return requestPlatformApi('/v1/auth/session-handoff/start', {
+    method: 'POST',
+    body: {
+      session,
+      targetSubdomain,
+      nextPath,
+    },
+  });
+}
+
+export async function consumeTenantSessionHandoff(handoffToken) {
+  const token = String(handoffToken || '').trim() || getSessionHandoffTokenFromUrl();
+  if (!token) return null;
+
+  const payload = await requestPlatformApi('/v1/auth/session-handoff/consume', {
+    method: 'POST',
+    body: { token },
+    auth: false,
+  });
+
+  const session = setPlatformSession(payload?.session || payload);
+  if (!session?.access_token || !session?.refresh_token) {
+    throw new Error('Sessao invalida retornada pelo handoff seguro.');
+  }
+
+  removeSessionHandoffTokenFromUrl();
+
+  return {
+    session,
+    user: payload?.user || session?.user || null,
+    roles: Array.isArray(payload?.roles) ? payload.roles : [],
+    tenant: payload?.tenant || null,
+  };
+}
+
 export async function fetchPlatformCurrentRoles() {
   const payload = await fetchPlatformSessionProfile();
   return Array.isArray(payload?.roles) ? payload.roles : [];
