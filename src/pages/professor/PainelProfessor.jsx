@@ -34,6 +34,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/hooks/useAuth';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useToast } from '@/hooks/use-toast';
 import { generateTextWithCloudflare } from '@/lib/cloudflareAiApi';
 import { cn } from '@/lib/utils';
@@ -854,6 +855,7 @@ async function completeQuestionsWithAI({
 export default function PainelProfessor() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -879,6 +881,7 @@ export default function PainelProfessor() {
   const [aiOpenCount, setAiOpenCount] = useState('');
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiPendingCompletion, setAiPendingCompletion] = useState(null);
+  const [mobilePreviewExpanded, setMobilePreviewExpanded] = useState(false);
 
   const fetchData = useCallback(async ({ silent = false } = {}) => {
     if (!user?.id) return;
@@ -995,6 +998,7 @@ export default function PainelProfessor() {
     setAiChoiceCount('');
     setAiOpenCount('');
     setAiPendingCompletion(null);
+    setMobilePreviewExpanded(false);
   };
 
   const resetSugestaoDialog = () => {
@@ -1006,6 +1010,7 @@ export default function PainelProfessor() {
   const handleOpenAtividadeDialog = (atividade = null) => {
     if (!atividade) {
       resetAtividadeDialog();
+      setMobilePreviewExpanded(false);
       setIsAtividadeDialogOpen(true);
       return;
     }
@@ -1024,6 +1029,7 @@ export default function PainelProfessor() {
       formulario_ativo: meta.perguntas.length > 0,
       perguntas: meta.perguntas.map((item, index) => normalizeQuestion(item, index)),
     });
+    setMobilePreviewExpanded(false);
     setIsAtividadeDialogOpen(true);
   };
 
@@ -1331,6 +1337,11 @@ export default function PainelProfessor() {
   };
 
   const handleSaveAtividade = async () => {
+    if (isMobile && !mobilePreviewExpanded) {
+      setMobilePreviewExpanded(true);
+      return;
+    }
+
     if (!atividadeForm.titulo.trim()) {
       toast({ variant: 'destructive', title: 'Erro', description: 'Informe o título da atividade.' });
       return;
@@ -1813,12 +1824,22 @@ export default function PainelProfessor() {
           open={isAtividadeDialogOpen}
           onOpenChange={(open) => {
             setIsAtividadeDialogOpen(open);
-            if (!open) resetAtividadeDialog();
+            if (!open) {
+              resetAtividadeDialog();
+            } else if (!isMobile) {
+              setMobilePreviewExpanded(true);
+            }
           }}
         >
-          <DialogContent className="h-[100dvh] w-screen max-w-none overflow-hidden rounded-none border-0 p-0 sm:h-auto sm:max-h-[92vh] sm:w-[calc(100vw-2rem)] sm:max-w-6xl sm:rounded-3xl sm:border">
+          <DialogContent className={cn(
+            'h-[100dvh] w-screen max-w-none overflow-hidden rounded-none border-0 p-0 sm:h-auto sm:max-h-[92vh] sm:w-[calc(100vw-2rem)] sm:max-w-6xl sm:rounded-3xl sm:border',
+            isMobile && !mobilePreviewExpanded && 'pb-32',
+          )}>
             <div className="grid h-full max-h-[100dvh] gap-0 xl:max-h-[92vh] xl:grid-cols-[minmax(0,1.15fr)_340px]">
-              <div className="overflow-y-auto p-4 pb-28 sm:p-6 sm:pb-32 lg:p-7 lg:pb-10">
+              <div className={cn(
+                'overflow-y-auto p-4 sm:p-6 lg:p-7',
+                isMobile ? 'pb-36' : 'pb-28 sm:pb-32 lg:pb-10',
+              )}>
                 <DialogHeader className="space-y-2 text-left">
                   <DialogTitle className="text-xl sm:text-2xl">
                     {editingAtividade ? 'Editar atividade' : 'Criar atividade personalizada'}
@@ -2187,7 +2208,7 @@ export default function PainelProfessor() {
                 </div>
               </div>
 
-              <aside className="border-t bg-muted/30 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:p-6 xl:overflow-y-auto xl:border-l xl:border-t-0">
+              <aside className="hidden border-t bg-muted/30 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:block sm:p-6 xl:overflow-y-auto xl:border-l xl:border-t-0">
                 <div className="flex min-h-full flex-col">
                   <div className="space-y-5">
                   <div className="rounded-3xl border bg-background p-4">
@@ -2248,6 +2269,92 @@ export default function PainelProfessor() {
                   </div>
                 </div>
               </aside>
+
+              <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:hidden">
+                <div className="pointer-events-auto mx-auto max-w-xl rounded-[28px] border border-border/60 bg-background/96 shadow-[0_-14px_40px_rgba(15,23,42,0.18)] backdrop-blur supports-[backdrop-filter]:bg-background/88">
+                  <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">Prévia</p>
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {atividadeForm.titulo?.trim() || 'Nome da atividade'}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10 rounded-full text-lg font-semibold"
+                      onClick={() => setMobilePreviewExpanded((prev) => !prev)}
+                      aria-label={mobilePreviewExpanded ? 'Recolher prévia' : 'Expandir prévia'}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          'block transition-transform duration-200',
+                          mobilePreviewExpanded && 'rotate-90',
+                        )}
+                      >
+                        &lt;
+                      </span>
+                    </Button>
+                    <Button onClick={handleSaveAtividade} disabled={saving} className="rounded-2xl px-4">
+                      {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Publicar
+                    </Button>
+                  </div>
+
+                  {mobilePreviewExpanded && (
+                    <div className="border-t border-border/60 px-4 pb-4 pt-3 animate-in slide-in-from-bottom-4 duration-200">
+                      <div className="space-y-4">
+                        <div className="rounded-3xl border bg-muted/30 p-4">
+                          <p className="text-lg font-semibold">{atividadeForm.titulo || 'Sua atividade aparecerá aqui'}</p>
+                          <p className="mt-2 text-sm text-muted-foreground">
+                            {atividadeForm.descricao || 'Adicione uma orientação curta para o aluno entender o objetivo da tarefa.'}
+                          </p>
+                        </div>
+
+                        <div className="rounded-3xl border bg-muted/20 p-4">
+                          <p className="text-sm font-medium">Resumo do envio</p>
+                          <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+                            <div className="flex items-center justify-between gap-3">
+                              <span>Destino</span>
+                              <span className="font-medium text-foreground">
+                                {atividadeForm.target_mode === 'aluno'
+                                  ? 'Aluno'
+                                  : atividadeForm.target_mode === 'turma'
+                                    ? 'Turma'
+                                    : 'Todas as turmas'}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                              <span>Alunos alcançados</span>
+                              <span className="font-medium text-foreground">{destinoResumo}</span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                              <span>Questões</span>
+                              <span className="font-medium text-foreground">{atividadeForm.formulario_ativo ? atividadeForm.perguntas.length : 0}</span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                              <span>Prazo</span>
+                              <span className="font-medium text-foreground">{atividadeForm.data_entrega ? formatDateLabel(atividadeForm.data_entrega) : 'Livre'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {canPublishActivity && (
+                          <p className="text-center text-xs font-medium text-primary">
+                            A atividade está pronta para publicar.
+                          </p>
+                        )}
+
+                        <Button variant="outline" onClick={() => setIsAtividadeDialogOpen(false)} className="h-12 w-full rounded-2xl">
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
