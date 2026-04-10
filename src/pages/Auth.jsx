@@ -5,13 +5,14 @@ import { Loader2, Eye, EyeOff, QrCode, ShieldCheck, Smartphone, MonitorSmartphon
 
 import { useAuth } from '@/hooks/useAuth';
 import { getDefaultRouteForRole } from '@/lib/defaultRoute';
-import { buildTenantAccessUrl, shouldRedirectToTenantHost } from '@/lib/tenantRouting';
+import { appendQueryParam, buildTenantAccessUrl, shouldRedirectToTenantHost } from '@/lib/tenantRouting';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import {
+  consumeSessionHandoffErrorMessage,
   activateStudentMatricula,
   approveSuperAdminDesktopAccess,
   beginSuperAdminLogin,
@@ -151,6 +152,16 @@ export default function Auth() {
   const { toast } = useToast();
 
   useEffect(() => {
+    const handoffErrorMessage = consumeSessionHandoffErrorMessage();
+    if (!handoffErrorMessage) return;
+
+    setAuthAlert({
+      title: 'ACESSO AUTOMATICO NAO CONCLUIDO',
+      description: handoffErrorMessage,
+    });
+  }, []);
+
+  useEffect(() => {
     if (user || pendingSecurity) return;
     const stored = readDesktopResumeState();
     if (!stored?.desktopToken || !stored?.pendingSession) return;
@@ -174,8 +185,14 @@ export default function Auth() {
       if (userRole !== 'super_admin' && tenantContext?.subdominio && shouldRedirectToTenantHost(tenantContext)) {
         createTenantSessionHandoff(tenantContext.subdominio, defaultRoute)
           .then((handoff) => {
-            const redirectUrl = String(handoff?.redirectUrl || '').trim();
-            window.location.assign(redirectUrl || buildTenantAccessUrl(tenantContext, defaultRoute));
+            const handoffToken = String(handoff?.handoffToken || '').trim();
+            const fallbackRedirectUrl = String(handoff?.redirectUrl || '').trim();
+            const tenantUrl = buildTenantAccessUrl(tenantContext, defaultRoute);
+            const redirectUrl = handoffToken
+              ? appendQueryParam(tenantUrl, 'sessionHandoff', handoffToken)
+              : (fallbackRedirectUrl || tenantUrl);
+
+            window.location.assign(redirectUrl);
           })
           .catch((error) => {
             console.error('Falha ao preparar handoff seguro para o tenant:', error);

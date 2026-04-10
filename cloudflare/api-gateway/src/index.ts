@@ -17,6 +17,7 @@ export interface Env {
   APP_ENV?: string;
   API_BASE_URL?: string;
   APP_BASE_DOMAIN?: string;
+  HANDOFF_ENCRYPTION_SECRET?: string;
   SUPABASE_URL?: string;
   SUPABASE_PUBLISHABLE_KEY?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
@@ -229,6 +230,21 @@ async function authenticateWithSupabasePassword(email: string, password: string,
 
   const authPayload = await parseResponse(authResponse);
   return { authResponse, authPayload };
+}
+
+async function refreshSupabaseSessionWithToken(refreshToken: string, env: Env) {
+  const { supabaseUrl, publishableKey } = getSupabaseConfig(env);
+  const refreshResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+    method: 'POST',
+    headers: {
+      apikey: publishableKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+
+  const refreshPayload = await parseResponse(refreshResponse);
+  return { refreshResponse, refreshPayload };
 }
 
 async function supabaseAdminRequest(
@@ -1818,6 +1834,72 @@ function normalizeSessionPayloadForHandoff(
   };
 }
 
+function getHandoffEncryptionSecret(env: Env) {
+  return String(env.HANDOFF_ENCRYPTION_SECRET || env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+}
+
+async function getHandoffEncryptionKey(env: Env) {
+  const secret = getHandoffEncryptionSecret(env);
+  if (!secret) {
+    throw new Error('Segredo de criptografia do handoff ausente.');
+  }
+
+  const keyMaterial = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
+  return crypto.subtle.importKey(
+    'raw',
+    keyMaterial,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+}
+
+async function encryptHandoffSessionPayload(
+  session: Record<string, unknown>,
+  env: Env,
+) {
+  const key = await getHandoffEncryptionKey(env);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = new TextEncoder().encode(JSON.stringify(session));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    plaintext,
+  );
+
+  return {
+    v: 1,
+    alg: 'AES-GCM',
+    iv: base64UrlEncode(iv),
+    ciphertext: base64UrlEncode(encrypted),
+  };
+}
+
+async function decryptHandoffSessionPayload(
+  payload: unknown,
+  env: Env,
+) {
+  if (!payload || typeof payload !== 'object') return null;
+
+  const serialized = payload as Record<string, unknown>;
+  const iv = String(serialized.iv || '').trim();
+  const ciphertext = String(serialized.ciphertext || '').trim();
+  if (!iv || !ciphertext) return null;
+
+  const key = await getHandoffEncryptionKey(env);
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: base64UrlDecode(iv) },
+    key,
+    base64UrlDecode(ciphertext),
+  );
+
+  try {
+    return JSON.parse(new TextDecoder().decode(plaintext));
+  } catch {
+    return null;
+  }
+}
+
 function normalizeAppPath(value: unknown, fallback = '/dashboard') {
   const normalized = String(value || '').trim();
   if (!normalized) return fallback;
@@ -3215,10 +3297,36 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const body = await request.json().catch(() => ({}));
-    const session = normalizeSessionPayloadForHandoff(body?.session, String(user.id));
-    if (!session?.access_token || !session?.refresh_token) {
+    const incomingSession = normalizeSessionPayloadForHandoff(body?.session, String(user.id));
+    if (!incomingSession?.access_token || !incomingSession?.refresh_token) {
       return jsonResponse({ success: false, error: 'Sessao atual invalida para o redirecionamento seguro.' }, 400);
     }
+
+    const { refreshResponse, refreshPayload } = await refreshSupabaseSessionWithToken(
+      String(incomingSession.refresh_token),
+      env,
+    );
+    if (!refreshResponse.ok) {
+      return jsonResponse(
+        {
+          success: false,
+          error:
+            (typeof refreshPayload === 'string' && refreshPayload.trim()) ||
+            refreshPayload?.msg ||
+            refreshPayload?.error_description ||
+            refreshPayload?.error ||
+            'Falha ao renovar a sessao para o redirecionamento seguro.',
+        },
+        refreshResponse.status,
+      );
+    }
+
+    const refreshedSession = normalizeSessionPayloadForHandoff(refreshPayload, String(user.id));
+    if (!refreshedSession?.access_token || !refreshedSession?.refresh_token) {
+      return jsonResponse({ success: false, error: 'Sessao renovada invalida para o redirecionamento seguro.' }, 400);
+    }
+
+    const encryptedSessionPayload = await encryptHandoffSessionPayload(refreshedSession, env);
 
     const profile = await getLatestUserProfile(String(user.id), env).catch(() => null);
     const escolaId = String(profile?.escola_id || '').trim();
@@ -3253,7 +3361,7 @@ const routes: Record<string, RouteHandler> = {
       tenant_id: String(tenant.id),
       target_subdomain: targetSubdomain,
       target_path: nextPath,
-      session_payload: session,
+      session_payload: encryptedSessionPayload,
       origin_ip:
         request.headers.get('cf-connecting-ip') ||
         request.headers.get('x-real-ip') ||
@@ -3266,6 +3374,7 @@ const routes: Record<string, RouteHandler> = {
 
     return jsonResponse({
       success: true,
+      handoffToken: token,
       redirectUrl: buildTenantHandoffRedirectUrl(request, env, targetSubdomain, nextPath, token),
       expiresAt,
       tenant: {
@@ -3300,7 +3409,8 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Origem nao autorizada para consumir este handoff.' }, 403);
     }
 
-    const session = normalizeSessionPayloadForHandoff(handoff.session_payload, String(handoff.user_id || ''));
+    const decryptedSessionPayload = await decryptHandoffSessionPayload(handoff.session_payload, env).catch(() => null);
+    const session = normalizeSessionPayloadForHandoff(decryptedSessionPayload, String(handoff.user_id || ''));
     if (!session?.access_token || !session?.refresh_token) {
       return jsonResponse({ success: false, error: 'Sessao vinculada ao handoff esta invalida.' }, 410);
     }

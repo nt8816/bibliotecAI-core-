@@ -21,6 +21,20 @@ export function buildTenantAccessUrl(tenant, nextPath = '/dashboard') {
   return `${window.location.origin}${path.includes('?') ? `${path}&tenant=${encodeURIComponent(subdomain)}` : `${path}?tenant=${encodeURIComponent(subdomain)}`}`;
 }
 
+export function appendQueryParam(url, key, value) {
+  const normalizedUrl = String(url || '').trim();
+  const normalizedKey = String(key || '').trim();
+  const normalizedValue = String(value || '').trim();
+
+  if (!normalizedUrl || !normalizedKey || !normalizedValue) {
+    return normalizedUrl;
+  }
+
+  const target = new URL(normalizedUrl);
+  target.searchParams.set(normalizedKey, normalizedValue);
+  return target.toString();
+}
+
 export function shouldRedirectToTenantHost(tenant) {
   const subdomain = String(tenant?.subdominio || '').trim().toLowerCase();
   if (!subdomain || typeof window === 'undefined') return false;

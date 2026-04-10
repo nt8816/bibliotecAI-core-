@@ -1,6 +1,8 @@
 import { requestPlatformApi } from '@/lib/platformApi';
 import { clearPlatformSession, getPlatformSession, setPlatformSession } from '@/lib/platformSession';
 
+const SESSION_HANDOFF_ERROR_STORAGE_KEY = 'bibliotecai.session-handoff.error';
+
 function toErrorResult(error) {
   return { error: error instanceof Error ? error : new Error(String(error || 'Falha inesperada.')) };
 }
@@ -115,6 +117,28 @@ function removeSessionHandoffTokenFromUrl() {
   window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
 }
 
+function storeSessionHandoffErrorMessage(message) {
+  if (typeof window === 'undefined') return;
+
+  const normalizedMessage = String(message || '').trim();
+  if (!normalizedMessage) {
+    window.sessionStorage.removeItem(SESSION_HANDOFF_ERROR_STORAGE_KEY);
+    return;
+  }
+
+  window.sessionStorage.setItem(SESSION_HANDOFF_ERROR_STORAGE_KEY, normalizedMessage);
+}
+
+export function consumeSessionHandoffErrorMessage() {
+  if (typeof window === 'undefined') return '';
+
+  const message = String(window.sessionStorage.getItem(SESSION_HANDOFF_ERROR_STORAGE_KEY) || '').trim();
+  if (message) {
+    window.sessionStorage.removeItem(SESSION_HANDOFF_ERROR_STORAGE_KEY);
+  }
+  return message;
+}
+
 export async function createTenantSessionHandoff(targetSubdomain, nextPath = '/dashboard') {
   const session = getPlatformSession();
   if (!session?.access_token || !session?.refresh_token) {
@@ -135,25 +159,38 @@ export async function consumeTenantSessionHandoff(handoffToken) {
   const token = String(handoffToken || '').trim() || getSessionHandoffTokenFromUrl();
   if (!token) return null;
 
-  const payload = await requestPlatformApi('/v1/auth/session-handoff/consume', {
-    method: 'POST',
-    body: { token },
-    auth: false,
-  });
+  try {
+    const payload = await requestPlatformApi('/v1/auth/session-handoff/consume', {
+      method: 'POST',
+      body: { token },
+      auth: false,
+    });
 
-  const session = setPlatformSession(payload?.session || payload);
-  if (!session?.access_token || !session?.refresh_token) {
-    throw new Error('Sessao invalida retornada pelo handoff seguro.');
+    const session = setPlatformSession(payload?.session || payload);
+    if (!session?.access_token || !session?.refresh_token) {
+      throw new Error('Sessao invalida retornada pelo handoff seguro.');
+    }
+
+    storeSessionHandoffErrorMessage('');
+    removeSessionHandoffTokenFromUrl();
+
+    return {
+      session,
+      user: payload?.user || session?.user || null,
+      roles: Array.isArray(payload?.roles) ? payload.roles : [],
+      tenant: payload?.tenant || null,
+    };
+  } catch (error) {
+    const status = Number(error?.status || 0);
+    const message = error?.message || 'Nao foi possivel concluir o acesso automatico ao subdominio. Faca login novamente.';
+
+    if ([403, 404, 410].includes(status)) {
+      removeSessionHandoffTokenFromUrl();
+      storeSessionHandoffErrorMessage(message);
+    }
+
+    throw error;
   }
-
-  removeSessionHandoffTokenFromUrl();
-
-  return {
-    session,
-    user: payload?.user || session?.user || null,
-    roles: Array.isArray(payload?.roles) ? payload.roles : [],
-    tenant: payload?.tenant || null,
-  };
 }
 
 export async function fetchPlatformCurrentRoles() {

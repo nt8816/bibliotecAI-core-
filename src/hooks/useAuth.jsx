@@ -60,7 +60,10 @@ export function AuthProvider({ children }) {
     let mounted = true;
 
     const bootstrapAuthState = async () => {
-      const handoffPayload = await consumeTenantSessionHandoff().catch(() => null);
+      const handoffPayload = await consumeTenantSessionHandoff().catch((error) => {
+        console.error('Falha ao consumir handoff de sessao:', error);
+        return null;
+      });
       if (handoffPayload) {
         applyAuthPayload(handoffPayload, handoffPayload.session || getPlatformSession());
         return;

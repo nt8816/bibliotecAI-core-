@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pause, Play, Radio, Volume2 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 
@@ -54,7 +54,7 @@ export function AudioMessagePlayer({
     setPlaybackLevels(idleLevels);
   }, [bars]);
 
-  const stopPlaybackVisualization = (resetToIdle = true) => {
+  const stopPlaybackVisualization = useCallback((resetToIdle = true) => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
@@ -69,9 +69,9 @@ export function AudioMessagePlayer({
       playbackLevelsRef.current = idleLevels;
       setPlaybackLevels(idleLevels);
     }
-  };
+  }, [bars]);
 
-  const startPlaybackVisualization = async () => {
+  const startPlaybackVisualization = useCallback(async () => {
     const audio = audioRef.current;
     if (!audio) return;
     if (isNativeAndroid) return;
@@ -146,7 +146,7 @@ export function AudioMessagePlayer({
       playbackLevelsRef.current = fallbackLevels;
       setPlaybackLevels(fallbackLevels);
     }
-  };
+  }, [bars, isNativeAndroid, stopPlaybackVisualization]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -188,7 +188,7 @@ export function AudioMessagePlayer({
       audio.removeEventListener('pause', handlePause);
       audio.removeEventListener('play', handlePlay);
     };
-  }, [durationSeconds, isNativeAndroid]);
+  }, [durationSeconds, isNativeAndroid, startPlaybackVisualization, stopPlaybackVisualization]);
 
   useEffect(() => {
     setCurrentTime(0);
@@ -199,7 +199,7 @@ export function AudioMessagePlayer({
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
     }
-  }, [durationSeconds, src]);
+  }, [durationSeconds, src, stopPlaybackVisualization]);
 
   useEffect(() => () => {
     stopPlaybackVisualization(false);
@@ -215,7 +215,7 @@ export function AudioMessagePlayer({
       audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
     }
-  }, []);
+  }, [stopPlaybackVisualization]);
 
   const togglePlayback = async () => {
     const audio = audioRef.current;
