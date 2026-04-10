@@ -4,6 +4,8 @@ compatibility_date = "2026-03-22"
 
 [vars]
 APP_ENV = "production"
+APP_BASE_DOMAIN = "bibliotecai.com.br"
+API_BASE_URL = "https://bibliotecai-api-gateway.bibliotecai.workers.dev"
 
 # Ajuste estes bindings quando a API for conectada ao ambiente real.
 # Exemplo:
