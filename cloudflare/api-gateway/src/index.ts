@@ -1793,7 +1793,61 @@ async function getTenantBySchoolId(escolaId: string, env: Env) {
     limit: '1',
   }).toString()}`).catch(() => []);
 
-  return Array.isArray(payload) ? (payload[0] || null) : null;
+  const tenant = Array.isArray(payload) ? (payload[0] || null) : null;
+  if (tenant?.id) return tenant;
+
+  const schoolPayload = await supabaseAdminRequest(env, `/rest/v1/escolas?${new URLSearchParams({
+    select: 'id,nome,subdominio',
+    id: `eq.${normalizedSchoolId}`,
+    limit: '1',
+  }).toString()}`).catch(() => []);
+  const school = Array.isArray(schoolPayload) ? (schoolPayload[0] || null) : null;
+  if (!school?.id || !String(school?.subdominio || '').trim()) return null;
+
+  return {
+    id: String(school.id),
+    ativo: true,
+    escola_id: String(school.id),
+    nome: String(school.nome || '').trim() || null,
+    subdominio: String(school.subdominio || '').trim() || null,
+  };
+}
+
+async function getTenantBySubdomain(subdomain: string, env: Env) {
+  const normalizedSubdomain = String(subdomain || '').trim().toLowerCase();
+  if (!normalizedSubdomain) return null;
+
+  const payload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/tenants?${new URLSearchParams({
+      select: 'id,ativo,escola_id,nome,subdominio,plano',
+      subdominio: `eq.${normalizedSubdomain}`,
+      ativo: 'eq.true',
+      limit: '1',
+    }).toString()}`,
+  ).catch(() => []);
+  const tenant = Array.isArray(payload) ? (payload[0] || null) : null;
+  if (tenant?.id) return tenant;
+
+  const schoolPayload = await supabaseAdminRequest(
+    env,
+    `/rest/v1/escolas?${new URLSearchParams({
+      select: 'id,nome,subdominio',
+      subdominio: `eq.${normalizedSubdomain}`,
+      limit: '1',
+    }).toString()}`,
+  ).catch(() => []);
+  const school = Array.isArray(schoolPayload) ? (schoolPayload[0] || null) : null;
+  if (!school?.id) return null;
+
+  return {
+    id: String(school.id),
+    ativo: true,
+    escola_id: String(school.id),
+    nome: String(school.nome || '').trim() || null,
+    subdominio: String(school.subdominio || '').trim() || null,
+    plano: 'trial',
+  };
 }
 
 function normalizeSessionPayloadForHandoff(
@@ -2823,16 +2877,8 @@ const routes: Record<string, RouteHandler> = {
     const subdomain = String(url.searchParams.get('subdomain') || '').trim().toLowerCase();
     if (!subdomain) return jsonResponse({ success: true, tenant: null });
     try {
-      const payload = await supabaseAdminRequest(
-        env,
-        `/rest/v1/tenants?${new URLSearchParams({
-          select: 'nome,subdominio,plano,ativo',
-          subdominio: `eq.${subdomain}`,
-          ativo: 'eq.true',
-          limit: '1',
-        }).toString()}`,
-      );
-      return jsonResponse({ success: true, tenant: ensureArray(payload)[0] || null });
+      const tenant = await getTenantBySubdomain(subdomain, env);
+      return jsonResponse({ success: true, tenant });
     } catch (error) {
       return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao resolver tenant.' }, 400);
     }
