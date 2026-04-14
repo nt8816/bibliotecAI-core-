@@ -2452,7 +2452,10 @@ function buildLastMonths(size = 6) {
 function formatMonthLabel(dateValue: unknown) {
   const d = new Date(String(dateValue || ''));
   if (Number.isNaN(d.getTime())) return String(dateValue || '');
-  return d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+  const monthLabels = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  const month = monthLabels[d.getMonth()] || String(d.getMonth() + 1).padStart(2, '0');
+  const year = String(d.getFullYear()).slice(-2);
+  return `${month}/${year}`;
 }
 
 function normalizeTurmaKey(value: unknown) {
