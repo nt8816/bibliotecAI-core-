@@ -115,7 +115,7 @@ export default function ArquivosAula() {
   const [professorFilter, setProfessorFilter] = useState('all');
   const [deletePostTarget, setDeletePostTarget] = useState(null);
   const canManageArquivos = (isProfessor || isGestor) && enabled;
-  const turmaSelecionavel = turmaPublico || (isGestor && turmasPublicacao.length === 0 ? ALL_TURMAS_OPTION : '');
+  const turmaSelecionavel = turmaPublico || (isGestor ? ALL_TURMAS_OPTION : '');
   const canPublishArquivos = canManageArquivos && Boolean(mensagem.trim()) && selectedFiles.length > 0 && Boolean(turmaSelecionavel);
 
   const fetchData = useCallback(async () => {
@@ -145,6 +145,12 @@ export default function ArquivosAula() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!isGestor) return;
+    if (turmaPublico) return;
+    setTurmaPublico(ALL_TURMAS_OPTION);
+  }, [isGestor, turmaPublico]);
 
   const professoresDisponiveis = useMemo(
     () =>
@@ -355,20 +361,27 @@ export default function ArquivosAula() {
 
             {(isProfessor || isGestor) && enabled && (
               <div className="space-y-4 rounded-xl border p-4">
-                {turmasPublicacao.length === 0 && (
+                {isGestor ? (
+                  <div className="rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3 shadow-sm">
+                    <p className="text-sm font-semibold text-foreground">Acesso total do gestor</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Você pode publicar para qualquer turma da escola e também para todas as turmas de uma vez.
+                    </p>
+                  </div>
+                ) : turmasPublicacao.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    Nenhuma turma cadastrada foi encontrada. Você ainda pode publicar para Todas as turmas.
+                    Nenhuma turma disponível para o seu perfil ainda. Peça ao gestor para liberar suas turmas.
                   </p>
-                )}
+                ) : null}
                 <div className="space-y-2">
                   <Label>Turma</Label>
                   <select
-                    value={turmaPublico || 'none'}
+                    value={turmaPublico || (isGestor ? ALL_TURMAS_OPTION : 'none')}
                     onChange={(e) => setTurmaPublico(e.target.value === 'none' ? '' : e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    className="flex h-11 w-full rounded-xl border border-primary/30 bg-background/80 px-4 py-2 text-sm shadow-sm transition-colors focus:border-primary focus:outline-none"
                     disabled={!canManageArquivos || saving}
                   >
-                    <option value="none">Selecione a turma</option>
+                    {!isGestor && <option value="none">Selecione a turma</option>}
                     <option value={ALL_TURMAS_OPTION}>Todas as turmas</option>
                     {turmasPublicacao.map((turma) => (
                       <option key={turma} value={turma}>
@@ -376,6 +389,11 @@ export default function ArquivosAula() {
                       </option>
                     ))}
                   </select>
+                  <p className="text-xs text-muted-foreground">
+                    {isGestor
+                      ? 'Como gestor, não é necessária autorização por turma: o acesso é completo dentro da escola.'
+                      : 'Escolha a turma específica que vai receber o material.'}
+                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -385,6 +403,7 @@ export default function ArquivosAula() {
                     value={mensagem}
                     onChange={(e) => setMensagem(e.target.value)}
                     placeholder="Descreva o material da aula..."
+                    className="rounded-xl border-primary/20 bg-background/80"
                   />
                 </div>
 
@@ -406,6 +425,7 @@ export default function ArquivosAula() {
                     variant="outline"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={!canManageArquivos || saving}
+                    className="rounded-xl border-primary/30 bg-background/80"
                   >
                     <ImagePlus className="w-4 h-4 mr-2" />
                     Adicionar arquivos
@@ -436,7 +456,7 @@ export default function ArquivosAula() {
                 </div>
 
                 <div className="flex justify-end">
-                  <Button type="button" onClick={handlePublish} disabled={!canManageArquivos || saving}>
+                  <Button type="button" onClick={handlePublish} disabled={!canManageArquivos || saving} className="rounded-xl">
                     <Send className="w-4 h-4 mr-2" />
                     {saving ? 'Publicando...' : 'Publicar material'}
                   </Button>
