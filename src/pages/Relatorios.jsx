@@ -37,6 +37,14 @@ const defaultStats = {
   emprestimosMesAnterior: 0,
   atrasadosAtuais: 0,
 };
+
+function formatPercentLabel(percent) {
+  const value = Number(percent) * 100;
+  if (Number.isNaN(value)) return '0%';
+  if (value === 0 || value === 100) return `${value.toFixed(0)}%`;
+  if (value < 1 || value > 99) return `${value.toFixed(1)}%`;
+  return `${value.toFixed(0)}%`;
+}
 const loadXlsx = async () => import('xlsx');
 const loadPdf = async () => {
   const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
@@ -397,7 +405,7 @@ export default function Relatorios() {
                         outerRadius={95}
                         paddingAngle={5}
                         dataKey="value"
-                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                        label={({ name, percent }) => `${name}: ${formatPercentLabel(percent)}`}
                       >
                         {pieData.map((_, index) => (
                           <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />

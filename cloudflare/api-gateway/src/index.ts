@@ -2449,6 +2449,12 @@ function buildLastMonths(size = 6) {
   return keys;
 }
 
+function formatMonthLabel(dateValue: unknown) {
+  const d = new Date(String(dateValue || ''));
+  if (Number.isNaN(d.getTime())) return String(dateValue || '');
+  return d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+}
+
 function normalizeTurmaKey(value: unknown) {
   return String(value || '')
     .normalize('NFD')
@@ -2885,7 +2891,18 @@ const routes: Record<string, RouteHandler> = {
       let emprestimosMesAtual = 0;
       let emprestimosMesAnterior = 0;
       let atrasadosAtuais = 0;
-      const monthlyMap = new Map<string, { mes: string; emprestimos: number; devolucoes: number; sortKey: string }>();
+      const monthlyKeys = buildLastMonths(6);
+      const monthlyMap = new Map<string, { mes: string; emprestimos: number; devolucoes: number; sortKey: string }>(
+        monthlyKeys.map((key) => [
+          key,
+          {
+            mes: formatMonthLabel(`${key}-01T12:00:00`),
+            emprestimos: 0,
+            devolucoes: 0,
+            sortKey: key,
+          },
+        ]),
+      );
 
       emprestimosArray.forEach((emp) => {
         const livroId = String(emp?.livro_id || '').trim();
@@ -2901,27 +2918,17 @@ const routes: Record<string, RouteHandler> = {
           if (month === previousMonth && year === previousYear) emprestimosMesAnterior += 1;
 
           const key = `${year}-${String(month + 1).padStart(2, '0')}`;
-          const current = monthlyMap.get(key) || {
-            mes: emprestimoDate.toLocaleDateString('pt-BR', { month: 'short' }),
-            emprestimos: 0,
-            devolucoes: 0,
-            sortKey: key,
-          };
-          current.emprestimos += 1;
-          monthlyMap.set(key, current);
+          if (monthlyMap.has(key)) {
+            monthlyMap.get(key)!.emprestimos += 1;
+          }
         }
 
         const devolucaoRealDate = emp?.data_devolucao_real ? new Date(String(emp.data_devolucao_real)) : null;
         if (devolucaoRealDate && !Number.isNaN(devolucaoRealDate.getTime())) {
           const key = `${devolucaoRealDate.getFullYear()}-${String(devolucaoRealDate.getMonth() + 1).padStart(2, '0')}`;
-          const current = monthlyMap.get(key) || {
-            mes: devolucaoRealDate.toLocaleDateString('pt-BR', { month: 'short' }),
-            emprestimos: 0,
-            devolucoes: 0,
-            sortKey: key,
-          };
-          current.devolucoes += 1;
-          monthlyMap.set(key, current);
+          if (monthlyMap.has(key)) {
+            monthlyMap.get(key)!.devolucoes += 1;
+          }
         }
 
         const dueDate = emp?.data_devolucao_prevista ? new Date(String(emp.data_devolucao_prevista)) : null;
@@ -2939,7 +2946,6 @@ const routes: Record<string, RouteHandler> = {
 
       const emprestimosPorMes = Array.from(monthlyMap.values())
         .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
-        .slice(-6)
         .map(({ sortKey: _sortKey, ...item }) => item);
 
       return jsonResponse({
@@ -5427,7 +5433,7 @@ const routes: Record<string, RouteHandler> = {
 
     const monthlyKeys = buildLastMonths(6);
     const monthlyMap = new Map(
-      monthlyKeys.map((key) => [key, { key, mes: key, emprestimos: 0 }]),
+      monthlyKeys.map((key) => [key, { key, mes: formatMonthLabel(`${key}-01T12:00:00`), emprestimos: 0 }]),
     );
     const livroCountMap = new Map<string, number>();
 

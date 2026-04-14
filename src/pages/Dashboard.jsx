@@ -171,8 +171,8 @@ export default function Dashboard() {
     return <Navigate to="/aluno/perfil" replace />;
   }
 
-  const livrosEmprestados = Math.min(stats.emprestimosAtivos, stats.totalLivros);
-  const livrosDisponiveis = Math.max(0, stats.totalLivros - livrosEmprestados);
+  const livrosDisponiveis = Math.max(0, Math.min(stats.livrosDisponiveis, stats.totalLivros));
+  const livrosEmprestados = Math.max(0, stats.totalLivros - livrosDisponiveis);
 
   const pieData = [
     { name: 'Disponiveis', value: livrosDisponiveis },
