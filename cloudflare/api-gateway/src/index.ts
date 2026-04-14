@@ -45,7 +45,7 @@ function isAllowedCorsOrigin(origin: string, env: Env) {
     const url = new URL(normalizedOrigin);
     const hostname = String(url.hostname || '').trim().toLowerCase();
     const protocol = String(url.protocol || '').trim().toLowerCase();
-    const appBaseDomain = String(env.APP_BASE_DOMAIN || '').trim().toLowerCase();
+    const appBaseDomain = String(env.APP_BASE_DOMAIN || 'bibliotecai.com.br').trim().toLowerCase();
     const apiBaseUrl = String(env.API_BASE_URL || '').trim();
 
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
