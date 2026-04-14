@@ -8512,7 +8512,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Mensagem e arquivos sao obrigatorios.' }, 400);
     }
 
-    if (!context.turmasPublicacao.length) {
+    if (!context.turmasPublicacao.length && context.tipo !== 'gestor') {
       return jsonResponse({ success: false, error: 'Nenhuma turma disponivel para publicar arquivos.' }, 403);
     }
 

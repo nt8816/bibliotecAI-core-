@@ -114,7 +114,9 @@ export default function ArquivosAula() {
   const [posts, setPosts] = useState([]);
   const [professorFilter, setProfessorFilter] = useState('all');
   const [deletePostTarget, setDeletePostTarget] = useState(null);
-  const canManageArquivos = (isProfessor || isGestor) && enabled && turmasPublicacao.length > 0;
+  const canManageArquivos = (isProfessor || isGestor) && enabled;
+  const turmaSelecionavel = turmaPublico || (isGestor && turmasPublicacao.length === 0 ? ALL_TURMAS_OPTION : '');
+  const canPublishArquivos = canManageArquivos && Boolean(mensagem.trim()) && selectedFiles.length > 0 && Boolean(turmaSelecionavel);
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -216,7 +218,7 @@ export default function ArquivosAula() {
       });
       return;
     }
-    if (!turmaPublico.trim()) {
+    if (!turmaSelecionavel.trim()) {
       toast({
         variant: 'destructive',
         title: 'Selecione a turma',
@@ -250,7 +252,7 @@ export default function ArquivosAula() {
       }
 
       const payload = {
-        turma_publico: turmaPublico === ALL_TURMAS_OPTION ? null : turmaPublico,
+        turma_publico: turmaSelecionavel === ALL_TURMAS_OPTION ? null : turmaSelecionavel,
         mensagem: mensagem.trim(),
         arquivos,
       };
@@ -355,7 +357,7 @@ export default function ArquivosAula() {
               <div className="space-y-4 rounded-xl border p-4">
                 {turmasPublicacao.length === 0 && (
                   <p className="text-sm text-muted-foreground">
-                    Nenhuma turma disponível para o seu perfil ainda.
+                    Nenhuma turma cadastrada foi encontrada. Você ainda pode publicar para Todas as turmas.
                   </p>
                 )}
                 <div className="space-y-2">
