@@ -166,6 +166,7 @@ function normalizePasskeyError(error, actionLabel) {
         : 'A validacao da passkey nao foi concluida neste aparelho.',
     ));
   }
+// a passkey ainda não está funcionando, o codigo acima é um principal suspeito, mas vamos tentar identificar outros cenários comuns para oferecer mensagens mais claras aos usuários.
 
   if (normalized.includes('notallowederror') || normalized.includes('not supported')) {
     return withOriginalMetadata(new Error(

@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { deleteR2Object, getR2DownloadUrl, uploadFileToR2 } from '@/lib/r2Storage';
+import { fetchSchoolConfiguration } from '@/services/schoolConfigService';
 import {
   createArquivosAulaPost,
   deleteArquivosAulaPost,
@@ -123,12 +124,21 @@ export default function ArquivosAula() {
 
     setLoading(true);
     try {
-      const data = await fetchArquivosAulaData({ roleHint: profileRoleHint });
+      const [data, schoolConfig] = await Promise.all([
+        fetchArquivosAulaData({ roleHint: profileRoleHint }),
+        isGestor ? fetchSchoolConfiguration().catch(() => ({ escola: null, salas: [] })) : Promise.resolve({ escola: null, salas: [] }),
+      ]);
+      const turmasVindasDoModulo = ensureArray(data?.turmasPublicacao || data?.professorTurmas);
+      const turmasVindasDaEscola = ensureArray(schoolConfig?.salas)
+        .map((item) => safeText(item?.nome, '').trim())
+        .filter(Boolean);
+      const turmasUnificadas = [...new Set([...turmasVindasDoModulo, ...turmasVindasDaEscola])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
       setEnabled(data?.enabled !== false);
       setPerfilId(data?.perfilId || null);
       setEscolaId(data?.escolaId || null);
       setAlunoTurma(data?.alunoTurma || null);
-      setTurmasPublicacao(ensureArray(data?.turmasPublicacao || data?.professorTurmas));
+      setTurmasPublicacao(turmasUnificadas);
       setProfessoresPermitidos(ensureArray(data?.professoresPermitidos));
       setPosts(ensureArray(data?.posts));
     } catch (error) {
@@ -140,7 +150,7 @@ export default function ArquivosAula() {
     } finally {
       setLoading(false);
     }
-  }, [profileRoleHint, toast, user?.id]);
+  }, [isGestor, profileRoleHint, toast, user?.id]);
 
   useEffect(() => {
     fetchData();
