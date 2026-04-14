@@ -64,6 +64,14 @@ export function TenantProvider({ children }) {
       setError(null);
       const { mode: hostMode, subdomain } = extractSubdomain(window.location.hostname);
       setMode(hostMode);
+      const syntheticTenant = subdomain
+        ? {
+            id: `host-${subdomain}`,
+            nome: subdomain,
+            subdominio: subdomain,
+            ativo: true,
+          }
+        : null;
 
       if (hostMode !== 'tenant') {
         if (mounted) {
@@ -75,12 +83,14 @@ export function TenantProvider({ children }) {
 
       try {
         const data = await resolveTenantBySubdomain(subdomain);
-        if (!data) throw new Error('Tenant nao encontrado');
-        if (mounted) setTenant(data);
+        if (mounted) {
+          setTenant(data || syntheticTenant);
+          if (!data) setError('Tenant nao encontrado para este subdominio. Usando fallback do host.');
+        }
       } catch {
         if (mounted) {
-          setTenant(null);
-          setError('Tenant nao encontrado para este subdominio.');
+          setTenant(syntheticTenant);
+          setError('Falha ao validar tenant pelo backend. Usando fallback do host.');
         }
       } finally {
         if (mounted) setLoading(false);
