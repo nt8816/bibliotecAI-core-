@@ -2329,7 +2329,7 @@ async function fetchTenantAdminInviteContext(token: string, env: Env) {
 }
 
 async function getArquivosAulaModuleContext(request: Request, env: Env) {
-  const { caller, profile } = await getUserProfileForRequest(request, env, { preferredTypes: ['professor'] });
+  const { caller, profile } = await getUserProfileForRequest(request, env, { preferredTypes: ['professor', 'gestor'] });
   if (!profile?.id) throw new Error('Perfil nao encontrado.');
 
   const tipo = String(profile.tipo || '').trim().toLowerCase();
@@ -2342,6 +2342,37 @@ async function getArquivosAulaModuleContext(request: Request, env: Env) {
       professor_id: `eq.${perfilId}`,
     }).toString()}`).catch(() => [])
     : [];
+
+  let turmasGestao: string[] = [];
+  if (tipo === 'gestor' && escolaId) {
+    const [salas, usuariosSala, professorTurmasEscola] = await Promise.all([
+      supabaseAdminRequest(env, `/rest/v1/salas_cursos?${new URLSearchParams({
+        select: 'nome',
+        escola_id: `eq.${escolaId}`,
+        order: 'nome.asc',
+      }).toString()}`).catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+        select: 'turma',
+        escola_id: `eq.${escolaId}`,
+      }).toString()}`).catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/professor_turmas?${new URLSearchParams({
+        select: 'turma',
+        escola_id: `eq.${escolaId}`,
+      }).toString()}`).catch(() => []),
+    ]);
+
+    const turmasEscola = new Set<string>();
+    ensureArray<Record<string, unknown>>(salas).forEach((item) => {
+      const nome = String(item?.nome || '').trim();
+      if (nome) turmasEscola.add(nome);
+    });
+    [...ensureArray<Record<string, unknown>>(usuariosSala), ...ensureArray<Record<string, unknown>>(professorTurmasEscola)].forEach((item) => {
+      const nome = String(item?.turma || '').trim();
+      if (nome) turmasEscola.add(nome);
+    });
+
+    turmasGestao = Array.from(turmasEscola).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }
 
   let professoresPermitidos: Array<{ id: string; nome: string }> = [];
   if (tipo !== 'professor' && escolaId && profile.turma) {
@@ -2369,6 +2400,9 @@ async function getArquivosAulaModuleContext(request: Request, env: Env) {
     escolaId: escolaId || null,
     perfilId: perfilId || null,
     professorTurmas: [...new Set((Array.isArray(professorTurmas) ? professorTurmas : []).map((item) => String(item?.turma || '').trim()).filter(Boolean))].sort(),
+    turmasPublicacao: tipo === 'gestor'
+      ? turmasGestao
+      : [...new Set((Array.isArray(professorTurmas) ? professorTurmas : []).map((item) => String(item?.turma || '').trim()).filter(Boolean))].sort(),
     professoresPermitidos: [...new Set(professoresPermitidos.map((item) => String(item?.nome || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
   };
 }
@@ -8448,6 +8482,7 @@ const routes: Record<string, RouteHandler> = {
       escolaId: context.escolaId,
       alunoTurma: context.profile?.turma || null,
       professorTurmas: context.professorTurmas,
+      turmasPublicacao: context.turmasPublicacao,
       professoresPermitidos: context.professoresPermitidos,
       posts,
     });
@@ -8455,8 +8490,8 @@ const routes: Record<string, RouteHandler> = {
 
   'POST /v1/arquivos-aula': async (request, env) => {
     const context = await getArquivosAulaModuleContext(request, env);
-    if (context.tipo !== 'professor' || !context.perfilId || !context.escolaId) {
-      return jsonResponse({ success: false, error: 'Apenas professores podem publicar materiais.' }, 403);
+    if (!['professor', 'gestor'].includes(context.tipo) || !context.perfilId || !context.escolaId) {
+      return jsonResponse({ success: false, error: 'Apenas professores e gestores podem publicar materiais.' }, 403);
     }
 
     const body = await request.json().catch(() => ({}));
@@ -8468,12 +8503,12 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Mensagem e arquivos sao obrigatorios.' }, 400);
     }
 
-    if (!context.professorTurmas.length) {
-      return jsonResponse({ success: false, error: 'Professor sem turmas liberadas para publicar arquivos.' }, 403);
+    if (!context.turmasPublicacao.length) {
+      return jsonResponse({ success: false, error: 'Nenhuma turma disponivel para publicar arquivos.' }, 403);
     }
 
-    if (turmaPublico && !context.professorTurmas.includes(turmaPublico)) {
-      return jsonResponse({ success: false, error: 'Turma nao permitida para este professor.' }, 403);
+    if (turmaPublico && !context.turmasPublicacao.includes(turmaPublico)) {
+      return jsonResponse({ success: false, error: 'Turma nao permitida para este usuario.' }, 403);
     }
 
     await supabaseAdminRequest(env, '/rest/v1/arquivos_aula_posts', {
@@ -8494,8 +8529,8 @@ const routes: Record<string, RouteHandler> = {
 
   'PATCH /v1/arquivos-aula/:id/arquivos': async (request, env) => {
     const context = await getArquivosAulaModuleContext(request, env);
-    if (context.tipo !== 'professor' || !context.perfilId) {
-      return jsonResponse({ success: false, error: 'Apenas professores podem editar arquivos publicados.' }, 403);
+    if (!['professor', 'gestor'].includes(context.tipo) || !context.perfilId) {
+      return jsonResponse({ success: false, error: 'Apenas professores e gestores podem editar arquivos publicados.' }, 403);
     }
     const postId = getPathParam(request, /^\/v1\/arquivos-aula\/([^/]+)\/arquivos$/i);
     const body = await request.json().catch(() => ({}));

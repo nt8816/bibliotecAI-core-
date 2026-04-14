@@ -78,6 +78,7 @@ export function AppSidebar() {
         { title: 'Relatórios', url: '/relatorios', icon: BarChart3 },
         { title: 'Comunicados', url: '/comunicados', icon: Bell },
         { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
+        { title: 'Arquivos Didáticos', url: '/arquivos-de-aula', icon: FileStack },
         { title: 'Ranking', url: '/ranking', icon: Trophy },
       ];
     }
@@ -103,7 +104,7 @@ export function AppSidebar() {
         { title: 'Relatórios de Leitura', url: '/professor/relatorios', icon: BarChart3 },
         { title: 'Comunicados', url: '/comunicados', icon: Bell },
         { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
-        { title: 'Arquivos de Aula', url: '/arquivos-de-aula', icon: FileStack },
+        { title: 'Arquivos Didáticos', url: '/arquivos-de-aula', icon: FileStack },
         { title: 'Ranking', url: '/ranking', icon: Trophy },
       ];
     }
@@ -115,7 +116,7 @@ export function AppSidebar() {
       { title: 'Atividades', url: '/aluno/atividades', icon: ClipboardList },
       { title: 'Comunicados', url: '/aluno/comunicados', icon: Bell },
       { title: 'Comunidade', url: '/aluno/comunidade', icon: MessageSquare },
-      { title: 'Arquivos de Aula', url: '/aluno/arquivos-de-aula', icon: FileStack },
+      { title: 'Arquivos Didáticos', url: '/aluno/arquivos-de-aula', icon: FileStack },
       { title: 'Ranking', url: '/aluno/ranking', icon: Trophy },
     ];
   };

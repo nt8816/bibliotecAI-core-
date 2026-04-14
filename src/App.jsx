@@ -148,7 +148,7 @@ function AppRoutes() {
       <Route
         path="/arquivos-de-aula"
         element={(
-          <RoleProtectedRoute allowedRoles={['professor']}>
+          <RoleProtectedRoute allowedRoles={['professor', 'gestor']}>
             <ArquivosAula />
           </RoleProtectedRoute>
         )}
