@@ -1969,7 +1969,7 @@ function buildTenantHandoffRedirectUrl(
 ) {
   const safeSubdomain = String(targetSubdomain || '').trim().toLowerCase();
   const safePath = normalizeAppPath(nextPath);
-  const baseDomain = String(env.APP_BASE_DOMAIN || '').trim().toLowerCase();
+  const baseDomain = String(env.APP_BASE_DOMAIN || 'bibliotecai.com.br').trim().toLowerCase();
 
   if (baseDomain && safeSubdomain) {
     const url = new URL(`https://${safeSubdomain}.${baseDomain}${safePath}`);
@@ -1993,7 +1993,7 @@ function isAuthorizedTenantHandoffOrigin(request: Request, targetSubdomain: stri
   try {
     const hostname = String(new URL(origin).hostname || '').trim().toLowerCase();
     const expectedSubdomain = String(targetSubdomain || '').trim().toLowerCase();
-    const baseDomain = String(env.APP_BASE_DOMAIN || '').trim().toLowerCase();
+    const baseDomain = String(env.APP_BASE_DOMAIN || 'bibliotecai.com.br').trim().toLowerCase();
 
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       return true;

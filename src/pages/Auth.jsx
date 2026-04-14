@@ -188,9 +188,11 @@ export default function Auth() {
             const handoffToken = String(handoff?.handoffToken || '').trim();
             const fallbackRedirectUrl = String(handoff?.redirectUrl || '').trim();
             const tenantUrl = buildTenantAccessUrl(tenantContext, defaultRoute);
-            const redirectUrl = handoffToken
-              ? appendQueryParam(tenantUrl, 'sessionHandoff', handoffToken)
-              : (fallbackRedirectUrl || tenantUrl);
+            const redirectUrl = fallbackRedirectUrl || (
+              handoffToken
+                ? appendQueryParam(tenantUrl, 'sessionHandoff', handoffToken)
+                : tenantUrl
+            );
 
             window.location.assign(redirectUrl);
           })
