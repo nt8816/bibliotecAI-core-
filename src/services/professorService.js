@@ -11,7 +11,7 @@ export async function fetchProfessorPainelData({ roleHint } = {}) {
   });
 }
 
-export async function createProfessorSugestão(payload, { roleHint } = {}) {
+export async function createProfessorSugestao(payload, { roleHint } = {}) {
   return requestPlatformApi('/v1/professor/sugestoes', {
     method: 'POST',
     body: payload,
@@ -19,7 +19,7 @@ export async function createProfessorSugestão(payload, { roleHint } = {}) {
   });
 }
 
-export async function deleteProfessorSugestão(id, { roleHint } = {}) {
+export async function deleteProfessorSugestao(id, { roleHint } = {}) {
   return requestPlatformApi(`/v1/professor/sugestoes/${id}/delete`, {
     method: 'POST',
     headers: buildRoleHintHeaders(roleHint),
