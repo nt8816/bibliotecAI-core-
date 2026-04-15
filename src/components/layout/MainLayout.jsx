@@ -6,7 +6,6 @@ import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { AppSidebar } from './AppSidebar';
-import { EnvironmentBanner } from './EnvironmentBanner';
 import { NotificationsPopover } from './NotificationsPopover';
 
 export function MainLayout({ children, title }) {
@@ -64,7 +63,6 @@ export function MainLayout({ children, title }) {
             className="main-shell-content flex-1 overflow-auto px-3 py-3 sm:px-5 sm:py-5 lg:px-6 lg:py-6"
           >
             <div className="mx-auto w-full max-w-screen-2xl">
-              <EnvironmentBanner />
               {children}
             </div>
           </div>

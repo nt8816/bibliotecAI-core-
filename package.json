@@ -5,9 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:homolog": "vite --mode homolog",
     "build:web": "vite build",
-    "build:web:homolog": "vite build --mode homolog",
     "build:web:dev": "vite build --mode development",
     "build": "vite build && npx cap sync android",
     "build:dev": "vite build --mode development && npx cap sync android",

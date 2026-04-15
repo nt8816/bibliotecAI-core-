@@ -19,7 +19,6 @@ import { ConnectivityStatus } from '@/components/ConnectivityStatus';
 import { NativePushBridge } from '@/components/NativePushBridge';
 
 const Auth = lazy(() => import('./pages/Auth'));
-const SandboxAccess = lazy(() => import('./pages/SandboxAccess'));
 const Privacidade = lazy(() => import('./pages/Privacidade'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Livros = lazy(() => import('./pages/Livros.jsx'));
@@ -116,8 +115,6 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/auth" element={<Auth />} />
-      <Route path="/sandbox" element={<SandboxAccess />} />
-      <Route path="/teste" element={<Navigate to="/sandbox" replace />} />
       <Route path="/privacidade" element={<Privacidade />} />
       <Route path="/admin/acesso" element={<AdminAcesso />} />
       <Route path="/admin/login" element={<Navigate to="/admin/acesso" replace />} />
