@@ -39,6 +39,7 @@ import { useToast } from '@/hooks/use-toast';
 import { generateTextWithCloudflare } from '@/lib/cloudflareAiApi';
 import { cn } from '@/lib/utils';
 import { fetchSchoolConfiguration } from '@/services/schoolConfigService';
+import { fetchUsuariosModuleData } from '@/services/usuariosService';
 import {
   avaliarProfessorEntrega,
   createProfessorSugestao,
@@ -900,6 +901,9 @@ export default function PainelProfessor() {
       const schoolConfigPromise = isGestor
         ? fetchSchoolConfiguration().catch(() => ({ escola: null, salas: [] }))
         : Promise.resolve({ escola: null, salas: [] });
+      const usuariosModulePromise = isGestor
+        ? fetchUsuariosModuleData().catch(() => ({ usuarios: [] }))
+        : Promise.resolve({ usuarios: [] });
       let data = null;
       try {
         data = await fetchProfessorPainelData({ roleHint: profileRoleHint });
@@ -915,14 +919,22 @@ export default function PainelProfessor() {
           professorProfileIds: [],
         };
       }
-      const schoolConfig = await schoolConfigPromise;
+      const [schoolConfig, usuariosModuleData] = await Promise.all([
+        schoolConfigPromise,
+        usuariosModulePromise,
+      ]);
+      const usuariosDoPainel = ensureArray(data?.usuarios);
+      const usuariosDoModulo = ensureArray(usuariosModuleData?.usuarios);
+      const usuariosComFallback = isGestor && usuariosDoPainel.length === 0
+        ? usuariosDoModulo
+        : usuariosDoPainel;
       const turmasVindasDoModulo = ensureArray(data?.turmasPermitidas)
         .map((item) => String(item || '').trim())
         .filter(Boolean);
       const turmasVindasDaEscola = ensureArray(schoolConfig?.salas)
         .map((item) => String(item?.nome || '').trim())
         .filter(Boolean);
-      const turmasDosUsuarios = ensureArray(data?.usuarios)
+      const turmasDosUsuarios = ensureArray(usuariosComFallback)
         .map((item) => String(item?.turma || '').trim())
         .filter(Boolean);
       const turmasUnificadas = [...new Set([
@@ -932,7 +944,7 @@ export default function PainelProfessor() {
       ])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
       setLivros(Array.isArray(data?.livros) ? data.livros : []);
-      setUsuarios(Array.isArray(data?.usuarios) ? data.usuarios : []);
+      setUsuarios(usuariosComFallback);
       setSugestoes(Array.isArray(data?.sugestoes) ? data.sugestoes : []);
       setAtividades(Array.isArray(data?.atividades) ? data.atividades : []);
       setEntregas(Array.isArray(data?.entregas) ? data.entregas : []);
