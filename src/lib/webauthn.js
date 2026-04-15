@@ -230,3 +230,4 @@ export async function getPlatformPasskeyAssertion(publicKeyOptions) {
     throw normalizePasskeyError(error, 'validar');
   }
 }
+// define a interface de comunicação com a API do backend para operações relacionadas à autenticação WebAuthn, como cadastro e validação de passkeys.
