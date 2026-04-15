@@ -161,6 +161,78 @@ function AppRoutes() {
           </RoleProtectedRoute>
         )}
       />
+      <Route
+        path="/aluno"
+        element={(
+          <RoleProtectedRoute allowedRoles={['aluno']}>
+            <Navigate to="/aluno/perfil" replace />
+          </RoleProtectedRoute>
+        )}
+      />
+      <Route
+        path="/aluno/perfil"
+        element={(
+          <RoleProtectedRoute allowedRoles={['aluno']}>
+            <PainelAluno />
+          </RoleProtectedRoute>
+        )}
+      />
+      <Route
+        path="/aluno/biblioteca"
+        element={(
+          <RoleProtectedRoute allowedRoles={['aluno']}>
+            <PainelAluno />
+          </RoleProtectedRoute>
+        )}
+      />
+      <Route
+        path="/aluno/laboratorio"
+        element={(
+          <RoleProtectedRoute allowedRoles={['aluno']}>
+            <PainelAluno />
+          </RoleProtectedRoute>
+        )}
+      />
+      <Route
+        path="/aluno/atividades"
+        element={(
+          <RoleProtectedRoute allowedRoles={['aluno']}>
+            <PainelAluno />
+          </RoleProtectedRoute>
+        )}
+      />
+      <Route
+        path="/aluno/comunicados"
+        element={(
+          <RoleProtectedRoute allowedRoles={['aluno']}>
+            <PainelAluno />
+          </RoleProtectedRoute>
+        )}
+      />
+      <Route
+        path="/aluno/comunidade"
+        element={(
+          <RoleProtectedRoute allowedRoles={['aluno']}>
+            <ComunidadeAluno />
+          </RoleProtectedRoute>
+        )}
+      />
+      <Route
+        path="/aluno/arquivos-de-aula"
+        element={(
+          <RoleProtectedRoute allowedRoles={['aluno']}>
+            <ArquivosAula />
+          </RoleProtectedRoute>
+        )}
+      />
+      <Route
+        path="/aluno/ranking"
+        element={(
+          <RoleProtectedRoute allowedRoles={['aluno']}>
+            <RankingAluno />
+          </RoleProtectedRoute>
+        )}
+      />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
       <Route
