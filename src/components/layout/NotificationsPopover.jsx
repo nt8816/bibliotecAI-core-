@@ -98,7 +98,7 @@ export function NotificationsPopover({ userRole, onNavigate }) {
                 <button
                   type="button"
                   className="w-full rounded-md border p-2 text-sm flex items-center justify-between gap-2 text-left hover:bg-accent transition-colors"
-                  onClick={() => handleNavigate(userRole === 'aluno' ? '/aluno/atividades' : '/emprestimos?tab=solicitacoes')}
+                  onClick={() => handleNavigate(userRole === 'aluno' ? '/aluno/mensagens' : '/mensagens')}
                 >
                   <span>Solicitações pendentes</span>
                   <Badge>{counts.solicitacoesPendentes}</Badge>

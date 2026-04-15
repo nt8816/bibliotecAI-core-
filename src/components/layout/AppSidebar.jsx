@@ -90,6 +90,7 @@ export function AppSidebar() {
         { title: 'Livros', url: '/livros', icon: BookOpen },
         { title: 'Usuários', url: '/usuarios', icon: Users },
         { title: 'Empréstimos', url: '/emprestimos', icon: BookMarked },
+        { title: 'Mensagens', url: '/mensagens', icon: MessageSquare },
         { title: 'Comunicados', url: '/comunicados', icon: Bell },
         { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
         { title: 'Ranking', url: '/ranking', icon: Trophy },
@@ -115,6 +116,7 @@ export function AppSidebar() {
       { title: 'Biblioteca', url: '/aluno/biblioteca', icon: BookOpen },
       { title: 'Laboratório', url: '/aluno/laboratorio', icon: FlaskConical },
       { title: 'Atividades', url: '/aluno/atividades', icon: ClipboardList },
+      { title: 'Mensagens', url: '/aluno/mensagens', icon: MessageSquare },
       { title: 'Comunicados', url: '/aluno/comunicados', icon: Bell },
       { title: 'Comunidade', url: '/aluno/comunidade', icon: MessageSquare },
       { title: 'Arquivos Didáticos', url: '/aluno/arquivos-de-aula', icon: FileStack },
@@ -190,7 +192,7 @@ export function AppSidebar() {
                       {!collapsed && (
                         <div className="flex w-full items-center justify-between gap-2">
                           <span className="font-medium text-[15px] leading-none">{item.title}</span>
-                          {item.url === '/emprestimos' && canViewNotifications && (counts.atrasados > 0 || counts.solicitacoesPendentes > 0) && (
+                          {['/emprestimos', '/mensagens', '/aluno/mensagens'].includes(item.url) && canViewNotifications && (counts.atrasados > 0 || counts.solicitacoesPendentes > 0) && (
                             <Badge className="h-5 min-w-5 px-1.5 text-[10px] leading-none">
                               {counts.atrasados + counts.solicitacoesPendentes}
                             </Badge>

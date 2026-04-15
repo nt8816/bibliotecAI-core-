@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { usePrivateTelemetry } from '@/hooks/usePrivateTelemetry';
+import { getSupabaseRealtimeClient } from '@/integrations/supabase/client';
 import {
   Plus,
   BookMarked,
@@ -95,6 +96,7 @@ function formatLivroTombo(livro) {
 }
 
 export default function Emprestimos() {
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [emprestimos, setEmprestimos] = useState([]);
@@ -174,6 +176,41 @@ export default function Emprestimos() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+
+    const supabase = getSupabaseRealtimeClient();
+    if (!supabase) return undefined;
+
+    let refreshTimeout = null;
+    const scheduleRefresh = () => {
+      if (refreshTimeout) {
+        window.clearTimeout(refreshTimeout);
+      }
+      refreshTimeout = window.setTimeout(() => {
+        fetchData();
+        refreshTimeout = null;
+      }, 250);
+    };
+
+    const channel = supabase.channel(`emprestimos-conversas-${user.id}`);
+    ['emprestimos', 'solicitacoes_emprestimo', 'solicitacoes_emprestimo_mensagens'].forEach((table) => {
+      channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table },
+        scheduleRefresh,
+      );
+    });
+    channel.subscribe();
+
+    return () => {
+      if (refreshTimeout) {
+        window.clearTimeout(refreshTimeout);
+      }
+      supabase.removeChannel(channel);
+    };
+  }, [fetchData, user?.id]);
 
   const handleCreateEmprestimo = async () => {
     if (!selectedLivro || !selectedUsuario) {
@@ -539,7 +576,7 @@ export default function Emprestimos() {
     return <Badge variant="secondary">Pendente</Badge>;
   };
 
-  const renderSolicitacaoCard = (solicitacao, { readOnly = false } = {}) => {
+  const renderConversationCard = (solicitacao, { readOnly = false } = {}) => {
       const isPendente = solicitacao.status === 'pendente';
       const isEmAnalise = solicitacao.status === 'indisponivel_em_analise';
       const isProcessavel = isPendente || isEmAnalise;
@@ -578,106 +615,107 @@ export default function Emprestimos() {
               </div>
             )}
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Conversa da solicitação</p>
-            <div className="rounded-md border bg-background p-2 space-y-2 min-h-[120px] max-h-56 overflow-y-auto">
-              {chatMensagens.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhuma mensagem registrada ainda.</p>
-              ) : (
-                chatMensagens.map((mensagem) => {
-                  const isBiblioteca = mensagem?.autor_tipo === 'bibliotecaria';
-                  return (
-                    <div
-                      key={mensagem.id}
-                      className={cn(
-                        'rounded-md px-3 py-2 text-sm',
-                        isBiblioteca ? 'ml-6 bg-primary/10 border border-primary/20' : 'mr-6 bg-muted/40 border',
-                      )}
-                    >
-                      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                        <span>{isBiblioteca ? 'Biblioteca' : 'Aluno'}</span>
-                        <span>{formatDateBR(mensagem.created_at)}</span>
-                      </div>
-                      <p className="mt-1 whitespace-pre-wrap">{mensagem.mensagem}</p>
-                    </div>
-                  );
-                })
-              )}
+          <div className="rounded-md border bg-muted/20 p-3">
+            <p className="text-xs text-muted-foreground">Atendimento centralizado</p>
+            <p className="mt-1 text-sm">
+              {chatMensagens.length > 0
+                ? `Esta solicitação já tem ${chatMensagens.length} mensagem(ns) na aba Mensagens.`
+                : 'As respostas e atualizações desta solicitação agora ficam na aba Mensagens.'}
+            </p>
+            <div className="mt-3 flex justify-end">
+              <Button type="button" size="sm" onClick={() => navigate(`/mensagens?solicitacao=${solicitacao.id}`)}>
+                <Inbox className="w-4 h-4 mr-2" />
+                {readOnly || !isProcessavel ? 'Ver histórico em Mensagens' : 'Abrir em Mensagens'}
+              </Button>
             </div>
-          </div>
-          <div className="md:col-span-2">
-            {readOnly ? (
-              <>
-                <p className="text-xs text-muted-foreground mb-1">Resposta da biblioteca</p>
-                <p className="text-sm rounded-md border p-2 min-h-[52px] bg-background">
-                  {solicitacao.resposta || respostaPorSolicitacao[solicitacao.id] || 'Sem resposta registrada.'}
-                </p>
-              </>
-            ) : (
-              <>
-                <Label htmlFor={`resposta-${solicitacao.id}`}>Resposta da biblioteca</Label>
-                <Textarea
-                  id={`resposta-${solicitacao.id}`}
-                  rows={2}
-                  placeholder="Escreva uma mensagem para conversar com o aluno..."
-                  value={respostaPorSolicitacao[solicitacao.id] ?? solicitacao.resposta ?? ''}
-                  onChange={(e) =>
-                    setRespostaPorSolicitacao((prev) => ({
-                      ...prev,
-                      [solicitacao.id]: e.target.value,
-                    }))
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleEnviarMensagemSolicitacao(solicitacao);
-                    }
-                  }}
-                  disabled={!isProcessavel || saving}
-                />
-              </>
-            )}
           </div>
         </div>
 
-          {!readOnly && isProcessavel ? (
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:justify-end gap-2">
+        <p className="text-xs text-muted-foreground">
+          {readOnly ? 'Solicitação movida para a área de recusadas.' : 'As ações de conversa e atendimento agora ficam na aba Mensagens.'}
+        </p>
+      </div>
+    );
+  };
+
+  const renderSolicitacaoCard = (solicitacao, { readOnly = false } = {}) => {
+    const isPendente = solicitacao.status === 'pendente';
+    const isEmAnalise = solicitacao.status === 'indisponivel_em_analise';
+    const isProcessavel = isPendente || isEmAnalise;
+    const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
+    const livroDisponivel = solicitacao?.livros?.disponivel !== false;
+    const chatMensagens = Array.isArray(solicitacao?.solicitacoes_emprestimo_mensagens)
+      ? solicitacao.solicitacoes_emprestimo_mensagens
+      : [];
+
+    return (
+      <div key={solicitacao.id} className={cn('border rounded-lg p-4 space-y-3', readOnly && 'bg-destructive/5')}>
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="font-medium">{solicitacao.livros?.titulo || 'Livro'}</p>
+            <p className="text-sm text-muted-foreground">{solicitacao.livros?.autor || '-'}</p>
+            <p className="text-xs text-muted-foreground">
+              Aluno: {solicitacao.usuarios_biblioteca?.nome || '-'} • {formatDateBR(solicitacao.created_at)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {isExtension ? 'Tipo: pedido de prorrogação' : 'Tipo: solicitação de empréstimo'}
+            </p>
+          </div>
+          <div>{getStatusSolicitacaoBadge(solicitacao.status)}</div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <p className="mb-1 text-xs text-muted-foreground">Mensagem inicial do aluno</p>
+            <p className="min-h-[52px] rounded-md border bg-muted/30 p-2 text-sm">{solicitacao.mensagem || 'Sem mensagem.'}</p>
+            {isExtension && (
+              <div className="mt-2 rounded-md border bg-background p-2 text-xs text-muted-foreground">
+                <p>Data atual: {formatDateBR(solicitacao.data_devolucao_atual)}</p>
+                <p>Nova data pedida: {formatDateBR(solicitacao.nova_data_devolucao_solicitada)}</p>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+            <p>
+              {chatMensagens.length > 0
+                ? `Esta solicitação possui ${chatMensagens.length} mensagem(ns) na aba Conversas.`
+                : 'As mensagens desta solicitação ficam centralizadas na aba Conversas.'}
+            </p>
+            <div className="mt-3 flex justify-end">
+              <Button type="button" size="sm" variant={readOnly ? 'outline' : 'default'} onClick={() => navigate('/conversas')}>
+                <Inbox className="mr-2 h-4 w-4" />
+                {readOnly ? 'Ver histórico da conversa' : 'Abrir conversa'}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {!readOnly && isProcessavel ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
             <Button
               variant="secondary"
               className="w-full sm:w-auto"
-              disabled={saving || (actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo && actionLoading.tipo !== 'mensagem')}
-              onClick={() => handleEnviarMensagemSolicitacao(solicitacao)}
+              disabled={saving || !isPendente || !livroDisponivel || (actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo !== 'indisponivel')}
+              onClick={() => handleMarcarSolicitacaoIndisponivel(solicitacao)}
             >
-              {actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'mensagem' ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              {actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'indisponivel' ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <Inbox className="w-4 h-4 mr-2" />
+                <AlertTriangle className="mr-2 h-4 w-4" />
               )}
-              {isPendente ? 'Enviar mensagem e marcar sob análise' : 'Enviar mensagem'}
+              {livroDisponivel ? 'Marcar indisponível' : 'Já indisponível'}
             </Button>
-              <Button
-                variant="secondary"
-                className="w-full sm:w-auto"
-                disabled={saving || !isPendente || !livroDisponivel || (actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo !== 'indisponivel')}
-                onClick={() => handleMarcarSolicitacaoIndisponivel(solicitacao)}
-              >
-                {actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'indisponivel' ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <AlertTriangle className="w-4 h-4 mr-2" />
-                )}
-                {livroDisponivel ? 'Marcar indisponível' : 'Já indisponível'}
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full sm:w-auto"
-                disabled={saving || (actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'aprovar')}
+            <Button
+              variant="outline"
+              className="w-full sm:w-auto"
+              disabled={saving || (actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'aprovar')}
               onClick={() => handleRecusarSolicitacao(solicitacao)}
             >
               {actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'recusar' ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <XCircle className="w-4 h-4 mr-2" />
+                <XCircle className="mr-2 h-4 w-4" />
               )}
               Recusar
             </Button>
@@ -687,9 +725,9 @@ export default function Emprestimos() {
               onClick={() => handleAprovarSolicitacao(solicitacao)}
             >
               {actionLoading.solicitacaoId === solicitacao.id && actionLoading.tipo === 'aprovar' ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <CheckCircle className="w-4 h-4 mr-2" />
+                <CheckCircle className="mr-2 h-4 w-4" />
               )}
               {isExtension ? 'Aprovar prorrogação' : 'Aprovar e gerar empréstimo'}
             </Button>
@@ -723,13 +761,25 @@ export default function Emprestimos() {
     () => solicitacoes.filter((s) => ['recusada', 'negada', 'cancelada'].includes(String(s?.status || '').toLowerCase())),
     [solicitacoes],
   );
+  const solicitacoesConversas = useMemo(
+    () => [...solicitacoes].sort((a, b) => {
+      const chatA = Array.isArray(a?.solicitacoes_emprestimo_mensagens) ? a.solicitacoes_emprestimo_mensagens.at(-1)?.created_at : null;
+      const chatB = Array.isArray(b?.solicitacoes_emprestimo_mensagens) ? b.solicitacoes_emprestimo_mensagens.at(-1)?.created_at : null;
+      const lastA = chatA || a?.updated_at || a?.created_at || 0;
+      const lastB = chatB || b?.updated_at || b?.created_at || 0;
+      return new Date(lastB).getTime() - new Date(lastA).getTime();
+    }),
+    [solicitacoes],
+  );
 
   useEffect(() => {
-    const defaultTab = canManageLoans ? 'solicitacoes' : 'ativos';
+    const defaultTab = location.pathname === '/conversas'
+      ? 'conversas'
+      : (canManageLoans ? 'solicitacoes' : 'ativos');
     const nextTab = requestedTab || defaultTab;
-    const isValidTab = ['ativos', 'historico', ...(canManageLoans ? ['solicitacoes', 'recusadas'] : [])].includes(nextTab);
+    const isValidTab = ['ativos', 'historico', ...(canManageLoans ? ['solicitacoes', 'conversas', 'recusadas'] : [])].includes(nextTab);
     setActiveTab(isValidTab ? nextTab : defaultTab);
-  }, [canManageLoans, requestedTab]);
+  }, [canManageLoans, location.pathname, requestedTab]);
 
   const clearAtivosFilter = useCallback(() => {
     navigate('/emprestimos?tab=ativos', { replace: true });
@@ -1420,6 +1470,11 @@ export default function Emprestimos() {
                     <XCircle className="w-4 h-4" /> Recusadas ({solicitacoesRecusadas.length})
                   </TabsTrigger>
                 )}
+                {canManageLoans && (
+                  <TabsTrigger value="conversas" className="gap-2 shrink-0">
+                    <Inbox className="w-4 h-4" /> Conversas ({solicitacoesConversas.length})
+                  </TabsTrigger>
+                )}
                 <TabsTrigger value="ativos" className="gap-2 shrink-0">
                   <AlertTriangle className="w-4 h-4" /> Ativos ({emprestimosAtivos.length})
                 </TabsTrigger>
@@ -1542,6 +1597,20 @@ export default function Emprestimos() {
                       {solicitacoesRecusadas.map((solicitacao) =>
                         renderSolicitacaoCard(solicitacao, { readOnly: true }),
                       )}
+                    </div>
+                  )}
+                </TabsContent>
+              )}
+
+              {canManageLoans && (
+                <TabsContent value="conversas">
+                  {solicitacoesConversas.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">Nenhuma conversa registrada no momento.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {solicitacoesConversas.map((solicitacao) => renderConversationCard(solicitacao, {
+                        readOnly: ['recusada', 'negada', 'cancelada'].includes(String(solicitacao?.status || '').toLowerCase()),
+                      }))}
                     </div>
                   )}
                 </TabsContent>

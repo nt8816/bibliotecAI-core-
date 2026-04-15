@@ -37,7 +37,7 @@ function buildNotificationRoute(notification, userRole) {
   const category = String(data?.category || data?.canal || '').trim().toLowerCase();
   if (category === 'atividades') return '/aluno/atividades';
   if (category === 'comunicados') return userRole === 'aluno' ? '/aluno/comunicados' : '/comunicados';
-  if (category === 'mensagens') return '/emprestimos?tab=solicitacoes';
+  if (category === 'mensagens') return userRole === 'aluno' ? '/aluno/mensagens' : '/mensagens';
 
   return '/dashboard';
 }

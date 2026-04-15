@@ -24,6 +24,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Livros = lazy(() => import('./pages/Livros.jsx'));
 const Usuarios = lazy(() => import('./pages/Usuarios.jsx'));
 const Emprestimos = lazy(() => import('./pages/Emprestimos'));
+const MensagensBiblioteca = lazy(() => import('./pages/MensagensBiblioteca'));
 const Relatorios = lazy(() => import('./pages/Relatorios.jsx'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const TenantNotFound = lazy(() => import('./pages/TenantNotFound'));
@@ -210,10 +211,26 @@ function AppRoutes() {
         )}
       />
       <Route
+        path="/aluno/mensagens"
+        element={(
+          <RoleProtectedRoute allowedRoles={['aluno']}>
+            <MensagensBiblioteca />
+          </RoleProtectedRoute>
+        )}
+      />
+      <Route
         path="/aluno/comunidade"
         element={(
           <RoleProtectedRoute allowedRoles={['aluno']}>
             <ComunidadeAluno />
+          </RoleProtectedRoute>
+        )}
+      />
+      <Route
+        path="/aluno/conversas"
+        element={(
+          <RoleProtectedRoute allowedRoles={['aluno']}>
+            <Navigate to="/aluno/mensagens" replace />
           </RoleProtectedRoute>
         )}
       />
@@ -290,6 +307,22 @@ function AppRoutes() {
         element={
           <RoleProtectedRoute allowedRoles={['gestor', 'bibliotecaria']}>
             <Emprestimos />
+          </RoleProtectedRoute>
+        }
+      />
+      <Route
+        path="/conversas"
+        element={
+          <RoleProtectedRoute allowedRoles={['bibliotecaria']}>
+            <Navigate to="/mensagens" replace />
+          </RoleProtectedRoute>
+        }
+      />
+      <Route
+        path="/mensagens"
+        element={
+          <RoleProtectedRoute allowedRoles={['bibliotecaria']}>
+            <MensagensBiblioteca />
           </RoleProtectedRoute>
         }
       />

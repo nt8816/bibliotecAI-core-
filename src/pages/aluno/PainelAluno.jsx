@@ -60,6 +60,7 @@ import {
   updatePainelAlunoPassword,
   updatePainelAlunoLabCreation,
 } from '@/services/painelAlunoService';
+import { getSupabaseRealtimeClient } from '@/integrations/supabase/client';
 import { getBrowserNotificationPermission, showBrowserNotification } from '@/lib/browserNotifications';
 import { createComunidadePost } from '@/services/comunidadeAlunoService';
 import {
@@ -1531,6 +1532,43 @@ export default function PainelAluno() {
     };
   }, [fetchData, user?.id]);
 
+  useEffect(() => {
+    if (!user?.id) return undefined;
+
+    const supabase = getSupabaseRealtimeClient();
+    if (!supabase) return undefined;
+
+    let refreshTimeout = null;
+    const scheduleRefresh = () => {
+      if (refreshTimeout) {
+        window.clearTimeout(refreshTimeout);
+      }
+      refreshTimeout = window.setTimeout(() => {
+        fetchData({ silent: true });
+        refreshTimeout = null;
+      }, 250);
+    };
+
+    const channel = supabase.channel(`painel-aluno-conversas-${user.id}`);
+
+    ['emprestimos', 'solicitacoes_emprestimo', 'solicitacoes_emprestimo_mensagens'].forEach((table) => {
+      channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table },
+        scheduleRefresh,
+      );
+    });
+
+    channel.subscribe();
+
+    return () => {
+      if (refreshTimeout) {
+        window.clearTimeout(refreshTimeout);
+      }
+      supabase.removeChannel(channel);
+    };
+  }, [fetchData, user?.id]);
+
   const atividadesComEntrega = useMemo(() => {
     const entregaByAtividade = new Map(entregas.map((e) => [e.atividade_id, e]));
     return atividades.map((atividade) => ({
@@ -1913,6 +1951,16 @@ export default function PainelAluno() {
   const solicitacoesExibidas = useMemo(
     () => solicitacoesGroups[solicitacoesView] || [],
     [solicitacoesGroups, solicitacoesView],
+  );
+  const conversasSolicitacoes = useMemo(
+    () => [...ensureArray(solicitacoes)].sort((a, b) => {
+      const chatA = ensureArray(a?.solicitacoes_emprestimo_mensagens).at(-1)?.created_at;
+      const chatB = ensureArray(b?.solicitacoes_emprestimo_mensagens).at(-1)?.created_at;
+      const lastA = chatA || a?.updated_at || a?.created_at || 0;
+      const lastB = chatB || b?.updated_at || b?.created_at || 0;
+      return new Date(lastB).getTime() - new Date(lastA).getTime();
+    }),
+    [solicitacoes],
   );
 
   const getSolicitacaoStatusInfo = useCallback(
@@ -3278,6 +3326,7 @@ export default function PainelAluno() {
     if (location.pathname === '/aluno/biblioteca') return 'biblioteca';
     if (location.pathname === '/aluno/laboratorio') return 'laboratorio';
     if (location.pathname === '/aluno/atividades') return 'atividades';
+    if (location.pathname === '/aluno/mensagens' || location.pathname === '/aluno/conversas') return 'conversas';
     return 'perfil';
   }, [location.pathname]);
 
@@ -3285,6 +3334,7 @@ export default function PainelAluno() {
     if (activeSection === 'biblioteca') return 'Biblioteca';
     if (activeSection === 'laboratorio') return 'Laboratorio';
     if (activeSection === 'atividades') return 'Atividades';
+    if (activeSection === 'conversas') return 'Conversas';
     return 'Meu Perfil';
   }, [activeSection]);
   const criacoesLaboratorioFiltradas = useMemo(() => {
@@ -3791,10 +3841,8 @@ export default function PainelAluno() {
                         </>
                       );
                       const handleClick = () => {
-                        if (n.tipo === 'solicitacao') {
-                          navigate('/aluno/biblioteca');
-                          setBibliotecaView('minhas_solicitacoes');
-                          setSolicitacoesView('pendentes');
+                        if (n.tipo === 'solicitacao' || n.tipo === 'solicitacao_chat') {
+                          navigate('/aluno/mensagens');
                           return;
                         }
                         if (n.tipo === 'atividade') {
@@ -3845,6 +3893,136 @@ export default function PainelAluno() {
 
         {activeSection !== 'perfil' && (
           <Tabs value={activeSection}>
+            <TabsContent value="conversas" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Conversa com a biblioteca</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {conversasSolicitacoes.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                      Você ainda não iniciou nenhuma conversa com a biblioteca.
+                    </div>
+                  ) : (
+                    conversasSolicitacoes.map((solicitacao) => {
+                      const statusInfo = getSolicitacaoStatusInfo(solicitacao);
+                      const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
+                      const podeConversar = !['aprovada', 'aceita', 'recusada', 'negada', 'cancelada'].includes(
+                        String(solicitacao?.status || '').toLowerCase(),
+                      );
+                      const chatMensagens = [...ensureArray(solicitacao?.solicitacoes_emprestimo_mensagens)].sort(
+                        (a, b) => new Date(a?.created_at || 0).getTime() - new Date(b?.created_at || 0).getTime(),
+                      );
+
+                      return (
+                        <div key={solicitacao.id} className="space-y-3 rounded-2xl border p-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <p className="font-medium">{solicitacao.livros?.titulo || 'Livro'}</p>
+                              <p className="text-xs text-muted-foreground">{solicitacao.livros?.autor || '-'}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {isExtension ? 'Pedido de prorrogação' : 'Solicitação de empréstimo'} • criada em {formatDateBR(solicitacao.created_at)}
+                              </p>
+                            </div>
+                            <Badge variant={statusInfo.variant}>
+                              {statusInfo.icon}
+                              {statusInfo.label}
+                            </Badge>
+                          </div>
+
+                          {isExtension && (
+                            <div className="rounded-xl border bg-muted/20 p-3 text-xs text-muted-foreground">
+                              <p>Data atual: {formatDateBR(solicitacao.data_devolucao_atual)}</p>
+                              <p>Nova data pedida: {formatDateBR(solicitacao.nova_data_devolucao_solicitada)}</p>
+                            </div>
+                          )}
+
+                          <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
+                            <p className="text-xs text-muted-foreground">Mensagens da conversa</p>
+
+                            {solicitacao.mensagem && (
+                              <div className="mr-6 rounded-md border bg-background px-3 py-2 text-sm">
+                                <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                                  <span>Você</span>
+                                  <span>{formatDateBR(solicitacao.created_at)}</span>
+                                </div>
+                                <p className="mt-1 whitespace-pre-wrap">{solicitacao.mensagem}</p>
+                              </div>
+                            )}
+
+                            {solicitacao.resposta && (
+                              <div className="ml-6 rounded-md border border-primary/20 bg-primary/10 px-3 py-2 text-sm">
+                                <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                                  <span>Biblioteca</span>
+                                  <span>{formatDateBR(solicitacao.updated_at || solicitacao.created_at)}</span>
+                                </div>
+                                <p className="mt-1 whitespace-pre-wrap">{solicitacao.resposta}</p>
+                              </div>
+                            )}
+
+                            {chatMensagens.length === 0 ? (
+                              <p className="text-sm text-muted-foreground">Nenhuma mensagem adicional registrada ainda.</p>
+                            ) : (
+                              <div className="max-h-72 space-y-2 overflow-y-auto">
+                                {chatMensagens.map((mensagem) => {
+                                  const isBiblioteca = mensagem?.autor_tipo === 'bibliotecaria';
+                                  return (
+                                    <div
+                                      key={mensagem.id}
+                                      className={`rounded-md border px-3 py-2 text-sm ${
+                                        isBiblioteca ? 'ml-6 border-primary/20 bg-primary/10' : 'mr-6 bg-background'
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                                        <span>{isBiblioteca ? 'Biblioteca' : 'Você'}</span>
+                                        <span>{formatDateBR(mensagem.created_at)}</span>
+                                      </div>
+                                      <p className="mt-1 whitespace-pre-wrap">{mensagem.mensagem}</p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
+                          {podeConversar ? (
+                            <div className="space-y-2">
+                              <Textarea
+                                rows={3}
+                                placeholder="Escreva sua mensagem para a biblioteca..."
+                                value={mensagemSolicitacaoPorId[solicitacao.id] || ''}
+                                onChange={(e) =>
+                                  setMensagemSolicitacaoPorId((prev) => ({
+                                    ...prev,
+                                    [solicitacao.id]: e.target.value,
+                                  }))
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleEnviarMensagemSolicitacao(solicitacao.id);
+                                  }
+                                }}
+                                disabled={saving}
+                              />
+                              <div className="flex justify-end">
+                                <Button type="button" onClick={() => handleEnviarMensagemSolicitacao(solicitacao.id)} disabled={saving}>
+                                  <Send className="mr-2 h-4 w-4" />
+                                  Enviar mensagem
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">Esta conversa foi finalizada e está disponível apenas para consulta.</p>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
             <TabsContent value="atividades" className="space-y-4">
               <Card>
                 <CardHeader>
@@ -4932,72 +5110,18 @@ export default function PainelAluno() {
                               </div>
                             )}
 
-                            {solicitacao.resposta && (
-                              <div className="rounded-md border bg-primary/5 p-2">
-                                <p className="text-xs text-muted-foreground">Resposta da biblioteca</p>
-                                <p className="text-sm">{solicitacao.resposta}</p>
+                            <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+                              <p>
+                                {chatMensagens.length > 0
+                                  ? `Esta solicitação já tem ${chatMensagens.length} mensagem(ns) na aba Mensagens.`
+                                  : 'As mensagens desta solicitação agora ficam na aba Mensagens.'}
+                              </p>
+                              <div className="mt-3 flex justify-end">
+                                <Button type="button" size="sm" variant={podeConversar ? 'default' : 'outline'} onClick={() => navigate('/aluno/mensagens')}>
+                                  <Send className="w-4 h-4 mr-2" />
+                                  {podeConversar ? 'Abrir mensagens' : 'Ver histórico das mensagens'}
+                                </Button>
                               </div>
-                            )}
-
-                            <div className="rounded-md border bg-muted/20 p-3 space-y-2">
-                              <p className="text-xs text-muted-foreground">Conversa sobre a solicitação</p>
-                              {chatMensagens.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">Nenhuma mensagem registrada ainda.</p>
-                              ) : (
-                                <div className="space-y-2 max-h-56 overflow-y-auto">
-                                  {chatMensagens.map((mensagem) => {
-                                    const isBiblioteca = mensagem?.autor_tipo === 'bibliotecaria';
-                                    return (
-                                      <div
-                                        key={mensagem.id}
-                                        className={`rounded-md px-3 py-2 text-sm border ${
-                                          isBiblioteca ? 'bg-primary/10 border-primary/20 ml-6' : 'bg-background mr-6'
-                                        }`}
-                                      >
-                                        <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                                          <span>{isBiblioteca ? 'Biblioteca' : 'Você'}</span>
-                                          <span>{formatDateBR(mensagem.created_at)}</span>
-                                        </div>
-                                        <p className="mt-1 whitespace-pre-wrap">{mensagem.mensagem}</p>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-
-                              {podeConversar && (
-                                <div className="space-y-2">
-                                  <Textarea
-                                    rows={2}
-                                    placeholder="Escreva sua mensagem para a biblioteca..."
-                                    value={mensagemSolicitacaoPorId[solicitacao.id] || ''}
-                                    onChange={(e) =>
-                                      setMensagemSolicitacaoPorId((prev) => ({
-                                        ...prev,
-                                        [solicitacao.id]: e.target.value,
-                                      }))
-                                    }
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' && !e.shiftKey) {
-                                        e.preventDefault();
-                                        handleEnviarMensagemSolicitacao(solicitacao.id);
-                                      }
-                                    }}
-                                    disabled={saving}
-                                  />
-                                  <div className="flex justify-end">
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      onClick={() => handleEnviarMensagemSolicitacao(solicitacao.id)}
-                                      disabled={saving}
-                                    >
-                                      <Send className="w-4 h-4 mr-2" />
-                                      Enviar mensagem
-                                    </Button>
-                                  </div>
-                                </div>
-                              )}
                             </div>
                           </div>
                         );
