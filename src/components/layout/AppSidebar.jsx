@@ -75,6 +75,7 @@ export function AppSidebar() {
         ...commonItems,
         { title: 'Livros', url: '/livros', icon: BookOpen },
         { title: 'Usuários', url: '/usuarios', icon: Users },
+        { title: 'Atividades', url: '/gestor/atividades', icon: ClipboardList },
         { title: 'Relatórios', url: '/relatorios', icon: BarChart3 },
         { title: 'Comunicados', url: '/comunicados', icon: Bell },
         { title: 'Comunidade', url: '/comunidade', icon: MessageSquare },
