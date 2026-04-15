@@ -1,4 +1,5 @@
 import { getPlatformAccessToken, refreshPlatformSession } from '@/lib/platformSession';
+import { getWriteGuardReason } from '@/lib/appEnvironment';
 
 const PLATFORM_API_BASE_URL = String(import.meta.env.VITE_PLATFORM_API_BASE_URL || '').trim().replace(/\/+$/, '');
 
@@ -49,6 +50,14 @@ export async function requestPlatformApi(routePath, {
   if (!isPlatformApiConfigured()) {
     const error = new Error('Platform API nao configurada.');
     error.platformUnavailable = true;
+    throw error;
+  }
+
+  const writeGuardReason = getWriteGuardReason(method, routePath);
+  if (writeGuardReason) {
+    const error = new Error(writeGuardReason);
+    error.status = 403;
+    error.writeGuard = true;
     throw error;
   }
 

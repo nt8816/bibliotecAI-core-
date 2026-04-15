@@ -30,6 +30,22 @@ npm run dev
 
 Aplicação em: `http://localhost:8080`
 
+## Ambiente de homologacao seguro
+
+1. Crie um arquivo `.env.homolog` a partir de `.env.homolog.example`.
+2. Preencha apenas credenciais e endpoints de homologacao.
+3. Rode `npm run dev:homolog`.
+
+Nesse modo:
+
+- o app exibe um banner de ambiente;
+- a rota publica `/sandbox` funciona como porta de entrada online para homologacao;
+- chamadas de escrita (`POST`, `PATCH`, `PUT`, `DELETE`) ficam bloqueadas por padrao;
+- rotas de autenticacao `/v1/auth/*` continuam liberadas para login/refresh;
+- para permitir escrita real em homologacao, use `VITE_ALLOW_REAL_WRITES=true`.
+
+Isso reduz o risco de usar endpoints de producao durante testes locais.
+
 ## Build de produção
 
 ```sh
