@@ -38,6 +38,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useToast } from '@/hooks/use-toast';
 import { generateTextWithCloudflare } from '@/lib/cloudflareAiApi';
 import { cn } from '@/lib/utils';
+import { fetchSchoolConfiguration } from '@/services/schoolConfigService';
 import {
   avaliarProfessorEntrega,
   createProfessorSugestão,
@@ -93,6 +94,10 @@ function createEmptyAtividade() {
     perguntas: [],
     formulario_ativo: false,
   };
+}
+
+function ensureArray(value) {
+  return Array.isArray(value) ? value : [];
 }
 
 function formatAlunoOptionLabel(aluno) {
@@ -853,7 +858,7 @@ async function completeQuestionsWithAI({
 }
 
 export default function PainelProfessor() {
-  const { user } = useAuth();
+  const { user, isGestor } = useAuth();
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const [loading, setLoading] = useState(true);
@@ -891,13 +896,33 @@ export default function PainelProfessor() {
       setLoading(true);
     }
     try {
-      const data = await fetchProfessorPainelData();
+      const [data, schoolConfig] = await Promise.all([
+        fetchProfessorPainelData(),
+        isGestor
+          ? fetchSchoolConfiguration().catch(() => ({ escola: null, salas: [] }))
+          : Promise.resolve({ escola: null, salas: [] }),
+      ]);
+      const turmasVindasDoModulo = ensureArray(data?.turmasPermitidas)
+        .map((item) => String(item || '').trim())
+        .filter(Boolean);
+      const turmasVindasDaEscola = ensureArray(schoolConfig?.salas)
+        .map((item) => String(item?.nome || '').trim())
+        .filter(Boolean);
+      const turmasDosUsuarios = ensureArray(data?.usuarios)
+        .map((item) => String(item?.turma || '').trim())
+        .filter(Boolean);
+      const turmasUnificadas = [...new Set([
+        ...turmasVindasDoModulo,
+        ...turmasVindasDaEscola,
+        ...turmasDosUsuarios,
+      ])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
       setLivros(Array.isArray(data?.livros) ? data.livros : []);
       setUsuarios(Array.isArray(data?.usuarios) ? data.usuarios : []);
       setSugestoes(Array.isArray(data?.sugestoes) ? data.sugestoes : []);
       setAtividades(Array.isArray(data?.atividades) ? data.atividades : []);
       setEntregas(Array.isArray(data?.entregas) ? data.entregas : []);
-      setProfessorTurmasPermitidas(Array.isArray(data?.turmasPermitidas) ? data.turmasPermitidas : []);
+      setProfessorTurmasPermitidas(turmasUnificadas);
       setProfessorProfileIds(Array.isArray(data?.professorProfileIds) ? data.professorProfileIds : []);
 
       const initial = {};
@@ -918,7 +943,7 @@ export default function PainelProfessor() {
         setLoading(false);
       }
     }
-  }, [toast, user?.id]);
+  }, [isGestor, toast, user?.id]);
 
   useEffect(() => {
     fetchData();
@@ -1475,7 +1500,9 @@ export default function PainelProfessor() {
         {professorTurmasPermitidas.length === 0 && (
           <div className="rounded-2xl border border-warning/30 bg-warning/10 p-4 animate-in fade-in-0 slide-in-from-top-2">
             <p className="text-sm text-warning">
-              Você ainda não possui turmas vinculadas. Peça ao gestor para liberar suas turmas antes de enviar atividades em lote.
+              {isGestor
+                ? 'Ainda não existem turmas cadastradas na escola. Cadastre as turmas em Configuração da Escola para liberar atividades em lote.'
+                : 'Você ainda não possui turmas vinculadas. Peça ao gestor para liberar suas turmas antes de enviar atividades em lote.'}
             </p>
           </div>
         )}
