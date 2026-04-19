@@ -5827,7 +5827,7 @@ const routes: Record<string, RouteHandler> = {
           titulo: item?.titulo || 'Novo comunicado',
           descricao: item?.conteudo || 'Confira o comunicado da sua turma na comunidade.',
           created_at: item?.created_at || null,
-          path: '/comunicados',
+          path: '/aluno/comunicados',
         }))
         .filter((item) => !lidas.has(item.id));
 

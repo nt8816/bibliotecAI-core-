@@ -32,7 +32,12 @@ function isNativeAndroidApp() {
 function buildNotificationRoute(notification, userRole) {
   const data = notification?.data && typeof notification.data === 'object' ? notification.data : {};
   const explicitPath = String(data?.path || '').trim();
-  if (explicitPath.startsWith('/')) return explicitPath;
+  if (explicitPath.startsWith('/')) {
+    if (userRole === 'aluno' && explicitPath.startsWith('/comunicados')) {
+      return explicitPath.replace('/comunicados', '/aluno/comunicados');
+    }
+    return explicitPath;
+  }
 
   const category = String(data?.category || data?.canal || '').trim().toLowerCase();
   if (category === 'atividades') return '/aluno/atividades';
