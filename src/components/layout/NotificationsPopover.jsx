@@ -33,7 +33,12 @@ export function NotificationsPopover({ userRole, onNavigate }) {
     }
 
     const fallbackPath = userRole === 'aluno' ? '/aluno/comunicados' : '/comunicados';
-    handleNavigate(item?.path || fallbackPath);
+    const rawPath = String(item?.path || '').trim();
+    const normalizedPath = userRole === 'aluno' && rawPath.startsWith('/comunicados')
+      ? rawPath.replace('/comunicados', '/aluno/comunicados')
+      : rawPath;
+
+    handleNavigate(normalizedPath || fallbackPath);
   };
 
   return (
