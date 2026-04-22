@@ -9521,6 +9521,7 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/aluno\/laboratorio\/criacoes\/[^/]+\/delete$/, '/v1/aluno/laboratorio/criacoes/:id/delete')
     .replace(/\/v1\/aluno\/laboratorio\/criacoes\/[^/]+$/, '/v1/aluno/laboratorio/criacoes/:id')
     .replace(/\/v1\/professor\/sugestoes\/[^/]+\/delete$/, '/v1/professor/sugestoes/:id/delete')
+    .replace(/\/v1\/professor\/atividades\/delete-batch$/, '/v1/professor/atividades/delete-batch')
     .replace(/\/v1\/professor\/atividades\/[^/]+\/delete$/, '/v1/professor/atividades/:id/delete')
     .replace(/\/v1\/professor\/atividades\/[^/]+\/status$/, '/v1/professor/atividades/:id/status')
     .replace(/\/v1\/professor\/atividades\/[^/]+$/, '/v1/professor/atividades/:id')
