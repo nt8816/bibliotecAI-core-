@@ -3237,6 +3237,53 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao excluir atividade.' }, 400);
     }
   },
+  'POST /v1/professor/atividades/delete-batch': async (request, env) => {
+    try {
+      const context = await getProfessorModuleData(request, env);
+      const body = await request.json().catch(() => ({}));
+      const ids = Array.isArray(body?.ids)
+        ? body.ids.map((item: unknown) => String(item || '').trim()).filter(Boolean)
+        : [];
+
+      if (ids.length === 0) {
+        return jsonResponse({ success: false, error: 'Nenhuma atividade selecionada.' }, 400);
+      }
+
+      const uniqueIds = Array.from(new Set(ids));
+      const record = await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({
+        select: 'id,professor_id',
+        id: `in.(${uniqueIds.join(',')})`,
+      }).toString()}`);
+      const atividades = ensureArray<Record<string, unknown>>(record);
+
+      if (atividades.length !== uniqueIds.length) {
+        return jsonResponse({ success: false, error: 'Uma ou mais atividades nao foram encontradas.' }, 404);
+      }
+
+      const allowed = atividades.every((atividade) => context.professorProfileIds.includes(String(atividade?.professor_id || '').trim()));
+      if (!allowed) {
+        return jsonResponse({ success: false, error: 'Uma ou mais atividades nao pertencem a este professor.' }, 403);
+      }
+
+      await supabaseAdminRequest(env, `/rest/v1/atividades_entregas?${new URLSearchParams({
+        atividade_id: `in.(${uniqueIds.join(',')})`,
+      }).toString()}`, {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+      });
+
+      await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({
+        id: `in.(${uniqueIds.join(',')})`,
+      }).toString()}`, {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+      });
+
+      return jsonResponse({ success: true, deletedCount: uniqueIds.length });
+    } catch (error) {
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao excluir atividades.' }, 400);
+    }
+  },
   'POST /v1/professor/atividades/:id/status': async (request, env) => {
     try {
       const context = await getProfessorModuleData(request, env);

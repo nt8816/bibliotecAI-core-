@@ -33,6 +33,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useAuth } from '@/hooks/useAuth';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useToast } from '@/hooks/use-toast';
@@ -44,6 +45,7 @@ import {
   avaliarProfessorEntrega,
   createProfessorSugestao,
   deleteProfessorAtividade,
+  deleteProfessorAtividadesBatch,
   deleteProfessorSugestao,
   fetchProfessorPainelData,
   saveProfessorAtividade,
@@ -882,6 +884,8 @@ export default function PainelProfessor() {
   const [atividadeForm, setAtividadeForm] = useState(createEmptyAtividade);
   const [avaliacaoForm, setAvaliacaoForm] = useState({});
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [selectedAtividadeIds, setSelectedAtividadeIds] = useState([]);
+  const [deleteBatchDialogOpen, setDeleteBatchDialogOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiQuestionCount, setAiQuestionCount] = useState('');
   const [aiChoiceCount, setAiChoiceCount] = useState('');
@@ -1040,6 +1044,22 @@ export default function PainelProfessor() {
     }),
     [atividades],
   );
+
+  const selectedAtividadeIdsSet = useMemo(
+    () => new Set(selectedAtividadeIds.map((item) => String(item))),
+    [selectedAtividadeIds],
+  );
+
+  const allAtividadesSelected = useMemo(
+    () => atividadesComMeta.length > 0
+      && atividadesComMeta.every((atividade) => selectedAtividadeIdsSet.has(String(atividade.id))),
+    [atividadesComMeta, selectedAtividadeIdsSet],
+  );
+
+  useEffect(() => {
+    const availableIds = new Set(atividadesComMeta.map((atividade) => String(atividade.id)));
+    setSelectedAtividadeIds((prev) => prev.filter((id) => availableIds.has(String(id))));
+  }, [atividadesComMeta]);
 
   const resetAtividadeDialog = () => {
     setEditingAtividade(null);
@@ -1513,6 +1533,48 @@ export default function PainelProfessor() {
     }
   };
 
+  const toggleAtividadeSelection = useCallback((atividadeId, checked) => {
+    const normalizedId = String(atividadeId || '').trim();
+    if (!normalizedId) return;
+
+    setSelectedAtividadeIds((prev) => {
+      const current = new Set(prev.map((item) => String(item)));
+      if (checked) current.add(normalizedId);
+      else current.delete(normalizedId);
+      return Array.from(current);
+    });
+  }, []);
+
+  const toggleSelectAllAtividades = useCallback((checked) => {
+    if (checked) {
+      setSelectedAtividadeIds(atividadesComMeta.map((atividade) => String(atividade.id)));
+      return;
+    }
+    setSelectedAtividadeIds([]);
+  }, [atividadesComMeta]);
+
+  const handleDeleteSelectedAtividades = async () => {
+    if (selectedAtividadeIds.length === 0) return;
+
+    setSaving(true);
+    try {
+      await deleteProfessorAtividadesBatch(selectedAtividadeIds, { roleHint: profileRoleHint });
+      setDeleteBatchDialogOpen(false);
+      setSelectedAtividadeIds([]);
+      toast({
+        title: selectedAtividadeIds.length === 1 ? 'Atividade excluida' : 'Atividades excluidas',
+        description: selectedAtividadeIds.length === 1
+          ? 'A atividade selecionada foi removida.'
+          : `${selectedAtividadeIds.length} atividades foram removidas.`,
+      });
+      await fetchData();
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Falha ao excluir atividades.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <MainLayout title={isGestor ? 'Painel do Gestor' : 'Painel do Professor'}>
       <div className="space-y-6">
@@ -1620,7 +1682,32 @@ export default function PainelProfessor() {
                   ) : atividadesComMeta.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Nenhuma atividade cadastrada ainda.</p>
                   ) : (
-                    atividadesComMeta.map((atividade, index) => (
+                    <>
+                      <div className="flex flex-col gap-3 rounded-2xl border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <label className="flex items-center gap-3 text-sm font-medium">
+                          <Checkbox
+                            checked={allAtividadesSelected}
+                            onCheckedChange={(checked) => toggleSelectAllAtividades(Boolean(checked))}
+                            aria-label="Selecionar todas as atividades"
+                          />
+                          Selecionar todas
+                        </label>
+
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <span className="text-sm text-muted-foreground">{selectedAtividadeIds.length} selecionada(s)</span>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            disabled={saving || selectedAtividadeIds.length === 0}
+                            onClick={() => setDeleteBatchDialogOpen(true)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Apagar selecionadas
+                          </Button>
+                        </div>
+                      </div>
+
+                      {atividadesComMeta.map((atividade, index) => (
                       <div
                         key={atividade.id}
                         className="rounded-2xl border bg-card/80 p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_16px_30px_rgba(0,0,0,0.06)] animate-in fade-in-0 slide-in-from-bottom-2 sm:p-5"
@@ -1628,6 +1715,14 @@ export default function PainelProfessor() {
                       >
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                           <div className="space-y-2">
+                            <label className="flex w-fit items-center gap-3 rounded-full border bg-background/80 px-3 py-2 text-xs font-medium text-muted-foreground">
+                              <Checkbox
+                                checked={selectedAtividadeIdsSet.has(String(atividade.id))}
+                                onCheckedChange={(checked) => toggleAtividadeSelection(atividade.id, Boolean(checked))}
+                                aria-label={`Selecionar atividade ${atividade.titulo}`}
+                              />
+                              Selecionar
+                            </label>
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="font-semibold text-foreground">{atividade.titulo}</p>
                               <Badge variant="outline">{atividade.status || 'pendente'}</Badge>
@@ -1661,7 +1756,8 @@ export default function PainelProfessor() {
                           </div>
                         </div>
                       </div>
-                    ))
+                      ))}
+                    </>
                   )}
                 </CardContent>
               </Card>
@@ -2412,6 +2508,29 @@ export default function PainelProfessor() {
           </DialogContent>
         </Dialog>
 
+        <AlertDialog open={deleteBatchDialogOpen} onOpenChange={setDeleteBatchDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir atividades selecionadas?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {selectedAtividadeIds.length === 1
+                  ? 'A atividade selecionada sera removida permanentemente.'
+                  : `As ${selectedAtividadeIds.length} atividades selecionadas serao removidas permanentemente.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteSelectedAtividades}
+                disabled={saving || selectedAtividadeIds.length === 0}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {saving ? 'Excluindo...' : 'Excluir selecionadas'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -2434,4 +2553,3 @@ export default function PainelProfessor() {
     </MainLayout>
   );
 }
-

@@ -44,6 +44,14 @@ export async function deleteProfessorAtividade(id, { roleHint } = {}) {
   });
 }
 
+export async function deleteProfessorAtividadesBatch(ids, { roleHint } = {}) {
+  return requestPlatformApi('/v1/professor/atividades/delete-batch', {
+    method: 'POST',
+    body: { ids },
+    headers: buildRoleHintHeaders(roleHint),
+  });
+}
+
 export async function updateProfessorAtividadeStatus(id, status, { roleHint } = {}) {
   return requestPlatformApi(`/v1/professor/atividades/${id}/status`, {
     method: 'POST',

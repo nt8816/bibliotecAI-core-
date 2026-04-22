@@ -49,18 +49,6 @@ function formatDateTimeBR(value) {
   }
 }
 
-function formatTargetAudienceLabel(value) {
-  return String(value || '').trim() || 'Todas as turmas';
-}
-
-function isExpiringSoon(value, windowDays = 7) {
-  if (!value) return false;
-  const expiresAt = new Date(value);
-  if (Number.isNaN(expiresAt.getTime())) return false;
-  const diffMs = expiresAt.getTime() - Date.now();
-  return diffMs > 0 && diffMs <= windowDays * 24 * 60 * 60 * 1000;
-}
-
 function toEndOfDayIso(dateValue) {
   if (!dateValue) return null;
   const localDate = new Date(`${dateValue}T23:59:59.999`);
@@ -446,14 +434,6 @@ export default function Comunicados() {
       .filter((atividade) => isComunicadosFormActivity(atividade?.descricao) && atividade.meta.perguntas.length > 0)
       .sort((a, b) => new Date(b?.created_at || 0).getTime() - new Date(a?.created_at || 0).getTime())
   ), [professorAtividades, professorEntregas]);
-
-  const comunicadosSummary = useMemo(() => ({
-    total: comunicadosVisiveis.length,
-    gerais: comunicadosVisiveis.filter((post) => !String(post?.turma_publico || '').trim()).length,
-    comAudio: comunicadosVisiveis.filter((post) => Boolean(post?.audio_url)).length,
-    comImagem: comunicadosVisiveis.filter((post) => ensureArray(post?.imagem_urls).length > 0).length,
-    expiramEmBreve: comunicadosVisiveis.filter((post) => isExpiringSoon(post?.expires_at)).length,
-  }), [comunicadosVisiveis]);
 
   const setSelectedAudioFile = async (file) => {
     if (!file) return;
@@ -1033,41 +1013,6 @@ export default function Comunicados() {
         </Card>
 
         {canPublish && (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Card className="overflow-hidden border-emerald-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(236,253,245,0.92))] dark:border-emerald-900/50 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.94),rgba(5,46,22,0.28))]">
-              <CardContent className="p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700/80 dark:text-emerald-300/80">Mural ativo</p>
-                <p className="mt-3 text-3xl font-semibold text-slate-900 dark:text-slate-50">{comunicadosSummary.total}</p>
-                <p className="mt-2 text-sm text-muted-foreground">Comunicados visiveis para alunos e equipe.</p>
-              </CardContent>
-            </Card>
-            <Card className="overflow-hidden border-sky-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(239,248,255,0.92))] dark:border-sky-900/50 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.94),rgba(12,74,110,0.22))]">
-              <CardContent className="p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700/80 dark:text-sky-300/80">Alcance geral</p>
-                <p className="mt-3 text-3xl font-semibold text-slate-900 dark:text-slate-50">{comunicadosSummary.gerais}</p>
-                <p className="mt-2 text-sm text-muted-foreground">Avisos liberados para todas as turmas.</p>
-              </CardContent>
-            </Card>
-            <Card className="overflow-hidden border-violet-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,243,255,0.92))] dark:border-violet-900/50 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.94),rgba(76,29,149,0.22))]">
-              <CardContent className="p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-violet-700/80 dark:text-violet-300/80">Midia enviada</p>
-                <p className="mt-3 text-3xl font-semibold text-slate-900 dark:text-slate-50">{comunicadosSummary.comAudio + comunicadosSummary.comImagem}</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {comunicadosSummary.comAudio} com audio e {comunicadosSummary.comImagem} com imagens.
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="overflow-hidden border-amber-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,251,235,0.92))] dark:border-amber-900/50 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.94),rgba(120,53,15,0.22))]">
-              <CardContent className="p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700/80 dark:text-amber-300/80">Expiram em breve</p>
-                <p className="mt-3 text-3xl font-semibold text-slate-900 dark:text-slate-50">{comunicadosSummary.expiramEmBreve}</p>
-                <p className="mt-2 text-sm text-muted-foreground">Com remoção programada para os próximos 7 dias.</p>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {canPublish && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Novo comunicado</CardTitle>
@@ -1376,44 +1321,15 @@ export default function Comunicados() {
           </Card>
         )}
 
-        <Card className="overflow-hidden border-border/70">
-          <CardHeader className="gap-5 border-b border-border/60 bg-[linear-gradient(180deg,rgba(248,250,252,0.88),rgba(255,255,255,0.98))] dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.86),rgba(2,6,23,0.96))]">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge className="rounded-full bg-foreground text-background hover:bg-foreground">Gestao de comunicados</Badge>
-                  <Badge variant="outline" className="rounded-full">{comunicadosSummary.total} ativos</Badge>
-                  {canPublish && formulariosProfessor.length > 0 ? (
-                    <Badge variant="outline" className="rounded-full">{formulariosProfessor.length} formularios vinculados</Badge>
-                  ) : null}
-                </div>
-                <div>
-                  <CardTitle className="text-xl sm:text-2xl">Mural de comunicados</CardTitle>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                    Avisos organizados em um espaco proprio, com foco em clareza para a equipe e leitura mais rapida para quem administra.
-                  </p>
-                </div>
-              </div>
-              <div className="w-full lg:max-w-sm">
-                <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por titulo, mensagem ou turma..." className="h-12 rounded-2xl bg-background/85" />
-              </div>
+        <Card>
+          <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="text-base">Mural de comunicados</CardTitle>
+              <p className="text-sm text-muted-foreground">Avisos organizados em um espaco proprio, sem misturar com a comunidade.</p>
             </div>
-            {canPublish && (
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Todos os destinos</p>
-                  <p className="mt-2 text-sm text-foreground">Use o mural para separar avisos gerais e recados por turma.</p>
-                </div>
-                <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Midia opcional</p>
-                  <p className="mt-2 text-sm text-foreground">Audio e imagens continuam funcionando normalmente em cada comunicado.</p>
-                </div>
-                <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Remocao automatica</p>
-                  <p className="mt-2 text-sm text-foreground">Defina prazo quando o aviso precisar sair do ar sozinho.</p>
-                </div>
-              </div>
-            )}
+            <div className="w-full sm:max-w-xs">
+              <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar comunicado..." />
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -1426,65 +1342,38 @@ export default function Comunicados() {
             ) : (
               <div className="space-y-4">
                 {comunicadosVisiveis.map((post) => (
-                  <div key={post.id} className="overflow-hidden rounded-[30px] border border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.94))] p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-200/70 hover:shadow-[0_20px_44px_rgba(15,23,42,0.08)] dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.98))]">
-                    <div className="flex flex-col gap-5 xl:grid xl:grid-cols-[minmax(0,1fr)_260px] xl:items-start">
-                      <div className="space-y-4">
+                  <div key={post.id} className="rounded-[30px] border border-border/70 bg-card/95 p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(15,23,42,0.06)]">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="destructive" className="rounded-full">Comunicado</Badge>
-                          <Badge variant="outline" className="rounded-full">
+                          <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">{post.titulo || 'Novo comunicado'}</p>
+                          <Badge variant="destructive">Comunicado</Badge>
+                          <Badge variant="outline">
                             <Users className="mr-1 h-3.5 w-3.5" />
-                            {formatTargetAudienceLabel(post.turma_publico)}
+                            {post.turma_publico || 'Todas as turmas'}
                           </Badge>
-                          {post.audio_url ? <Badge className="rounded-full bg-emerald-600 text-white hover:bg-emerald-600"><AudioLines className="mr-1 h-3.5 w-3.5" />Audio</Badge> : null}
-                          {ensureArray(post.imagem_urls).length > 0 ? <Badge className="rounded-full bg-sky-600 text-white hover:bg-sky-600"><ImagePlus className="mr-1 h-3.5 w-3.5" />{ensureArray(post.imagem_urls).length} imagem(ns)</Badge> : null}
-                          {isExpiringSoon(post.expires_at) ? <Badge className="rounded-full bg-amber-500 text-black hover:bg-amber-500">Expira em breve</Badge> : null}
                         </div>
-
-                        <div className="space-y-2">
-                          <p className="text-xl font-semibold text-slate-900 dark:text-slate-100">{post.titulo || 'Novo comunicado'}</p>
-                          <p className="whitespace-pre-wrap text-sm leading-7 text-slate-600 dark:text-slate-300">{post.conteudo || 'Sem mensagem adicional.'}</p>
-                        </div>
-
-                        <div className="grid gap-3 md:grid-cols-3">
-                          <div className="rounded-2xl border border-border/60 bg-background/75 p-3">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Publicado</p>
-                            <p className="mt-2 text-sm font-medium text-foreground">{formatDateTimeBR(post.created_at)}</p>
-                          </div>
-                          <div className="rounded-2xl border border-border/60 bg-background/75 p-3">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Autor</p>
-                            <p className="mt-2 text-sm font-medium text-foreground">{post.autor_nome || 'Equipe da escola'}</p>
-                          </div>
-                          <div className="rounded-2xl border border-border/60 bg-background/75 p-3">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Remocao</p>
-                            <p className="mt-2 text-sm font-medium text-foreground">{post.expires_at ? formatDateTimeBR(post.expires_at) : 'Sem prazo'}</p>
-                          </div>
-                        </div>
+                        <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">{post.conteudo || 'Sem mensagem adicional.'}</p>
                       </div>
-
-                      <div className="rounded-[24px] border border-border/60 bg-background/80 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Controle rapido</p>
-                        <div className="mt-4 space-y-3 text-sm text-muted-foreground">
-                          <div className="rounded-2xl bg-muted/40 p-3">
-                            <p className="font-medium text-foreground">Destino</p>
-                            <p className="mt-1">{formatTargetAudienceLabel(post.turma_publico)}</p>
-                          </div>
-                          <div className="rounded-2xl bg-muted/40 p-3">
-                            <p className="font-medium text-foreground">Estado</p>
-                            <p className="mt-1">{post.expires_at ? 'Com remocao programada' : 'Ativo sem data final'}</p>
-                          </div>
+                      <div className="shrink-0 rounded-2xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          {formatDateTimeBR(post.created_at)}
                         </div>
+                        {post.expires_at ? <p className="mt-1">Sai em {formatDateTimeBR(post.expires_at)}</p> : null}
                         {canDeleteComunicado(post) ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="mt-4 w-full rounded-xl text-destructive hover:text-destructive"
-                            onClick={() => setDeleteTarget(post)}
-                            disabled={saving}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Apagar comunicado
-                          </Button>
+                          <div className="mt-3 flex justify-end">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="rounded-xl text-destructive hover:text-destructive"
+                              onClick={() => setDeleteTarget(post)}
+                              disabled={saving}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Apagar
+                            </Button>
+                          </div>
                         ) : null}
                       </div>
                     </div>
