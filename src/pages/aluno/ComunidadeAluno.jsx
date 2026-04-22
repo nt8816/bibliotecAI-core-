@@ -154,6 +154,7 @@ function LivroCombobox({
   const displayedValue = String(
     searchValue || (livroSelecionado ? formatLivroOptionLabel(livroSelecionado) : ''),
   );
+  const selectedBookLabel = livroSelecionado ? formatLivroOptionLabel(livroSelecionado) : '';
 
   const livrosFiltrados = useMemo(() => {
     if (!normalizedSearch) return livros;
@@ -174,11 +175,12 @@ function LivroCombobox({
           onChange={(e) => {
             const nextValue = e.target.value;
             onSearchChange?.(nextValue);
+            if (value && nextValue !== selectedBookLabel) onChange('');
             if (!nextValue.trim()) onChange('');
             if (!open) setOpen(true);
           }}
           onFocus={() => setOpen(true)}
-          placeholder="Pesquisar livro por titulo ou autor"
+          placeholder={placeholder}
           className="pr-10"
         />
         <PopoverTrigger asChild>
@@ -192,7 +194,7 @@ function LivroCombobox({
         </PopoverTrigger>
       </div>
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-        <Command>
+        <Command shouldFilter={false}>
           <CommandList>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
@@ -1955,7 +1957,6 @@ export default function ComunidadeAluno() {
     </MainLayout>
   );
 }
-
 
 
 

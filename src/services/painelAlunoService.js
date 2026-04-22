@@ -126,6 +126,13 @@ export async function submitPainelAlunoActivity({ atividadeId, textoEntrega, sta
   });
 }
 
+export async function deletePainelAlunoActivitiesBatch({ atividadeIds }) {
+  return requestPlatformApi('/v1/aluno/atividades/entregas/delete-batch', {
+    method: 'POST',
+    body: { atividadeIds },
+  });
+}
+
 export async function createPainelAlunoAudiobook(payload) {
   return requestPlatformApi('/v1/aluno/audiobooks', {
     method: 'POST',
@@ -160,4 +167,3 @@ export async function deletePainelAlunoLabCreation({ id, comunidadePostId }) {
     body: { comunidadePostId },
   });
 }
-

@@ -38,6 +38,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -46,6 +47,7 @@ import {
   createPainelAlunoLabCreation,
   createPainelAlunoLoanExtensionRequest,
   createPainelAlunoLoanRequest,
+  deletePainelAlunoActivitiesBatch,
   deletePainelAlunoLabCreation,
   fetchPainelAlunoBooks,
   fetchPainelAlunoData,
@@ -1175,6 +1177,8 @@ export default function PainelAluno() {
   const [atividadeImagens, setAtividadeImagens] = useState({});
   const [atividadeRespostas, setAtividadeRespostas] = useState({});
   const [atividadeView, setAtividadeView] = useState('pendentes');
+  const [selectedAtividadeIds, setSelectedAtividadeIds] = useState([]);
+  const [deleteAtividadesDialogOpen, setDeleteAtividadesDialogOpen] = useState(false);
   const [mensagemSolicitacaoPorId, setMensagemSolicitacaoPorId] = useState({});
   const [saving, setSaving] = useState(false);
   const [showAccessChoice, setShowAccessChoice] = useState(false);
@@ -1654,10 +1658,37 @@ export default function PainelAluno() {
     return atividadesPendentesLista;
   }, [atividadeView, atividadesEnviadasLista, atividadesForaDoPrazoLista, atividadesPendentesLista]);
 
+  const selectedAtividadeIdsSet = useMemo(
+    () => new Set(selectedAtividadeIds.map((item) => String(item))),
+    [selectedAtividadeIds],
+  );
+
+  const allAtividadesEnviadasSelected = useMemo(
+    () => atividadesEnviadasLista.length > 0
+      && atividadesEnviadasLista.every((atividade) => selectedAtividadeIdsSet.has(String(atividade.id))),
+    [atividadesEnviadasLista, selectedAtividadeIdsSet],
+  );
+
+  const someAtividadesEnviadasSelected = useMemo(
+    () => atividadesEnviadasLista.some((atividade) => selectedAtividadeIdsSet.has(String(atividade.id))),
+    [atividadesEnviadasLista, selectedAtividadeIdsSet],
+  );
+
   const atividadeEmptyMessage = useMemo(() => {
     if (atividadeView === 'enviadas') return 'Nenhuma atividade enviada ainda.';
     if (atividadeView === 'fora_prazo') return 'Nenhuma atividade fora do prazo.';
     return 'Nenhuma atividade pendente no momento.';
+  }, [atividadeView]);
+
+  useEffect(() => {
+    const availableIds = new Set(atividadesEnviadasLista.map((atividade) => String(atividade.id)));
+    setSelectedAtividadeIds((prev) => prev.filter((id) => availableIds.has(String(id))));
+  }, [atividadesEnviadasLista]);
+
+  useEffect(() => {
+    if (atividadeView !== 'enviadas') {
+      setSelectedAtividadeIds([]);
+    }
   }, [atividadeView]);
 
   const atrasos = useMemo(
@@ -2713,6 +2744,61 @@ export default function PainelAluno() {
           ? 'Audiobooks indisponíveis: aplique a migration do banco.'
           : error?.message || 'Falha ao atualizar seus audiobooks.',
       });
+    }
+  };
+
+  const toggleAtividadeSelection = useCallback((atividadeId, checked) => {
+    const normalizedId = String(atividadeId || '').trim();
+    if (!normalizedId) return;
+
+    setSelectedAtividadeIds((prev) => {
+      const current = new Set(prev.map((item) => String(item)));
+      if (checked) {
+        current.add(normalizedId);
+      } else {
+        current.delete(normalizedId);
+      }
+      return Array.from(current);
+    });
+  }, []);
+
+  const toggleSelectAllAtividadesEnviadas = useCallback((checked) => {
+    if (checked) {
+      setSelectedAtividadeIds(atividadesEnviadasLista.map((atividade) => String(atividade.id)));
+      return;
+    }
+    setSelectedAtividadeIds([]);
+  }, [atividadesEnviadasLista]);
+
+  const handleDeleteSelectedAtividades = async () => {
+    if (selectedAtividadeIds.length === 0) return;
+
+    setSaving(true);
+    try {
+      const selectedIdsSet = new Set(selectedAtividadeIds.map((item) => String(item)));
+      await deletePainelAlunoActivitiesBatch({ atividadeIds: selectedAtividadeIds });
+
+      setEntregas((prev) => prev.filter((item) => !selectedIdsSet.has(String(item?.atividade_id))));
+      setAtividadeTexto((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !selectedIdsSet.has(String(key)))));
+      setAtividadeImagens((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !selectedIdsSet.has(String(key)))));
+      setAtividadeRespostas((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !selectedIdsSet.has(String(key)))));
+      setSelectedAtividadeIds([]);
+      setDeleteAtividadesDialogOpen(false);
+
+      toast({
+        title: selectedIdsSet.size === 1 ? 'Atividade apagada' : 'Atividades apagadas',
+        description: selectedIdsSet.size === 1
+          ? 'A entrega selecionada foi removida.'
+          : `${selectedIdsSet.size} entregas foram removidas.`,
+      });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao apagar atividades',
+        description: error?.message || 'Nao foi possivel apagar as atividades selecionadas.',
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -4047,6 +4133,35 @@ export default function PainelAluno() {
                         </TabsList>
                       </Tabs>
 
+                      {atividadeView === 'enviadas' && atividadesEnviadasLista.length > 0 && (
+                        <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+                          <label className="flex items-center gap-3 text-sm font-medium">
+                            <Checkbox
+                              checked={allAtividadesEnviadasSelected ? true : (someAtividadesEnviadasSelected ? 'indeterminate' : false)}
+                              onCheckedChange={(checked) => toggleSelectAllAtividadesEnviadas(Boolean(checked))}
+                              aria-label="Selecionar todas as atividades enviadas"
+                            />
+                            Selecionar todas
+                          </label>
+
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <span className="text-sm text-muted-foreground">
+                              {selectedAtividadeIds.length} selecionada(s)
+                            </span>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              disabled={saving || selectedAtividadeIds.length === 0}
+                              onClick={() => setDeleteAtividadesDialogOpen(true)}
+                              className="h-10 rounded-xl"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Apagar selecionadas
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
                       {atividadesVisiveis.length === 0 ? (
                         <p className="text-center text-muted-foreground py-8">{atividadeEmptyMessage}</p>
                       ) : atividadesVisiveis.map((atividade) => (
@@ -4056,6 +4171,16 @@ export default function PainelAluno() {
                         >
                           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                             <div className="space-y-2">
+                              {atividadeView === 'enviadas' && atividade.entrega && (
+                                <label className="flex w-fit items-center gap-3 rounded-full border border-border/70 bg-background/90 px-3 py-2 text-xs font-medium text-muted-foreground">
+                                  <Checkbox
+                                    checked={selectedAtividadeIdsSet.has(String(atividade.id))}
+                                    onCheckedChange={(checked) => toggleAtividadeSelection(atividade.id, Boolean(checked))}
+                                    aria-label={`Selecionar atividade ${atividade.titulo}`}
+                                  />
+                                  Selecionar para apagar
+                                </label>
+                              )}
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="font-semibold">{atividade.titulo}</p>
                                 {Array.isArray(atividade.atividadeMeta?.formulario?.perguntas)
@@ -5247,6 +5372,42 @@ export default function PainelAluno() {
         )}
       </div>
 
+      <Dialog
+        open={deleteAtividadesDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteAtividadesDialogOpen(open);
+        }}
+      >
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-md rounded-2xl p-4 sm:p-6">
+          <DialogHeader>
+            <DialogTitle>Apagar atividades enviadas</DialogTitle>
+            <DialogDescription>
+              Essa ação remove as entregas selecionadas e permite enviar novamente depois.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-muted-foreground">
+            {selectedAtividadeIds.length === 1
+              ? 'Deseja apagar a atividade selecionada?'
+              : `Deseja apagar as ${selectedAtividadeIds.length} atividades selecionadas?`}
+          </div>
+
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setDeleteAtividadesDialogOpen(false)} disabled={saving} className="w-full sm:w-auto">
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteSelectedAtividades}
+              disabled={saving || selectedAtividadeIds.length === 0}
+              className="w-full sm:w-auto"
+            >
+              {saving ? 'Apagando...' : 'Confirmar exclusão'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={reviewDialog} onOpenChange={setReviewDialog}>
         <DialogContent className="w-[calc(100vw-1rem)] max-w-lg rounded-2xl p-4 sm:p-6">
           <DialogHeader>
@@ -5716,6 +5877,3 @@ export default function PainelAluno() {
     </MainLayout>
   );
 }
-
-
-

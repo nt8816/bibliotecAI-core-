@@ -5476,7 +5476,7 @@ const routes: Record<string, RouteHandler> = {
         tipo: emp.data_devolucao_real ? 'devolucao' : 'emprestimo',
         descricao: emp.data_devolucao_real
           ? `${emp.usuarios_biblioteca?.nome || 'Usuario'} devolveu "${emp.livros?.titulo || 'Livro'}"`
-          : `${emp.usuarios_biblioteca?.nome || 'Usuario'} emprestou "${emp.livros?.titulo || 'Livro'}"`,
+          : `${emp.usuarios_biblioteca?.nome || 'Usuario'} pegou emprestado "${emp.livros?.titulo || 'Livro'}"`,
         data: emp.data_devolucao_real || emp.data_emprestimo || emp.created_at,
       }));
 
@@ -9047,6 +9047,35 @@ const routes: Record<string, RouteHandler> = {
       headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
     });
     return jsonResponse({ success: true });
+  },
+
+  'POST /v1/aluno/atividades/entregas/delete-batch': async (request, env) => {
+    const { profile } = await getCommunityModuleContext(request, env);
+    if (!profile?.id) {
+      return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const atividadeIds = Array.isArray(body?.atividadeIds)
+      ? body.atividadeIds.map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+
+    if (atividadeIds.length === 0) {
+      return jsonResponse({ success: false, error: 'Nenhuma atividade selecionada.' }, 400);
+    }
+
+    const uniqueIds = Array.from(new Set(atividadeIds));
+    const params = new URLSearchParams({
+      aluno_id: `eq.${profile.id}`,
+      atividade_id: `in.(${uniqueIds.join(',')})`,
+    });
+
+    await supabaseAdminRequest(env, `/rest/v1/atividades_entregas?${params.toString()}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    return jsonResponse({ success: true, deletedCount: uniqueIds.length });
   },
 
   'POST /v1/aluno/audiobooks': async (request, env) => {
