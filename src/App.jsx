@@ -206,7 +206,7 @@ function AppRoutes() {
         path="/aluno/comunicados"
         element={(
           <RoleProtectedRoute allowedRoles={['aluno']}>
-            <PainelAluno />
+            <Comunicados />
           </RoleProtectedRoute>
         )}
       />
