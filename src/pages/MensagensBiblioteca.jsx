@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -32,6 +32,7 @@ import {
   fetchPainelAlunoData,
   sendPainelAlunoSolicitacaoChatMessage,
 } from '@/services/painelAlunoService';
+import { markSystemNotificationsAsReadBatch } from '@/services/notificationsService';
 
 function formatDateTimeBR(value) {
   if (!value) return '-';
@@ -56,6 +57,16 @@ function formatDateBR(value) {
 
 function normalizeStatus(status) {
   return String(status || '').trim().toLowerCase();
+}
+
+function buildUnreadNotificationIdsForBibliotecaria(solicitacao) {
+  const mensagens = Array.isArray(solicitacao?.solicitacoes_emprestimo_mensagens)
+    ? solicitacao.solicitacoes_emprestimo_mensagens
+    : [];
+
+  return mensagens
+    .filter((mensagem) => String(mensagem?.autor_tipo || '').toLowerCase() === 'aluno' && mensagem?.id)
+    .map((mensagem) => `solicitacao-chat-${solicitacao.id}-${mensagem.id}`);
 }
 
 function getThreadStatusBadge(status) {
@@ -171,6 +182,7 @@ export default function MensagensBiblioteca() {
   const [threads, setThreads] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [drafts, setDrafts] = useState({});
+  const readNotificationIdsRef = useRef(new Set());
 
   const canAccess = isAluno || isBibliotecaria;
   const selectedParam = searchParams.get('solicitacao');
@@ -271,10 +283,33 @@ export default function MensagensBiblioteca() {
     }
   }, [selectedId, selectedParam, threads]);
 
+  useEffect(() => {
+    readNotificationIdsRef.current = new Set();
+  }, [user?.id]);
+
   const selectedThread = useMemo(
     () => threads.find((item) => item.id === selectedId) || null,
     [selectedId, threads],
   );
+
+  useEffect(() => {
+    if (!isBibliotecaria || !selectedThread?.id) return;
+
+    const notificationIds = buildUnreadNotificationIdsForBibliotecaria(selectedThread)
+      .filter((notificationId) => !readNotificationIdsRef.current.has(notificationId));
+
+    if (notificationIds.length === 0) return;
+
+    notificationIds.forEach((notificationId) => {
+      readNotificationIdsRef.current.add(notificationId);
+    });
+
+    markSystemNotificationsAsReadBatch(notificationIds).catch(() => {
+      notificationIds.forEach((notificationId) => {
+        readNotificationIdsRef.current.delete(notificationId);
+      });
+    });
+  }, [isBibliotecaria, selectedThread]);
 
   const handleSelectThread = useCallback((threadId) => {
     setSelectedId(threadId);

@@ -6030,6 +6030,36 @@ const routes: Record<string, RouteHandler> = {
 
     return jsonResponse({ success: true });
   },
+  'POST /v1/notifications/read-batch': async (request, env) => {
+    const user = await fetchSupabaseUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+    }
+
+    const profile = await getLatestUserProfile(user.id, env);
+    if (!profile?.id) {
+      return jsonResponse({ success: false, error: 'Perfil nao encontrado.' }, 404);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const notificationIds = Array.isArray(body?.notification_ids)
+      ? body.notification_ids.map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+
+    if (notificationIds.length === 0) {
+      return jsonResponse({ success: true });
+    }
+
+    await supabaseAdminRequest(env, '/rest/v1/notificacoes_lidas', {
+      method: 'POST',
+      body: notificationIds.map((notificationId) => ({ usuario_id: profile.id, notification_id: notificationId })),
+      headers: {
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+    });
+
+    return jsonResponse({ success: true });
+  },
 
   'GET /v1/reclamacoes': async (request, env) => {
     const user = await fetchSupabaseUser(request, env);

@@ -24,6 +24,13 @@ export async function markSystemNotificationAsRead({ notificationId }) {
   });
 }
 
+export async function markSystemNotificationsAsReadBatch(notificationIds) {
+  return requestPlatformApi('/v1/notifications/read-batch', {
+    method: 'POST',
+    body: { notification_ids: notificationIds },
+  });
+}
+
 export async function registerPushDeviceToken(payload) {
   return requestPlatformApi('/v1/notifications/push/register', {
     method: 'POST',
