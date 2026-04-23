@@ -9,9 +9,10 @@ import { useSystemNotifications } from '@/hooks/useSystemNotifications';
 export function NotificationsPopover({ userRole, onNavigate }) {
   const navigate = useNavigate();
   const { counts, notifications, canViewNotifications, markNotificationRead } = useSystemNotifications();
+  const unreadChatNotifications = notifications.filter((item) => item?.tipo === 'solicitacao_chat').length;
 
   const totalPendencias = counts.atrasados
-    + counts.solicitacoesPendentes
+    + unreadChatNotifications
     + counts.comunicados
     + (counts.reclamacoes || 0)
     + (counts.seguranca || 0);
@@ -97,6 +98,16 @@ export function NotificationsPopover({ userRole, onNavigate }) {
                 >
                   <span>Reclamacoes novas</span>
                   <Badge>{counts.reclamacoes}</Badge>
+                </button>
+              )}
+              {unreadChatNotifications > 0 && (
+                <button
+                  type="button"
+                  className="w-full rounded-md border p-2 text-sm flex items-center justify-between gap-2 text-left hover:bg-accent transition-colors"
+                  onClick={() => handleNavigate(userRole === 'aluno' ? '/aluno/mensagens' : '/mensagens')}
+                >
+                  <span>Mensagens nÃ£o lidas</span>
+                  <Badge>{unreadChatNotifications}</Badge>
                 </button>
               )}
               {counts.solicitacoesPendentes > 0 && (

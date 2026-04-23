@@ -45,7 +45,7 @@ export function AppSidebar() {
   const collapsed = state === 'collapsed';
   const navigate = useNavigate();
   const { signOut, user, userRole, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
-  const { counts, canViewNotifications } = useSystemNotifications();
+  const { counts, notifications, canViewNotifications } = useSystemNotifications();
   const settingsPath = '/configuracoes';
   const isTempLoginEmail = /@temp\.bibliotecai\.com$/i.test(String(user?.email || ''));
   const visibleUserIdentity = isTempLoginEmail
@@ -130,6 +130,8 @@ export function AppSidebar() {
   ];
 
   const menuItems = getMenuItems();
+  const unreadChatNotifications = notifications.filter((item) => item?.tipo === 'solicitacao_chat').length;
+  const loanQueueCount = counts.atrasados + counts.solicitacoesPendentes;
 
   const getRoleBadge = () => {
     if (!userRole) {
@@ -192,9 +194,14 @@ export function AppSidebar() {
                       {!collapsed && (
                         <div className="flex w-full items-center justify-between gap-2">
                           <span className="font-medium text-[15px] leading-none">{item.title}</span>
-                          {['/emprestimos', '/mensagens', '/aluno/mensagens'].includes(item.url) && canViewNotifications && (counts.atrasados > 0 || counts.solicitacoesPendentes > 0) && (
+                          {item.url === '/emprestimos' && canViewNotifications && loanQueueCount > 0 && (
                             <Badge className="h-5 min-w-5 px-1.5 text-[10px] leading-none">
-                              {counts.atrasados + counts.solicitacoesPendentes}
+                              {loanQueueCount}
+                            </Badge>
+                          )}
+                          {['/mensagens', '/aluno/mensagens'].includes(item.url) && canViewNotifications && unreadChatNotifications > 0 && (
+                            <Badge className="h-5 min-w-5 px-1.5 text-[10px] leading-none">
+                              {unreadChatNotifications}
                             </Badge>
                           )}
                         </div>
