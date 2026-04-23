@@ -58,6 +58,15 @@ function normalizeTurmaKey(value) {
     .trim();
 }
 
+function normalizeSearchText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function toEndOfDayIso(dateValue) {
   if (!dateValue) return null;
   const localDate = new Date(`${dateValue}T23:59:59.999`);
@@ -141,11 +150,7 @@ function LivroCombobox({
   emptyMessage = 'Nenhum livro encontrado.',
 }) {
   const [open, setOpen] = useState(false);
-  const normalizedSearch = String(searchValue || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
+  const normalizedSearch = normalizeSearchText(searchValue);
 
   const livroSelecionado = useMemo(
     () => livros.find((item) => item.id === value) || null,
@@ -155,14 +160,12 @@ function LivroCombobox({
     searchValue || (livroSelecionado ? formatLivroOptionLabel(livroSelecionado) : ''),
   );
   const selectedBookLabel = livroSelecionado ? formatLivroOptionLabel(livroSelecionado) : '';
+  const normalizedSelectedBookLabel = normalizeSearchText(selectedBookLabel);
 
   const livrosFiltrados = useMemo(() => {
     if (!normalizedSearch) return livros;
     return livros.filter((item) => {
-      const haystack = `${item?.titulo || ''} ${item?.autor || ''}`
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase();
+      const haystack = normalizeSearchText(`${item?.titulo || ''} ${item?.autor || ''}`);
       return haystack.includes(normalizedSearch);
     });
   }, [livros, normalizedSearch]);
@@ -175,7 +178,7 @@ function LivroCombobox({
           onChange={(e) => {
             const nextValue = e.target.value;
             onSearchChange?.(nextValue);
-            if (value && nextValue !== selectedBookLabel) onChange('');
+            if (value && normalizeSearchText(nextValue) !== normalizedSelectedBookLabel) onChange('');
             if (!nextValue.trim()) onChange('');
             if (!open) setOpen(true);
           }}
@@ -710,19 +713,22 @@ export default function ComunidadeAluno() {
     else if (filtroTipo === 'quiz') list = list.filter((post) => Boolean(extractQuizFromConteudo(post?.conteudo)));
     else if (filtroTipo !== 'todos') list = list.filter((post) => post?.tipo === filtroTipo);
 
-    const term = postSearchTerm.trim().toLowerCase();
+    const term = normalizeSearchText(postSearchTerm);
     if (term) {
       list = list.filter((post) => {
-        const titulo = safeText(post?.titulo, '').toLowerCase();
-        const autorLivro = safeText(post?.livros?.autor, '').toLowerCase();
-        const tituloLivro = safeText(post?.livros?.titulo, '').toLowerCase();
-        const autorPost = safeNestedName(post?.usuarios_biblioteca, '').toLowerCase();
-        return (
-          titulo.includes(term) ||
-          autorLivro.includes(term) ||
-          tituloLivro.includes(term) ||
-          autorPost.includes(term)
-        );
+        const searchableText = normalizeSearchText([
+          safeText(post?.titulo, ''),
+          safeText(post?.conteudo, ''),
+          safeText(post?.livros?.titulo, ''),
+          safeText(post?.livros?.autor, ''),
+          safeText(post?.audiobooks_biblioteca?.titulo, ''),
+          safeText(post?.audiobooks_biblioteca?.autor, ''),
+          safeNestedName(post?.usuarios_biblioteca, ''),
+          safeText(post?.tipo, ''),
+          ensureArray(post?.tags).join(' '),
+        ].join(' '));
+
+        return searchableText.includes(term);
       });
     }
 
@@ -1957,7 +1963,6 @@ export default function ComunidadeAluno() {
     </MainLayout>
   );
 }
-
 
 
 
