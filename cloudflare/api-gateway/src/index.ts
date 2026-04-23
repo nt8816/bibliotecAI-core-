@@ -2526,47 +2526,90 @@ function ensureArray<T = unknown>(value: unknown) {
 }
 
 async function getProfessorModuleData(request: Request, env: Env) {
-  const caller = await fetchSupabaseUser(request, env);
-  if (!caller?.id) {
-    throw new Error('Nao autenticado.');
-  }
-  const userId = String(caller.id || '').trim();
-
-  const professorProfiles = await supabaseAdminRequest(
-    env,
-    `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
-      select: 'id,escola_id,nome,email,tipo,turma',
-      user_id: `eq.${userId}`,
-      tipo: 'eq.professor',
-      order: 'updated_at.desc.nullslast,created_at.desc',
-      limit: '10',
-    }).toString()}`,
-  );
-
-  const profiles = ensureArray<Record<string, unknown>>(professorProfiles);
-  const professorData = profiles[0] || null;
-  const professorProfileIds = profiles.map((item) => String(item?.id || '').trim()).filter(Boolean);
-  const escolaId = String(professorData?.escola_id || '').trim();
-
-  if (!professorData || !professorProfileIds.length || !escolaId) {
-    throw new Error('Perfil de professor nao encontrado.');
+  const { caller, profile } = await getUserProfileForRequest(request, env, { preferredTypes: ['professor', 'gestor'] });
+  if (!profile?.id) {
+    throw new Error('Perfil nao encontrado.');
   }
 
+  const tipo = String(profile.tipo || '').trim().toLowerCase();
+  const escolaId = String(profile.escola_id || '').trim();
+  if (!escolaId) {
+    throw new Error('Nao foi possivel identificar a escola do usuario.');
+  }
+
+  let professorData = profile;
+  let professorProfileIds: string[] = [];
   let turmasRows: Array<Record<string, unknown>> = [];
-  try {
-    const payload = await supabaseAdminRequest(
+
+  if (tipo === 'professor') {
+    const userId = String(caller.id || '').trim();
+    const professorProfiles = await supabaseAdminRequest(
       env,
-      `/rest/v1/professor_turmas?${new URLSearchParams({
-        select: 'turma',
-        professor_id: `in.(${professorProfileIds.join(',')})`,
+      `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+        select: 'id,escola_id,nome,email,tipo,turma',
+        user_id: `eq.${userId}`,
+        tipo: 'eq.professor',
+        order: 'updated_at.desc.nullslast,created_at.desc',
+        limit: '10',
       }).toString()}`,
     );
-    turmasRows = ensureArray<Record<string, unknown>>(payload);
-  } catch (error) {
-    if (isMissingTableMessage(error)) {
-      throw new Error('Tabela professor_turmas nao encontrada. Aplique as migrations do banco.');
+
+    const profiles = ensureArray<Record<string, unknown>>(professorProfiles);
+    professorData = profiles[0] || profile;
+    professorProfileIds = profiles.map((item) => String(item?.id || '').trim()).filter(Boolean);
+
+    if (!professorProfileIds.length) {
+      throw new Error('Perfil de professor nao encontrado.');
     }
-    throw error;
+
+    try {
+      const payload = await supabaseAdminRequest(
+        env,
+        `/rest/v1/professor_turmas?${new URLSearchParams({
+          select: 'turma',
+          professor_id: `in.(${professorProfileIds.join(',')})`,
+        }).toString()}`,
+      );
+      turmasRows = ensureArray<Record<string, unknown>>(payload);
+    } catch (error) {
+      if (isMissingTableMessage(error)) {
+        throw new Error('Tabela professor_turmas nao encontrada. Aplique as migrations do banco.');
+      }
+      throw error;
+    }
+  } else if (tipo === 'gestor') {
+    professorProfileIds = [String(profile.id || '').trim()].filter(Boolean);
+
+    try {
+      const [salasPayload, usuariosTurmaPayload, professorTurmasPayload] = await Promise.all([
+        supabaseAdminRequest(env, `/rest/v1/salas_cursos?${new URLSearchParams({
+          select: 'nome',
+          escola_id: `eq.${escolaId}`,
+          order: 'nome.asc',
+        }).toString()}`).catch(() => []),
+        supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+          select: 'turma',
+          escola_id: `eq.${escolaId}`,
+        }).toString()}`).catch(() => []),
+        supabaseAdminRequest(env, `/rest/v1/professor_turmas?${new URLSearchParams({
+          select: 'turma',
+          escola_id: `eq.${escolaId}`,
+        }).toString()}`).catch(() => []),
+      ]);
+
+      turmasRows = [
+        ...ensureArray<Record<string, unknown>>(salasPayload).map((item) => ({ turma: item?.nome })),
+        ...ensureArray<Record<string, unknown>>(usuariosTurmaPayload),
+        ...ensureArray<Record<string, unknown>>(professorTurmasPayload),
+      ];
+    } catch (error) {
+      if (isMissingTableMessage(error)) {
+        throw new Error('Tabela professor_turmas nao encontrada. Aplique as migrations do banco.');
+      }
+      throw error;
+    }
+  } else {
+    throw new Error('Acesso permitido apenas para professor ou gestor.');
   }
 
   const turmasPermitidas = [...new Set(turmasRows.map((item) => String(item?.turma || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
@@ -2705,7 +2748,9 @@ async function getProfessorModuleData(request: Request, env: Env) {
     return turmaSet.has(turmaNormalizada);
   };
 
-  const usuarios = usuariosEscola.filter((item) => isAlunoPermitido(item));
+  const usuarios = tipo === 'gestor'
+    ? usuariosEscola
+    : usuariosEscola.filter((item) => isAlunoPermitido(item));
   const usuariosById = new Map(usuarios.map((item) => [String(item?.id || '').trim(), item]));
   const isRegistroPermitido = (item: Record<string, unknown> | null | undefined) => {
     const alunoId = String(item?.aluno_id || item?.usuarios_biblioteca?.id || '').trim();
