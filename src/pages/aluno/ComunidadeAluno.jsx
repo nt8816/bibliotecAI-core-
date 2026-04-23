@@ -140,6 +140,12 @@ function formatLivroOptionLabel(livro) {
   return autor ? `${livro.titulo} - ${autor}` : livro.titulo;
 }
 
+function getLivroCatalogKey(livro) {
+  const titulo = normalizeSearchText(livro?.titulo || '');
+  const autor = normalizeSearchText(livro?.autor || '');
+  return `${titulo}::${autor}`;
+}
+
 function LivroCombobox({
   livros,
   value,
@@ -152,10 +158,19 @@ function LivroCombobox({
   const [open, setOpen] = useState(false);
   const normalizedSearch = normalizeSearchText(searchValue);
   const MAX_VISIBLE_BOOKS = 80;
+  const livrosCatalogo = useMemo(() => {
+    const byCatalogKey = new Map();
+    livros.forEach((item) => {
+      const key = getLivroCatalogKey(item);
+      if (!key || byCatalogKey.has(key)) return;
+      byCatalogKey.set(key, item);
+    });
+    return Array.from(byCatalogKey.values());
+  }, [livros]);
 
   const livroSelecionado = useMemo(
-    () => livros.find((item) => item.id === value) || null,
-    [livros, value],
+    () => livrosCatalogo.find((item) => item.id === value) || livros.find((item) => item.id === value) || null,
+    [livros, livrosCatalogo, value],
   );
   const displayedValue = String(
     searchValue || (livroSelecionado ? formatLivroOptionLabel(livroSelecionado) : ''),
@@ -164,12 +179,12 @@ function LivroCombobox({
   const normalizedSelectedBookLabel = normalizeSearchText(selectedBookLabel);
 
   const livrosFiltrados = useMemo(() => {
-    if (!normalizedSearch) return livros;
-    return livros.filter((item) => {
+    if (!normalizedSearch) return livrosCatalogo;
+    return livrosCatalogo.filter((item) => {
       const haystack = normalizeSearchText(`${item?.titulo || ''} ${item?.autor || ''}`);
       return haystack.includes(normalizedSearch);
     });
-  }, [livros, normalizedSearch]);
+  }, [livrosCatalogo, normalizedSearch]);
   const livrosVisiveis = useMemo(
     () => livrosFiltrados.slice(0, MAX_VISIBLE_BOOKS),
     [livrosFiltrados, MAX_VISIBLE_BOOKS],
