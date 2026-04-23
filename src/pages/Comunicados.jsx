@@ -242,7 +242,7 @@ function formatDateLabel(value) {
 function getAtividadeTargetSummary(atividade) {
   const turma = atividade?.usuarios_biblioteca?.turma;
   const aluno = atividade?.usuarios_biblioteca?.nome;
-  return aluno ? `${aluno}${turma ? ` â€¢ ${turma}` : ''}` : (turma || 'Destino individual');
+  return aluno ? `${aluno}${turma ? ` - ${turma}` : ''}` : (turma || 'Destino individual');
 }
 
 export default function Comunicados() {
@@ -1287,7 +1287,7 @@ export default function Comunicados() {
                           </div>
                           <p className="text-sm text-muted-foreground">{getAtividadeTargetSummary(atividade)}</p>
                           <p className="text-sm text-muted-foreground">
-                            {atividade.livros?.titulo || 'Sem livro vinculado'} â€¢ entrega em {formatDateLabel(atividade.data_entrega)}
+                            {atividade.livros?.titulo || 'Sem livro vinculado'} - entrega em {formatDateLabel(atividade.data_entrega)}
                           </p>
                           {atividade.meta.descricaoLimpa ? (
                             <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">

@@ -461,7 +461,7 @@ export default function Livros() {
             area: formData.area,
             sinopseBase: formData.sinopse,
           },
-          fallbackErrorMessage: 'NÃ£o foi possÃ­vel gerar sinopse por IA.',
+          fallbackErrorMessage: 'Nao foi possivel gerar sinopse por IA.',
         }),
       ]);
       const resultado = openLibraryResult.status === 'fulfilled' ? openLibraryResult.value : null;
@@ -483,7 +483,7 @@ export default function Livros() {
               area: formData.area,
               sinopseBase: formData.sinopse,
             },
-            fallbackErrorMessage: 'Não foi possível gerar sinopse por IA.',
+            fallbackErrorMessage: 'Nao foi possivel gerar sinopse por IA.',
           });
           void iaPayload;
         } catch {
@@ -2068,3 +2068,4 @@ export default function Livros() {
     </MainLayout>
   );
 }
+

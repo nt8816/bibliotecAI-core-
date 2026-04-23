@@ -248,7 +248,7 @@ function formatDateLabel(value) {
 function getTargetSummary(atividade) {
   const turma = atividade?.usuarios_biblioteca?.turma;
   const aluno = atividade?.usuarios_biblioteca?.nome;
-  return aluno ? `${aluno}${turma ? ` â€¢ ${turma}` : ''}` : (turma || 'Destino individual');
+  return aluno ? `${aluno}${turma ? ` - ${turma}` : ''}` : (turma || 'Destino individual');
 }
 
 function extractJsonFromIAPlainText(rawValue) {
@@ -1734,7 +1734,7 @@ export default function PainelProfessor() {
                             </div>
                             <p className="text-sm text-muted-foreground">{getTargetSummary(atividade)}</p>
                             <p className="text-sm text-muted-foreground">
-                              {atividade.livros?.titulo || 'Sem livro vinculado'} â€¢ entrega em {formatDateLabel(atividade.data_entrega)}
+                              {atividade.livros?.titulo || 'Sem livro vinculado'} - entrega em {formatDateLabel(atividade.data_entrega)}
                             </p>
                             {atividade.meta.descricaoLimpa && (
                               <p className="text-sm leading-6 text-foreground/80">{atividade.meta.descricaoLimpa}</p>
@@ -1813,7 +1813,7 @@ export default function PainelProfessor() {
                         <div className="space-y-1">
                           <p className="font-medium">{entrega.atividades_leitura?.titulo || 'Atividade'}</p>
                           <p className="text-sm text-muted-foreground">
-                            {entrega.usuarios_biblioteca?.nome || 'Aluno'} â€¢ {entrega.usuarios_biblioteca?.turma || '-'}
+                            {entrega.usuarios_biblioteca?.nome || 'Aluno'} - {entrega.usuarios_biblioteca?.turma || '-'}
                           </p>
                         </div>
 
@@ -1897,7 +1897,7 @@ export default function PainelProfessor() {
                       <div>
                         <p className="font-medium">{sugestao.livros?.titulo || 'Livro'}</p>
                         <p className="text-sm text-muted-foreground">
-                          {sugestao.usuarios_biblioteca?.nome || 'Aluno'} â€¢ {sugestao.usuarios_biblioteca?.turma || '-'}
+                          {sugestao.usuarios_biblioteca?.nome || 'Aluno'} - {sugestao.usuarios_biblioteca?.turma || '-'}
                         </p>
                         {sugestao.mensagem && <p className="mt-2 text-sm">{sugestao.mensagem}</p>}
                       </div>
