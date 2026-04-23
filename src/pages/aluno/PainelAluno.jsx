@@ -1221,6 +1221,7 @@ export default function PainelAluno() {
   const speakingLivroIdRef = useRef(null);
   const seenAlunoNotificationIdsRef = useRef(new Set());
   const alunoNotificationsReadyRef = useRef(false);
+  const activityImageInputRefs = useRef({});
   const desafioCacheKey = useMemo(
     () => (user?.id ? `aluno:desafio-ia:${user.id}` : ''),
     [user?.id],
@@ -2649,6 +2650,12 @@ export default function PainelAluno() {
     } catch {
       toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível processar as imagens da atividade.' });
     }
+  };
+
+  const handleActivityFileInputChange = async (atividadeId, event) => {
+    const { files } = event.target;
+    await handleSelectActivityImages(atividadeId, files);
+    event.target.value = '';
   };
 
   const handleCriarAudiobook = async () => {
@@ -4299,12 +4306,36 @@ export default function PainelAluno() {
 
                           <div className="space-y-2">
                             <Label>Imagens da atividade (opcional, até 4)</Label>
-                            <Input
+                            <input
+                              ref={(node) => {
+                                if (node) {
+                                  activityImageInputRefs.current[atividade.id] = node;
+                                } else {
+                                  delete activityImageInputRefs.current[atividade.id];
+                                }
+                              }}
+                              id={`atividade-imagens-${atividade.id}`}
                               type="file"
                               accept="image/*"
                               multiple
-                              onChange={(e) => handleSelectActivityImages(atividade.id, e.target.files)}
+                              className="hidden"
+                              onChange={(e) => handleActivityFileInputChange(atividade.id, e)}
                             />
+                            <div className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-background/80 p-3 sm:flex-row sm:items-center sm:justify-between">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="w-full sm:w-auto"
+                                onClick={() => activityImageInputRefs.current[atividade.id]?.click()}
+                              >
+                                Escolher arquivos
+                              </Button>
+                              <p className="text-sm text-muted-foreground">
+                                {ensureArray(atividadeImagens[atividade.id]).length > 0
+                                  ? `${ensureArray(atividadeImagens[atividade.id]).length} imagem(ns) selecionada(s)`
+                                  : 'Nenhum arquivo escolhido'}
+                              </p>
+                            </div>
                             {ensureArray(atividadeImagens[atividade.id]).length > 0 && (
                               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                                 {ensureArray(atividadeImagens[atividade.id]).map((img, imageIndex) => (
