@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/hooks/useAuth';
 import { getSupabaseRealtimeClient } from '@/integrations/supabase/client';
-import { fetchSystemNotificationsData, markSystemNotificationAsRead } from '@/services/notificationsService';
+import {
+  fetchSystemNotificationsData,
+  markSystemNotificationAsRead,
+  subscribeToReadNotifications,
+} from '@/services/notificationsService';
 
 const EMPTY_COUNTS = {
   atrasados: 0,
@@ -207,6 +211,20 @@ export function useSystemNotifications() {
 
     seenNotificationIdsRef.current = nextIds;
   }, [notifications]);
+
+  useEffect(() => {
+    if (!canView) return undefined;
+
+    return subscribeToReadNotifications((notificationIds) => {
+      const ids = new Set(ensureArray(notificationIds).filter(Boolean));
+      if (ids.size === 0) return;
+
+      setNotifications((current) => current.filter((item) => !ids.has(item?.id)));
+      seenNotificationIdsRef.current = new Set(
+        Array.from(seenNotificationIdsRef.current).filter((notificationId) => !ids.has(notificationId)),
+      );
+    });
+  }, [canView]);
 
   const markNotificationRead = useCallback(async (notificationId) => {
     if (!notificationId) return;
