@@ -174,7 +174,6 @@ function LivroCombobox({
     () => livrosFiltrados.slice(0, MAX_VISIBLE_BOOKS),
     [livrosFiltrados, MAX_VISIBLE_BOOKS],
   );
-  const hasMoreFilteredBooks = livrosFiltrados.length > livrosVisiveis.length;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -246,11 +245,6 @@ function LivroCombobox({
             </CommandGroup>
           </CommandList>
         </Command>
-        {hasMoreFilteredBooks ? (
-          <div className="border-t px-3 py-2 text-xs text-muted-foreground">
-            Mostrando {livrosVisiveis.length} de {livrosFiltrados.length} resultados. Continue digitando para refinar.
-          </div>
-        ) : null}
       </PopoverContent>
     </Popover>
   );
