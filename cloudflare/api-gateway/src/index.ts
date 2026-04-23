@@ -2942,7 +2942,6 @@ const routes: Record<string, RouteHandler> = {
             select: 'id,titulo,autor,disponivel,escola_id',
             escola_id: `eq.${profile.escola_id}`,
             order: 'titulo.asc',
-            limit: '5000',
           }).toString()}`,
         ),
         supabaseAdminRequest(
@@ -2951,7 +2950,6 @@ const routes: Record<string, RouteHandler> = {
             select: 'id,nome,email,turma,tipo,escola_id',
             escola_id: `eq.${profile.escola_id}`,
             order: 'nome.asc',
-            limit: '5000',
           }).toString()}`,
         ),
         supabaseAdminRequest(
@@ -2959,7 +2957,6 @@ const routes: Record<string, RouteHandler> = {
           `/rest/v1/emprestimos?${new URLSearchParams({
             select: 'id,livro_id,usuario_id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livros(id,titulo,autor,escola_id),usuarios_biblioteca(id,nome,email,turma,tipo,escola_id)',
             order: 'data_emprestimo.desc',
-            limit: '5000',
           }).toString()}`,
         ),
       ]);
