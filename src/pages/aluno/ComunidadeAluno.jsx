@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -151,6 +151,7 @@ function LivroCombobox({
 }) {
   const [open, setOpen] = useState(false);
   const normalizedSearch = normalizeSearchText(searchValue);
+  const MAX_VISIBLE_BOOKS = 80;
 
   const livroSelecionado = useMemo(
     () => livros.find((item) => item.id === value) || null,
@@ -169,36 +170,47 @@ function LivroCombobox({
       return haystack.includes(normalizedSearch);
     });
   }, [livros, normalizedSearch]);
+  const livrosVisiveis = useMemo(
+    () => livrosFiltrados.slice(0, MAX_VISIBLE_BOOKS),
+    [livrosFiltrados, MAX_VISIBLE_BOOKS],
+  );
+  const hasMoreFilteredBooks = livrosFiltrados.length > livrosVisiveis.length;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <div className="relative">
-        <Input
-          value={displayedValue}
-          onChange={(e) => {
-            const nextValue = e.target.value;
-            onSearchChange?.(nextValue);
-            if (value && normalizeSearchText(nextValue) !== normalizedSelectedBookLabel) onChange('');
-            if (!nextValue.trim()) onChange('');
-            if (!open) setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          placeholder={placeholder}
-          className="pr-10"
-        />
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            aria-label="Abrir lista de livros"
-            className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-muted-foreground"
-          >
-            <ChevronsUpDown className="h-4 w-4 opacity-50" />
-          </button>
-        </PopoverTrigger>
-      </div>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+      <PopoverAnchor asChild>
+        <div className="relative">
+          <Input
+            value={displayedValue}
+            onChange={(e) => {
+              const nextValue = e.target.value;
+              onSearchChange?.(nextValue);
+              if (value && normalizeSearchText(nextValue) !== normalizedSelectedBookLabel) onChange('');
+              if (!nextValue.trim()) onChange('');
+              if (!open) setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            placeholder={placeholder}
+            className="pr-10"
+          />
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label="Abrir lista de livros"
+              className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronsUpDown className="h-4 w-4 opacity-50" />
+            </button>
+          </PopoverTrigger>
+        </div>
+      </PopoverAnchor>
+      <PopoverContent
+        align="start"
+        sideOffset={6}
+        className="w-[var(--radix-popper-anchor-width)] max-w-[min(32rem,calc(100vw-2rem))] rounded-xl border-border/80 p-0 shadow-2xl"
+      >
         <Command shouldFilter={false}>
-          <CommandList>
+          <CommandList className="max-h-72">
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
               <CommandItem
@@ -212,7 +224,7 @@ function LivroCombobox({
                 <Check className={cn('mr-2 h-4 w-4', !value ? 'opacity-100' : 'opacity-0')} />
                 Sem livro especifico
               </CommandItem>
-              {livrosFiltrados.map((livro) => (
+              {livrosVisiveis.map((livro) => (
                 <CommandItem
                   key={livro.id}
                   value={`${livro.titulo || ''} ${livro.autor || ''}`.trim()}
@@ -234,6 +246,11 @@ function LivroCombobox({
             </CommandGroup>
           </CommandList>
         </Command>
+        {hasMoreFilteredBooks ? (
+          <div className="border-t px-3 py-2 text-xs text-muted-foreground">
+            Mostrando {livrosVisiveis.length} de {livrosFiltrados.length} resultados. Continue digitando para refinar.
+          </div>
+        ) : null}
       </PopoverContent>
     </Popover>
   );
