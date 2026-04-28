@@ -22,6 +22,9 @@ import {
   Gift,
   Crown,
   Expand,
+  Download,
+  ExternalLink,
+  Paperclip,
   Trash2,
   Trophy,
   Volume2,
@@ -71,7 +74,7 @@ import {
   generateTextWithCloudflare,
 } from '@/lib/cloudflareAiApi';
 import { canonicalizeBookArea } from '@/lib/bookAreas';
-import { uploadDataUrlToR2 } from '@/lib/r2Storage';
+import { getR2DownloadUrl, uploadDataUrlToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
@@ -94,6 +97,15 @@ function formatDateInputValue(dateValue) {
   } catch {
     return '';
   }
+}
+
+function formatBytes(value) {
+  const size = Number(value || 0);
+  if (!size) return '0 B';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(size / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 function renderStars(nota, onClick) {
@@ -2658,6 +2670,26 @@ export default function PainelAluno() {
     event.target.value = '';
   };
 
+  const handleOpenAtividadeMaterial = async (material) => {
+    try {
+      if (String(material?.tipo || '').toLowerCase() === 'link') {
+        window.open(String(material?.url || ''), '_blank', 'noopener,noreferrer');
+        return;
+      }
+
+      const objectKey = String(material?.object_key || material?.path || '').trim();
+      if (!objectKey) throw new Error('Material sem rota de download.');
+      const downloadUrl = await getR2DownloadUrl(objectKey, String(material?.nome || 'material-de-apoio'));
+      window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao abrir material',
+        description: error?.message || 'Nao foi possivel abrir este material de apoio.',
+      });
+    }
+  };
+
   const handleCriarAudiobook = async () => {
     if (!alunoId || !escolaId) {
       toast({
@@ -4205,6 +4237,45 @@ export default function PainelAluno() {
                                 <p className="rounded-2xl border border-primary/10 bg-primary/5 px-3 py-2 text-sm leading-6">
                                   {atividade.atividadeMeta.descricaoLimpa}
                                 </p>
+                              )}
+                              {ensureArray(atividade.materiais_apoio).length > 0 && (
+                                <div className="space-y-2 rounded-2xl border border-border/70 bg-background/80 p-3">
+                                  <div className="flex items-center gap-2 text-sm font-medium">
+                                    <Paperclip className="h-4 w-4 text-primary" />
+                                    Conteudos de apoio
+                                  </div>
+                                  <div className="space-y-2">
+                                    {ensureArray(atividade.materiais_apoio).map((material, materialIndex) => (
+                                      <div key={`${atividade.id}-material-${materialIndex}`} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 px-3 py-2">
+                                        <div className="min-w-0">
+                                          <p className="truncate text-sm font-medium">
+                                            {String(material?.tipo || '') === 'link'
+                                              ? (material?.titulo || material?.url || 'Link de apoio')
+                                              : (material?.nome || 'Arquivo de apoio')}
+                                          </p>
+                                          <p className="text-xs text-muted-foreground">
+                                            {String(material?.tipo || '') === 'link'
+                                              ? (material?.url || '')
+                                              : formatBytes(material?.tamanho)}
+                                          </p>
+                                        </div>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => handleOpenAtividadeMaterial(material)}
+                                          className="shrink-0"
+                                        >
+                                          {String(material?.tipo || '') === 'link' ? (
+                                            <><ExternalLink className="mr-2 h-4 w-4" />Abrir</>
+                                          ) : (
+                                            <><Download className="mr-2 h-4 w-4" />Baixar</>
+                                          )}
+                                        </Button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
                               )}
                             </div>
                             <div className="grid gap-2 text-left sm:max-w-xs sm:grid-cols-2 md:block md:text-right">

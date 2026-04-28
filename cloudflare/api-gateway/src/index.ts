@@ -2486,6 +2486,62 @@ function estimateArquivosBytes(arquivos: unknown) {
   }, 0);
 }
 
+const MAX_ATIVIDADE_MATERIAIS_BYTES = 1024 * 1024 * 1024;
+
+function estimateMateriaisApoioBytes(materiais: unknown) {
+  if (!Array.isArray(materiais)) return 0;
+
+  return materiais.reduce((total, item) => {
+    const material = item as Record<string, unknown>;
+    if (String(material?.tipo || '').trim().toLowerCase() !== 'arquivo') return total;
+    const tamanho = Number(material?.tamanho);
+    if (Number.isFinite(tamanho) && tamanho > 0) return total + tamanho;
+    return total + estimateDataUrlBytes(material?.url);
+  }, 0);
+}
+
+function normalizeAtividadeMateriaisApoio(materiais: unknown) {
+  if (!Array.isArray(materiais)) return [];
+
+  return materiais
+    .map((item) => {
+      const material = item as Record<string, unknown>;
+      const tipo = String(material?.tipo || '').trim().toLowerCase();
+
+      if (tipo === 'link') {
+        const titulo = String(material?.titulo || '').trim();
+        const url = String(material?.url || '').trim();
+        if (!url || !/^https?:\/\//i.test(url)) return null;
+        return {
+          tipo: 'link',
+          titulo: titulo || 'Link de apoio',
+          url,
+        };
+      }
+
+      if (tipo === 'arquivo') {
+        const nome = String(material?.nome || '').trim();
+        const objectKey = String(material?.object_key || material?.path || '').trim();
+        if (!nome || !objectKey) return null;
+        const tamanho = Number(material?.tamanho);
+        return {
+          tipo: 'arquivo',
+          nome,
+          path: objectKey,
+          object_key: objectKey,
+          provider: String(material?.provider || 'r2').trim() || 'r2',
+          public_url: material?.public_url ? String(material.public_url) : null,
+          tamanho: Number.isFinite(tamanho) && tamanho > 0 ? Math.floor(tamanho) : 0,
+          mime_type: material?.mime_type ? String(material.mime_type) : null,
+          extensao: material?.extensao ? String(material.extensao) : null,
+        };
+      }
+
+      return null;
+    })
+    .filter(Boolean);
+}
+
 function monthKey(dateValue: unknown) {
   const d = new Date(String(dateValue || ''));
   const y = d.getFullYear();
@@ -3130,6 +3186,12 @@ const routes: Record<string, RouteHandler> = {
       const livroId = String(body?.livro_id || '').trim();
       const targetMode = String(body?.target_mode || 'aluno').trim();
       const turma = String(body?.turma || '').trim();
+      const turmas = Array.isArray(body?.turmas)
+        ? body.turmas.map((item: unknown) => String(item || '').trim()).filter(Boolean)
+        : [];
+      const turmasUnicas = Array.from(new Set(turmas));
+      const materiaisApoio = normalizeAtividadeMateriaisApoio(body?.materiais_apoio);
+      const materiaisBytes = estimateMateriaisApoioBytes(materiaisApoio);
       const dataBase = {
         titulo,
         descricao,
@@ -3137,22 +3199,42 @@ const routes: Record<string, RouteHandler> = {
         data_entrega: body?.data_entrega ? String(body.data_entrega) : null,
         livro_id: livroId || null,
         professor_id: context.professorProfileIds[0],
+        materiais_apoio: materiaisApoio,
       };
 
       if (!titulo) {
         return jsonResponse({ success: false, error: 'Titulo obrigatorio.' }, 400);
       }
 
-      if (targetMode === 'turma' || targetMode === 'todas_turmas') {
-        const alunosAlvo = targetMode === 'todas_turmas'
-          ? context.usuarios
-          : context.usuarios.filter((item) => String(item?.turma || '').trim() === turma);
+      if (materiaisBytes > MAX_ATIVIDADE_MATERIAIS_BYTES) {
+        return jsonResponse({ success: false, error: 'Os materiais de apoio ultrapassam o limite de 1 GB por atividade.' }, 400);
+      }
+
+      const turmasInvalidas = turmasUnicas.filter((item) => !context.turmasPermitidas.includes(item));
+      if (turmasInvalidas.length > 0) {
+        return jsonResponse({ success: false, error: 'Uma ou mais turmas selecionadas nao sao permitidas para este professor.' }, 403);
+      }
+      if (targetMode === 'turma' && turma && !context.turmasPermitidas.includes(turma)) {
+        return jsonResponse({ success: false, error: 'Turma nao permitida para este professor.' }, 403);
+      }
+
+      if (targetMode === 'turma' || targetMode === 'turmas' || targetMode === 'todas_turmas') {
+        const turmasAlvo = targetMode === 'todas_turmas'
+          ? context.turmasPermitidas
+          : (targetMode === 'turma' ? [turma].filter(Boolean) : turmasUnicas);
+
+        if (targetMode !== 'todas_turmas' && turmasAlvo.length === 0) {
+          return jsonResponse({ success: false, error: 'Selecione ao menos uma turma.' }, 400);
+        }
+
+        const turmasAlvoSet = new Set(turmasAlvo);
+        const alunosAlvo = context.usuarios.filter((item) => turmasAlvoSet.has(String(item?.turma || '').trim()));
         if (!alunosAlvo.length) {
           return jsonResponse({
             success: false,
             error: targetMode === 'todas_turmas'
               ? 'Nenhum aluno encontrado nas turmas vinculadas ao professor.'
-              : 'Nenhum aluno encontrado para a turma selecionada.',
+              : 'Nenhum aluno encontrado para as turmas selecionadas.',
           }, 400);
         }
         await supabaseAdminRequest(env, '/rest/v1/atividades_leitura', {
@@ -3160,6 +3242,7 @@ const routes: Record<string, RouteHandler> = {
           body: alunosAlvo.map((item) => ({
             ...dataBase,
             aluno_id: String(item?.id || '').trim(),
+            turmas_alvo: turmasAlvo,
           })),
           headers: { Prefer: 'return=minimal' },
         });
@@ -3173,7 +3256,8 @@ const routes: Record<string, RouteHandler> = {
             channelId: 'atividades',
             path: '/aluno/atividades',
             extraData: {
-              turma: targetMode === 'todas_turmas' ? 'todas' : (turma || ''),
+              turma: targetMode === 'todas_turmas' ? 'todas' : (turmasAlvo[0] || ''),
+              turmas: turmasAlvo,
               targetMode,
             },
           },
@@ -3201,6 +3285,7 @@ const routes: Record<string, RouteHandler> = {
         body: {
           ...dataBase,
           aluno_id: alunoId,
+          turmas_alvo: [],
         },
         headers: { Prefer: 'return=minimal' },
       });
@@ -3225,10 +3310,15 @@ const routes: Record<string, RouteHandler> = {
       const id = getPathParam(request, /^\/v1\/professor\/atividades\/([^/]+)$/i);
       const body = await request.json().catch(() => ({}));
       const livroId = String(body?.livro_id || '').trim();
+      const materiaisApoio = normalizeAtividadeMateriaisApoio(body?.materiais_apoio);
+      const materiaisBytes = estimateMateriaisApoioBytes(materiaisApoio);
       const record = await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: 'id,professor_id', id: `eq.${id}`, limit: '1' }).toString()}`);
       const atividade = ensureArray<Record<string, unknown>>(record)[0] || null;
       if (!atividade?.id || !context.professorProfileIds.includes(String(atividade?.professor_id || '').trim())) {
         return jsonResponse({ success: false, error: 'Atividade nao encontrada.' }, 404);
+      }
+      if (materiaisBytes > MAX_ATIVIDADE_MATERIAIS_BYTES) {
+        return jsonResponse({ success: false, error: 'Os materiais de apoio ultrapassam o limite de 1 GB por atividade.' }, 400);
       }
       const alunoId = body?.aluno_id ? String(body.aluno_id).trim() : '';
       if (alunoId && !context.usuarios.some((item) => String(item?.id || '').trim() === alunoId)) {
@@ -3243,6 +3333,7 @@ const routes: Record<string, RouteHandler> = {
           data_entrega: body?.data_entrega ? String(body.data_entrega) : null,
           livro_id: livroId || null,
           aluno_id: alunoId || null,
+          materiais_apoio: materiaisApoio,
         },
         headers: { Prefer: 'return=minimal' },
       });
