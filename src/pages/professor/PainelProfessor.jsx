@@ -1012,7 +1012,8 @@ export default function PainelProfessor() {
       return usuarios.length;
     }
 
-    return usuarios.filter((item) => atividadeForm.turmas.includes(item.turma)).length;
+    const selectedKeys = new Set(atividadeForm.turmas.map(normalizeTurmaKey));
+    return usuarios.filter((item) => selectedKeys.has(normalizeTurmaKey(item.turma))).length;
   }, [atividadeForm.aluno_id, atividadeForm.target_mode, atividadeForm.turmas, usuarios]);
 
   const entregasPendentes = useMemo(
@@ -1216,6 +1217,41 @@ export default function PainelProfessor() {
         formulario_ativo: perguntas.length > 0 ? prev.formulario_ativo : false,
       };
     });
+  };
+
+  const handleAddMaterialLink = () => {
+    setAtividadeForm((prev) => ({
+      ...prev,
+      materiais_apoio: [...prev.materiais_apoio, { id: createQuestionId(), tipo: 'link', nome: '', url: '' }],
+    }));
+  };
+
+  const handleAddMaterialFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const currentSize = atividadeForm.materiais_apoio.reduce((acc, m) => acc + (m.tamanho || 0), 0);
+    if (currentSize + file.size > 1024 * 1024 * 1024) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'O limite total de materiais de apoio é de 1GB.' });
+      return;
+    }
+    setAtividadeForm((prev) => ({
+      ...prev,
+      materiais_apoio: [...prev.materiais_apoio, { id: createQuestionId(), tipo: 'arquivo', nome: file.name, tamanho: file.size, file }],
+    }));
+  };
+
+  const handleUpdateMaterial = (id, field, value) => {
+    setAtividadeForm((prev) => ({
+      ...prev,
+      materiais_apoio: prev.materiais_apoio.map((m) => (m.id === id ? { ...m, [field]: value } : m)),
+    }));
+  };
+
+  const handleRemoveMaterial = (id) => {
+    setAtividadeForm((prev) => ({
+      ...prev,
+      materiais_apoio: prev.materiais_apoio.filter((m) => m.id !== id),
+    }));
   };
 
   const handleAddMaterialLink = () => {
