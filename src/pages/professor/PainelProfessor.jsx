@@ -1,12 +1,15 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Check,
   CheckCircle,
   ChevronsUpDown,
   ClipboardList,
+  FileText,
   FileQuestion,
+  Link as LinkIcon,
   Lightbulb,
   Loader2,
+  Paperclip,
   Pencil,
   Plus,
   Send,
@@ -14,6 +17,7 @@ import {
   Star,
   Trash2,
   Users,
+  Video,
   Wand2,
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -93,9 +97,10 @@ function createEmptyAtividade() {
     livro_id: '',
     aluno_id: '',
     target_mode: 'aluno',
-    turma: '',
+    turmas: [],
     perguntas: [],
     formulario_ativo: false,
+    materiais_apoio: [],
   };
 }
 
@@ -872,6 +877,7 @@ export default function PainelProfessor() {
   const [usuarios, setUsuarios] = useState([]);
   const [sugestoes, setSugestoes] = useState([]);
   const [atividades, setAtividades] = useState([]);
+  const [filterTurma, setFilterTurma] = useState('all');
   const [entregas, setEntregas] = useState([]);
   const [professorTurmasPermitidas, setProfessorTurmasPermitidas] = useState([]);
   const [professorProfileIds, setProfessorProfileIds] = useState([]);
@@ -1006,8 +1012,8 @@ export default function PainelProfessor() {
       return usuarios.length;
     }
 
-    return usuarios.filter((item) => item.turma === atividadeForm.turma).length;
-  }, [atividadeForm.aluno_id, atividadeForm.target_mode, atividadeForm.turma, usuarios]);
+    return usuarios.filter((item) => atividadeForm.turmas.includes(item.turma)).length;
+  }, [atividadeForm.aluno_id, atividadeForm.target_mode, atividadeForm.turmas, usuarios]);
 
   const entregasPendentes = useMemo(
     () => entregas.filter((item) => item.status !== 'aprovada').length,
@@ -1017,13 +1023,13 @@ export default function PainelProfessor() {
   const canPublishActivity = useMemo(() => {
     if (!atividadeForm.titulo.trim()) return false;
     if (atividadeForm.target_mode === 'aluno') return Boolean(atividadeForm.aluno_id);
-    if (atividadeForm.target_mode === 'turma') return Boolean(atividadeForm.turma);
+    if (atividadeForm.target_mode === 'turma') return atividadeForm.turmas.length > 0;
     return destinoResumo > 0;
   }, [
     atividadeForm.aluno_id,
     atividadeForm.target_mode,
     atividadeForm.titulo,
-    atividadeForm.turma,
+    atividadeForm.turmas,
     destinoResumo,
   ]);
 
@@ -1035,14 +1041,17 @@ export default function PainelProfessor() {
   );
 
   const atividadesComMeta = useMemo(
-    () => atividades.map((atividade) => {
+    () => atividades.filter((at) => {
+      if (filterTurma === 'all') return true;
+      return at.turma === filterTurma || at.usuarios_biblioteca?.turma === filterTurma || (Array.isArray(at.turmas) && at.turmas.includes(filterTurma));
+    }).map((atividade) => {
       const meta = extractAtividadeFormConfig(atividade.descricao);
       return {
         ...atividade,
         meta,
       };
     }),
-    [atividades],
+    [atividades, filterTurma],
   );
 
   const selectedAtividadeIdsSet = useMemo(
@@ -1096,9 +1105,10 @@ export default function PainelProfessor() {
       livro_id: atividade.livro_id || '',
       aluno_id: atividade.aluno_id || '',
       target_mode: 'aluno',
-      turma: atividade.usuarios_biblioteca?.turma || '',
+      turmas: atividade.turma ? [atividade.turma] : (atividade.usuarios_biblioteca?.turma ? [atividade.usuarios_biblioteca.turma] : (atividade.turmas || [])),
       formulario_ativo: meta.perguntas.length > 0,
       perguntas: meta.perguntas.map((item, index) => normalizeQuestion(item, index)),
+      materiais_apoio: atividade.materiais_apoio || [],
     });
     setMobilePreviewExpanded(false);
     setIsAtividadeDialogOpen(true);
@@ -1206,6 +1216,41 @@ export default function PainelProfessor() {
         formulario_ativo: perguntas.length > 0 ? prev.formulario_ativo : false,
       };
     });
+  };
+
+  const handleAddMaterialLink = () => {
+    setAtividadeForm((prev) => ({
+      ...prev,
+      materiais_apoio: [...prev.materiais_apoio, { id: createQuestionId(), tipo: 'link', nome: '', url: '' }],
+    }));
+  };
+
+  const handleAddMaterialFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const currentSize = atividadeForm.materiais_apoio.reduce((acc, m) => acc + (m.tamanho || 0), 0);
+    if (currentSize + file.size > 1024 * 1024 * 1024) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'O limite total de materiais de apoio é de 1GB.' });
+      return;
+    }
+    setAtividadeForm((prev) => ({
+      ...prev,
+      materiais_apoio: [...prev.materiais_apoio, { id: createQuestionId(), tipo: 'arquivo', nome: file.name, tamanho: file.size, file }],
+    }));
+  };
+
+  const handleUpdateMaterial = (id, field, value) => {
+    setAtividadeForm((prev) => ({
+      ...prev,
+      materiais_apoio: prev.materiais_apoio.map((m) => (m.id === id ? { ...m, [field]: value } : m)),
+    }));
+  };
+
+  const handleRemoveMaterial = (id) => {
+    setAtividadeForm((prev) => ({
+      ...prev,
+      materiais_apoio: prev.materiais_apoio.filter((m) => m.id !== id),
+    }));
   };
 
   const handleSendSugestao = async () => {
@@ -1468,7 +1513,8 @@ export default function PainelProfessor() {
         livro_id: atividadeForm.livro_id || null,
         aluno_id: atividadeForm.target_mode === 'aluno' ? atividadeForm.aluno_id || null : null,
         target_mode: atividadeForm.target_mode,
-        turma: atividadeForm.target_mode === 'turma' ? atividadeForm.turma || null : null,
+        turmas: atividadeForm.target_mode === 'turma' ? atividadeForm.turmas : [],
+        materiais_apoio: atividadeForm.materiais_apoio,
       }, editingAtividade?.id || null, { roleHint: profileRoleHint });
 
       setIsAtividadeDialogOpen(false);
@@ -1670,8 +1716,22 @@ export default function PainelProfessor() {
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(280px,0.9fr)]">
               <Card className="animate-in fade-in-0 slide-in-from-bottom-3">
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0">
                   <CardTitle className="text-lg">Atividades enviadas</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-muted-foreground" />
+                    <Select value={filterTurma} onValueChange={setFilterTurma}>
+                      <SelectTrigger className="w-[160px] h-9 text-xs rounded-xl bg-muted/30 border-muted-foreground/20">
+                        <SelectValue placeholder="Filtrar por turma" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas as turmas</SelectItem>
+                        {professorTurmasPermitidas.map((t) => (
+                          <SelectItem key={t} value={t}>{t}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {loading ? (
@@ -2253,6 +2313,57 @@ export default function PainelProfessor() {
                     )}
                   </div>
 
+                  <div className="rounded-3xl border bg-gradient-to-br from-muted/30 to-background p-4 sm:p-5 space-y-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-semibold">Materiais de Apoio</p>
+                        <p className="text-sm text-muted-foreground">Adicione links ou arquivos (PDF, Excel, Vídeos) para a atividade. Máx 1GB total.</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={handleAddMaterialLink}>
+                          <LinkIcon className="w-4 h-4 mr-2" /> Link
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" className="rounded-xl" asChild>
+                          <label className="cursor-pointer">
+                            <Paperclip className="w-4 h-4 mr-2" /> Arquivo
+                            <input type="file" className="hidden" onChange={handleAddMaterialFile} />
+                          </label>
+                        </Button>
+                      </div>
+                    </div>
+
+                    {atividadeForm.materiais_apoio.length > 0 && (
+                      <div className="grid gap-3">
+                        {atividadeForm.materiais_apoio.map((mat) => (
+                          <div key={mat.id} className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 rounded-2xl border bg-background/50 shadow-sm animate-in fade-in-0 zoom-in-95">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                              {mat.tipo === 'link' ? <LinkIcon className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                            </div>
+                            <div className="flex-1 w-full grid gap-2">
+                              <Input
+                                className="h-9 rounded-xl text-sm"
+                                placeholder={mat.tipo === 'link' ? "Título do link" : "Nome do material"}
+                                value={mat.nome}
+                                onChange={(e) => handleUpdateMaterial(mat.id, 'nome', e.target.value)}
+                              />
+                              {mat.tipo === 'link' && (
+                                <Input
+                                  className="h-8 rounded-xl text-xs"
+                                  placeholder="URL (ex: https://youtube.com/...)"
+                                  value={mat.url}
+                                  onChange={(e) => handleUpdateMaterial(mat.id, 'url', e.target.value)}
+                                />
+                              )}
+                            </div>
+                            <Button variant="ghost" size="icon" className="shrink-0 text-destructive hover:bg-destructive/10" onClick={() => handleRemoveMaterial(mat.id)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="grid gap-4 lg:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Livro</Label>
@@ -2309,7 +2420,7 @@ export default function PainelProfessor() {
                           onClick={() => setAtividadeForm((prev) => ({
                             ...prev,
                             target_mode: option.value,
-                            turma: option.value === 'turma' ? prev.turma : '',
+                            turmas: option.value === 'turma' ? prev.turmas : [],
                             aluno_id: option.value === 'aluno' ? prev.aluno_id : '',
                           }))}
                         >
@@ -2330,21 +2441,26 @@ export default function PainelProfessor() {
                           />
                         </div>
                       ) : atividadeForm.target_mode === 'turma' ? (
-                        <div className="space-y-2">
-                          <Label>Turma</Label>
-                          <Select
-                            value={atividadeForm.turma || ''}
-                            onValueChange={(value) => setAtividadeForm((prev) => ({ ...prev, turma: value }))}
-                          >
-                            <SelectTrigger><SelectValue placeholder="Selecione uma turma" /></SelectTrigger>
-                            <SelectContent>
-                              {turmaStats.map((item) => (
-                                <SelectItem key={item.turma} value={item.turma}>
-                                  {item.turma} ({item.totalAlunos} alunos)
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                        <div className="space-y-3">
+                          <Label>Selecione as Turmas ({atividadeForm.turmas.length})</Label>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 p-3 rounded-2xl border bg-muted/10 max-h-52 overflow-y-auto">
+                            {professorTurmasPermitidas.map((turma) => (
+                              <label key={turma} className="flex items-center gap-3 p-3 rounded-xl hover:bg-background cursor-pointer transition-all border border-transparent hover:border-border">
+                                <Checkbox
+                                  checked={atividadeForm.turmas.includes(turma)}
+                                  onCheckedChange={(checked) => {
+                                    setAtividadeForm(prev => ({
+                                      ...prev,
+                                      turmas: checked 
+                                        ? [...prev.turmas, turma] 
+                                        : prev.turmas.filter(t => t !== turma)
+                                    }));
+                                  }}
+                                />
+                                <span className="text-sm font-medium">{turma}</span>
+                              </label>
+                            ))}
+                          </div>
                         </div>
                       ) : (
                         <div className="rounded-2xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
