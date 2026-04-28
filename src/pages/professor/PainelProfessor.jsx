@@ -1468,7 +1468,7 @@ export default function PainelProfessor() {
       return;
     }
 
-    if (atividadeForm.target_mode === 'turma' && !atividadeForm.turma) {
+    if (atividadeForm.target_mode === 'turma' && atividadeForm.turmas.length === 0) {
       toast({ variant: 'destructive', title: 'Erro', description: 'Selecione uma turma.' });
       return;
     }
