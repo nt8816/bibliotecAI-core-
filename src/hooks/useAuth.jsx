@@ -13,6 +13,38 @@ import {
 
 const AuthContext = createContext(undefined);
 
+function normalizeRoleList(rawRoles) {
+  if (!Array.isArray(rawRoles)) return [];
+  return [...new Set(
+    rawRoles
+      .map((role) => String(role || '').trim().toLowerCase())
+      .filter(Boolean),
+  )];
+}
+
+function extractRolesFromPayload(payload, fallbackSession = null) {
+  const directRoles = normalizeRoleList(payload?.roles);
+  if (directRoles.length > 0) return directRoles;
+
+  const user = payload?.user || fallbackSession?.user || null;
+  const fromUserArray = normalizeRoleList(
+    user?.roles
+    || user?.app_metadata?.roles
+    || user?.user_metadata?.roles,
+  );
+  if (fromUserArray.length > 0) return fromUserArray;
+
+  const singleCandidates = [
+    user?.role,
+    user?.app_metadata?.role,
+    user?.user_metadata?.role,
+  ]
+    .map((role) => String(role || '').trim().toLowerCase())
+    .filter(Boolean);
+
+  return [...new Set(singleCandidates)];
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
@@ -22,9 +54,11 @@ export function AuthProvider({ children }) {
   const [tenantContext, setTenantContext] = useState(null);
 
   const applyAuthPayload = useCallback((payload, fallbackSession = null) => {
-    const uniqueRoles = [...new Set(payload?.roles || [])];
-    setSession(payload?.session || fallbackSession || getPlatformSession() || null);
-    setUser(payload?.user || fallbackSession?.user || null);
+    const resolvedSession = payload?.session || fallbackSession || getPlatformSession() || null;
+    const resolvedUser = payload?.user || fallbackSession?.user || null;
+    const uniqueRoles = extractRolesFromPayload({ ...payload, user: resolvedUser }, resolvedSession);
+    setSession(resolvedSession);
+    setUser(resolvedUser);
     setRoles(uniqueRoles);
     setUserRole(pickPrimaryRole(uniqueRoles));
     setTenantContext(payload?.tenant || null);
