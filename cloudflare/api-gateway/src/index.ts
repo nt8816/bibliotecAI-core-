@@ -2951,8 +2951,9 @@ async function callSupabaseFunction(
     method: 'POST',
     headers: {
       apikey: publishableKey,
-      Authorization: `Bearer ${publishableKey}`,
+      Authorization: `Bearer ${userToken}`,
       'x-user-access-token': userToken,
+      'x-supabase-auth': userToken,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
