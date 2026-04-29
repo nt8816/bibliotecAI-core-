@@ -109,6 +109,23 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function normalizeMaterialForForm(material, fallbackId) {
+  const raw = material || {};
+  const hasFilePath = Boolean(raw?.path || raw?.object_key || raw?.objectKey || raw?.key);
+  const tipoRaw = String(raw?.tipo || '').trim().toLowerCase();
+  const tipo = tipoRaw || (hasFilePath ? 'arquivo' : 'link');
+  return {
+    id: String(raw?.id || fallbackId || createQuestionId()),
+    ...raw,
+    tipo,
+    nome: String(raw?.nome || raw?.titulo || raw?.label || raw?.file_name || '').trim(),
+    url: String(raw?.url || raw?.link || raw?.href || '').trim(),
+    path: String(raw?.path || raw?.object_key || raw?.objectKey || raw?.key || '').trim(),
+    object_key: String(raw?.object_key || raw?.path || raw?.objectKey || raw?.key || '').trim(),
+    public_url: raw?.public_url || raw?.publicUrl || null,
+  };
+}
+
 function formatAlunoOptionLabel(aluno) {
   if (!aluno) return '';
   return aluno.turma ? `${aluno.nome} (${aluno.turma})` : aluno.nome;
@@ -1147,11 +1164,9 @@ export default function PainelProfessor() {
       turmas: atividade.turma ? [atividade.turma] : (atividade.usuarios_biblioteca?.turma ? [atividade.usuarios_biblioteca.turma] : (atividade.turmas || [])),
       formulario_ativo: meta.perguntas.length > 0,
       perguntas: meta.perguntas.map((item, index) => normalizeQuestion(item, index)),
-      materiais_apoio: ensureArray(atividade.materiais_apoio).map((material, index) => ({
-        id: String(material?.id || `${atividade.id || 'atividade'}_mat_${index}`),
-        ...material,
-        nome: String(material?.nome || material?.titulo || '').trim(),
-      })),
+      materiais_apoio: ensureArray(atividade.materiais_apoio).map(
+        (material, index) => normalizeMaterialForForm(material, `${atividade.id || 'atividade'}_mat_${index}`),
+      ),
     });
     setMobilePreviewExpanded(false);
     setIsAtividadeDialogOpen(true);
@@ -1576,24 +1591,35 @@ export default function PainelProfessor() {
       }
 
       const materiaisPayload = [...materiaisExistentes, ...uploadedMaterials].map((material) => {
-        if (String(material?.tipo || '').toLowerCase() === 'link') {
+        const normalized = normalizeMaterialForForm(material);
+        const isLink = String(normalized?.tipo || '').toLowerCase() === 'link';
+
+        if (isLink) {
           return {
             tipo: 'link',
-            titulo: String(material?.titulo || material?.nome || '').trim() || 'Link de apoio',
-            url: String(material?.url || '').trim(),
+            titulo: String(normalized?.titulo || normalized?.nome || '').trim() || 'Link de apoio',
+            url: String(normalized?.url || normalized?.public_url || '').trim(),
+          };
+        }
+
+        if (!normalized?.path && normalized?.public_url) {
+          return {
+            tipo: 'link',
+            titulo: String(normalized?.nome || 'Arquivo de apoio').trim(),
+            url: String(normalized.public_url).trim(),
           };
         }
 
         return {
           tipo: 'arquivo',
-          nome: String(material?.nome || '').trim(),
-          path: String(material?.path || material?.object_key || '').trim(),
-          object_key: String(material?.object_key || material?.path || '').trim(),
-          provider: String(material?.provider || 'r2').trim() || 'r2',
-          public_url: material?.public_url || null,
-          tamanho: Number(material?.tamanho || 0),
-          mime_type: material?.mime_type || null,
-          extensao: material?.extensao || null,
+          nome: String(normalized?.nome || '').trim(),
+          path: String(normalized?.path || normalized?.object_key || '').trim(),
+          object_key: String(normalized?.object_key || normalized?.path || '').trim(),
+          provider: String(normalized?.provider || 'r2').trim() || 'r2',
+          public_url: normalized?.public_url || null,
+          tamanho: Number(normalized?.tamanho || 0),
+          mime_type: normalized?.mime_type || null,
+          extensao: normalized?.extensao || null,
         };
       });
 
