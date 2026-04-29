@@ -22,6 +22,8 @@ export interface Env {
   SUPABASE_PUBLISHABLE_KEY?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
   SUPABASE_JWT_SECRET?: string;
+  R2_BUCKET?: R2Bucket;
+  R2_PUBLIC_BASE_URL?: string;
   FIREBASE_PROJECT_ID?: string;
   FIREBASE_CLIENT_EMAIL?: string;
   FIREBASE_PRIVATE_KEY?: string;
@@ -123,10 +125,12 @@ async function notImplemented(feature: string) {
 }
 
 function getUserToken(request: Request) {
+  const url = new URL(request.url);
+  const queryToken = url.searchParams.get('accessToken') || '';
   const manualToken = request.headers.get('x-user-access-token') || '';
   const authHeader = request.headers.get('authorization') || request.headers.get('Authorization') || '';
   const bearerToken = String(authHeader.replace(/^Bearer\s+/i, '')).trim();
-  const customToken = String(manualToken || '').trim();
+  const customToken = String(manualToken || queryToken || '').trim();
 
   if (customToken && bearerToken && customToken !== bearerToken) {
     return '';
@@ -2938,6 +2942,146 @@ function isExpiredComunicado(item: Record<string, unknown> | null | undefined) {
   return !Number.isNaN(expiresAt.getTime()) && expiresAt <= new Date();
 }
 
+function sanitizeR2ObjectKey(objectKey: string) {
+  return String(objectKey || '')
+    .replace(/^\/+/, '')
+    .replace(/\.\./g, '')
+    .trim();
+}
+
+function extractSchoolIdFromR2ObjectKey(objectKey: string) {
+  const match = String(objectKey || '').match(/^escolas\/([^/]+)\//);
+  return match?.[1] || null;
+}
+
+function buildR2PublicUrl(env: Env, objectKey: string) {
+  const normalizedBase = String(env.R2_PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
+  return normalizedBase ? `${normalizedBase}/${objectKey}` : null;
+}
+
+function decodeBase64ToBytes(value: string) {
+  const normalized = String(value || '').replace(/^data:[^,]+,/, '').trim();
+  const binary = atob(normalized);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+async function getR2AccessContext(request: Request, env: Env) {
+  const caller = await fetchSupabaseUser(request, env);
+  if (!caller?.id) {
+    throw new Error('Sessao invalida.');
+  }
+
+  const rolesPayload = await supabaseAdminRequest(env, `/rest/v1/user_roles?${new URLSearchParams({
+    select: 'role',
+    user_id: `eq.${String(caller.id)}`,
+  }).toString()}`);
+  const roles = ensureArray<Record<string, unknown>>(rolesPayload).map((item) => String(item?.role || '').trim());
+  const isSuperAdmin = roles.includes('super_admin');
+
+  if (isSuperAdmin) {
+    return { caller, isSuperAdmin, profile: null };
+  }
+
+  const profilePayload = await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+    select: 'id,escola_id,tipo',
+    user_id: `eq.${String(caller.id)}`,
+    order: 'updated_at.desc.nullslast,created_at.desc',
+    limit: '1',
+  }).toString()}`);
+  const profile = ensureArray<Record<string, unknown>>(profilePayload)[0] || null;
+  if (!profile?.escola_id) {
+    throw new Error('Nao foi possivel identificar a escola do usuario.');
+  }
+
+  return { caller, isSuperAdmin, profile };
+}
+
+function assertR2ObjectAccess(context: { isSuperAdmin: boolean; profile: Record<string, unknown> | null }, objectKey: string) {
+  const objectSchoolId = extractSchoolIdFromR2ObjectKey(objectKey);
+  if (context.isSuperAdmin) {
+    if (!objectSchoolId) throw new Error('Chave do objeto invalida para o R2.');
+    return;
+  }
+
+  const schoolPrefix = context.profile?.escola_id ? `escolas/${context.profile.escola_id}/` : '';
+  if (!schoolPrefix || !objectKey.startsWith(schoolPrefix)) {
+    throw new Error('Chave do objeto fora do escopo da escola.');
+  }
+}
+
+function buildPlatformMediaDownloadUrl(request: Request, env: Env, objectKey: string, fileName: string) {
+  const token = getUserToken(request);
+  const baseUrl = String(env.API_BASE_URL || new URL(request.url).origin).trim().replace(/\/+$/, '');
+  const params = new URLSearchParams({
+    objectKey,
+    fileName: fileName || 'arquivo',
+    accessToken: token,
+  });
+  return `${baseUrl}/v1/media/r2-download?${params.toString()}`;
+}
+
+async function handleDirectR2Storage(request: Request, env: Env, body: Record<string, unknown>) {
+  if (!env.R2_BUCKET) return null;
+
+  const operation = String(body?.operation || '').trim();
+  const objectKey = sanitizeR2ObjectKey(String(body?.objectKey || ''));
+  if (!operation || !objectKey) {
+    throw new Error('Operacao ou chave do objeto ausente.');
+  }
+
+  const context = await getR2AccessContext(request, env);
+  assertR2ObjectAccess(context, objectKey);
+
+  if (operation === 'create_upload_url') {
+    return {
+      success: true,
+      provider: 'r2',
+      objectKey,
+      uploadViaApi: true,
+      publicUrl: buildR2PublicUrl(env, objectKey),
+    };
+  }
+
+  if (operation === 'upload_object') {
+    const fileDataBase64 = String(body?.fileDataBase64 || '').trim();
+    if (!fileDataBase64) {
+      throw new Error('Conteudo do arquivo ausente.');
+    }
+
+    await env.R2_BUCKET.put(objectKey, decodeBase64ToBytes(fileDataBase64), {
+      httpMetadata: {
+        contentType: String(body?.contentType || 'application/octet-stream').trim(),
+      },
+    });
+
+    return {
+      success: true,
+      provider: 'r2',
+      objectKey,
+      publicUrl: buildR2PublicUrl(env, objectKey),
+    };
+  }
+
+  if (operation === 'create_download_url') {
+    return {
+      success: true,
+      objectKey,
+      downloadUrl: buildPlatformMediaDownloadUrl(request, env, objectKey, String(body?.fileName || 'arquivo')),
+    };
+  }
+
+  if (operation === 'delete_object') {
+    await env.R2_BUCKET.delete(objectKey);
+    return { success: true, objectKey };
+  }
+
+  throw new Error('Operacao nao suportada.');
+}
+
 async function callSupabaseFunction(
   request: Request,
   env: Env,
@@ -3021,10 +3165,46 @@ const routes: Record<string, RouteHandler> = {
   'POST /v1/media/r2-storage': async (request, env) => {
     try {
       const body = await request.json().catch(() => ({}));
+      const directPayload = await handleDirectR2Storage(request, env, body);
+      if (directPayload) {
+        return jsonResponse(directPayload);
+      }
       const payload = await callSupabaseFunction(request, env, 'r2-storage', body);
       return jsonResponse(payload);
     } catch (error) {
       return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao acessar o R2.' }, 400);
+    }
+  },
+  'GET /v1/media/r2-download': async (request, env) => {
+    try {
+      if (!env.R2_BUCKET) {
+        return jsonResponse({ success: false, error: 'Bucket R2 nao vinculado ao Worker.' }, 501);
+      }
+
+      const url = new URL(request.url);
+      const objectKey = sanitizeR2ObjectKey(String(url.searchParams.get('objectKey') || ''));
+      const fileName = String(url.searchParams.get('fileName') || 'arquivo').trim();
+      if (!objectKey) {
+        return jsonResponse({ success: false, error: 'Chave do objeto ausente.' }, 400);
+      }
+
+      const context = await getR2AccessContext(request, env);
+      assertR2ObjectAccess(context, objectKey);
+
+      const object = await env.R2_BUCKET.get(objectKey);
+      if (!object) {
+        return jsonResponse({ success: false, error: 'Arquivo nao encontrado.' }, 404);
+      }
+
+      return new Response(object.body, {
+        headers: {
+          ...buildCorsHeaders(request, env),
+          'Content-Type': object.httpMetadata?.contentType || 'application/octet-stream',
+          'Content-Disposition': `attachment; filename="${fileName.replace(/"/g, '')}"`,
+        },
+      });
+    } catch (error) {
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao baixar arquivo.' }, 400);
     }
   },
   'POST /v1/livros/processar-arquivo': async (request, env) => {

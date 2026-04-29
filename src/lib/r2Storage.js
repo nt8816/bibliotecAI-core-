@@ -92,6 +92,10 @@ export async function uploadFileToR2({ file, escolaId, ownerId, scope = 'arquivo
     auth: false,
   });
 
+  if (payload.uploadViaApi || !payload.uploadUrl) {
+    return uploadFileToR2ThroughApi({ file, objectKey, accessToken });
+  }
+
   let uploadResponse;
   try {
     uploadResponse = await fetch(payload.uploadUrl, {
