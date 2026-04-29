@@ -1011,6 +1011,33 @@ export default function PainelProfessor() {
     [professorTurmasPermitidas, usuarios],
   );
 
+  const turmaCanonicalByKey = useMemo(() => {
+    const map = new Map();
+    usuarios.forEach((item) => {
+      const turma = String(item?.turma || '').trim();
+      if (!turma) return;
+      const key = normalizeTurmaKey(turma);
+      if (!key || map.has(key)) return;
+      map.set(key, turma);
+    });
+    return map;
+  }, [usuarios]);
+
+  const turmaOptions = useMemo(
+    () => professorTurmasPermitidas.map((turma) => {
+      const key = normalizeTurmaKey(turma);
+      const totalAlunos = usuarios.filter((item) => normalizeTurmaKey(item?.turma) === key).length;
+      return {
+        turma,
+        key,
+        canonicalTurma: turmaCanonicalByKey.get(key) || turma,
+        totalAlunos,
+        disabled: totalAlunos === 0,
+      };
+    }),
+    [professorTurmasPermitidas, turmaCanonicalByKey, usuarios],
+  );
+
   const destinoResumo = useMemo(() => {
     if (atividadeForm.target_mode === 'aluno') {
       return atividadeForm.aluno_id ? 1 : 0;
@@ -1511,6 +1538,23 @@ export default function PainelProfessor() {
 
     setSaving(true);
     try {
+      const turmasSelecionadas = atividadeForm.target_mode === 'turma'
+        ? [...new Set(
+          atividadeForm.turmas
+            .map((turma) => turmaCanonicalByKey.get(normalizeTurmaKey(turma)) || String(turma || '').trim())
+            .filter(Boolean),
+        )]
+        : [];
+
+      if (atividadeForm.target_mode === 'turma' && turmasSelecionadas.length === 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Sem alunos disponíveis',
+          description: 'As turmas selecionadas não possuem alunos vinculados.',
+        });
+        return;
+      }
+
       const response = await saveProfessorAtividade({
         titulo: atividadeForm.titulo.trim(),
         descricao: serializeAtividadeDescricao(
@@ -1522,7 +1566,7 @@ export default function PainelProfessor() {
         livro_id: atividadeForm.livro_id || null,
         aluno_id: atividadeForm.target_mode === 'aluno' ? atividadeForm.aluno_id || null : null,
         target_mode: atividadeForm.target_mode,
-        turmas: atividadeForm.target_mode === 'turma' ? atividadeForm.turmas : [],
+        turmas: turmasSelecionadas,
         materiais_apoio: atividadeForm.materiais_apoio,
       }, editingAtividade?.id || null, { roleHint: profileRoleHint });
 
@@ -2452,21 +2496,33 @@ export default function PainelProfessor() {
                       ) : atividadeForm.target_mode === 'turma' ? (
                         <div className="space-y-3">
                           <Label>Selecione as Turmas ({atividadeForm.turmas.length})</Label>
+                          {turmaOptions.some((item) => item.disabled) && (
+                            <p className="text-xs text-muted-foreground">
+                              Turmas sem alunos aparecem desabilitadas para evitar falha no envio.
+                            </p>
+                          )}
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 p-3 rounded-2xl border bg-muted/10 max-h-52 overflow-y-auto">
-                            {professorTurmasPermitidas.map((turma) => (
-                              <label key={turma} className="flex items-center gap-3 p-3 rounded-xl hover:bg-background cursor-pointer transition-all border border-transparent hover:border-border">
+                            {turmaOptions.map((option) => (
+                              <label
+                                key={option.turma}
+                                className={cn(
+                                  'flex items-center gap-3 p-3 rounded-xl transition-all border border-transparent hover:border-border',
+                                  option.disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-background',
+                                )}
+                              >
                                 <Checkbox
-                                  checked={atividadeForm.turmas.includes(turma)}
+                                  disabled={option.disabled}
+                                  checked={atividadeForm.turmas.some((selected) => normalizeTurmaKey(selected) === option.key)}
                                   onCheckedChange={(checked) => {
-                                    setAtividadeForm(prev => ({
+                                    setAtividadeForm((prev) => ({
                                       ...prev,
-                                      turmas: checked 
-                                        ? [...prev.turmas, turma] 
-                                        : prev.turmas.filter(t => t !== turma)
+                                      turmas: checked
+                                        ? [...prev.turmas, option.canonicalTurma]
+                                        : prev.turmas.filter((item) => normalizeTurmaKey(item) !== option.key),
                                     }));
                                   }}
                                 />
-                                <span className="text-sm font-medium">{turma}</span>
+                                <span className="text-sm font-medium">{option.turma}</span>
                               </label>
                             ))}
                           </div>
