@@ -9814,7 +9814,7 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/livros\/(?!categorias(?:\/|$))[^/]+\/delete$/, '/v1/livros/:id/delete')
     .replace(/\/v1\/usuarios\/[^/]+\/delete$/, '/v1/usuarios/:id/delete')
     .replace(/\/v1\/livros\/(?!categorias(?:\/|$))[^/]+$/, '/v1/livros/:id')
-    .replace(/\/v1\/usuarios\/(?!professor-turmas$|provisionar-aluno$|delete-batch$|import$)[^/]+$/, '/v1/usuarios/:id');
+    .replace(/\/v1\/usuarios\/(?!professor-turmas$|provisionar-aluno$|delete-batch$|import$|reset-aluno-password$)[^/]+$/, '/v1/usuarios/:id');
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
