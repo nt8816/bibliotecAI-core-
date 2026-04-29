@@ -1335,6 +1335,7 @@ export default function PainelProfessor() {
     const currentSize = atividadeForm.materiais_apoio.reduce((acc, m) => acc + (m.tamanho || 0), 0);
     if (currentSize + file.size > 1024 * 1024 * 1024) {
       toast({ variant: 'destructive', title: 'Erro', description: 'O limite total de materiais de apoio é de 1GB.' });
+      e.target.value = '';
       return;
     }
     setMateriaisTouched(true);
@@ -1342,6 +1343,7 @@ export default function PainelProfessor() {
       ...prev,
       materiais_apoio: [...prev.materiais_apoio, { id: createQuestionId(), tipo: 'arquivo', nome: file.name, tamanho: file.size, file }],
     }));
+    e.target.value = '';
   };
 
   const handleUpdateMaterial = (id, field, value) => {

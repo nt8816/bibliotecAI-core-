@@ -1,7 +1,30 @@
-import { getSupabaseRealtimeClient } from '@/integrations/supabase/client';
+import { createClient } from '@supabase/supabase-js';
+
+import { getPlatformAccessToken } from '@/lib/platformSession';
 
 function ensureArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function getSupabaseQueryClient() {
+  const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
+  const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '').trim();
+  const accessToken = String(getPlatformAccessToken() || '').trim();
+
+  if (!supabaseUrl || !supabaseAnonKey || !accessToken) return null;
+
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  });
 }
 
 function getAtividadeIdsFromSaveResponse(response) {
@@ -51,7 +74,7 @@ export async function fetchAtividadeMateriaisMap(atividadeIds) {
   )];
   if (ids.length === 0) return new Map();
 
-  const supabase = getSupabaseRealtimeClient();
+  const supabase = getSupabaseQueryClient();
   if (!supabase) return new Map();
 
   const { data, error } = await supabase
@@ -81,7 +104,7 @@ export async function persistAtividadeMateriais(atividadeIdsOrResponse, materiai
 
   if (normalizedIds.length === 0) return [];
 
-  const supabase = getSupabaseRealtimeClient();
+  const supabase = getSupabaseQueryClient();
   if (!supabase) return [];
 
   const { error } = await supabase
