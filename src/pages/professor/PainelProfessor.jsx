@@ -113,6 +113,14 @@ function formatAlunoOptionLabel(aluno) {
   return aluno.turma ? `${aluno.nome} (${aluno.turma})` : aluno.nome;
 }
 
+function normalizeTurmaKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
 function AlunoCombobox({
   alunos,
   value,
