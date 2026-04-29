@@ -59,6 +59,72 @@ function decodeBase64ToUint8Array(value: string) {
   return bytes;
 }
 
+function base64UrlEncode(input: string | ArrayBuffer) {
+  const bytes = typeof input === 'string'
+    ? new TextEncoder().encode(input)
+    : new Uint8Array(input);
+  let binary = '';
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function parseJwtHeader(token: string) {
+  const parts = String(token || '').split('.');
+  if (parts.length < 2) return null;
+
+  try {
+    const normalized = parts[0].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+async function signHs256Jwt(secret: string, payload: Record<string, unknown>) {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(signingInput),
+  );
+  return `${signingInput}.${base64UrlEncode(signature)}`;
+}
+
+async function getSupabaseRestServiceToken(serviceRoleKey: string) {
+  const jwtHeader = parseJwtHeader(serviceRoleKey);
+  const algorithm = String(jwtHeader?.alg || '').toUpperCase();
+  if (algorithm !== 'ES256') return serviceRoleKey;
+
+  const jwtSecret = String(Deno.env.get('SUPABASE_JWT_SECRET') || '').trim();
+  if (!jwtSecret) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY usa ES256. Configure SUPABASE_JWT_SECRET na function r2-storage.');
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = now + (60 * 60);
+  return signHs256Jwt(jwtSecret, {
+    aud: 'authenticated',
+    exp: expiresAt,
+    iat: now,
+    iss: 'supabase',
+    role: 'service_role',
+    sub: 'service_role',
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -90,7 +156,8 @@ Deno.serve(async (req) => {
     const callerClient = createClient(supabaseUrl, anonKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    const adminServiceToken = await getSupabaseRestServiceToken(serviceRoleKey);
+    const adminClient = createClient(supabaseUrl, adminServiceToken, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
