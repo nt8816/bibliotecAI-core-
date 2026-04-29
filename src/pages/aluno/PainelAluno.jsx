@@ -4563,32 +4563,115 @@ export default function PainelAluno() {
 
                       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
                         <div className="mx-auto w-full max-w-4xl space-y-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline" className="rounded-full px-3 py-1">
+                              Pontos possiveis: {Number(atividadePendenteAberta.pontos_extras || 0)}
+                            </Badge>
+                            <Badge variant="outline" className="rounded-full px-3 py-1">
+                              Professor: {atividadePendenteAberta.professor?.nome || 'Professor nao informado'}
+                            </Badge>
+                          </div>
+
                           {atividadePendenteAberta.atividadeMeta?.descricaoLimpa && (
                             <p className="rounded-2xl border border-primary/10 bg-primary/5 px-3 py-2 text-sm leading-6">
                               {atividadePendenteAberta.atividadeMeta.descricaoLimpa}
                             </p>
                           )}
 
-                          {ensureArray(atividadePendenteAberta.materiais_apoio).length > 0 && (
-                            <div className="space-y-2 rounded-2xl border border-border/70 bg-background/80 p-3">
-                              <div className="flex items-center gap-2 text-sm font-medium">
-                                <Paperclip className="h-4 w-4 text-primary" />
-                                Conteudos de apoio
-                              </div>
-                              {ensureArray(atividadePendenteAberta.materiais_apoio).map((material, materialIndex) => (
-                                <div key={`${atividadePendenteAberta.id}-material-modal-${materialIndex}`} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 px-3 py-2">
-                                  <div className="min-w-0">
-                                    <p className="truncate text-sm font-medium">
-                                      {String(material?.tipo || '') === 'link'
-                                        ? (material?.titulo || material?.url || 'Link de apoio')
-                                        : (material?.nome || 'Arquivo de apoio')}
-                                    </p>
-                                  </div>
-                                  <Button type="button" variant="outline" size="sm" onClick={() => handleOpenAtividadeMaterial(material)} className="shrink-0">
-                                    Abrir
-                                  </Button>
+                          <div className="space-y-2 rounded-2xl border border-border/70 bg-background/80 p-3">
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                              <Paperclip className="h-4 w-4 text-primary" />
+                              Conteudos de apoio
+                            </div>
+                            {ensureArray(atividadePendenteAberta.materiais_apoio).length === 0 ? (
+                              <p className="text-sm text-muted-foreground">
+                                O professor nao adicionou conteudos de apoio nesta atividade.
+                              </p>
+                            ) : ensureArray(atividadePendenteAberta.materiais_apoio).map((material, materialIndex) => (
+                              <div key={`${atividadePendenteAberta.id}-material-modal-${materialIndex}`} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 px-3 py-2">
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium">
+                                    {String(material?.tipo || '') === 'link'
+                                      ? (material?.titulo || material?.url || 'Link de apoio')
+                                      : (material?.nome || 'Arquivo de apoio')}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {String(material?.tipo || '') === 'link'
+                                      ? (material?.url || '')
+                                      : formatBytes(material?.tamanho)}
+                                  </p>
                                 </div>
-                              ))}
+                                <Button type="button" variant="outline" size="sm" onClick={() => handleOpenAtividadeMaterial(material)} className="shrink-0">
+                                  {String(material?.tipo || '') === 'link' ? 'Abrir' : 'Baixar'}
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+
+                          {Array.isArray(atividadePendenteAberta.atividadeMeta?.formulario?.perguntas)
+                            && atividadePendenteAberta.atividadeMeta.formulario.perguntas.length > 0 && (
+                            <div className="space-y-4 rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:p-5">
+                              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                                <p className="text-sm font-medium">Formulario da atividade</p>
+                                <span className="text-xs text-primary">Responda com calma</span>
+                              </div>
+                              {atividadePendenteAberta.atividadeMeta.formulario.perguntas.map((pergunta, idx) => {
+                                const perguntaId = String(pergunta?.id || `q_${idx + 1}`);
+                                const respostaAtual = String(atividadeRespostas[atividadePendenteAberta.id]?.[perguntaId] || '');
+                                const opcoes = ensureArray(pergunta?.opcoes);
+                                const tipo = String(pergunta?.tipo || 'texto');
+                                return (
+                                  <div key={perguntaId} className="space-y-3 rounded-2xl border bg-background/95 p-4 shadow-sm">
+                                    <Label className="text-xs uppercase tracking-[0.18em] text-primary">
+                                      {idx + 1}. {String(pergunta?.pergunta || 'Pergunta')}
+                                    </Label>
+                                    {tipo === 'multipla_escolha' && opcoes.length > 0 ? (
+                                      <div className="grid gap-2 sm:grid-cols-2">
+                                        {opcoes.map((opcao, optionIndex) => {
+                                          const selected = respostaAtual === String(opcao);
+                                          return (
+                                            <button
+                                              key={`${perguntaId}-${optionIndex}`}
+                                              type="button"
+                                              className={`rounded-2xl border px-4 py-3 text-left text-sm leading-5 transition-all duration-200 ${
+                                                selected
+                                                  ? 'border-primary bg-primary text-primary-foreground'
+                                                  : 'border-border bg-background hover:border-primary/40'
+                                              }`}
+                                              onClick={() =>
+                                                setAtividadeRespostas((prev) => ({
+                                                  ...prev,
+                                                  [atividadePendenteAberta.id]: {
+                                                    ...(prev[atividadePendenteAberta.id] || {}),
+                                                    [perguntaId]: selected ? '' : String(opcao),
+                                                  },
+                                                }))
+                                              }
+                                            >
+                                              {String(opcao)}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : (
+                                      <Textarea
+                                        rows={2}
+                                        placeholder="Digite sua resposta..."
+                                        value={respostaAtual}
+                                        onChange={(e) =>
+                                          setAtividadeRespostas((prev) => ({
+                                            ...prev,
+                                            [atividadePendenteAberta.id]: {
+                                              ...(prev[atividadePendenteAberta.id] || {}),
+                                              [perguntaId]: e.target.value,
+                                            },
+                                          }))
+                                        }
+                                      />
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           )}
 
@@ -4600,6 +4683,40 @@ export default function PainelAluno() {
                               value={atividadeTexto[atividadePendenteAberta.id] ?? parseEntregaPayload(atividadePendenteAberta.entrega?.texto_entrega).texto ?? ''}
                               onChange={(e) => setAtividadeTexto((prev) => ({ ...prev, [atividadePendenteAberta.id]: e.target.value }))}
                             />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>Imagens da atividade (opcional, até 4)</Label>
+                            <input
+                              ref={(node) => {
+                                if (node) {
+                                  activityImageInputRefs.current[atividadePendenteAberta.id] = node;
+                                } else {
+                                  delete activityImageInputRefs.current[atividadePendenteAberta.id];
+                                }
+                              }}
+                              id={`atividade-imagens-modal-${atividadePendenteAberta.id}`}
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => handleActivityFileInputChange(atividadePendenteAberta.id, e)}
+                            />
+                            <div className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-background/80 p-3 sm:flex-row sm:items-center sm:justify-between">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="w-full sm:w-auto"
+                                onClick={() => activityImageInputRefs.current[atividadePendenteAberta.id]?.click()}
+                              >
+                                Escolher arquivos
+                              </Button>
+                              <p className="text-sm text-muted-foreground">
+                                {ensureArray(atividadeImagens[atividadePendenteAberta.id]).length > 0
+                                  ? `${ensureArray(atividadeImagens[atividadePendenteAberta.id]).length} imagem(ns) selecionada(s)`
+                                  : 'Nenhum arquivo escolhido'}
+                              </p>
+                            </div>
                           </div>
 
                           <Button

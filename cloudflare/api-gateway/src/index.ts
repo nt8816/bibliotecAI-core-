@@ -7327,7 +7327,7 @@ const routes: Record<string, RouteHandler> = {
     const [solicitacao] = await supabaseAdminRequest(
       env,
       `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
-        select: 'id,livro_id,usuario_id,status,livros(disponivel,escola_id),usuarios_biblioteca(escola_id)',
+        select: 'id,livro_id,usuario_id,emprestimo_id,tipo,status,nova_data_devolucao_solicitada,livros(disponivel,escola_id),usuarios_biblioteca(escola_id)',
         id: `eq.${solicitacaoId}`,
         limit: '1',
       }).toString()}`,
@@ -7342,9 +7342,60 @@ const routes: Record<string, RouteHandler> = {
       if (!['pendente', 'indisponivel_em_analise'].includes(String(solicitacao.status || ''))) {
         return jsonResponse({ success: false, error: 'A solicitacao ja foi processada.' }, 400);
       }
-      if (solicitacao?.livros?.disponivel === false && String(solicitacao.status || '') !== 'indisponivel_em_analise') {
+      const solicitacaoTipo = String(solicitacao?.tipo || 'emprestimo').trim().toLowerCase();
+      const isProrrogacao = solicitacaoTipo === 'prorrogacao';
+      if (!isProrrogacao && solicitacao?.livros?.disponivel === false && String(solicitacao.status || '') !== 'indisponivel_em_analise') {
         return jsonResponse({ success: false, error: 'Este livro nao esta disponivel para emprestimo no momento.' }, 400);
       }
+
+    if (isProrrogacao) {
+      const emprestimoId = String(solicitacao?.emprestimo_id || '').trim();
+      const novaDataDevolucao = solicitacao?.nova_data_devolucao_solicitada
+        ? String(solicitacao.nova_data_devolucao_solicitada)
+        : '';
+
+      if (!emprestimoId || !novaDataDevolucao) {
+        return jsonResponse({ success: false, error: 'Solicitacao de prorrogacao invalida.' }, 400);
+      }
+
+      const [emprestimo] = await supabaseAdminRequest(
+        env,
+        `/rest/v1/emprestimos?${new URLSearchParams({
+          select: 'id,livro_id,usuario_id,status,data_devolucao_prevista',
+          id: `eq.${emprestimoId}`,
+          limit: '1',
+        }).toString()}`,
+      ) as Array<Record<string, unknown>>;
+
+      if (!emprestimo?.id) {
+        return jsonResponse({ success: false, error: 'Emprestimo vinculado nao encontrado.' }, 404);
+      }
+
+      if (
+        String(emprestimo?.usuario_id || '').trim() !== String(solicitacao?.usuario_id || '').trim()
+        || String(emprestimo?.livro_id || '').trim() !== String(solicitacao?.livro_id || '').trim()
+      ) {
+        return jsonResponse({ success: false, error: 'Emprestimo da solicitacao nao confere com aluno/livro.' }, 400);
+      }
+
+      if (String(emprestimo?.status || '').trim().toLowerCase() !== 'ativo') {
+        return jsonResponse({ success: false, error: 'Apenas emprestimos ativos podem ser prorrogados.' }, 400);
+      }
+
+      await supabaseAdminRequest(env, `/rest/v1/emprestimos?${new URLSearchParams({ id: `eq.${emprestimoId}` }).toString()}`, {
+        method: 'PATCH',
+        body: { data_devolucao_prevista: novaDataDevolucao },
+        headers: { Prefer: 'return=minimal' },
+      });
+
+      await supabaseAdminRequest(env, `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({ id: `eq.${solicitacaoId}` }).toString()}`, {
+        method: 'PATCH',
+        body: { status: 'aprovada', resposta },
+        headers: { Prefer: 'return=minimal' },
+      });
+
+      return jsonResponse({ success: true, updatedEmprestimoId: emprestimoId });
+    }
 
     const emprestimoCriado = await supabaseAdminRequest(env, '/rest/v1/emprestimos', {
       method: 'POST',
@@ -7352,7 +7403,7 @@ const routes: Record<string, RouteHandler> = {
       headers: { Prefer: 'return=representation' },
     }) as Array<Record<string, unknown>>;
 
-    const emprestimoCriadoId = String(emprestimoCriado?.[0]?.id || '').trim();
+    const novoEmprestimoCriadoId = String(emprestimoCriado?.[0]?.id || '').trim();
     try {
       await supabaseAdminRequest(env, `/rest/v1/livros?${new URLSearchParams({ id: `eq.${String(solicitacao.livro_id || '')}` }).toString()}`, {
         method: 'PATCH',
@@ -7365,8 +7416,8 @@ const routes: Record<string, RouteHandler> = {
         headers: { Prefer: 'return=minimal' },
       });
     } catch (error) {
-      if (emprestimoCriadoId) {
-        await supabaseAdminRequest(env, `/rest/v1/emprestimos?${new URLSearchParams({ id: `eq.${emprestimoCriadoId}` }).toString()}`, {
+      if (novoEmprestimoCriadoId) {
+        await supabaseAdminRequest(env, `/rest/v1/emprestimos?${new URLSearchParams({ id: `eq.${novoEmprestimoCriadoId}` }).toString()}`, {
           method: 'DELETE',
           headers: { Prefer: 'return=minimal' },
         });
