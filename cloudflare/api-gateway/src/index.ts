@@ -8778,13 +8778,62 @@ const routes: Record<string, RouteHandler> = {
   },
 
   'POST /v1/usuarios/reset-aluno-password': async (request, env) => {
-    const { isGestor } = await getUsersModuleContext(request, env);
-    if (!isGestor) {
+    const { isGestor, currentEscolaId } = await getUsersModuleContext(request, env);
+    if (!isGestor || !currentEscolaId) {
       return jsonResponse({ success: false, error: 'Apenas gestores podem redefinir senha de alunos.' }, 403);
     }
+
     const body = await request.json().catch(() => ({}));
-    const payload = await callSupabaseFunction(request, env, 'redefinir-senha-aluno', body);
-    return jsonResponse(payload);
+    const alunoId = String(body?.aluno_id || '').trim();
+    const novaSenha = String(body?.nova_senha || '').trim();
+    const passwordAllowedRegex = /^[A-Za-z0-9!@#$%^&*()_+\-=.?]{6,64}$/;
+
+    if (!alunoId) {
+      return jsonResponse({ success: false, error: 'Aluno nao informado.' }, 400);
+    }
+
+    if (!novaSenha || !passwordAllowedRegex.test(novaSenha)) {
+      return jsonResponse({
+        success: false,
+        error: 'Senha invalida. Use 6-64 caracteres (letras, numeros e simbolos comuns).',
+      }, 400);
+    }
+
+    const [alunoProfile] = await supabaseAdminRequest(
+      env,
+      `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
+        select: 'id,nome,tipo,user_id,escola_id',
+        id: `eq.${alunoId}`,
+        tipo: 'eq.aluno',
+        escola_id: `eq.${currentEscolaId}`,
+        limit: '1',
+      }).toString()}`,
+    ) as Array<Record<string, unknown>>;
+
+    if (!alunoProfile?.id) {
+      return jsonResponse({ success: false, error: 'Aluno nao encontrado.' }, 404);
+    }
+
+    const alunoUserId = String(alunoProfile.user_id || '').trim();
+    if (!alunoUserId) {
+      return jsonResponse(
+        { success: false, error: 'Este aluno ainda nao ativou conta. Nao ha senha para redefinir.' },
+        400,
+      );
+    }
+
+    await supabaseAdminAuthRequest(env, `/users/${encodeURIComponent(alunoUserId)}`, {
+      method: 'PUT',
+      body: { password: novaSenha },
+    });
+
+    return jsonResponse({
+      success: true,
+      aluno_id: String(alunoProfile.id || ''),
+      aluno_nome: String(alunoProfile.nome || ''),
+      senha_temporaria: novaSenha,
+      message: 'Senha redefinida com sucesso',
+    });
   },
 
   'GET /v1/arquivos-aula': async (request, env) => {
