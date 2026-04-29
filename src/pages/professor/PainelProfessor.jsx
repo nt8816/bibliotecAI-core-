@@ -42,6 +42,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useToast } from '@/hooks/use-toast';
 import { generateTextWithCloudflare } from '@/lib/cloudflareAiApi';
+import { deleteR2Object, uploadFileToR2 } from '@/lib/r2Storage';
 import { cn } from '@/lib/utils';
 import { fetchSchoolConfiguration } from '@/services/schoolConfigService';
 import { fetchUsuariosModuleData } from '@/services/usuariosService';
@@ -889,6 +890,7 @@ export default function PainelProfessor() {
   const [entregas, setEntregas] = useState([]);
   const [professorTurmasPermitidas, setProfessorTurmasPermitidas] = useState([]);
   const [professorProfileIds, setProfessorProfileIds] = useState([]);
+  const [escolaId, setEscolaId] = useState('');
   const [selectedAluno, setSelectedAluno] = useState('');
   const [selectedLivro, setSelectedLivro] = useState('');
   const [mensagem, setMensagem] = useState('');
@@ -968,6 +970,7 @@ export default function PainelProfessor() {
       setEntregas(Array.isArray(data?.entregas) ? data.entregas : []);
       setProfessorTurmasPermitidas(turmasUnificadas);
       setProfessorProfileIds(Array.isArray(data?.professorProfileIds) ? data.professorProfileIds : []);
+      setEscolaId(String(data?.escolaId || '').trim());
 
       const initial = {};
       (Array.isArray(data?.entregas) ? data.entregas : []).forEach((item) => {
@@ -1144,7 +1147,11 @@ export default function PainelProfessor() {
       turmas: atividade.turma ? [atividade.turma] : (atividade.usuarios_biblioteca?.turma ? [atividade.usuarios_biblioteca.turma] : (atividade.turmas || [])),
       formulario_ativo: meta.perguntas.length > 0,
       perguntas: meta.perguntas.map((item, index) => normalizeQuestion(item, index)),
-      materiais_apoio: atividade.materiais_apoio || [],
+      materiais_apoio: ensureArray(atividade.materiais_apoio).map((material, index) => ({
+        id: String(material?.id || `${atividade.id || 'atividade'}_mat_${index}`),
+        ...material,
+        nome: String(material?.nome || material?.titulo || '').trim(),
+      })),
     });
     setMobilePreviewExpanded(false);
     setIsAtividadeDialogOpen(true);
@@ -1537,7 +1544,59 @@ export default function PainelProfessor() {
     }
 
     setSaving(true);
+    const uploadedMaterials = [];
     try {
+      const materiaisExistentes = ensureArray(atividadeForm.materiais_apoio).filter((material) => !material?.file);
+      const materiaisPendentes = ensureArray(atividadeForm.materiais_apoio).filter((material) => material?.file);
+
+      if (materiaisPendentes.length > 0 && (!escolaId || !user?.id)) {
+        throw new Error('Nao foi possivel identificar o contexto do upload dos materiais.');
+      }
+
+      for (const material of materiaisPendentes) {
+        const file = material?.file;
+        if (!(file instanceof File)) continue;
+        const upload = await uploadFileToR2({
+          file,
+          escolaId,
+          ownerId: user?.id,
+          scope: 'atividades-apoio',
+        });
+        uploadedMaterials.push({
+          tipo: 'arquivo',
+          nome: file.name,
+          path: upload.objectKey,
+          object_key: upload.objectKey,
+          provider: upload.provider,
+          public_url: upload.publicUrl,
+          tamanho: file.size,
+          mime_type: file.type || null,
+          extensao: file.name.includes('.') ? file.name.split('.').pop()?.toLowerCase() || null : null,
+        });
+      }
+
+      const materiaisPayload = [...materiaisExistentes, ...uploadedMaterials].map((material) => {
+        if (String(material?.tipo || '').toLowerCase() === 'link') {
+          return {
+            tipo: 'link',
+            titulo: String(material?.titulo || material?.nome || '').trim() || 'Link de apoio',
+            url: String(material?.url || '').trim(),
+          };
+        }
+
+        return {
+          tipo: 'arquivo',
+          nome: String(material?.nome || '').trim(),
+          path: String(material?.path || material?.object_key || '').trim(),
+          object_key: String(material?.object_key || material?.path || '').trim(),
+          provider: String(material?.provider || 'r2').trim() || 'r2',
+          public_url: material?.public_url || null,
+          tamanho: Number(material?.tamanho || 0),
+          mime_type: material?.mime_type || null,
+          extensao: material?.extensao || null,
+        };
+      });
+
       const turmasSelecionadas = atividadeForm.target_mode === 'turma'
         ? [...new Set(
           atividadeForm.turmas
@@ -1565,7 +1624,7 @@ export default function PainelProfessor() {
         data_entrega: atividadeForm.data_entrega ? new Date(atividadeForm.data_entrega).toISOString() : null,
         livro_id: atividadeForm.livro_id || null,
         aluno_id: atividadeForm.target_mode === 'aluno' ? atividadeForm.aluno_id || null : null,
-        materiais_apoio: atividadeForm.materiais_apoio,
+        materiais_apoio: materiaisPayload,
       };
 
       let response;
@@ -1624,6 +1683,7 @@ export default function PainelProfessor() {
       });
       await fetchData();
     } catch (error) {
+      await Promise.all(uploadedMaterials.map((material) => deleteR2Object(material.object_key).catch(() => null)));
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Falha ao salvar atividade.' });
     } finally {
       setSaving(false);
