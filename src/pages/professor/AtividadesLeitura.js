@@ -61,13 +61,25 @@ function estimateMateriaisBytes(materiais) {
 
 function normalizeLinkMaterial(value) {
   const titulo = String(value?.titulo || '').trim();
-  const url = String(value?.url || '').trim();
-  if (!url || !/^https?:\/\//i.test(url)) return null;
+  const url = normalizeSupportUrl(value?.url);
+  if (!url) return null;
   return {
     tipo: 'link',
     titulo: titulo || 'Link de apoio',
     url,
   };
+}
+
+function normalizeSupportUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (/^\/\//.test(raw)) return `https:${raw}`;
+
+  const looksLikeDomain = /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:[/:?#].*)?$/i.test(raw);
+  if (looksLikeDomain && !/[\s<>]/.test(raw)) return `https://${raw}`;
+
+  return '';
 }
 
 function formatMaterialLabel(material) {
@@ -319,6 +331,17 @@ export default function AtividadesLeitura() {
       toast({ variant: 'destructive', title: 'Erro', description: 'Os materiais de apoio nao podem ultrapassar 1 GB.' });
       return;
     }
+    const linksInvalidos = ensureArray(formData.materiais_apoio)
+      .filter((material) => String(material?.tipo || '').toLowerCase() === 'link')
+      .filter((material) => !normalizeSupportUrl(material?.url || material?.public_url));
+    if (linksInvalidos.length > 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Link invalido',
+        description: 'Informe um link valido em Conteudos de apoio. Exemplo: https://youtube.com/...',
+      });
+      return;
+    }
     if (selectedSupportFiles.length > 0 && (!escolaId || !user?.id)) {
       toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel identificar o contexto do upload dos materiais.' });
       return;
@@ -356,7 +379,14 @@ export default function AtividadesLeitura() {
         aluno_id: requiresAluno ? formData.aluno_id : null,
         target_mode: editingAtividade ? 'aluno' : formData.target_mode,
         turmas: editingAtividade ? [] : ensureArray(formData.turmas),
-        materiais_apoio: [...ensureArray(formData.materiais_apoio), ...uploadedMaterials],
+        materiais_apoio: [
+          ...ensureArray(formData.materiais_apoio).map((material) => (
+            String(material?.tipo || '').toLowerCase() === 'link'
+              ? { ...material, url: normalizeSupportUrl(material?.url || material?.public_url) }
+              : material
+          )),
+          ...uploadedMaterials,
+        ],
       }, editingAtividade?.id || null);
       toast({ title: 'Sucesso', description: editingAtividade ? 'Atividade atualizada!' : 'Atividade criada!' });
       setIsDialogOpen(false);

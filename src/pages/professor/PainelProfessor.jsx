@@ -138,6 +138,18 @@ function normalizeMaterialForForm(material, fallbackId) {
   };
 }
 
+function normalizeSupportUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (/^\/\//.test(raw)) return `https:${raw}`;
+
+  const looksLikeDomain = /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:[/:?#].*)?$/i.test(raw);
+  if (looksLikeDomain && !/[\s<>]/.test(raw)) return `https://${raw}`;
+
+  return '';
+}
+
 function formatAlunoOptionLabel(aluno) {
   if (!aluno) return '';
   return aluno.turma ? `${aluno.nome} (${aluno.turma})` : aluno.nome;
@@ -1598,6 +1610,18 @@ export default function PainelProfessor() {
         : materiaisDoFormulario;
       const materiaisExistentes = materiaisParaSalvar.filter((material) => !material?.file);
       const materiaisPendentes = materiaisParaSalvar.filter((material) => material?.file);
+      const linksInvalidos = materiaisParaSalvar
+        .filter((material) => String(material?.tipo || '').toLowerCase() === 'link')
+        .filter((material) => !normalizeSupportUrl(material?.url || material?.public_url));
+
+      if (linksInvalidos.length > 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Link inválido',
+          description: 'Informe um link válido em Conteúdos de apoio. Exemplo: https://youtube.com/...',
+        });
+        return;
+      }
 
       if (materiaisPendentes.length > 0 && (!escolaId || !user?.id)) {
         throw new Error('Nao foi possivel identificar o contexto do upload dos materiais.');
@@ -1633,7 +1657,7 @@ export default function PainelProfessor() {
           return {
             tipo: 'link',
             titulo: String(normalized?.titulo || normalized?.nome || '').trim() || 'Link de apoio',
-            url: String(normalized?.url || normalized?.public_url || '').trim(),
+            url: normalizeSupportUrl(normalized?.url || normalized?.public_url),
           };
         }
 
@@ -1641,7 +1665,7 @@ export default function PainelProfessor() {
           return {
             tipo: 'link',
             titulo: String(normalized?.nome || 'Arquivo de apoio').trim(),
-            url: String(normalized.public_url).trim(),
+            url: normalizeSupportUrl(normalized.public_url),
           };
         }
 
@@ -1656,6 +1680,9 @@ export default function PainelProfessor() {
           mime_type: normalized?.mime_type || null,
           extensao: normalized?.extensao || null,
         };
+      }).filter((material) => {
+        if (String(material?.tipo || '').toLowerCase() !== 'link') return true;
+        return Boolean(String(material?.url || '').trim());
       });
 
       const turmasSelecionadas = atividadeForm.target_mode === 'turma'
