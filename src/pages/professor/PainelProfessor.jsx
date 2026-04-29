@@ -1555,11 +1555,7 @@ export default function PainelProfessor() {
         return;
       }
 
-      const activityApiTargetMode = atividadeForm.target_mode === 'turma'
-        ? (turmasSelecionadas.length > 1 ? 'turmas' : 'turma')
-        : atividadeForm.target_mode;
-
-      const response = await saveProfessorAtividade({
+      const basePayload = {
         titulo: atividadeForm.titulo.trim(),
         descricao: serializeAtividadeDescricao(
           atividadeForm.descricao,
@@ -1569,16 +1565,53 @@ export default function PainelProfessor() {
         data_entrega: atividadeForm.data_entrega ? new Date(atividadeForm.data_entrega).toISOString() : null,
         livro_id: atividadeForm.livro_id || null,
         aluno_id: atividadeForm.target_mode === 'aluno' ? atividadeForm.aluno_id || null : null,
-        target_mode: activityApiTargetMode,
-        turma: activityApiTargetMode === 'turma' ? turmasSelecionadas[0] || null : null,
-        turmas: turmasSelecionadas,
         materiais_apoio: atividadeForm.materiais_apoio,
-      }, editingAtividade?.id || null, { roleHint: profileRoleHint });
+      };
+
+      let response;
+      let responseCount = 0;
+      const isTurmaLote = atividadeForm.target_mode === 'turma' && turmasSelecionadas.length > 1 && !editingAtividade;
+
+      if (isTurmaLote) {
+        try {
+          response = await saveProfessorAtividade({
+            ...basePayload,
+            target_mode: 'turmas',
+            turma: null,
+            turmas: turmasSelecionadas,
+          }, null, { roleHint: profileRoleHint });
+          responseCount = Number(response?.count || 0);
+        } catch (batchError) {
+          const message = String(batchError?.message || '').toLowerCase();
+          if (!message.includes('aluno obrigatorio')) throw batchError;
+
+          // Fallback para ambientes com API antiga: publica uma turma por vez.
+          for (const turmaAtual of turmasSelecionadas) {
+            const partial = await saveProfessorAtividade({
+              ...basePayload,
+              target_mode: 'turma',
+              turma: turmaAtual,
+              turmas: [turmaAtual],
+            }, null, { roleHint: profileRoleHint });
+            responseCount += Number(partial?.count || 0);
+          }
+          response = { count: responseCount };
+        }
+      } else {
+        const activityApiTargetMode = atividadeForm.target_mode === 'turma' ? 'turma' : atividadeForm.target_mode;
+        response = await saveProfessorAtividade({
+          ...basePayload,
+          target_mode: activityApiTargetMode,
+          turma: activityApiTargetMode === 'turma' ? turmasSelecionadas[0] || null : null,
+          turmas: activityApiTargetMode === 'turma' ? turmasSelecionadas : [],
+        }, editingAtividade?.id || null, { roleHint: profileRoleHint });
+        responseCount = Number(response?.count || 0);
+      }
 
       setIsAtividadeDialogOpen(false);
       resetAtividadeDialog();
 
-      const count = Number(response?.count || 0);
+      const count = responseCount || Number(response?.count || 0);
       const description = editingAtividade
         ? 'Atividade atualizada com sucesso.'
         : atividadeForm.target_mode === 'aluno'
