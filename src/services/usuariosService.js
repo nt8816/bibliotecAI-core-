@@ -1,4 +1,37 @@
-import { requestPlatformApi } from '@/lib/platformApi';
+import { isPlatformApiUnavailableError, requestPlatformApi } from '@/lib/platformApi';
+import { getPlatformAccessToken } from '@/lib/platformSession';
+
+const SUPABASE_URL = String(import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/\/+$/, '');
+const SUPABASE_ANON_KEY = String(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '').trim();
+
+async function invokeResetAlunoPasswordFunction(alunoId, novaSenha) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error('Supabase nao configurado para redefinir senha.');
+  }
+
+  const accessToken = getPlatformAccessToken();
+  if (!accessToken) {
+    throw new Error('Sessao invalida. Faca login novamente.');
+  }
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/redefinir-senha-aluno`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${accessToken}`,
+      'x-supabase-auth': accessToken,
+    },
+    body: JSON.stringify({ aluno_id: alunoId, nova_senha: novaSenha }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.success === false) {
+    throw new Error(payload?.error || payload?.message || 'Nao foi possivel redefinir a senha.');
+  }
+
+  return payload;
+}
 
 export async function fetchUsuariosModuleData() {
   return requestPlatformApi('/v1/usuarios');
@@ -75,8 +108,15 @@ export async function importUsuariosBatch({ usuarios, tipoUsuarioImport, current
 }
 
 export async function resetAlunoPassword(alunoId, novaSenha) {
-  return requestPlatformApi('/v1/usuarios/reset-aluno-password', {
-    method: 'POST',
-    body: { aluno_id: alunoId, nova_senha: novaSenha },
-  });
+  try {
+    return await requestPlatformApi('/v1/usuarios/reset-aluno-password', {
+      method: 'POST',
+      body: { aluno_id: alunoId, nova_senha: novaSenha },
+    });
+  } catch (error) {
+    if (!isPlatformApiUnavailableError(error)) {
+      throw error;
+    }
+    return invokeResetAlunoPasswordFunction(alunoId, novaSenha);
+  }
 }
