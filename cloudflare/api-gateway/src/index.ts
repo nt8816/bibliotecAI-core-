@@ -21,6 +21,7 @@ export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_PUBLISHABLE_KEY?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
+  SUPABASE_JWT_SECRET?: string;
   FIREBASE_PROJECT_ID?: string;
   FIREBASE_CLIENT_EMAIL?: string;
   FIREBASE_PRIVATE_KEY?: string;
@@ -36,6 +37,7 @@ const DEFAULT_CORS_ALLOW_HEADERS = 'authorization, content-type, x-user-access-t
 const DEFAULT_CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
 
 let firebaseAccessTokenCache: { token: string; expiresAt: number } | null = null;
+let supabaseServiceRoleJwtCache: { token: string; expiresAt: number } | null = null;
 
 function isAllowedCorsOrigin(origin: string, env: Env) {
   const normalizedOrigin = String(origin || '').trim();
@@ -253,9 +255,10 @@ async function supabaseAdminRequest(
   { method = 'GET', body, headers }: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
 ) {
   const { supabaseUrl, serviceRoleKey } = getSupabaseConfig(env);
+  const restServiceToken = await getSupabaseRestServiceToken(env, serviceRoleKey);
   const baseHeaders = {
-    apikey: serviceRoleKey,
-    Authorization: `Bearer ${serviceRoleKey}`,
+    apikey: restServiceToken,
+    Authorization: `Bearer ${restServiceToken}`,
     'Content-Type': 'application/json',
     ...(headers || {}),
   };
@@ -9865,6 +9868,70 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/usuarios\/[^/]+\/delete$/, '/v1/usuarios/:id/delete')
     .replace(/\/v1\/livros\/(?!categorias(?:\/|$))[^/]+$/, '/v1/livros/:id')
     .replace(/\/v1\/usuarios\/(?!professor-turmas$|provisionar-aluno$|delete-batch$|import$|reset-aluno-password$)[^/]+$/, '/v1/usuarios/:id');
+}
+
+function parseJwtHeader(token: string) {
+  const parts = String(token || '').split('.');
+  if (parts.length < 2) return null;
+
+  try {
+    const decoded = base64UrlDecode(parts[0]);
+    return JSON.parse(new TextDecoder().decode(decoded));
+  } catch {
+    return null;
+  }
+}
+
+async function signHs256Jwt(secret: string, payload: Record<string, unknown>) {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const encodedHeader = base64UrlEncode(new TextEncoder().encode(JSON.stringify(header)));
+  const encodedPayload = base64UrlEncode(new TextEncoder().encode(JSON.stringify(payload)));
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(signingInput),
+  );
+  return `${signingInput}.${base64UrlEncode(signature)}`;
+}
+
+async function getSupabaseRestServiceToken(env: Env, serviceRoleKey: string) {
+  const jwtHeader = parseJwtHeader(serviceRoleKey);
+  const algorithm = String(jwtHeader?.alg || '').toUpperCase();
+
+  if (algorithm !== 'ES256') {
+    return serviceRoleKey;
+  }
+
+  const jwtSecret = String(env.SUPABASE_JWT_SECRET || '').trim();
+  if (!jwtSecret) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY usa ES256. Configure SUPABASE_JWT_SECRET no Worker para gerar o token administrativo compativel com o PostgREST.');
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (supabaseServiceRoleJwtCache && supabaseServiceRoleJwtCache.expiresAt > now + 60) {
+    return supabaseServiceRoleJwtCache.token;
+  }
+
+  const expiresAt = now + (60 * 60);
+  const token = await signHs256Jwt(jwtSecret, {
+    aud: 'authenticated',
+    exp: expiresAt,
+    iat: now,
+    iss: 'supabase',
+    role: 'service_role',
+    sub: 'service_role',
+  });
+
+  supabaseServiceRoleJwtCache = { token, expiresAt };
+  return token;
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
