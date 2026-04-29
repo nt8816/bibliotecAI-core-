@@ -742,6 +742,32 @@ function parseEntregaPayload(rawText) {
   };
 }
 
+function normalizeAtividadeMateriais(value) {
+  const parsed = typeof value === 'string'
+    ? (() => {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return [];
+      }
+    })()
+    : value;
+
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => ({
+      ...item,
+      tipo: String(item.tipo || '').toLowerCase(),
+      nome: String(item.nome || ''),
+      titulo: String(item.titulo || ''),
+      url: String(item.url || ''),
+      object_key: String(item.object_key || item.objectKey || ''),
+      path: String(item.path || ''),
+      tamanho: Number(item.tamanho || 0),
+    }));
+}
+
 async function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1189,6 +1215,7 @@ export default function PainelAluno() {
   const [atividadeImagens, setAtividadeImagens] = useState({});
   const [atividadeRespostas, setAtividadeRespostas] = useState({});
   const [atividadeView, setAtividadeView] = useState('pendentes');
+  const [atividadePendenteAbertaId, setAtividadePendenteAbertaId] = useState(null);
   const [selectedAtividadeIds, setSelectedAtividadeIds] = useState([]);
   const [deleteAtividadesDialogOpen, setDeleteAtividadesDialogOpen] = useState(false);
   const [mensagemSolicitacaoPorId, setMensagemSolicitacaoPorId] = useState({});
@@ -1334,7 +1361,12 @@ export default function PainelAluno() {
         setWishlist((painelData?.wishlist || []).map((item) => item.livro_id));
         setSugestoes(painelData?.sugestoes || []);
         setSolicitacoes(painelData?.solicitacoes || []);
-        setAtividades(painelData?.atividades || []);
+        setAtividades(
+          ensureArray(painelData?.atividades).map((atividade) => ({
+            ...atividade,
+            materiais_apoio: normalizeAtividadeMateriais(atividade?.materiais_apoio),
+          })),
+        );
         setEntregas(painelData?.entregas || []);
         setAudiobookCatalogo(await Promise.all((painelData?.audiobookCatalogo || []).map(resolveAudiobookRecord)));
         setMeusAudiobooks(await Promise.all((painelData?.meusAudiobooks || []).map(resolveAlunoAudiobookRecord)));
@@ -1671,6 +1703,11 @@ export default function PainelAluno() {
     return atividadesPendentesLista;
   }, [atividadeView, atividadesEnviadasLista, atividadesForaDoPrazoLista, atividadesPendentesLista]);
 
+  const atividadePendenteAberta = useMemo(
+    () => atividadesPendentesLista.find((item) => String(item?.id) === String(atividadePendenteAbertaId)) || null,
+    [atividadePendenteAbertaId, atividadesPendentesLista],
+  );
+
   const selectedAtividadeIdsSet = useMemo(
     () => new Set(selectedAtividadeIds.map((item) => String(item))),
     [selectedAtividadeIds],
@@ -1701,6 +1738,12 @@ export default function PainelAluno() {
   useEffect(() => {
     if (atividadeView !== 'enviadas') {
       setSelectedAtividadeIds([]);
+    }
+  }, [atividadeView]);
+
+  useEffect(() => {
+    if (atividadeView !== 'pendentes') {
+      setAtividadePendenteAbertaId(null);
     }
   }, [atividadeView]);
 
@@ -2673,7 +2716,10 @@ export default function PainelAluno() {
   const handleOpenAtividadeMaterial = async (material) => {
     try {
       if (String(material?.tipo || '').toLowerCase() === 'link') {
-        window.open(String(material?.url || ''), '_blank', 'noopener,noreferrer');
+        const rawUrl = String(material?.url || '').trim();
+        if (!rawUrl) throw new Error('Link de apoio vazio.');
+        const safeUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+        window.open(safeUrl, '_blank', 'noopener,noreferrer');
         return;
       }
 
@@ -4203,7 +4249,32 @@ export default function PainelAluno() {
 
                       {atividadesVisiveis.length === 0 ? (
                         <p className="text-center text-muted-foreground py-8">{atividadeEmptyMessage}</p>
-                      ) : atividadesVisiveis.map((atividade) => (
+                      ) : atividadeView === 'pendentes' ? (
+                        atividadesVisiveis.map((atividade) => (
+                          <div
+                            key={atividade.id}
+                            className="rounded-2xl border border-border/80 bg-background/95 p-4 shadow-sm"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 space-y-1">
+                                <p className="truncate font-semibold">{atividade.titulo}</p>
+                                <p className="text-xs text-muted-foreground">{atividade.livros?.titulo || 'Livro nao informado'}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Entrega: {formatDateBR(atividade.data_entrega)} • Pontos: {Number(atividade.pontos_extras || 0)}
+                                </p>
+                              </div>
+                              <Button
+                                type="button"
+                                className="h-9 shrink-0 rounded-xl"
+                                onClick={() => setAtividadePendenteAbertaId(atividade.id)}
+                              >
+                                Responder
+                              </Button>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        atividadesVisiveis.map((atividade) => (
                         <div
                           key={atividade.id}
                           className="space-y-4 rounded-3xl border border-border/80 bg-gradient-to-br from-background via-background to-primary/5 p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-[0_18px_40px_rgba(0,0,0,0.08)] sm:p-5"
@@ -4472,11 +4543,79 @@ export default function PainelAluno() {
                             </div>
                           )}
                         </div>
-                      ))}
+                      ))
+                      )}
                     </div>
                   )}
                 </CardContent>
               </Card>
+
+              <Dialog open={Boolean(atividadePendenteAberta)} onOpenChange={(open) => !open && setAtividadePendenteAbertaId(null)}>
+                <DialogContent className="h-[100dvh] w-[100vw] max-w-none rounded-none border-0 p-0 sm:h-[100dvh]">
+                  {atividadePendenteAberta && (
+                    <div className="flex h-full flex-col overflow-hidden">
+                      <DialogHeader className="border-b px-4 py-3 sm:px-6">
+                        <DialogTitle>{atividadePendenteAberta.titulo}</DialogTitle>
+                        <DialogDescription>
+                          {atividadePendenteAberta.livros?.titulo || 'Livro nao informado'} • Entrega {formatDateBR(atividadePendenteAberta.data_entrega)}
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+                        <div className="mx-auto w-full max-w-4xl space-y-4">
+                          {atividadePendenteAberta.atividadeMeta?.descricaoLimpa && (
+                            <p className="rounded-2xl border border-primary/10 bg-primary/5 px-3 py-2 text-sm leading-6">
+                              {atividadePendenteAberta.atividadeMeta.descricaoLimpa}
+                            </p>
+                          )}
+
+                          {ensureArray(atividadePendenteAberta.materiais_apoio).length > 0 && (
+                            <div className="space-y-2 rounded-2xl border border-border/70 bg-background/80 p-3">
+                              <div className="flex items-center gap-2 text-sm font-medium">
+                                <Paperclip className="h-4 w-4 text-primary" />
+                                Conteudos de apoio
+                              </div>
+                              {ensureArray(atividadePendenteAberta.materiais_apoio).map((material, materialIndex) => (
+                                <div key={`${atividadePendenteAberta.id}-material-modal-${materialIndex}`} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 px-3 py-2">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-medium">
+                                      {String(material?.tipo || '') === 'link'
+                                        ? (material?.titulo || material?.url || 'Link de apoio')
+                                        : (material?.nome || 'Arquivo de apoio')}
+                                    </p>
+                                  </div>
+                                  <Button type="button" variant="outline" size="sm" onClick={() => handleOpenAtividadeMaterial(material)} className="shrink-0">
+                                    Abrir
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="space-y-2">
+                            <Label>Minha entrega</Label>
+                            <Textarea
+                              rows={6}
+                              placeholder="Escreva sua resposta..."
+                              value={atividadeTexto[atividadePendenteAberta.id] ?? parseEntregaPayload(atividadePendenteAberta.entrega?.texto_entrega).texto ?? ''}
+                              onChange={(e) => setAtividadeTexto((prev) => ({ ...prev, [atividadePendenteAberta.id]: e.target.value }))}
+                            />
+                          </div>
+
+                          <Button
+                            onClick={() => handleEnviarAtividade(atividadePendenteAberta)}
+                            disabled={saving}
+                            className="h-11 w-full rounded-2xl"
+                          >
+                            <Send className="mr-2 h-4 w-4" />
+                            Enviar atividade
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </DialogContent>
+              </Dialog>
 
               <Card>
                 <CardHeader>
