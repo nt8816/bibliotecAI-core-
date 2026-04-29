@@ -45,6 +45,7 @@ import { generateTextWithCloudflare } from '@/lib/cloudflareAiApi';
 import { deleteR2Object, uploadFileToR2 } from '@/lib/r2Storage';
 import { cn } from '@/lib/utils';
 import { fetchSchoolConfiguration } from '@/services/schoolConfigService';
+import { fetchAtividadeMateriaisMap, persistAtividadeMateriais } from '@/services/atividadeMateriaisService';
 import { fetchUsuariosModuleData } from '@/services/usuariosService';
 import {
   avaliarProfessorEntrega,
@@ -1005,13 +1006,23 @@ export default function PainelProfessor() {
         ...turmasDosUsuarios,
       ])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
+      const atividadesBase = ensureArray(data?.atividades);
+      let materiaisMap = new Map();
+      try {
+        materiaisMap = await fetchAtividadeMateriaisMap(atividadesBase.map((atividade) => atividade?.id));
+      } catch {
+        materiaisMap = new Map();
+      }
+
       setLivros(Array.isArray(data?.livros) ? data.livros : []);
       setUsuarios(usuariosComFallback);
       setSugestoes(Array.isArray(data?.sugestoes) ? data.sugestoes : []);
       setAtividades(
-        ensureArray(data?.atividades).map((atividade) => ({
+        atividadesBase.map((atividade) => ({
           ...atividade,
-          materiais_apoio: parseAtividadeMateriais(atividade?.materiais_apoio).map(
+          materiais_apoio: parseAtividadeMateriais(
+            materiaisMap.get(String(atividade?.id || '').trim()) ?? atividade?.materiais_apoio,
+          ).map(
             (material, index) => normalizeMaterialForForm(material, `${atividade?.id || 'atividade'}_mat_${index}`),
           ),
         })),
@@ -1753,6 +1764,15 @@ export default function PainelProfessor() {
           turmas: activityApiTargetMode === 'turma' ? turmasSelecionadas : [],
         }, editingAtividade?.id || null, { roleHint: profileRoleHint });
         responseCount = Number(response?.count || 0);
+      }
+
+      try {
+        const atividadeIdsParaSincronizar = editingAtividade?.id
+          ? [editingAtividade.id]
+          : response;
+        await persistAtividadeMateriais(atividadeIdsParaSincronizar, materiaisPayload);
+      } catch {
+        // Se a API da plataforma ja persistiu os materiais, seguimos sem bloquear o fluxo.
       }
 
       setIsAtividadeDialogOpen(false);

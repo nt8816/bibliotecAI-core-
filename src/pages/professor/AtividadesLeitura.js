@@ -23,6 +23,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useToast } from '@/hooks/use-toast';
 import { deleteR2Object, getR2DownloadUrl, uploadFileToR2 } from '@/lib/r2Storage';
 import { cn } from '@/lib/utils';
+import { fetchAtividadeMateriaisMap, persistAtividadeMateriais } from '@/services/atividadeMateriaisService';
 import { deleteProfessorAtividade, fetchProfessorPainelData, saveProfessorAtividade, updateProfessorAtividadeStatus } from '@/services/professorService';
 
 const emptyAtividade = {
@@ -41,6 +42,18 @@ const MAX_MATERIAIS_BYTES = 1024 * 1024 * 1024;
 
 function ensureArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function parseMateriaisApoio(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 function formatBytes(value) {
@@ -181,9 +194,23 @@ export default function AtividadesLeitura() {
     setLoading(true);
     try {
       const data = await fetchProfessorPainelData();
+      const atividadesBase = Array.isArray(data?.atividades) ? data.atividades : [];
+      let materiaisMap = new Map();
+      try {
+        materiaisMap = await fetchAtividadeMateriaisMap(atividadesBase.map((atividade) => atividade?.id));
+      } catch {
+        materiaisMap = new Map();
+      }
       setLivros(Array.isArray(data?.livros) ? data.livros : []);
       setUsuarios(Array.isArray(data?.usuarios) ? data.usuarios : []);
-      setAtividades(Array.isArray(data?.atividades) ? data.atividades : []);
+      setAtividades(
+        atividadesBase.map((atividade) => ({
+          ...atividade,
+          materiais_apoio: parseMateriaisApoio(
+            materiaisMap.get(String(atividade?.id || '').trim()) ?? atividade?.materiais_apoio,
+          ),
+        })),
+      );
       setTurmasPermitidas(Array.isArray(data?.turmasPermitidas) ? data.turmasPermitidas : []);
       setEscolaId(String(data?.escolaId || '').trim());
     } catch (error) {
@@ -370,7 +397,7 @@ export default function AtividadesLeitura() {
         });
       }
 
-      await saveProfessorAtividade({
+      const payload = {
         titulo: formData.titulo,
         descricao: formData.descricao || null,
         pontos_extras: formData.pontos_extras || 0,
@@ -387,7 +414,16 @@ export default function AtividadesLeitura() {
           )),
           ...uploadedMaterials,
         ],
-      }, editingAtividade?.id || null);
+      };
+      const response = await saveProfessorAtividade(payload, editingAtividade?.id || null);
+      try {
+        const atividadeIdsParaSincronizar = editingAtividade?.id
+          ? [editingAtividade.id]
+          : response;
+        await persistAtividadeMateriais(atividadeIdsParaSincronizar, payload.materiais_apoio);
+      } catch {
+        // Fluxo principal segue mesmo se a sincronizacao complementar falhar.
+      }
       toast({ title: 'Sucesso', description: editingAtividade ? 'Atividade atualizada!' : 'Atividade criada!' });
       setIsDialogOpen(false);
       await fetchData();

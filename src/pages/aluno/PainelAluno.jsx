@@ -76,6 +76,7 @@ import {
 import { canonicalizeBookArea } from '@/lib/bookAreas';
 import { getR2DownloadUrl, uploadDataUrlToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
+import { fetchAtividadeMateriaisMap } from '@/services/atividadeMateriaisService';
 
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -1366,10 +1367,20 @@ export default function PainelAluno() {
         setWishlist((painelData?.wishlist || []).map((item) => item.livro_id));
         setSugestoes(painelData?.sugestoes || []);
         setSolicitacoes(painelData?.solicitacoes || []);
+        const atividadesBase = ensureArray(painelData?.atividades);
+        let materiaisMap = new Map();
+        try {
+          materiaisMap = await fetchAtividadeMateriaisMap(atividadesBase.map((atividade) => atividade?.id));
+        } catch {
+          materiaisMap = new Map();
+        }
+
         setAtividades(
-          ensureArray(painelData?.atividades).map((atividade) => ({
+          atividadesBase.map((atividade) => ({
             ...atividade,
-            materiais_apoio: normalizeAtividadeMateriais(atividade?.materiais_apoio),
+            materiais_apoio: normalizeAtividadeMateriais(
+              materiaisMap.get(String(atividade?.id || '').trim()) ?? atividade?.materiais_apoio,
+            ),
           })),
         );
         setEntregas(painelData?.entregas || []);
