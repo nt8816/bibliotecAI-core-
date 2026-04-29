@@ -2488,6 +2488,52 @@ function estimateArquivosBytes(arquivos: unknown) {
 
 const MAX_ATIVIDADE_MATERIAIS_BYTES = 1024 * 1024 * 1024;
 
+const ATIVIDADE_MATERIAIS_BODY_KEYS = [
+  'materiais_apoio',
+  'materiaisApoio',
+  'conteudos_apoio',
+  'conteudosApoio',
+  'conteudos_de_apoio',
+  'conteudosDeApoio',
+  'links_apoio',
+  'linksApoio',
+  'materials',
+  'supportMaterials',
+];
+
+function getPresentBodyValue(body: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      return { present: true, value: body[key] };
+    }
+  }
+
+  return { present: false, value: undefined };
+}
+
+function getAtividadeMateriaisApoioFromBody(body: unknown) {
+  if (!body || typeof body !== 'object') {
+    return { present: false, value: undefined };
+  }
+
+  return getPresentBodyValue(body as Record<string, unknown>, ATIVIDADE_MATERIAIS_BODY_KEYS);
+}
+
+function normalizeSupportUrl(value: unknown) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  if (/^\/\//.test(raw)) return `https:${raw}`;
+
+  const looksLikeDomain = /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:[/:?#].*)?$/i.test(raw);
+  if (looksLikeDomain && !/[\s<>]/.test(raw)) {
+    return `https://${raw}`;
+  }
+
+  return '';
+}
+
 function estimateMateriaisApoioBytes(materiais: unknown) {
   if (!Array.isArray(materiais)) return 0;
 
@@ -2523,8 +2569,8 @@ function normalizeAtividadeMateriaisApoio(materiais: unknown) {
 
       if (tipo === 'link') {
         const titulo = String(material?.titulo || material?.nome || material?.label || '').trim();
-        const url = String(material?.url || material?.link || material?.href || publicUrl).trim();
-        if (!url || !/^https?:\/\//i.test(url)) return null;
+        const url = normalizeSupportUrl(material?.url || material?.link || material?.href || publicUrl);
+        if (!url) return null;
         return {
           tipo: 'link',
           titulo: titulo || 'Link de apoio',
@@ -3203,7 +3249,8 @@ const routes: Record<string, RouteHandler> = {
         ? body.turmas.map((item: unknown) => String(item || '').trim()).filter(Boolean)
         : [];
       const turmasUnicas = Array.from(new Set(turmas));
-      const materiaisApoio = normalizeAtividadeMateriaisApoio(body?.materiais_apoio);
+      const materiaisInput = getAtividadeMateriaisApoioFromBody(body);
+      const materiaisApoio = normalizeAtividadeMateriaisApoio(materiaisInput.value);
       const materiaisBytes = estimateMateriaisApoioBytes(materiaisApoio);
       const dataBase = {
         titulo,
@@ -3323,7 +3370,8 @@ const routes: Record<string, RouteHandler> = {
       const id = getPathParam(request, /^\/v1\/professor\/atividades\/([^/]+)$/i);
       const body = await request.json().catch(() => ({}));
       const livroId = String(body?.livro_id || '').trim();
-      const materiaisApoio = normalizeAtividadeMateriaisApoio(body?.materiais_apoio);
+      const materiaisInput = getAtividadeMateriaisApoioFromBody(body);
+      const materiaisApoio = normalizeAtividadeMateriaisApoio(materiaisInput.value);
       const materiaisBytes = estimateMateriaisApoioBytes(materiaisApoio);
       const record = await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: 'id,professor_id', id: `eq.${id}`, limit: '1' }).toString()}`);
       const atividade = ensureArray<Record<string, unknown>>(record)[0] || null;
@@ -3337,17 +3385,22 @@ const routes: Record<string, RouteHandler> = {
       if (alunoId && !context.usuarios.some((item) => String(item?.id || '').trim() === alunoId)) {
         return jsonResponse({ success: false, error: 'Aluno nao permitido para este professor.' }, 403);
       }
+      const updatePayload: Record<string, unknown> = {
+        titulo: String(body?.titulo || '').trim(),
+        descricao: body?.descricao ? String(body.descricao) : null,
+        pontos_extras: Number(body?.pontos_extras || 0),
+        data_entrega: body?.data_entrega ? String(body.data_entrega) : null,
+        livro_id: livroId || null,
+        aluno_id: alunoId || null,
+      };
+
+      if (materiaisInput.present) {
+        updatePayload.materiais_apoio = materiaisApoio;
+      }
+
       await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ id: `eq.${id}` }).toString()}`, {
         method: 'PATCH',
-        body: {
-          titulo: String(body?.titulo || '').trim(),
-          descricao: body?.descricao ? String(body.descricao) : null,
-          pontos_extras: Number(body?.pontos_extras || 0),
-          data_entrega: body?.data_entrega ? String(body.data_entrega) : null,
-          livro_id: livroId || null,
-          aluno_id: alunoId || null,
-          materiais_apoio: materiaisApoio,
-        },
+        body: updatePayload,
         headers: { Prefer: 'return=minimal' },
       });
       return jsonResponse({ success: true });
