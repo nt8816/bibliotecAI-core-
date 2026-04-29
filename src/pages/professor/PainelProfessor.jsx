@@ -109,6 +109,18 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function parseAtividadeMateriais(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function normalizeMaterialForForm(material, fallbackId) {
   const raw = material || {};
   const hasFilePath = Boolean(raw?.path || raw?.object_key || raw?.objectKey || raw?.key);
@@ -926,6 +938,7 @@ export default function PainelProfessor() {
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiPendingCompletion, setAiPendingCompletion] = useState(null);
   const [mobilePreviewExpanded, setMobilePreviewExpanded] = useState(false);
+  const [materiaisTouched, setMateriaisTouched] = useState(false);
 
   const fetchData = useCallback(async ({ silent = false } = {}) => {
     if (!user?.id) return;
@@ -983,7 +996,14 @@ export default function PainelProfessor() {
       setLivros(Array.isArray(data?.livros) ? data.livros : []);
       setUsuarios(usuariosComFallback);
       setSugestoes(Array.isArray(data?.sugestoes) ? data.sugestoes : []);
-      setAtividades(Array.isArray(data?.atividades) ? data.atividades : []);
+      setAtividades(
+        ensureArray(data?.atividades).map((atividade) => ({
+          ...atividade,
+          materiais_apoio: parseAtividadeMateriais(atividade?.materiais_apoio).map(
+            (material, index) => normalizeMaterialForForm(material, `${atividade?.id || 'atividade'}_mat_${index}`),
+          ),
+        })),
+      );
       setEntregas(Array.isArray(data?.entregas) ? data.entregas : []);
       setProfessorTurmasPermitidas(turmasUnificadas);
       setProfessorProfileIds(Array.isArray(data?.professorProfileIds) ? data.professorProfileIds : []);
@@ -1135,6 +1155,7 @@ export default function PainelProfessor() {
     setAiOpenCount('');
     setAiPendingCompletion(null);
     setMobilePreviewExpanded(false);
+    setMateriaisTouched(false);
   };
 
   const resetSugestaoDialog = () => {
@@ -1164,11 +1185,12 @@ export default function PainelProfessor() {
       turmas: atividade.turma ? [atividade.turma] : (atividade.usuarios_biblioteca?.turma ? [atividade.usuarios_biblioteca.turma] : (atividade.turmas || [])),
       formulario_ativo: meta.perguntas.length > 0,
       perguntas: meta.perguntas.map((item, index) => normalizeQuestion(item, index)),
-      materiais_apoio: ensureArray(atividade.materiais_apoio).map(
+      materiais_apoio: parseAtividadeMateriais(atividade.materiais_apoio).map(
         (material, index) => normalizeMaterialForForm(material, `${atividade.id || 'atividade'}_mat_${index}`),
       ),
     });
     setMobilePreviewExpanded(false);
+    setMateriaisTouched(false);
     setIsAtividadeDialogOpen(true);
   };
 
@@ -1277,6 +1299,7 @@ export default function PainelProfessor() {
   };
 
   const handleAddMaterialLink = () => {
+    setMateriaisTouched(true);
     setAtividadeForm((prev) => ({
       ...prev,
       materiais_apoio: [...prev.materiais_apoio, { id: createQuestionId(), tipo: 'link', nome: '', url: '' }],
@@ -1291,6 +1314,7 @@ export default function PainelProfessor() {
       toast({ variant: 'destructive', title: 'Erro', description: 'O limite total de materiais de apoio é de 1GB.' });
       return;
     }
+    setMateriaisTouched(true);
     setAtividadeForm((prev) => ({
       ...prev,
       materiais_apoio: [...prev.materiais_apoio, { id: createQuestionId(), tipo: 'arquivo', nome: file.name, tamanho: file.size, file }],
@@ -1298,6 +1322,7 @@ export default function PainelProfessor() {
   };
 
   const handleUpdateMaterial = (id, field, value) => {
+    setMateriaisTouched(true);
     setAtividadeForm((prev) => ({
       ...prev,
       materiais_apoio: prev.materiais_apoio.map((m) => (m.id === id ? { ...m, [field]: value } : m)),
@@ -1305,6 +1330,7 @@ export default function PainelProfessor() {
   };
 
   const handleRemoveMaterial = (id) => {
+    setMateriaisTouched(true);
     setAtividadeForm((prev) => ({
       ...prev,
       materiais_apoio: prev.materiais_apoio.filter((m) => m.id !== id),
@@ -1561,8 +1587,17 @@ export default function PainelProfessor() {
     setSaving(true);
     const uploadedMaterials = [];
     try {
-      const materiaisExistentes = ensureArray(atividadeForm.materiais_apoio).filter((material) => !material?.file);
-      const materiaisPendentes = ensureArray(atividadeForm.materiais_apoio).filter((material) => material?.file);
+      const materiaisDoFormulario = ensureArray(atividadeForm.materiais_apoio);
+      const materiaisOriginais = editingAtividade
+        ? parseAtividadeMateriais(editingAtividade.materiais_apoio).map(
+          (material, index) => normalizeMaterialForForm(material, `${editingAtividade.id || 'atividade'}_mat_${index}`),
+        )
+        : [];
+      const materiaisParaSalvar = !materiaisTouched && materiaisDoFormulario.length === 0 && materiaisOriginais.length > 0
+        ? materiaisOriginais
+        : materiaisDoFormulario;
+      const materiaisExistentes = materiaisParaSalvar.filter((material) => !material?.file);
+      const materiaisPendentes = materiaisParaSalvar.filter((material) => material?.file);
 
       if (materiaisPendentes.length > 0 && (!escolaId || !user?.id)) {
         throw new Error('Nao foi possivel identificar o contexto do upload dos materiais.');

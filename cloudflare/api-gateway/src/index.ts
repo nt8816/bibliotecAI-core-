@@ -2501,16 +2501,29 @@ function estimateMateriaisApoioBytes(materiais: unknown) {
 }
 
 function normalizeAtividadeMateriaisApoio(materiais: unknown) {
-  if (!Array.isArray(materiais)) return [];
+  const parsed = typeof materiais === 'string'
+    ? (() => {
+      try {
+        const value = JSON.parse(materiais);
+        return Array.isArray(value) ? value : [];
+      } catch {
+        return [];
+      }
+    })()
+    : materiais;
 
-  return materiais
+  if (!Array.isArray(parsed)) return [];
+
+  return parsed
     .map((item) => {
       const material = item as Record<string, unknown>;
-      const tipo = String(material?.tipo || '').trim().toLowerCase();
+      const objectKeyRaw = material?.object_key || material?.path || material?.objectKey || material?.key;
+      const publicUrl = String(material?.public_url || material?.publicUrl || '').trim();
+      const tipo = String(material?.tipo || (objectKeyRaw ? 'arquivo' : 'link') || '').trim().toLowerCase();
 
       if (tipo === 'link') {
-        const titulo = String(material?.titulo || '').trim();
-        const url = String(material?.url || '').trim();
+        const titulo = String(material?.titulo || material?.nome || material?.label || '').trim();
+        const url = String(material?.url || material?.link || material?.href || publicUrl).trim();
         if (!url || !/^https?:\/\//i.test(url)) return null;
         return {
           tipo: 'link',
@@ -2520,8 +2533,8 @@ function normalizeAtividadeMateriaisApoio(materiais: unknown) {
       }
 
       if (tipo === 'arquivo') {
-        const nome = String(material?.nome || '').trim();
-        const objectKey = String(material?.object_key || material?.path || '').trim();
+        const nome = String(material?.nome || material?.titulo || material?.file_name || '').trim();
+        const objectKey = String(objectKeyRaw || '').trim();
         if (!nome || !objectKey) return null;
         const tamanho = Number(material?.tamanho);
         return {
@@ -2530,7 +2543,7 @@ function normalizeAtividadeMateriaisApoio(materiais: unknown) {
           path: objectKey,
           object_key: objectKey,
           provider: String(material?.provider || 'r2').trim() || 'r2',
-          public_url: material?.public_url ? String(material.public_url) : null,
+          public_url: publicUrl || null,
           tamanho: Number.isFinite(tamanho) && tamanho > 0 ? Math.floor(tamanho) : 0,
           mime_type: material?.mime_type ? String(material.mime_type) : null,
           extensao: material?.extensao ? String(material.extensao) : null,

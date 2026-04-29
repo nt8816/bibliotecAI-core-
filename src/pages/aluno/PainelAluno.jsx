@@ -756,16 +756,21 @@ function normalizeAtividadeMateriais(value) {
   if (!Array.isArray(parsed)) return [];
   return parsed
     .filter((item) => item && typeof item === 'object')
-    .map((item) => ({
-      ...item,
-      tipo: String(item.tipo || '').toLowerCase(),
-      nome: String(item.nome || ''),
-      titulo: String(item.titulo || ''),
-      url: String(item.url || ''),
-      object_key: String(item.object_key || item.objectKey || ''),
-      path: String(item.path || ''),
-      tamanho: Number(item.tamanho || 0),
-    }));
+    .map((item) => {
+      const objectKey = String(item.object_key || item.objectKey || item.path || item.key || '').trim();
+      const publicUrl = String(item.public_url || item.publicUrl || '').trim();
+      return {
+        ...item,
+        tipo: String(item.tipo || (objectKey ? 'arquivo' : 'link')).toLowerCase(),
+        nome: String(item.nome || item.titulo || item.file_name || ''),
+        titulo: String(item.titulo || item.nome || item.label || ''),
+        url: String(item.url || item.link || item.href || (!objectKey ? publicUrl : '')),
+        object_key: objectKey,
+        path: String(item.path || objectKey),
+        public_url: publicUrl,
+        tamanho: Number(item.tamanho || item.size || 0),
+      };
+    });
 }
 
 async function fileToDataUrl(file) {
@@ -2724,6 +2729,11 @@ export default function PainelAluno() {
       }
 
       const objectKey = String(material?.object_key || material?.path || '').trim();
+      const publicUrl = String(material?.public_url || '').trim();
+      if (!objectKey && publicUrl) {
+        window.open(publicUrl, '_blank', 'noopener,noreferrer');
+        return;
+      }
       if (!objectKey) throw new Error('Material sem rota de download.');
       const downloadUrl = await getR2DownloadUrl(objectKey, String(material?.nome || 'material-de-apoio'));
       window.open(downloadUrl, '_blank', 'noopener,noreferrer');
