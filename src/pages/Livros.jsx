@@ -22,6 +22,7 @@ import { useToast } from '@/hooks/use-toast';
 import { generateTextWithCloudflare } from '@/lib/cloudflareAiApi';
 import { ExportPeriodDialog } from '@/components/export/ExportPeriodDialog';
 import { canonicalizeBookArea } from '@/lib/bookAreas';
+import { addBibliotecaiPdfWatermark, loadBibliotecaiLogoDataUrl } from '@/lib/pdfExport';
 import { requestPlatformApi } from '@/lib/platformApi';
 import {
   createLivroCategoria,
@@ -737,25 +738,34 @@ export default function Livros() {
     });
   };
 
-  const handleExportarPDF = (livrosSelecionados, periodLabel) => {
-    return loadPdf().then(({ jsPDF, autoTable }) => {
+  const handleExportarPDF = async (livrosSelecionados, periodLabel) => {
+    try {
+      const { jsPDF, autoTable } = await loadPdf();
+      const logoDataUrl = await loadBibliotecaiLogoDataUrl();
       const doc = new jsPDF('landscape');
       doc.setFontSize(18);
-      doc.text('BibliotecAI - Acervo de Livros', 14, 22);
+      doc.text('BibliotecAI - Acervo de Livros', 45, 18);
       doc.setFontSize(11);
       doc.setTextColor(100);
-      doc.text(`Total: ${livrosSelecionados.length} livros | ${periodLabel} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
+      doc.text(`Total: ${livrosSelecionados.length} livros | ${periodLabel} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 27);
 
       const headers = ['Título', 'Autor', 'Área', 'Tombo', 'Editora', 'Ano', 'Disponível'];
       const data = livrosSelecionados.map((l) => [l.titulo, l.autor, l.area, l.tombo || '-', l.editora || '-', l.ano || '-', l.disponivel ? 'Sim' : 'Não']);
 
-      autoTable(doc, { head: [headers], body: data, startY: 40, styles: { fontSize: 8 }, headStyles: { fillColor: [46, 125, 50] } });
+      autoTable(doc, {
+        head: [headers],
+        body: data,
+        startY: 40,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [46, 125, 50] },
+        didDrawPage: () => addBibliotecaiPdfWatermark(doc, logoDataUrl),
+      });
       doc.save('acervo_livros.pdf');
 
       toast({ title: 'Exportado!', description: `Arquivo acervo_livros.pdf baixado. ${periodLabel}` });
-    }).catch(() => {
+    } catch {
       toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível exportar o PDF.' });
-    });
+    }
   };
 
   const handleOpenExportDialog = (format) => {

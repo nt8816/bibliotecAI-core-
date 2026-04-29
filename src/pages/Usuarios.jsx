@@ -36,6 +36,7 @@ import { useTenant } from '@/hooks/useTenant';
 import { useToast } from '@/hooks/use-toast';
 import { usePrivateTelemetry } from '@/hooks/usePrivateTelemetry';
 import { ExportPeriodDialog } from '@/components/export/ExportPeriodDialog';
+import { addBibliotecaiPdfWatermark, loadBibliotecaiLogoDataUrl } from '@/lib/pdfExport';
 import {
   excluirUsuarios,
   fetchUsuariosModuleData,
@@ -456,25 +457,34 @@ export default function Usuarios() {
     });
   };
 
-  const handleExportarUsuariosPDF = (usuariosSelecionados, periodLabel) => {
-    return loadPdf().then(({ jsPDF, autoTable }) => {
+  const handleExportarUsuariosPDF = async (usuariosSelecionados, periodLabel) => {
+    try {
+      const { jsPDF, autoTable } = await loadPdf();
+      const logoDataUrl = await loadBibliotecaiLogoDataUrl();
       const doc = new jsPDF();
       doc.setFontSize(18);
-      doc.text('BibliotecAI - Usuarios', 14, 22);
+      doc.text('BibliotecAI - Usuarios', 45, 18);
       doc.setFontSize(11);
       doc.setTextColor(100);
-      doc.text(`Total: ${usuariosSelecionados.length} | ${periodLabel} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
+      doc.text(`Total: ${usuariosSelecionados.length} | ${periodLabel} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 27);
 
       const headers = ['Nome', 'Email', 'Tipo', 'Matricula', 'Turma', 'Telefone'];
       const data = usuariosSelecionados.map((u) => [u.nome, getVisibleEmail(u.nome, u.email), getTipoLabel(u.tipo), u.matricula || '-', u.turma || '-', u.telefone || '-']);
 
-      autoTable(doc, { head: [headers], body: data, startY: 40, styles: { fontSize: 8 }, headStyles: { fillColor: [46, 125, 50] } });
+      autoTable(doc, {
+        head: [headers],
+        body: data,
+        startY: 40,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [46, 125, 50] },
+        didDrawPage: () => addBibliotecaiPdfWatermark(doc, logoDataUrl),
+      });
       doc.save('usuarios.pdf');
 
       toast({ title: 'Exportado!', description: `Arquivo usuarios.pdf baixado. ${periodLabel}` });
-    }).catch(() => {
+    } catch {
       toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível exportar o PDF.' });
-    });
+    }
   };
 
   const handleOpenExportDialog = (format) => {

@@ -5,13 +5,16 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { addBibliotecaiPdfWatermark, loadBibliotecaiLogoDataUrl } from '@/lib/pdfExport';
 import { fetchProfessorPainelData } from '@/services/professorService';
 
 const isTempLoginEmail = (value) => /@temp\.bibliotecai\.com$/i.test(String(value || '').trim());
 const getVisibleEmail = (nome, email) => (isTempLoginEmail(email) ? nome : (email || '-'));
+const ALL_SALAS_OPTION = 'todas-as-salas';
 const loadPdf = async () => {
   const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
     import('jspdf'),
@@ -19,21 +22,6 @@ const loadPdf = async () => {
   ]);
   return { jsPDF, autoTable };
 };
-
-const loadImageDataUrl = (src) => new Promise((resolve, reject) => {
-  const image = new Image();
-  image.crossOrigin = 'anonymous';
-  image.onload = () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = image.naturalWidth;
-    canvas.height = image.naturalHeight;
-    const context = canvas.getContext('2d');
-    context.drawImage(image, 0, 0);
-    resolve(canvas.toDataURL('image/png'));
-  };
-  image.onerror = reject;
-  image.src = src;
-});
 
 const sanitizeFilePart = (value) => String(value || '')
   .normalize('NFD')
@@ -117,13 +105,9 @@ export default function MeusAlunos() {
     try {
       const { jsPDF, autoTable } = await loadPdf();
       const doc = new jsPDF();
-      const logoDataUrl = await loadImageDataUrl('/app-logo.png');
+      const logoDataUrl = await loadBibliotecaiLogoDataUrl();
       const salaLabel = filterTurma || 'Todas as salas';
       const fileSala = filterTurma ? `-${sanitizeFilePart(filterTurma)}` : '';
-
-      doc.setGState(new doc.GState({ opacity: 0.16 }));
-      doc.addImage(logoDataUrl, 'PNG', 12, 8, 28, 28);
-      doc.setGState(new doc.GState({ opacity: 1 }));
 
       doc.setFontSize(16);
       doc.text('Alunos das minhas salas', 45, 18);
@@ -141,9 +125,7 @@ export default function MeusAlunos() {
         styles: { fontSize: 9 },
         headStyles: { fillColor: [46, 125, 50] },
         didDrawPage: () => {
-          doc.setGState(new doc.GState({ opacity: 0.16 }));
-          doc.addImage(logoDataUrl, 'PNG', 12, 8, 28, 28);
-          doc.setGState(new doc.GState({ opacity: 1 }));
+          addBibliotecaiPdfWatermark(doc, logoDataUrl);
         },
       });
 
@@ -232,16 +214,24 @@ export default function MeusAlunos() {
                 </div>
 
                 {turmas.length > 0 && (
-                  <select
-                    className="h-10 px-3 rounded-md border border-input bg-background text-sm"
-                    value={filterTurma}
-                    onChange={(e) => setFilterTurma(e.target.value)}
+                  <Select
+                    value={filterTurma || ALL_SALAS_OPTION}
+                    onValueChange={(value) => setFilterTurma(value === ALL_SALAS_OPTION ? '' : value)}
                   >
-                    <option value="">Todas as salas</option>
+                    <SelectTrigger className="h-10 w-full sm:w-72 rounded-xl border-primary/20 bg-background/95 px-4 text-left shadow-sm transition hover:border-primary/40 focus:ring-2 focus:ring-primary/20">
+                      <SelectValue placeholder="Filtrar por sala" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-72 rounded-xl border-primary/20 bg-popover/95 shadow-[0_18px_40px_rgba(0,0,0,0.20)] backdrop-blur">
+                      <SelectItem value={ALL_SALAS_OPTION} className="rounded-lg py-2.5">
+                        Todas as salas
+                      </SelectItem>
                     {turmas.map((turma) => (
-                      <option key={turma} value={turma}>{turma}</option>
+                        <SelectItem key={turma} value={turma} className="rounded-lg py-2.5">
+                          {turma}
+                        </SelectItem>
                     ))}
-                  </select>
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
             </div>

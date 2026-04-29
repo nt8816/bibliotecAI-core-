@@ -35,6 +35,7 @@ import {
 import { format, isPast, addMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { addBibliotecaiPdfWatermark, loadBibliotecaiLogoDataUrl } from '@/lib/pdfExport';
 import { ExportPeriodDialog } from '@/components/export/ExportPeriodDialog';
 import {
   approveSolicitacaoEmprestimo,
@@ -506,13 +507,14 @@ export default function Emprestimos() {
     toast({ title: 'Exportado!', description: `Arquivo emprestimos.xlsx baixado. ${periodLabel}` });
   };
 
-  const handleExportarPDF = (emprestimosSelecionados, periodLabel) => {
+  const handleExportarPDF = async (emprestimosSelecionados, periodLabel) => {
+    const logoDataUrl = await loadBibliotecaiLogoDataUrl();
     const doc = new jsPDF();
     doc.setFontSize(18);
-    doc.text('BibliotecAI - Empréstimos', 14, 22);
+    doc.text('BibliotecAI - Empréstimos', 45, 18);
     doc.setFontSize(11);
     doc.setTextColor(100);
-    doc.text(`${periodLabel} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
+    doc.text(`${periodLabel} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 27);
 
     const headers = ['Livro', 'Usuário', 'Empréstimo', 'Prev. Devolução', 'Status'];
     const data = emprestimosSelecionados.map((e) => [
@@ -529,6 +531,7 @@ export default function Emprestimos() {
       startY: 40,
       styles: { fontSize: 9 },
       headStyles: { fillColor: [88, 86, 214] },
+      didDrawPage: () => addBibliotecaiPdfWatermark(doc, logoDataUrl),
     });
 
     doc.save('emprestimos.pdf');
@@ -551,7 +554,7 @@ export default function Emprestimos() {
     const periodLabel = getPeriodLabel(period);
     try {
       if (exportFormat === 'pdf') {
-        handleExportarPDF(emprestimosSelecionados, periodLabel);
+        await handleExportarPDF(emprestimosSelecionados, periodLabel);
       } else {
         handleExportarExcel(emprestimosSelecionados, periodLabel);
       }

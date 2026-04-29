@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { ExportPeriodDialog } from '@/components/export/ExportPeriodDialog';
 import { useToast } from '@/hooks/use-toast';
+import { addBibliotecaiPdfWatermark, loadBibliotecaiLogoDataUrl } from '@/lib/pdfExport';
 import { fetchReportsData } from '@/services/reportsService';
 
 const PIE_COLORS = ['hsl(122, 46%, 34%)', 'hsl(43, 96%, 56%)'];
@@ -210,11 +211,12 @@ export default function Relatorios() {
 
   const exportarRelatoriosPdf = async (dataRows, periodLabel) => {
     const { jsPDF, autoTable } = await loadPdf();
+    const logoDataUrl = await loadBibliotecaiLogoDataUrl();
     const doc = new jsPDF('landscape');
     doc.setFontSize(14);
-    doc.text('Relatorios Gerais - Biblioteca', 14, 16);
+    doc.text('Relatorios Gerais - Biblioteca', 45, 18);
     doc.setFontSize(10);
-    doc.text(periodLabel, 14, 23);
+    doc.text(periodLabel, 45, 26);
 
     const headers = [['Data', 'Aluno', 'Turma', 'Livro', 'Status']];
     const rows = dataRows.map((item) => [
@@ -228,9 +230,10 @@ export default function Relatorios() {
     autoTable(doc, {
       head: headers,
       body: rows,
-      startY: 30,
+      startY: 40,
       styles: { fontSize: 8 },
       headStyles: { fillColor: [46, 125, 50] },
+      didDrawPage: () => addBibliotecaiPdfWatermark(doc, logoDataUrl),
     });
     doc.save('relatorios_gerais.pdf');
   };
