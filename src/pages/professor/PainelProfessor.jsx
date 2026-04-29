@@ -1555,6 +1555,10 @@ export default function PainelProfessor() {
         return;
       }
 
+      const activityApiTargetMode = atividadeForm.target_mode === 'turma'
+        ? (turmasSelecionadas.length > 1 ? 'turmas' : 'turma')
+        : atividadeForm.target_mode;
+
       const response = await saveProfessorAtividade({
         titulo: atividadeForm.titulo.trim(),
         descricao: serializeAtividadeDescricao(
@@ -1565,7 +1569,8 @@ export default function PainelProfessor() {
         data_entrega: atividadeForm.data_entrega ? new Date(atividadeForm.data_entrega).toISOString() : null,
         livro_id: atividadeForm.livro_id || null,
         aluno_id: atividadeForm.target_mode === 'aluno' ? atividadeForm.aluno_id || null : null,
-        target_mode: atividadeForm.target_mode,
+        target_mode: activityApiTargetMode,
+        turma: activityApiTargetMode === 'turma' ? turmasSelecionadas[0] || null : null,
         turmas: turmasSelecionadas,
         materiais_apoio: atividadeForm.materiais_apoio,
       }, editingAtividade?.id || null, { roleHint: profileRoleHint });
