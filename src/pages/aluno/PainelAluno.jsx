@@ -81,6 +81,8 @@ import { fetchAtividadeMateriaisMap } from '@/services/atividadeMateriaisService
 const ENABLE_OPTIONAL_STUDENT_FEATURES = import.meta.env.VITE_ENABLE_OPTIONAL_STUDENT_FEATURES !== 'false';
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const DESAFIO_IA_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const ACTIVITY_DRAFT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const ACTIVITY_DRAFT_STORAGE_PREFIX = 'aluno:atividade-drafts';
 
 function formatDateBR(dateValue) {
   if (!dateValue) return '-';
@@ -128,6 +130,88 @@ function renderStars(nota, onClick) {
 
 function ensureArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function getActivityDraftStorageKey(ownerId) {
+  const normalizedOwnerId = String(ownerId || '').trim();
+  return normalizedOwnerId ? `${ACTIVITY_DRAFT_STORAGE_PREFIX}:${normalizedOwnerId}` : '';
+}
+
+function sanitizeActivityDrafts(value) {
+  const now = Date.now();
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([activityId, draft]) => {
+        const normalizedId = String(activityId || '').trim();
+        if (!normalizedId || !draft || typeof draft !== 'object' || Array.isArray(draft)) return null;
+
+        const updatedAt = Number(draft.updatedAt || 0);
+        if (updatedAt && now - updatedAt > ACTIVITY_DRAFT_TTL_MS) return null;
+
+        const texto = String(draft.texto || '');
+        const respostas = draft.respostas && typeof draft.respostas === 'object' && !Array.isArray(draft.respostas)
+          ? draft.respostas
+          : {};
+        const imagens = ensureArray(draft.imagens).filter((item) => typeof item === 'string');
+
+        return [normalizedId, {
+          texto,
+          respostas,
+          imagens,
+          updatedAt: updatedAt || now,
+        }];
+      })
+      .filter(Boolean),
+  );
+}
+
+function readActivityDrafts(ownerId) {
+  const key = getActivityDraftStorageKey(ownerId);
+  if (!key) return {};
+
+  try {
+    return sanitizeActivityDrafts(JSON.parse(localStorage.getItem(key) || '{}'));
+  } catch {
+    return {};
+  }
+}
+
+function writeActivityDrafts(ownerId, drafts) {
+  const key = getActivityDraftStorageKey(ownerId);
+  if (!key) return;
+
+  const sanitized = sanitizeActivityDrafts(drafts);
+  try {
+    localStorage.setItem(key, JSON.stringify(sanitized));
+  } catch {
+    const withoutImages = Object.fromEntries(
+      Object.entries(sanitized).map(([activityId, draft]) => [activityId, { ...draft, imagens: [] }]),
+    );
+    try {
+      localStorage.setItem(key, JSON.stringify(withoutImages));
+    } catch {
+      // Browsers may reject storage when full or disabled. The form still works in memory.
+    }
+  }
+}
+
+function removeActivityDraft(ownerId, activityId) {
+  const normalizedId = String(activityId || '').trim();
+  if (!normalizedId) return;
+  const drafts = readActivityDrafts(ownerId);
+  if (!Object.prototype.hasOwnProperty.call(drafts, normalizedId)) return;
+  delete drafts[normalizedId];
+  writeActivityDrafts(ownerId, drafts);
+}
+
+function hasActivityDraftContent(draft) {
+  if (!draft || typeof draft !== 'object') return false;
+  const hasTexto = String(draft.texto || '').trim().length > 0;
+  const hasRespostas = Object.values(draft.respostas || {}).some((value) => String(value || '').trim().length > 0);
+  const hasImagens = ensureArray(draft.imagens).length > 0;
+  return hasTexto || hasRespostas || hasImagens;
 }
 
 function normalizeTurmaKey(value) {
@@ -1455,12 +1539,26 @@ export default function PainelAluno() {
         const entregaInicial = {};
         const entregaImagensInicial = {};
         const entregaRespostasInicial = {};
+        const entregaAtividadeIds = new Set();
         (painelData?.entregas || []).forEach((entrega) => {
           const payload = parseEntregaPayload(entrega.texto_entrega);
+          entregaAtividadeIds.add(String(entrega.atividade_id || '').trim());
           entregaInicial[entrega.atividade_id] = payload.texto;
           entregaImagensInicial[entrega.atividade_id] = payload.imagens;
           entregaRespostasInicial[entrega.atividade_id] = payload.respostas;
         });
+
+        const drafts = readActivityDrafts(perfil.id || user.id);
+        ensureArray(painelData?.atividades).forEach((atividade) => {
+          const atividadeId = String(atividade?.id || '').trim();
+          if (!atividadeId || entregaAtividadeIds.has(atividadeId)) return;
+          const draft = drafts[atividadeId];
+          if (!hasActivityDraftContent(draft)) return;
+          entregaInicial[atividadeId] = draft.texto || '';
+          entregaImagensInicial[atividadeId] = ensureArray(draft.imagens);
+          entregaRespostasInicial[atividadeId] = draft.respostas || {};
+        });
+
         setAtividadeTexto(entregaInicial);
         setAtividadeImagens(entregaImagensInicial);
         setAtividadeRespostas(entregaRespostasInicial);
@@ -1491,6 +1589,44 @@ export default function PainelAluno() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!alunoId || atividades.length === 0) return;
+
+    const deliveredActivityIds = new Set(
+      ensureArray(entregas)
+        .map((entrega) => String(entrega?.atividade_id || '').trim())
+        .filter(Boolean),
+    );
+    const activityIds = new Set(
+      ensureArray(atividades)
+        .map((atividade) => String(atividade?.id || '').trim())
+        .filter(Boolean),
+    );
+    const drafts = readActivityDrafts(alunoId);
+
+    activityIds.forEach((atividadeId) => {
+      if (deliveredActivityIds.has(atividadeId)) {
+        delete drafts[atividadeId];
+        return;
+      }
+
+      const draft = {
+        texto: atividadeTexto[atividadeId] || '',
+        respostas: atividadeRespostas[atividadeId] || {},
+        imagens: ensureArray(atividadeImagens[atividadeId]),
+        updatedAt: Date.now(),
+      };
+
+      if (hasActivityDraftContent(draft)) {
+        drafts[atividadeId] = draft;
+      } else {
+        delete drafts[atividadeId];
+      }
+    });
+
+    writeActivityDrafts(alunoId, drafts);
+  }, [alunoId, atividades, entregas, atividadeTexto, atividadeRespostas, atividadeImagens]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -2693,6 +2829,7 @@ export default function PainelAluno() {
       setAtividadeTexto((prev) => ({ ...prev, [atividade.id]: '' }));
       setAtividadeImagens((prev) => ({ ...prev, [atividade.id]: [] }));
       setAtividadeRespostas((prev) => ({ ...prev, [atividade.id]: {} }));
+      removeActivityDraft(alunoId, atividade.id);
       setAtividadeView('enviadas');
 
       toast({ title: 'Entrega enviada', description: 'Seu professor já pode avaliar e liberar pontos.' });
