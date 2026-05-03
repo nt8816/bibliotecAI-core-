@@ -21,6 +21,8 @@ export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_PUBLISHABLE_KEY?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
+  SUPABASE_SECRET_KEY?: string;
+  SUPABASE_SECRET_KEYS?: string;
   SUPABASE_JWT_SECRET?: string;
   R2_BUCKET?: R2Bucket;
   R2_PUBLIC_BASE_URL?: string;
@@ -160,7 +162,12 @@ function getPathParam(request: Request, pattern: RegExp, groupIndex = 1) {
 function getSupabaseConfig(env: Env) {
   const supabaseUrl = String(env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
   const publishableKey = String(env.SUPABASE_PUBLISHABLE_KEY || '').trim();
-  const serviceRoleKey = String(env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  const serviceRoleKey = String(
+    env.SUPABASE_SECRET_KEY
+    || env.SUPABASE_SECRET_KEYS
+    || env.SUPABASE_SERVICE_ROLE_KEY
+    || '',
+  ).trim();
 
   if (!supabaseUrl || !publishableKey || !serviceRoleKey) {
     throw new Error('Variaveis do Supabase ausentes no Worker.');
@@ -173,6 +180,11 @@ async function parseResponse(response: Response) {
   const contentType = response.headers.get('content-type') || '';
   if (contentType.includes('application/json')) return response.json();
   return response.text();
+}
+
+function isUnsupportedJwtAlgorithmError(error: unknown) {
+  const message = String(error instanceof Error ? error.message : error || '').toLowerCase();
+  return message.includes('unsupported jwt algorithm');
 }
 
 function shouldAutoPaginateSupabaseGet(
@@ -9006,10 +9018,22 @@ const routes: Record<string, RouteHandler> = {
       );
     }
 
-    await supabaseAdminAuthRequest(env, `/users/${encodeURIComponent(alunoUserId)}`, {
-      method: 'PUT',
-      body: { password: novaSenha },
-    });
+    try {
+      await supabaseAdminAuthRequest(env, `/users/${encodeURIComponent(alunoUserId)}`, {
+        method: 'PUT',
+        body: { password: novaSenha },
+      });
+    } catch (error) {
+      if (!isUnsupportedJwtAlgorithmError(error)) {
+        throw error;
+      }
+
+      const payload = await callSupabaseFunction(request, env, 'redefinir-senha-aluno', {
+        aluno_id: alunoId,
+        nova_senha: novaSenha,
+      });
+      return jsonResponse(payload);
+    }
 
     return jsonResponse({
       success: true,

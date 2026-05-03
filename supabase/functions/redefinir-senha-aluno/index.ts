@@ -81,6 +81,17 @@ async function getSupabaseAdminServiceToken(serviceRoleKey: string) {
   });
 }
 
+async function getSupabaseAdminApiKey(serviceRoleKey: string) {
+  const secretKey = String(
+    Deno.env.get('SUPABASE_SECRET_KEY')
+    || Deno.env.get('SUPABASE_SECRET_KEYS')
+    || '',
+  ).trim();
+
+  if (secretKey) return secretKey;
+  return getSupabaseAdminServiceToken(serviceRoleKey);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders, status: 204 });
@@ -110,8 +121,8 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const adminServiceToken = await getSupabaseAdminServiceToken(serviceRoleKey);
-    const adminClient = createClient(supabaseUrl, adminServiceToken, {
+    const adminApiKey = await getSupabaseAdminApiKey(serviceRoleKey);
+    const adminClient = createClient(supabaseUrl, adminApiKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 

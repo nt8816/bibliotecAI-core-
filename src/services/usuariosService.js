@@ -33,6 +33,11 @@ async function invokeResetAlunoPasswordFunction(alunoId, novaSenha) {
   return payload;
 }
 
+function isUnsupportedJwtAlgorithmError(error) {
+  const message = String(error?.message || error?.payload?.error || error?.payload?.message || '').toLowerCase();
+  return message.includes('unsupported jwt algorithm');
+}
+
 export async function fetchUsuariosModuleData() {
   return requestPlatformApi('/v1/usuarios');
 }
@@ -114,7 +119,7 @@ export async function resetAlunoPassword(alunoId, novaSenha) {
       body: { aluno_id: alunoId, nova_senha: novaSenha },
     });
   } catch (error) {
-    if (!isPlatformApiUnavailableError(error)) {
+    if (!isPlatformApiUnavailableError(error) && !isUnsupportedJwtAlgorithmError(error)) {
       throw error;
     }
     return invokeResetAlunoPasswordFunction(alunoId, novaSenha);
