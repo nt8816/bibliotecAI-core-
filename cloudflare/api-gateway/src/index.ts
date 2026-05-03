@@ -319,11 +319,12 @@ async function supabaseAdminAuthRequest(
   { method = 'GET', body, headers }: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
 ) {
   const { supabaseUrl, serviceRoleKey } = getSupabaseConfig(env);
+  const serviceRoleBearerToken = await getSupabaseRestServiceToken(env, serviceRoleKey);
   const response = await fetch(`${supabaseUrl}/auth/v1/admin${path}`, {
     method,
     headers: {
-      apikey: serviceRoleKey,
-      Authorization: `Bearer ${serviceRoleKey}`,
+      apikey: serviceRoleBearerToken,
+      Authorization: `Bearer ${serviceRoleBearerToken}`,
       'Content-Type': 'application/json',
       ...(headers || {}),
     },
