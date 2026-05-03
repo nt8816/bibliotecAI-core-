@@ -16,6 +16,9 @@ No painel do Worker `bibliotecai-api-gateway`, adicione estas variaveis em `Sett
 - `SUPABASE_URL=https://dhjkjwkitufsvhlhcsec.supabase.co`
 - `SUPABASE_PUBLISHABLE_KEY=<publishable key do projeto>`
 - `SUPABASE_SERVICE_ROLE_KEY=<service role key do projeto>`
+- `SUPABASE_JWT_SECRET=<JWT secret do projeto>`
+
+`SUPABASE_JWT_SECRET` e necessario quando a service role key do Supabase usa `ES256`; o Worker gera um token administrativo `HS256` compativel com as chamadas REST e Auth admin.
 
 ## Proximo deploy
 

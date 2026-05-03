@@ -63,6 +63,8 @@ npm test
 - `registrar-via-convite`
 - `registrar-gestor-tenant`
 
+Para Edge Functions que usam operacoes administrativas de Auth com service role `ES256`, configure tambem o secret `SUPABASE_JWT_SECRET` no projeto Supabase.
+
 ### Wildcard DNS e Vercel
 
 1. Configure wildcard no DNS:

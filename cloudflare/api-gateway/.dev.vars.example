@@ -2,6 +2,7 @@ APP_ENV=production
 SUPABASE_URL=https://dhjkjwkitufsvhlhcsec.supabase.co
 SUPABASE_PUBLISHABLE_KEY=cole_aqui_a_publishable_key
 SUPABASE_SERVICE_ROLE_KEY=cole_aqui_a_service_role_key
+SUPABASE_JWT_SECRET=cole_aqui_o_jwt_secret_do_projeto
 # Quando ativar o envio de push pelo backend, adicione tambem:
 # FIREBASE_PROJECT_ID=cole_aqui_o_project_id
 # FIREBASE_CLIENT_EMAIL=cole_aqui_o_client_email
