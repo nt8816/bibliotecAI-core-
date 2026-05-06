@@ -178,7 +178,7 @@ export function useSystemNotifications() {
     const watchedTables = isSuperAdmin
       ? ['reclamacoes_super_admin', 'system_logs']
       : isAluno
-        ? ['emprestimos', 'solicitacoes_emprestimo', 'comunidade_posts', 'notificacoes_lidas']
+        ? ['emprestimos', 'solicitacoes_emprestimo', 'atividades_leitura', 'atividades_entregas', 'comunidade_posts', 'notificacoes_lidas']
         : ['emprestimos', 'solicitacoes_emprestimo', 'solicitacoes_emprestimo_mensagens', 'notificacoes_lidas'];
 
     const channel = supabase.channel(`system-notifications-${user.id}-${profileId || 'global'}`);

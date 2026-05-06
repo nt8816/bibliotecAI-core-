@@ -10,10 +10,13 @@ export function NotificationsPopover({ userRole, onNavigate }) {
   const navigate = useNavigate();
   const { counts, notifications, canViewNotifications, markNotificationRead } = useSystemNotifications();
   const unreadChatNotifications = notifications.filter((item) => item?.tipo === 'solicitacao_chat').length;
+  const hasAtrasoNotification = notifications.some((item) => item?.tipo === 'atraso');
+  const hasComunicadoNotification = notifications.some((item) => item?.tipo === 'comunicado');
 
-  const totalPendencias = counts.atrasados
-    + unreadChatNotifications
-    + counts.comunicados
+  const totalPendencias = notifications.length
+    + (hasAtrasoNotification ? 0 : counts.atrasados)
+    + (hasComunicadoNotification ? 0 : counts.comunicados)
+    + counts.solicitacoesPendentes
     + (counts.reclamacoes || 0)
     + (counts.seguranca || 0);
   const hasPendencias = totalPendencias > 0;

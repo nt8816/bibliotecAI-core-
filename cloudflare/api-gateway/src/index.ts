@@ -2681,6 +2681,27 @@ function isActivityPastDeadline(dateValue: unknown, now = new Date()) {
   return Boolean(deadline && deadline.getTime() < now.getTime());
 }
 
+function getDailyReminderSlot(date = new Date()) {
+  const minutes = date.getUTCHours() * 60 + date.getUTCMinutes();
+  return Math.min(4, Math.floor(minutes / 288));
+}
+
+function getDailyReminderDateKey(date = new Date()) {
+  return date.toISOString().slice(0, 10);
+}
+
+function getOverdueLoanNotificationId(emprestimo: Record<string, unknown>, date = new Date()) {
+  return `atraso-${String(emprestimo?.id || '')}-${getDailyReminderDateKey(date)}-${getDailyReminderSlot(date)}`;
+}
+
+function formatDateBR(dateValue: unknown) {
+  const value = String(dateValue || '').trim();
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+  return new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Fortaleza' }).format(parsed);
+}
+
 async function getProfessorModuleData(request: Request, env: Env) {
   const { caller, profile } = await getUserProfileForRequest(request, env, { preferredTypes: ['professor', 'gestor'] });
   if (!profile?.id) {
@@ -6242,11 +6263,11 @@ const routes: Record<string, RouteHandler> = {
     }
 
     if (isAluno) {
-      const [atrasados, solicitacoes, comunicadosRes, notificacoesLidas] = await Promise.all([
+      const [atrasados, emprestimosAtualizados, solicitacoes, atividades, entregas, comunicadosRes, notificacoesLidas] = await Promise.all([
         supabaseAdminRequest(
           env,
           `/rest/v1/emprestimos?${new URLSearchParams({
-            select: 'id',
+            select: 'id,status,data_devolucao_prevista,updated_at,created_at,livros(titulo)',
             usuario_id: `eq.${profile.id}`,
             status: 'eq.ativo',
             data_devolucao_prevista: `lt.${new Date().toISOString()}`,
@@ -6254,12 +6275,41 @@ const routes: Record<string, RouteHandler> = {
         ),
         supabaseAdminRequest(
           env,
-          `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
-            select: 'id',
+          `/rest/v1/emprestimos?${new URLSearchParams({
+            select: 'id,status,data_emprestimo,data_devolucao_prevista,updated_at,created_at,livros(titulo)',
             usuario_id: `eq.${profile.id}`,
-            status: 'in.(pendente,em_andamento)',
+            status: 'in.(ativo,devolvido)',
+            order: 'updated_at.desc',
+            limit: '20',
           }).toString()}`,
-        ),
+        ).catch(() => []),
+        supabaseAdminRequest(
+          env,
+          `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({
+            select: 'id,status,updated_at,created_at,livros(titulo)',
+            usuario_id: `eq.${profile.id}`,
+            order: 'updated_at.desc',
+            limit: '30',
+          }).toString()}`,
+        ).catch(() => []),
+        supabaseAdminRequest(
+          env,
+          `/rest/v1/atividades_leitura?${new URLSearchParams({
+            select: 'id,titulo,data_entrega,created_at,professor:usuarios_biblioteca!atividades_leitura_professor_id_fkey(nome)',
+            aluno_id: `eq.${profile.id}`,
+            order: 'created_at.desc',
+            limit: '30',
+          }).toString()}`,
+        ).catch(() => []),
+        supabaseAdminRequest(
+          env,
+          `/rest/v1/atividades_entregas?${new URLSearchParams({
+            select: 'id,atividade_id,status,pontos_ganhos,avaliado_em,updated_at,atividades_leitura(titulo)',
+            aluno_id: `eq.${profile.id}`,
+            order: 'updated_at.desc',
+            limit: '30',
+          }).toString()}`,
+        ).catch(() => []),
         profile.escola_id
           ? supabaseAdminRequest(
             env,
@@ -6299,17 +6349,102 @@ const routes: Record<string, RouteHandler> = {
         }))
         .filter((item) => !lidas.has(item.id));
 
+      const atrasoNotifications = (Array.isArray(atrasados) ? atrasados : [])
+        .map((item) => ({
+          id: getOverdueLoanNotificationId(item),
+          tipo: 'atraso',
+          titulo: 'Lembrete de livro atrasado',
+          descricao: `${item?.livros?.titulo || 'Livro'} deveria ter sido devolvido em ${formatDateBR(item?.data_devolucao_prevista)}.`,
+          created_at: item?.data_devolucao_prevista || item?.updated_at || item?.created_at || null,
+          path: '/aluno/biblioteca',
+        }))
+        .filter((item) => !lidas.has(item.id));
+
+      const atividadeIdsComEntrega = new Set(
+        (Array.isArray(entregas) ? entregas : [])
+          .map((item) => String(item?.atividade_id || '').trim())
+          .filter(Boolean),
+      );
+      const atividadesNovas = (Array.isArray(atividades) ? atividades : [])
+        .filter((item) => item?.id && !atividadeIdsComEntrega.has(String(item.id)))
+        .map((item) => ({
+          id: `atividade-nova-${item.id}`,
+          tipo: 'atividade',
+          titulo: 'Nova atividade recebida',
+          descricao: `${item?.titulo || 'Atividade'}${item?.data_entrega ? ` - prazo ${formatDateBR(item.data_entrega)}.` : '.'}`,
+          created_at: item?.created_at || item?.data_entrega || null,
+          path: '/aluno/atividades',
+        }))
+        .filter((item) => !lidas.has(item.id));
+
+      const atividadesAvaliadas = (Array.isArray(entregas) ? entregas : [])
+        .filter((item) => item?.id && (item?.avaliado_em || String(item?.status || '').toLowerCase() !== 'enviada'))
+        .map((item) => {
+          const status = String(item?.status || '').toLowerCase();
+          return {
+            id: `atividade-avaliada-${item.id}-${item?.avaliado_em || item?.updated_at || status}`,
+            tipo: 'atividade_avaliada',
+            titulo: status === 'aprovada' ? 'Atividade aprovada' : 'Atividade avaliada',
+            descricao: `${item?.atividades_leitura?.titulo || 'Atividade'} foi avaliada pelo professor. Pontos: ${Number(item?.pontos_ganhos || 0)}.`,
+            created_at: item?.avaliado_em || item?.updated_at || null,
+            path: '/aluno/atividades',
+          };
+        })
+        .filter((item) => !lidas.has(item.id));
+
+      const solicitacoesPendentes = (Array.isArray(solicitacoes) ? solicitacoes : [])
+        .filter((item) => ['pendente', 'em_andamento'].includes(String(item?.status || '').toLowerCase()));
+      const livroStatusSolicitacoes = (Array.isArray(solicitacoes) ? solicitacoes : [])
+        .filter((item) => item?.id && !['pendente', 'em_andamento'].includes(String(item?.status || '').toLowerCase()))
+        .map((item) => {
+          const status = String(item?.status || '').toLowerCase();
+          const aprovado = ['aprovada', 'aceita'].includes(status);
+          return {
+            id: `livro-status-solicitacao-${item.id}-${item?.updated_at || status}`,
+            tipo: 'livro_status',
+            titulo: aprovado ? 'Solicitação de livro aprovada' : 'Status do livro atualizado',
+            descricao: `${item?.livros?.titulo || 'Livro'}: ${aprovado ? 'solicitação aprovada' : status || 'status atualizado'}.`,
+            created_at: item?.updated_at || item?.created_at || null,
+            path: '/aluno/biblioteca',
+          };
+        })
+        .filter((item) => !lidas.has(item.id));
+
+      const livroStatusEmprestimos = (Array.isArray(emprestimosAtualizados) ? emprestimosAtualizados : [])
+        .filter((item) => item?.id && ['ativo', 'devolvido'].includes(String(item?.status || '').toLowerCase()))
+        .map((item) => {
+          const status = String(item?.status || '').toLowerCase();
+          return {
+            id: `livro-status-emprestimo-${item.id}-${item?.updated_at || item?.data_emprestimo || status}`,
+            tipo: 'livro_status',
+            titulo: status === 'devolvido' ? 'Livro marcado como devolvido' : 'Livro liberado para retirada',
+            descricao: `${item?.livros?.titulo || 'Livro'} teve o status atualizado para ${status}.`,
+            created_at: item?.updated_at || item?.data_emprestimo || item?.created_at || null,
+            path: '/aluno/biblioteca',
+          };
+        })
+        .filter((item) => !lidas.has(item.id));
+
+      const notifications = [
+        ...comunicados,
+        ...atrasoNotifications,
+        ...atividadesNovas,
+        ...atividadesAvaliadas,
+        ...livroStatusSolicitacoes,
+        ...livroStatusEmprestimos,
+      ].sort((a, b) => new Date(String(b.created_at || 0)).getTime() - new Date(String(a.created_at || 0)).getTime()).slice(0, 20);
+
       return jsonResponse({
         success: true,
         counts: {
           atrasados: Array.isArray(atrasados) ? atrasados.length : 0,
-          solicitacoesPendentes: Array.isArray(solicitacoes) ? solicitacoes.length : 0,
+          solicitacoesPendentes: solicitacoesPendentes.length,
           comunicados: comunicados.length,
           reclamacoes: 0,
           reclamacoesAtrasadas: 0,
           seguranca: 0,
         },
-        notifications: comunicados,
+        notifications,
         profileId: profile.id,
       });
     }

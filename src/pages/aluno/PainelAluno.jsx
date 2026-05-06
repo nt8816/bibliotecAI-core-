@@ -111,6 +111,19 @@ function isActivityPastDeadline(atividade, now = new Date()) {
   return Boolean(deadline && deadline.getTime() < now.getTime());
 }
 
+function getDailyReminderSlot(date = new Date()) {
+  const minutes = date.getHours() * 60 + date.getMinutes();
+  return Math.min(4, Math.floor(minutes / 288));
+}
+
+function getDailyReminderDateKey(date = new Date()) {
+  return format(date, 'yyyy-MM-dd');
+}
+
+function getOverdueLoanNotificationId(emprestimo, date = new Date()) {
+  return `atraso-${emprestimo?.id}-${getDailyReminderDateKey(date)}-${getDailyReminderSlot(date)}`;
+}
+
 function formatDateInputValue(dateValue) {
   if (!dateValue) return '';
   try {
@@ -2372,23 +2385,77 @@ export default function PainelAluno() {
 
     atrasos.forEach((emp) => {
       itens.push({
-        id: `atraso-${emp.id}`,
+        id: getOverdueLoanNotificationId(emp),
         tipo: 'atraso',
-        titulo: 'Livro com devolução em atraso',
+        titulo: 'Lembrete de livro atrasado',
         descricao: `${emp.livros?.titulo || 'Livro'} deveria ter sido devolvido em ${formatDateBR(emp.data_devolucao_prevista)}.`,
+        created_at: emp.data_devolucao_prevista || emp.updated_at || emp.created_at,
+        path: '/aluno/biblioteca',
       });
     });
 
     atividadesComEntrega
-      .filter((a) => a.data_entrega && (!a.entrega || a.entrega.status !== 'aprovada'))
-      .sort((a, b) => new Date(a.data_entrega).getTime() - new Date(b.data_entrega).getTime())
-      .slice(0, 3)
+      .filter((a) => !a.entrega)
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+      .slice(0, 8)
       .forEach((a) => {
         itens.push({
-          id: `atividade-${a.id}`,
+          id: `atividade-nova-${a.id}`,
           tipo: 'atividade',
-          titulo: 'Atividade para entregar',
-          descricao: `${a.titulo} - prazo ${formatDateBR(a.data_entrega)}.`,
+          titulo: 'Nova atividade recebida',
+          descricao: `${a.titulo || 'Atividade'}${a.data_entrega ? ` - prazo ${formatDateBR(a.data_entrega)}.` : '.'}`,
+          created_at: a.created_at || a.data_entrega || null,
+          path: '/aluno/atividades',
+        });
+      });
+
+    atividadesComEntrega
+      .filter((a) => a.entrega && (a.entrega.avaliado_em || String(a.entrega.status || '').toLowerCase() !== 'enviada'))
+      .sort((a, b) => new Date(b.entrega?.avaliado_em || b.entrega?.updated_at || 0).getTime() - new Date(a.entrega?.avaliado_em || a.entrega?.updated_at || 0).getTime())
+      .slice(0, 8)
+      .forEach((a) => {
+        const status = String(a.entrega?.status || '').toLowerCase();
+        const pontos = Number(a.entrega?.pontos_ganhos || 0);
+        itens.push({
+          id: `atividade-avaliada-${a.entrega.id}-${a.entrega.avaliado_em || a.entrega.updated_at || status}`,
+          tipo: 'atividade_avaliada',
+          titulo: status === 'aprovada' ? 'Atividade aprovada' : 'Atividade avaliada',
+          descricao: `${a.titulo || 'Atividade'} foi avaliada pelo professor. Pontos: ${pontos}.`,
+          created_at: a.entrega?.avaliado_em || a.entrega?.updated_at || null,
+          path: '/aluno/atividades',
+        });
+      });
+
+    ensureArray(solicitacoes)
+      .filter((solicitacao) => !['pendente', 'em_andamento'].includes(String(solicitacao?.status || '').toLowerCase()))
+      .sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())
+      .slice(0, 8)
+      .forEach((solicitacao) => {
+        const status = String(solicitacao?.status || '').toLowerCase();
+        const aprovado = ['aprovada', 'aceita'].includes(status);
+        itens.push({
+          id: `livro-status-solicitacao-${solicitacao.id}-${solicitacao.updated_at || status}`,
+          tipo: 'livro_status',
+          titulo: aprovado ? 'Solicitação de livro aprovada' : 'Status do livro atualizado',
+          descricao: `${solicitacao?.livros?.titulo || 'Livro'}: ${aprovado ? 'solicitação aprovada' : status || 'status atualizado'}.`,
+          created_at: solicitacao.updated_at || solicitacao.created_at || null,
+          path: '/aluno/biblioteca',
+        });
+      });
+
+    ensureArray(emprestimos)
+      .filter((emprestimo) => ['ativo', 'devolvido'].includes(String(emprestimo?.status || '').toLowerCase()))
+      .sort((a, b) => new Date(b.updated_at || b.data_emprestimo || b.created_at || 0).getTime() - new Date(a.updated_at || a.data_emprestimo || a.created_at || 0).getTime())
+      .slice(0, 8)
+      .forEach((emprestimo) => {
+        const status = String(emprestimo?.status || '').toLowerCase();
+        itens.push({
+          id: `livro-status-emprestimo-${emprestimo.id}-${emprestimo.updated_at || emprestimo.data_emprestimo || status}`,
+          tipo: 'livro_status',
+          titulo: status === 'devolvido' ? 'Livro marcado como devolvido' : 'Livro liberado para retirada',
+          descricao: `${emprestimo?.livros?.titulo || 'Livro'} teve o status atualizado para ${status}.`,
+          created_at: emprestimo.updated_at || emprestimo.data_emprestimo || emprestimo.created_at || null,
+          path: '/aluno/biblioteca',
         });
       });
 
@@ -2422,7 +2489,7 @@ export default function PainelAluno() {
 
     const filtradas = itens.filter((item) => !notificacoesLidas.has(item.id));
     return filtradas.slice(0, 8);
-  }, [atrasos, atividadesComEntrega, comunicados, solicitacoes, classifySolicitacao, notificacoesLidas]);
+  }, [atrasos, atividadesComEntrega, comunicados, emprestimos, solicitacoes, classifySolicitacao, notificacoesLidas]);
 
   useEffect(() => {
     const nextIds = new Set(ensureArray(notificacoes).map((item) => item?.id).filter(Boolean));
@@ -2434,13 +2501,13 @@ export default function PainelAluno() {
     if (getBrowserNotificationPermission() === 'granted') {
       ensureArray(notificacoes)
         .filter((item) => item?.id && !seenAlunoNotificationIdsRef.current.has(item.id))
-        .filter((item) => item.tipo === 'solicitacao_chat')
+        .filter((item) => ['solicitacao_chat', 'atividade', 'atividade_avaliada', 'livro_status', 'atraso'].includes(item.tipo))
         .forEach((item) => {
           showBrowserNotification({
-            title: item.titulo || 'Nova mensagem da biblioteca',
-            body: item.descricao || 'A biblioteca enviou uma nova mensagem.',
+            title: item.titulo || 'Nova notificação',
+            body: item.descricao || 'Confira a atualização no BibliotecAI.',
             tag: item.id,
-            path: '/aluno/atividades',
+            path: item.path || '/aluno/atividades',
           });
         });
     }
