@@ -1415,19 +1415,18 @@ export default function PainelAluno() {
     const normalizedPerguntaId = String(perguntaId || '').trim();
     if (!normalizedId || !normalizedPerguntaId) return;
 
-    const nextRespostas = {
-      ...(atividadeRespostas[normalizedId] || {}),
-      [normalizedPerguntaId]: value,
-    };
-    setAtividadeRespostas((prev) => ({
-      ...prev,
-      [normalizedId]: {
+    setAtividadeRespostas((prev) => {
+      const nextRespostas = {
         ...(prev[normalizedId] || {}),
         [normalizedPerguntaId]: value,
-      },
-    }));
-    persistAtividadeDraft(normalizedId, { respostas: nextRespostas });
-  }, [atividadeRespostas, persistAtividadeDraft]);
+      };
+      persistAtividadeDraft(normalizedId, { respostas: nextRespostas });
+      return {
+        ...prev,
+        [normalizedId]: nextRespostas,
+      };
+    });
+  }, [persistAtividadeDraft]);
 
   const updateAtividadeImagens = useCallback((atividadeId, imagens) => {
     const normalizedId = String(atividadeId || '').trim();
@@ -4478,6 +4477,16 @@ export default function PainelAluno() {
                           const atividadeJaEnviada = Boolean(atividade.entrega);
                           const atividadeForaDoPrazo = !atividadeJaEnviada && isActivityPastDeadline(atividade);
                           const atividadeBloqueada = atividadeJaEnviada || atividadeForaDoPrazo;
+                          const entregaPayload = parseEntregaPayload(atividade.entrega?.texto_entrega);
+                          const respostasFormulario = atividadeJaEnviada
+                            ? entregaPayload.respostas
+                            : (atividadeRespostas[atividade.id] || {});
+                          const textoEntrega = atividadeJaEnviada
+                            ? entregaPayload.texto
+                            : (atividadeTexto[atividade.id] ?? '');
+                          const imagensEntrega = atividadeJaEnviada
+                            ? entregaPayload.imagens
+                            : ensureArray(atividadeImagens[atividade.id]);
                           return (
                         <div
                           key={atividade.id}
@@ -4559,14 +4568,19 @@ export default function PainelAluno() {
                           </div>
 
                           <div className="space-y-2">
-                            <Label>Minha entrega</Label>
+                            <Label>{atividadeJaEnviada ? 'Pré-visualização da minha entrega' : 'Minha entrega'}</Label>
                             <Textarea
                               rows={4}
                               placeholder="Escreva sua resposta, resumo ou reflexão..."
-                              value={atividadeTexto[atividade.id] ?? parseEntregaPayload(atividade.entrega?.texto_entrega).texto ?? ''}
+                              value={textoEntrega}
                               disabled={atividadeBloqueada}
                               onChange={(e) => updateAtividadeTexto(atividade.id, e.target.value)}
                             />
+                            {atividadeJaEnviada && (
+                              <p className="text-xs text-muted-foreground">
+                                Esta visualização mostra exatamente o que foi enviado e não pode ser editada.
+                              </p>
+                            )}
                           </div>
 
                           {Array.isArray(atividade.atividadeMeta?.formulario?.perguntas)
@@ -4578,7 +4592,7 @@ export default function PainelAluno() {
                               </div>
                               {atividade.atividadeMeta.formulario.perguntas.map((pergunta, idx) => {
                                 const perguntaId = String(pergunta?.id || `q_${idx + 1}`);
-                                const respostaAtual = String(atividadeRespostas[atividade.id]?.[perguntaId] || '');
+                                const respostaAtual = String(respostasFormulario?.[perguntaId] || '');
                                 const opcoes = ensureArray(pergunta?.opcoes);
                                 const tipo = String(pergunta?.tipo || 'texto');
                                 return (
@@ -4601,7 +4615,7 @@ export default function PainelAluno() {
                                                   : 'border-border bg-background hover:border-primary/40'
                                               }`}
                                               onClick={() =>
-                                                updateAtividadeResposta(atividade.id, perguntaId, selected ? '' : String(opcao))
+                                                updateAtividadeResposta(atividade.id, perguntaId, String(opcao))
                                               }
                                             >
                                               {String(opcao)}
@@ -4653,33 +4667,34 @@ export default function PainelAluno() {
                                 Escolher arquivos
                               </Button>
                               <p className="text-sm text-muted-foreground">
-                                {ensureArray(atividadeImagens[atividade.id]).length > 0
-                                  ? `${ensureArray(atividadeImagens[atividade.id]).length} imagem(ns) selecionada(s)`
+                                {imagensEntrega.length > 0
+                                  ? `${imagensEntrega.length} imagem(ns) ${atividadeJaEnviada ? 'enviada(s)' : 'selecionada(s)'}`
                                   : 'Nenhum arquivo escolhido'}
                               </p>
                             </div>
-                            {ensureArray(atividadeImagens[atividade.id]).length > 0 && (
+                            {imagensEntrega.length > 0 && (
                               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                                {ensureArray(atividadeImagens[atividade.id]).map((img, imageIndex) => (
+                                {imagensEntrega.map((img, imageIndex) => (
                                   <div key={`${atividade.id}-img-${imageIndex}`} className="relative">
                                     <ResolvedMediaImage
                                       value={img}
                                       alt={`Atividade ${imageIndex + 1}`}
                                       className="h-24 w-full rounded-xl border object-cover"
                                     />
-                                    <button
-                                      type="button"
-                                      disabled={atividadeBloqueada}
-                                      onClick={() =>
-                                        updateAtividadeImagens(
-                                          atividade.id,
-                                          ensureArray(atividadeImagens[atividade.id]).filter((_, i) => i !== imageIndex),
-                                        )
-                                      }
-                                      className="absolute -top-2 -right-2 rounded-full bg-destructive p-1 text-destructive-foreground"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
+                                    {!atividadeBloqueada && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          updateAtividadeImagens(
+                                            atividade.id,
+                                            ensureArray(atividadeImagens[atividade.id]).filter((_, i) => i !== imageIndex),
+                                          )
+                                        }
+                                        className="absolute -right-2 -top-2 rounded-full bg-destructive p-1 text-destructive-foreground"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -4830,7 +4845,7 @@ export default function PainelAluno() {
                                                   : 'border-border bg-background hover:border-primary/40'
                                               }`}
                                               onClick={() =>
-                                                updateAtividadeResposta(atividadePendenteAberta.id, perguntaId, selected ? '' : String(opcao))
+                                                updateAtividadeResposta(atividadePendenteAberta.id, perguntaId, String(opcao))
                                               }
                                             >
                                               {String(opcao)}
