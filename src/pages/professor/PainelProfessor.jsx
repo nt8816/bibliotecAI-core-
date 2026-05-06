@@ -111,6 +111,12 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function isEntregaFinalizada(status) {
+  return ['aprovada', 'entregue', 'concluida', 'concluido'].includes(
+    String(status || '').trim().toLowerCase(),
+  );
+}
+
 function parseAtividadeMateriais(value) {
   if (Array.isArray(value)) return value;
   if (typeof value !== 'string') return [];
@@ -1172,7 +1178,7 @@ export default function PainelProfessor() {
   }, [atividadeForm.aluno_id, atividadeForm.target_mode, atividadeForm.turmas, usuarios]);
 
   const entregasPendentes = useMemo(
-    () => entregas.filter((item) => item.status !== 'aprovada').length,
+    () => entregas.filter((item) => !isEntregaFinalizada(item.status)).length,
     [entregas],
   );
 
@@ -1191,7 +1197,7 @@ export default function PainelProfessor() {
 
   const pontosDistribuidos = useMemo(
     () => entregas
-      .filter((item) => item.status === 'aprovada')
+      .filter((item) => isEntregaFinalizada(item.status))
       .reduce((acc, item) => acc + Number(item.pontos_ganhos || 0), 0),
     [entregas],
   );
@@ -1860,6 +1866,14 @@ export default function PainelProfessor() {
   const handleAvaliarEntrega = async (entrega) => {
     const state = avaliacaoForm[entrega.id] || {};
     if (!isGestor && !professorProfileIds.includes(entrega?.atividades_leitura?.professor_id)) return;
+    if (isEntregaFinalizada(entrega?.status)) {
+      toast({
+        variant: 'destructive',
+        title: 'Entrega bloqueada',
+        description: 'Esta entrega ja foi finalizada e nao pode receber novas alteracoes ou pontos.',
+      });
+      return;
+    }
 
     setSaving(true);
     try {
@@ -2180,6 +2194,7 @@ export default function PainelProfessor() {
                   <p className="text-sm text-muted-foreground">Nenhuma entrega para avaliar.</p>
                 ) : (
                   entregas.map((entrega) => {
+                    const entregaFinalizada = isEntregaFinalizada(entrega.status);
                     const state = avaliacaoForm[entrega.id] || {
                       status: 'enviada',
                       pontos_ganhos: 0,
@@ -2213,6 +2228,11 @@ export default function PainelProfessor() {
                             <Badge variant="outline" className="w-fit rounded-full bg-background/80">
                               {entrega.enviado_em ? `Enviada em ${formatDateLabel(entrega.enviado_em)}` : 'Entrega recebida'}
                             </Badge>
+                            {entregaFinalizada && (
+                              <Badge className="w-fit rounded-full bg-success/10 text-success hover:bg-success/10">
+                                Avaliacao bloqueada
+                              </Badge>
+                            )}
                           </div>
 
                           {!hasTextoEntrega && !hasRespostasFormulario && !hasImagensEntrega ? (
@@ -2282,6 +2302,7 @@ export default function PainelProfessor() {
                             <Label>Status</Label>
                             <Select
                               value={state.status}
+                              disabled={entregaFinalizada}
                               onValueChange={(value) => setAvaliacaoForm((prev) => ({
                                 ...prev,
                                 [entrega.id]: { ...prev[entrega.id], status: value },
@@ -2302,6 +2323,7 @@ export default function PainelProfessor() {
                               min="0"
                               className="min-h-[46px] rounded-2xl"
                               value={state.pontos_ganhos}
+                              disabled={entregaFinalizada}
                               onChange={(e) => setAvaliacaoForm((prev) => ({
                                 ...prev,
                                 [entrega.id]: { ...prev[entrega.id], pontos_ganhos: Number(e.target.value || 0) },
@@ -2313,6 +2335,7 @@ export default function PainelProfessor() {
                             <Textarea
                               rows={4}
                               value={state.feedback_professor || ''}
+                              disabled={entregaFinalizada}
                               onChange={(e) => setAvaliacaoForm((prev) => ({
                                 ...prev,
                                 [entrega.id]: { ...prev[entrega.id], feedback_professor: e.target.value },
@@ -2321,9 +2344,15 @@ export default function PainelProfessor() {
                           </div>
                         </div>
 
-                        <Button onClick={() => handleAvaliarEntrega(entrega)} disabled={saving} className="h-11 w-full rounded-2xl sm:w-auto">
-                          Salvar avaliação
-                        </Button>
+                        {entregaFinalizada ? (
+                          <p className="rounded-2xl border border-success/20 bg-success/10 px-4 py-3 text-sm text-success">
+                            Avaliacao finalizada. Status, pontos e feedback nao podem mais ser alterados.
+                          </p>
+                        ) : (
+                          <Button onClick={() => handleAvaliarEntrega(entrega)} disabled={saving} className="h-11 w-full rounded-2xl sm:w-auto">
+                            Salvar avaliação
+                          </Button>
+                        )}
                       </div>
                     );
                   })

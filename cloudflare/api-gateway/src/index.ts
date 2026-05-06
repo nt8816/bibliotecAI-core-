@@ -2660,6 +2660,27 @@ function ensureArray<T = unknown>(value: unknown) {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
+function getActivityDeadlineEnd(dateValue: unknown) {
+  const value = String(dateValue || '').trim();
+  if (!value) return null;
+
+  const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateOnlyMatch) {
+    const [, year, month, day] = dateOnlyMatch;
+    return new Date(Number(year), Number(month) - 1, Number(day), 23, 59, 59, 999);
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  parsed.setHours(23, 59, 59, 999);
+  return parsed;
+}
+
+function isActivityPastDeadline(dateValue: unknown, now = new Date()) {
+  const deadline = getActivityDeadlineEnd(dateValue);
+  return Boolean(deadline && deadline.getTime() < now.getTime());
+}
+
 async function getProfessorModuleData(request: Request, env: Env) {
   const { caller, profile } = await getUserProfileForRequest(request, env, { preferredTypes: ['professor', 'gestor'] });
   if (!profile?.id) {
@@ -3705,10 +3726,14 @@ const routes: Record<string, RouteHandler> = {
       const context = await getProfessorModuleData(request, env);
       const id = getPathParam(request, /^\/v1\/professor\/entregas\/([^/]+)\/avaliar$/i);
       const body = await request.json().catch(() => ({}));
-      const entregaPayload = await supabaseAdminRequest(env, `/rest/v1/atividades_entregas?${new URLSearchParams({ select: 'id,atividade_id', id: `eq.${id}`, limit: '1' }).toString()}`);
+      const entregaPayload = await supabaseAdminRequest(env, `/rest/v1/atividades_entregas?${new URLSearchParams({ select: 'id,atividade_id,status', id: `eq.${id}`, limit: '1' }).toString()}`);
       const entrega = ensureArray<Record<string, unknown>>(entregaPayload)[0] || null;
       if (!entrega?.id) {
         return jsonResponse({ success: false, error: 'Entrega nao encontrada.' }, 404);
+      }
+      const currentStatus = String(entrega?.status || '').trim().toLowerCase();
+      if (['aprovada', 'entregue', 'concluida', 'concluido'].includes(currentStatus)) {
+        return jsonResponse({ success: false, error: 'Esta entrega ja foi finalizada e nao pode ser alterada.' }, 409);
       }
       const atividadePayload = await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: 'id,professor_id', id: `eq.${String(entrega?.atividade_id || '')}`, limit: '1' }).toString()}`);
       const atividade = ensureArray<Record<string, unknown>>(atividadePayload)[0] || null;
@@ -9620,7 +9645,31 @@ const routes: Record<string, RouteHandler> = {
     if (!atividadeId) {
       return jsonResponse({ success: false, error: 'Atividade invalida.' }, 400);
     }
-    await supabaseAdminRequest(env, '/rest/v1/atividades_entregas?on_conflict=atividade_id,aluno_id', {
+    const atividadePayload = await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({
+      select: 'id,data_entrega',
+      id: `eq.${atividadeId}`,
+      limit: '1',
+    }).toString()}`);
+    const atividade = ensureArray<Record<string, unknown>>(atividadePayload)[0] || null;
+    if (!atividade?.id) {
+      return jsonResponse({ success: false, error: 'Atividade nao encontrada.' }, 404);
+    }
+    if (isActivityPastDeadline(atividade?.data_entrega)) {
+      return jsonResponse({ success: false, error: 'Esta atividade esta fora do prazo e nao pode mais ser enviada.' }, 409);
+    }
+
+    const entregaExistentePayload = await supabaseAdminRequest(env, `/rest/v1/atividades_entregas?${new URLSearchParams({
+      select: 'id',
+      atividade_id: `eq.${atividadeId}`,
+      aluno_id: `eq.${profile.id}`,
+      limit: '1',
+    }).toString()}`);
+    const entregaExistente = ensureArray<Record<string, unknown>>(entregaExistentePayload)[0] || null;
+    if (entregaExistente?.id) {
+      return jsonResponse({ success: false, error: 'Esta atividade ja foi enviada e nao pode mais ser modificada.' }, 409);
+    }
+
+    await supabaseAdminRequest(env, '/rest/v1/atividades_entregas', {
       method: 'POST',
       body: [{
         atividade_id: atividadeId,
@@ -9639,28 +9688,7 @@ const routes: Record<string, RouteHandler> = {
     if (!profile?.id) {
       return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
     }
-
-    const body = await request.json().catch(() => ({}));
-    const atividadeIds = Array.isArray(body?.atividadeIds)
-      ? body.atividadeIds.map((item) => String(item || '').trim()).filter(Boolean)
-      : [];
-
-    if (atividadeIds.length === 0) {
-      return jsonResponse({ success: false, error: 'Nenhuma atividade selecionada.' }, 400);
-    }
-
-    const uniqueIds = Array.from(new Set(atividadeIds));
-    const params = new URLSearchParams({
-      aluno_id: `eq.${profile.id}`,
-      atividade_id: `in.(${uniqueIds.join(',')})`,
-    });
-
-    await supabaseAdminRequest(env, `/rest/v1/atividades_entregas?${params.toString()}`, {
-      method: 'DELETE',
-      headers: { Prefer: 'return=minimal' },
-    });
-
-    return jsonResponse({ success: true, deletedCount: uniqueIds.length });
+    return jsonResponse({ success: false, error: 'Entregas ja enviadas nao podem ser apagadas ou modificadas.' }, 403);
   },
 
   'POST /v1/aluno/audiobooks': async (request, env) => {

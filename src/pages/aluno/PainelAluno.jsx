@@ -41,7 +41,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -50,7 +49,6 @@ import {
   createPainelAlunoLabCreation,
   createPainelAlunoLoanExtensionRequest,
   createPainelAlunoLoanRequest,
-  deletePainelAlunoActivitiesBatch,
   deletePainelAlunoLabCreation,
   fetchPainelAlunoBooks,
   fetchPainelAlunoData,
@@ -91,6 +89,26 @@ function formatDateBR(dateValue) {
   } catch {
     return '-';
   }
+}
+
+function getActivityDeadlineEnd(dateValue) {
+  if (!dateValue) return null;
+  const value = String(dateValue || '').trim();
+  const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateOnlyMatch) {
+    const [, year, month, day] = dateOnlyMatch;
+    return new Date(Number(year), Number(month) - 1, Number(day), 23, 59, 59, 999);
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  parsed.setHours(23, 59, 59, 999);
+  return parsed;
+}
+
+function isActivityPastDeadline(atividade, now = new Date()) {
+  const deadline = getActivityDeadlineEnd(atividade?.data_entrega);
+  return Boolean(deadline && deadline.getTime() < now.getTime());
 }
 
 function formatDateInputValue(dateValue) {
@@ -1306,8 +1324,6 @@ export default function PainelAluno() {
   const [atividadeRespostas, setAtividadeRespostas] = useState({});
   const [atividadeView, setAtividadeView] = useState('pendentes');
   const [atividadePendenteAbertaId, setAtividadePendenteAbertaId] = useState(null);
-  const [selectedAtividadeIds, setSelectedAtividadeIds] = useState([]);
-  const [deleteAtividadesDialogOpen, setDeleteAtividadesDialogOpen] = useState(false);
   const [mensagemSolicitacaoPorId, setMensagemSolicitacaoPorId] = useState({});
   const [saving, setSaving] = useState(false);
   const [showAccessChoice, setShowAccessChoice] = useState(false);
@@ -1887,8 +1903,7 @@ export default function PainelAluno() {
   const atividadesPendentesLista = useMemo(
     () => atividadesComEntrega.filter((atividade) => {
       if (atividade?.entrega) return false;
-      const prazo = atividade?.data_entrega ? new Date(atividade.data_entrega) : null;
-      return !prazo || Number.isNaN(prazo.getTime()) || prazo >= new Date();
+      return !isActivityPastDeadline(atividade);
     }),
     [atividadesComEntrega],
   );
@@ -1901,8 +1916,7 @@ export default function PainelAluno() {
   const atividadesForaDoPrazoLista = useMemo(
     () => atividadesComEntrega.filter((atividade) => {
       if (atividade?.entrega) return false;
-      const prazo = atividade?.data_entrega ? new Date(atividade.data_entrega) : null;
-      return Boolean(prazo && !Number.isNaN(prazo.getTime()) && prazo < new Date());
+      return isActivityPastDeadline(atividade);
     }),
     [atividadesComEntrega],
   );
@@ -1918,32 +1932,11 @@ export default function PainelAluno() {
     [atividadePendenteAbertaId, atividadesPendentesLista],
   );
 
-  const selectedAtividadeIdsSet = useMemo(
-    () => new Set(selectedAtividadeIds.map((item) => String(item))),
-    [selectedAtividadeIds],
-  );
-
-  const allAtividadesEnviadasSelected = useMemo(
-    () => atividadesEnviadasLista.length > 0
-      && atividadesEnviadasLista.every((atividade) => selectedAtividadeIdsSet.has(String(atividade.id))),
-    [atividadesEnviadasLista, selectedAtividadeIdsSet],
-  );
-
-  const someAtividadesEnviadasSelected = useMemo(
-    () => atividadesEnviadasLista.some((atividade) => selectedAtividadeIdsSet.has(String(atividade.id))),
-    [atividadesEnviadasLista, selectedAtividadeIdsSet],
-  );
-
   const atividadeEmptyMessage = useMemo(() => {
     if (atividadeView === 'enviadas') return 'Nenhuma atividade enviada ainda.';
     if (atividadeView === 'fora_prazo') return 'Nenhuma atividade fora do prazo.';
     return 'Nenhuma atividade pendente no momento.';
   }, [atividadeView]);
-
-  useEffect(() => {
-    const availableIds = new Set(atividadesEnviadasLista.map((atividade) => String(atividade.id)));
-    setSelectedAtividadeIds((prev) => prev.filter((id) => availableIds.has(String(id))));
-  }, [atividadesEnviadasLista]);
 
   useEffect(() => {
     if (atividadeView !== 'enviadas') {
@@ -2812,6 +2805,22 @@ export default function PainelAluno() {
       });
       return;
     }
+    if (atividade?.entrega) {
+      toast({
+        variant: 'destructive',
+        title: 'Entrega bloqueada',
+        description: 'Esta atividade ja foi enviada e nao pode mais ser modificada.',
+      });
+      return;
+    }
+    if (isActivityPastDeadline(atividade)) {
+      toast({
+        variant: 'destructive',
+        title: 'Prazo encerrado',
+        description: 'Esta atividade esta fora do prazo e nao pode mais ser enviada.',
+      });
+      return;
+    }
 
     const texto = (atividadeTexto[atividade.id] || '').trim();
     const imagens = ensureArray(atividadeImagens[atividade.id]);
@@ -3043,61 +3052,6 @@ export default function PainelAluno() {
           ? 'Audiobooks indisponíveis: aplique a migration do banco.'
           : error?.message || 'Falha ao atualizar seus audiobooks.',
       });
-    }
-  };
-
-  const toggleAtividadeSelection = useCallback((atividadeId, checked) => {
-    const normalizedId = String(atividadeId || '').trim();
-    if (!normalizedId) return;
-
-    setSelectedAtividadeIds((prev) => {
-      const current = new Set(prev.map((item) => String(item)));
-      if (checked) {
-        current.add(normalizedId);
-      } else {
-        current.delete(normalizedId);
-      }
-      return Array.from(current);
-    });
-  }, []);
-
-  const toggleSelectAllAtividadesEnviadas = useCallback((checked) => {
-    if (checked) {
-      setSelectedAtividadeIds(atividadesEnviadasLista.map((atividade) => String(atividade.id)));
-      return;
-    }
-    setSelectedAtividadeIds([]);
-  }, [atividadesEnviadasLista]);
-
-  const handleDeleteSelectedAtividades = async () => {
-    if (selectedAtividadeIds.length === 0) return;
-
-    setSaving(true);
-    try {
-      const selectedIdsSet = new Set(selectedAtividadeIds.map((item) => String(item)));
-      await deletePainelAlunoActivitiesBatch({ atividadeIds: selectedAtividadeIds });
-
-      setEntregas((prev) => prev.filter((item) => !selectedIdsSet.has(String(item?.atividade_id))));
-      setAtividadeTexto((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !selectedIdsSet.has(String(key)))));
-      setAtividadeImagens((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !selectedIdsSet.has(String(key)))));
-      setAtividadeRespostas((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !selectedIdsSet.has(String(key)))));
-      setSelectedAtividadeIds([]);
-      setDeleteAtividadesDialogOpen(false);
-
-      toast({
-        title: selectedIdsSet.size === 1 ? 'Atividade apagada' : 'Atividades apagadas',
-        description: selectedIdsSet.size === 1
-          ? 'A entrega selecionada foi removida.'
-          : `${selectedIdsSet.size} entregas foram removidas.`,
-      });
-    } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Erro ao apagar atividades',
-        description: error?.message || 'Nao foi possivel apagar as atividades selecionadas.',
-      });
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -4432,35 +4386,6 @@ export default function PainelAluno() {
                         </TabsList>
                       </Tabs>
 
-                      {atividadeView === 'enviadas' && atividadesEnviadasLista.length > 0 && (
-                        <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
-                          <label className="flex items-center gap-3 text-sm font-medium">
-                            <Checkbox
-                              checked={allAtividadesEnviadasSelected ? true : (someAtividadesEnviadasSelected ? 'indeterminate' : false)}
-                              onCheckedChange={(checked) => toggleSelectAllAtividadesEnviadas(Boolean(checked))}
-                              aria-label="Selecionar todas as atividades enviadas"
-                            />
-                            Selecionar todas
-                          </label>
-
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                            <span className="text-sm text-muted-foreground">
-                              {selectedAtividadeIds.length} selecionada(s)
-                            </span>
-                            <Button
-                              type="button"
-                              variant="destructive"
-                              disabled={saving || selectedAtividadeIds.length === 0}
-                              onClick={() => setDeleteAtividadesDialogOpen(true)}
-                              className="h-10 rounded-xl"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Apagar selecionadas
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-
                       {atividadesVisiveis.length === 0 ? (
                         <p className="text-center text-muted-foreground py-8">{atividadeEmptyMessage}</p>
                       ) : atividadeView === 'pendentes' ? (
@@ -4488,23 +4413,17 @@ export default function PainelAluno() {
                           </div>
                         ))
                       ) : (
-                        atividadesVisiveis.map((atividade) => (
+                        atividadesVisiveis.map((atividade) => {
+                          const atividadeJaEnviada = Boolean(atividade.entrega);
+                          const atividadeForaDoPrazo = !atividadeJaEnviada && isActivityPastDeadline(atividade);
+                          const atividadeBloqueada = atividadeJaEnviada || atividadeForaDoPrazo;
+                          return (
                         <div
                           key={atividade.id}
                           className="space-y-4 rounded-3xl border border-border/80 bg-gradient-to-br from-background via-background to-primary/5 p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-[0_18px_40px_rgba(0,0,0,0.08)] sm:p-5"
                         >
                           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                             <div className="space-y-2">
-                              {atividadeView === 'enviadas' && atividade.entrega && (
-                                <label className="flex w-fit items-center gap-3 rounded-full border border-border/70 bg-background/90 px-3 py-2 text-xs font-medium text-muted-foreground">
-                                  <Checkbox
-                                    checked={selectedAtividadeIdsSet.has(String(atividade.id))}
-                                    onCheckedChange={(checked) => toggleAtividadeSelection(atividade.id, Boolean(checked))}
-                                    aria-label={`Selecionar atividade ${atividade.titulo}`}
-                                  />
-                                  Selecionar para apagar
-                                </label>
-                              )}
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="font-semibold">{atividade.titulo}</p>
                                 {Array.isArray(atividade.atividadeMeta?.formulario?.perguntas)
@@ -4570,7 +4489,7 @@ export default function PainelAluno() {
                               <p className="text-xs leading-5 text-muted-foreground">
                                 Entrega: {formatDateBR(atividade.data_entrega)}
                               </p>
-                              {!atividade.entrega && atividadeView === 'fora_prazo' && (
+                              {atividadeForaDoPrazo && (
                                 <Badge variant="destructive" className="w-fit rounded-full px-3 py-1 md:ml-auto">
                                   Prazo encerrado
                                 </Badge>
@@ -4584,6 +4503,7 @@ export default function PainelAluno() {
                               rows={4}
                               placeholder="Escreva sua resposta, resumo ou reflexão..."
                               value={atividadeTexto[atividade.id] ?? parseEntregaPayload(atividade.entrega?.texto_entrega).texto ?? ''}
+                              disabled={atividadeBloqueada}
                               onChange={(e) => updateAtividadeTexto(atividade.id, e.target.value)}
                             />
                           </div>
@@ -4613,6 +4533,7 @@ export default function PainelAluno() {
                                             <button
                                               key={`${perguntaId}-${optionIndex}`}
                                               type="button"
+                                              disabled={atividadeBloqueada}
                                               className={`rounded-2xl border px-4 py-3 text-left text-sm leading-5 transition-all duration-200 hover:-translate-y-0.5 ${
                                                 selected
                                                   ? 'border-primary bg-primary text-primary-foreground shadow-[0_12px_24px_rgba(0,0,0,0.12)]'
@@ -4632,6 +4553,7 @@ export default function PainelAluno() {
                                         rows={2}
                                         placeholder="Digite sua resposta..."
                                         value={respostaAtual}
+                                        disabled={atividadeBloqueada}
                                         onChange={(e) => updateAtividadeResposta(atividade.id, perguntaId, e.target.value)}
                                       />
                                     )}
@@ -4655,6 +4577,7 @@ export default function PainelAluno() {
                               type="file"
                               accept="image/*"
                               multiple
+                              disabled={atividadeBloqueada}
                               className="hidden"
                               onChange={(e) => handleActivityFileInputChange(atividade.id, e)}
                             />
@@ -4663,6 +4586,7 @@ export default function PainelAluno() {
                                 type="button"
                                 variant="outline"
                                 className="w-full sm:w-auto"
+                                disabled={atividadeBloqueada}
                                 onClick={() => activityImageInputRefs.current[atividade.id]?.click()}
                               >
                                 Escolher arquivos
@@ -4684,6 +4608,7 @@ export default function PainelAluno() {
                                     />
                                     <button
                                       type="button"
+                                      disabled={atividadeBloqueada}
                                       onClick={() =>
                                         updateAtividadeImagens(
                                           atividade.id,
@@ -4725,10 +4650,18 @@ export default function PainelAluno() {
                               )}
                             </div>
 
-                            <Button onClick={() => handleEnviarAtividade(atividade)} disabled={saving} className="h-11 w-full rounded-2xl sm:w-auto">
-                              <Send className="w-4 h-4 mr-2" />
-                              {atividade.entrega ? 'Atualizar entrega' : 'Enviar atividade'}
-                            </Button>
+                            {atividadeBloqueada ? (
+                              <p className="text-sm text-muted-foreground">
+                                {atividadeJaEnviada
+                                  ? 'Atividade ja enviada. Nao e mais possivel modificar esta entrega.'
+                                  : 'Prazo encerrado. Nao e mais possivel enviar esta atividade.'}
+                              </p>
+                            ) : (
+                              <Button onClick={() => handleEnviarAtividade(atividade)} disabled={saving} className="h-11 w-full rounded-2xl sm:w-auto">
+                                <Send className="w-4 h-4 mr-2" />
+                                Enviar atividade
+                              </Button>
+                            )}
                           </div>
 
                           {atividade.entrega?.feedback_professor && (
@@ -4738,7 +4671,8 @@ export default function PainelAluno() {
                             </div>
                           )}
                         </div>
-                      ))
+                          );
+                        })
                       )}
                     </div>
                   )}
@@ -4828,6 +4762,7 @@ export default function PainelAluno() {
                                             <button
                                               key={`${perguntaId}-${optionIndex}`}
                                               type="button"
+                                              disabled={Boolean(atividadePendenteAberta.entrega) || isActivityPastDeadline(atividadePendenteAberta)}
                                               className={`rounded-2xl border px-4 py-3 text-left text-sm leading-5 transition-all duration-200 ${
                                                 selected
                                                   ? 'border-primary bg-primary text-primary-foreground'
@@ -4847,6 +4782,7 @@ export default function PainelAluno() {
                                         rows={2}
                                         placeholder="Digite sua resposta..."
                                         value={respostaAtual}
+                                        disabled={Boolean(atividadePendenteAberta.entrega) || isActivityPastDeadline(atividadePendenteAberta)}
                                         onChange={(e) => updateAtividadeResposta(atividadePendenteAberta.id, perguntaId, e.target.value)}
                                       />
                                     )}
@@ -4862,6 +4798,7 @@ export default function PainelAluno() {
                               rows={6}
                               placeholder="Escreva sua resposta..."
                               value={atividadeTexto[atividadePendenteAberta.id] ?? parseEntregaPayload(atividadePendenteAberta.entrega?.texto_entrega).texto ?? ''}
+                              disabled={Boolean(atividadePendenteAberta.entrega) || isActivityPastDeadline(atividadePendenteAberta)}
                               onChange={(e) => updateAtividadeTexto(atividadePendenteAberta.id, e.target.value)}
                             />
                           </div>
@@ -4880,6 +4817,7 @@ export default function PainelAluno() {
                               type="file"
                               accept="image/*"
                               multiple
+                              disabled={Boolean(atividadePendenteAberta.entrega) || isActivityPastDeadline(atividadePendenteAberta)}
                               className="hidden"
                               onChange={(e) => handleActivityFileInputChange(atividadePendenteAberta.id, e)}
                             />
@@ -4888,6 +4826,7 @@ export default function PainelAluno() {
                                 type="button"
                                 variant="outline"
                                 className="w-full sm:w-auto"
+                                disabled={Boolean(atividadePendenteAberta.entrega) || isActivityPastDeadline(atividadePendenteAberta)}
                                 onClick={() => activityImageInputRefs.current[atividadePendenteAberta.id]?.click()}
                               >
                                 Escolher arquivos
@@ -4902,7 +4841,7 @@ export default function PainelAluno() {
 
                           <Button
                             onClick={() => handleEnviarAtividade(atividadePendenteAberta)}
-                            disabled={saving}
+                            disabled={saving || Boolean(atividadePendenteAberta.entrega) || isActivityPastDeadline(atividadePendenteAberta)}
                             className="h-11 w-full rounded-2xl"
                           >
                             <Send className="mr-2 h-4 w-4" />
@@ -5910,42 +5849,6 @@ export default function PainelAluno() {
         </Tabs>
         )}
       </div>
-
-      <Dialog
-        open={deleteAtividadesDialogOpen}
-        onOpenChange={(open) => {
-          setDeleteAtividadesDialogOpen(open);
-        }}
-      >
-        <DialogContent className="w-[calc(100vw-1rem)] max-w-md rounded-2xl p-4 sm:p-6">
-          <DialogHeader>
-            <DialogTitle>Apagar atividades enviadas</DialogTitle>
-            <DialogDescription>
-              Essa ação remove as entregas selecionadas e permite enviar novamente depois.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-muted-foreground">
-            {selectedAtividadeIds.length === 1
-              ? 'Deseja apagar a atividade selecionada?'
-              : `Deseja apagar as ${selectedAtividadeIds.length} atividades selecionadas?`}
-          </div>
-
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="outline" onClick={() => setDeleteAtividadesDialogOpen(false)} disabled={saving} className="w-full sm:w-auto">
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteSelectedAtividades}
-              disabled={saving || selectedAtividadeIds.length === 0}
-              className="w-full sm:w-auto"
-            >
-              {saving ? 'Apagando...' : 'Confirmar exclusão'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={reviewDialog} onOpenChange={setReviewDialog}>
         <DialogContent className="w-[calc(100vw-1rem)] max-w-lg rounded-2xl p-4 sm:p-6">
