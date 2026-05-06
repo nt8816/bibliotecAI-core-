@@ -7,10 +7,10 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "bibliotec.ai.cl.abb"
+    namespace = "bibliote.ai.cl.abb"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "bibliotec.ai.cl.abb"
+        applicationId "bibliote.ai.cl.abb"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 2
