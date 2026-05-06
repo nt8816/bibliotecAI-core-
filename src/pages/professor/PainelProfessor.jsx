@@ -43,6 +43,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useToast } from '@/hooks/use-toast';
 import { generateTextWithCloudflare } from '@/lib/cloudflareAiApi';
 import { deleteR2Object, uploadFileToR2 } from '@/lib/r2Storage';
+import { resolveR2MediaUrl } from '@/lib/resolveR2Media';
 import { cn } from '@/lib/utils';
 import { fetchSchoolConfiguration } from '@/services/schoolConfigService';
 import { fetchAtividadeMateriaisMap, persistAtividadeMateriais } from '@/services/atividadeMateriaisService';
@@ -239,6 +240,62 @@ function extractAtividadeFormConfig(descricao) {
   const perguntas = Array.isArray(parsed?.perguntas) ? parsed.perguntas : [];
 
   return { descricaoLimpa, perguntas };
+}
+
+function parseEntregaPayload(rawText) {
+  const source = String(rawText || '');
+  const marker = '[ENTREGA_PAYLOAD_V1]';
+  if (!source.startsWith(marker)) {
+    return {
+      texto: source,
+      imagens: [],
+      respostas: {},
+    };
+  }
+
+  const parsed = decodeJsonBase64(source.slice(marker.length).trim()) || {};
+  return {
+    texto: String(parsed?.texto || ''),
+    imagens: Array.isArray(parsed?.imagens) ? parsed.imagens.filter((item) => typeof item === 'string') : [],
+    respostas: parsed?.respostas && typeof parsed.respostas === 'object' && !Array.isArray(parsed.respostas)
+      ? parsed.respostas
+      : {},
+  };
+}
+
+function ResolvedEntregaImage({ value, alt }) {
+  const [src, setSrc] = useState(() => (typeof value === 'string' ? value : ''));
+
+  useEffect(() => {
+    let active = true;
+    const raw = String(value || '').trim();
+    if (!raw) {
+      setSrc('');
+      return () => {
+        active = false;
+      };
+    }
+
+    resolveR2MediaUrl(raw)
+      .then((resolved) => {
+        if (active) setSrc(resolved || raw);
+      })
+      .catch(() => {
+        if (active) setSrc(raw);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [value]);
+
+  if (!src) return null;
+
+  return (
+    <a href={src} target="_blank" rel="noreferrer" className="block">
+      <img src={src} alt={alt} className="h-28 w-full rounded-2xl border object-cover" />
+    </a>
+  );
 }
 
 function normalizeQuestion(rawQuestion, index) {
@@ -2128,6 +2185,13 @@ export default function PainelProfessor() {
                       pontos_ganhos: 0,
                       feedback_professor: '',
                     };
+                    const entregaPayload = parseEntregaPayload(entrega.texto_entrega);
+                    const atividadeMeta = extractAtividadeFormConfig(entrega.atividades_leitura?.descricao);
+                    const perguntas = ensureArray(atividadeMeta.perguntas);
+                    const hasTextoEntrega = String(entregaPayload.texto || '').trim().length > 0;
+                    const hasRespostasFormulario = Object.values(entregaPayload.respostas || {})
+                      .some((value) => String(value || '').trim().length > 0);
+                    const hasImagensEntrega = ensureArray(entregaPayload.imagens).length > 0;
 
                     return (
                       <div key={entrega.id} className="space-y-4 rounded-3xl border p-4 sm:p-5">
@@ -2136,6 +2200,81 @@ export default function PainelProfessor() {
                           <p className="text-sm text-muted-foreground">
                             {entrega.usuarios_biblioteca?.nome || 'Aluno'} - {entrega.usuarios_biblioteca?.turma || '-'}
                           </p>
+                        </div>
+
+                        <div className="space-y-4 rounded-3xl border border-primary/15 bg-primary/5 p-4">
+                          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">Revisar atividade</p>
+                              <p className="text-xs text-muted-foreground">
+                                Conteúdo enviado pelo aluno antes da avaliação.
+                              </p>
+                            </div>
+                            <Badge variant="outline" className="w-fit rounded-full bg-background/80">
+                              {entrega.enviado_em ? `Enviada em ${formatDateLabel(entrega.enviado_em)}` : 'Entrega recebida'}
+                            </Badge>
+                          </div>
+
+                          {!hasTextoEntrega && !hasRespostasFormulario && !hasImagensEntrega ? (
+                            <p className="rounded-2xl border border-dashed bg-background/80 p-4 text-sm text-muted-foreground">
+                              Esta entrega não possui texto, respostas ou imagens registradas.
+                            </p>
+                          ) : (
+                            <>
+                              {hasTextoEntrega && (
+                                <div className="space-y-2 rounded-2xl border bg-background/95 p-4">
+                                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">Texto da entrega</p>
+                                  <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">
+                                    {entregaPayload.texto}
+                                  </p>
+                                </div>
+                              )}
+
+                              {hasRespostasFormulario && (
+                                <div className="space-y-3 rounded-2xl border bg-background/95 p-4">
+                                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">Respostas do formulário</p>
+                                  <div className="space-y-3">
+                                    {perguntas.length > 0 ? perguntas.map((pergunta, index) => {
+                                      const perguntaId = String(pergunta?.id || `q_${index + 1}`);
+                                      const resposta = String(entregaPayload.respostas?.[perguntaId] || '').trim();
+                                      return (
+                                        <div key={perguntaId} className="rounded-2xl border border-border/70 bg-muted/20 p-3">
+                                          <p className="text-sm font-medium">
+                                            {index + 1}. {String(pergunta?.pergunta || 'Pergunta')}
+                                          </p>
+                                          <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">
+                                            {resposta || 'Sem resposta'}
+                                          </p>
+                                        </div>
+                                      );
+                                    }) : Object.entries(entregaPayload.respostas).map(([perguntaId, resposta], index) => (
+                                      <div key={perguntaId} className="rounded-2xl border border-border/70 bg-muted/20 p-3">
+                                        <p className="text-sm font-medium">Resposta {index + 1}</p>
+                                        <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">
+                                          {String(resposta || 'Sem resposta')}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {hasImagensEntrega && (
+                                <div className="space-y-3 rounded-2xl border bg-background/95 p-4">
+                                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">Imagens anexadas</p>
+                                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                    {ensureArray(entregaPayload.imagens).map((imagem, imageIndex) => (
+                                      <ResolvedEntregaImage
+                                        key={`${entrega.id}-imagem-${imageIndex}`}
+                                        value={imagem}
+                                        alt={`Imagem ${imageIndex + 1} enviada pelo aluno`}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          )}
                         </div>
 
                         <div className="grid gap-4 lg:grid-cols-3">
