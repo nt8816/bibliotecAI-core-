@@ -1351,6 +1351,7 @@ export default function PainelAluno() {
   const seenAlunoNotificationIdsRef = useRef(new Set());
   const alunoNotificationsReadyRef = useRef(false);
   const activityImageInputRefs = useRef({});
+  const activityDraftsHydratedRef = useRef(false);
   const persistAtividadeDraft = useCallback((atividadeId, patch = {}) => {
     const normalizedId = String(atividadeId || '').trim();
     if (!alunoId || !normalizedId) return;
@@ -1484,6 +1485,7 @@ export default function PainelAluno() {
     if (fetchInFlightRef.current) return fetchInFlightRef.current;
 
     const request = (async () => {
+      activityDraftsHydratedRef.current = false;
       if (!silent) {
         setLoading(true);
       }
@@ -1617,6 +1619,7 @@ export default function PainelAluno() {
         setAtividadeTexto(entregaInicial);
         setAtividadeImagens(entregaImagensInicial);
         setAtividadeRespostas(entregaRespostasInicial);
+        activityDraftsHydratedRef.current = true;
       } catch (error) {
         const description = isMissingTableError(error)
           ? 'Tabelas novas não encontradas. Aplique a migration mais recente do Supabase.'
@@ -1646,7 +1649,7 @@ export default function PainelAluno() {
   }, [fetchData]);
 
   useEffect(() => {
-    if (!alunoId || atividades.length === 0) return;
+    if (!alunoId || atividades.length === 0 || !activityDraftsHydratedRef.current) return;
 
     const deliveredActivityIds = new Set(
       ensureArray(entregas)
