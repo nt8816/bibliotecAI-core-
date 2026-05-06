@@ -1939,12 +1939,6 @@ export default function PainelAluno() {
   }, [atividadeView]);
 
   useEffect(() => {
-    if (atividadeView !== 'enviadas') {
-      setSelectedAtividadeIds([]);
-    }
-  }, [atividadeView]);
-
-  useEffect(() => {
     if (atividadeView !== 'pendentes') {
       setAtividadePendenteAbertaId(null);
     }
