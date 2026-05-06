@@ -1351,6 +1351,61 @@ export default function PainelAluno() {
   const seenAlunoNotificationIdsRef = useRef(new Set());
   const alunoNotificationsReadyRef = useRef(false);
   const activityImageInputRefs = useRef({});
+  const persistAtividadeDraft = useCallback((atividadeId, patch = {}) => {
+    const normalizedId = String(atividadeId || '').trim();
+    if (!alunoId || !normalizedId) return;
+
+    const drafts = readActivityDrafts(alunoId);
+    const nextDraft = {
+      texto: atividadeTexto[normalizedId] || '',
+      respostas: atividadeRespostas[normalizedId] || {},
+      imagens: ensureArray(atividadeImagens[normalizedId]),
+      ...(drafts[normalizedId] || {}),
+      ...patch,
+      updatedAt: Date.now(),
+    };
+
+    if (hasActivityDraftContent(nextDraft)) {
+      drafts[normalizedId] = nextDraft;
+    } else {
+      delete drafts[normalizedId];
+    }
+    writeActivityDrafts(alunoId, drafts);
+  }, [alunoId, atividadeTexto, atividadeRespostas, atividadeImagens]);
+
+  const updateAtividadeTexto = useCallback((atividadeId, value) => {
+    const normalizedId = String(atividadeId || '').trim();
+    if (!normalizedId) return;
+    setAtividadeTexto((prev) => ({ ...prev, [normalizedId]: value }));
+    persistAtividadeDraft(normalizedId, { texto: value });
+  }, [persistAtividadeDraft]);
+
+  const updateAtividadeResposta = useCallback((atividadeId, perguntaId, value) => {
+    const normalizedId = String(atividadeId || '').trim();
+    const normalizedPerguntaId = String(perguntaId || '').trim();
+    if (!normalizedId || !normalizedPerguntaId) return;
+
+    const nextRespostas = {
+      ...(atividadeRespostas[normalizedId] || {}),
+      [normalizedPerguntaId]: value,
+    };
+    setAtividadeRespostas((prev) => ({
+      ...prev,
+      [normalizedId]: {
+        ...(prev[normalizedId] || {}),
+        [normalizedPerguntaId]: value,
+      },
+    }));
+    persistAtividadeDraft(normalizedId, { respostas: nextRespostas });
+  }, [atividadeRespostas, persistAtividadeDraft]);
+
+  const updateAtividadeImagens = useCallback((atividadeId, imagens) => {
+    const normalizedId = String(atividadeId || '').trim();
+    if (!normalizedId) return;
+    const nextImagens = ensureArray(imagens).slice(0, 4);
+    setAtividadeImagens((prev) => ({ ...prev, [normalizedId]: nextImagens }));
+    persistAtividadeDraft(normalizedId, { imagens: nextImagens });
+  }, [persistAtividadeDraft]);
   const desafioCacheKey = useMemo(
     () => (user?.id ? `aluno:desafio-ia:${user.id}` : ''),
     [user?.id],
@@ -2851,10 +2906,8 @@ export default function PainelAluno() {
     if (selected.length === 0) return;
     try {
       const converted = await Promise.all(selected.map(fileToDataUrl));
-      setAtividadeImagens((prev) => ({
-        ...prev,
-        [atividadeId]: [...ensureArray(prev[atividadeId]), ...converted].slice(0, 4),
-      }));
+      const nextImagens = [...ensureArray(atividadeImagens[atividadeId]), ...converted].slice(0, 4);
+      updateAtividadeImagens(atividadeId, nextImagens);
     } catch {
       toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível processar as imagens da atividade.' });
     }
@@ -4528,12 +4581,7 @@ export default function PainelAluno() {
                               rows={4}
                               placeholder="Escreva sua resposta, resumo ou reflexão..."
                               value={atividadeTexto[atividade.id] ?? parseEntregaPayload(atividade.entrega?.texto_entrega).texto ?? ''}
-                              onChange={(e) =>
-                                setAtividadeTexto((prev) => ({
-                                  ...prev,
-                                  [atividade.id]: e.target.value,
-                                }))
-                              }
+                              onChange={(e) => updateAtividadeTexto(atividade.id, e.target.value)}
                             />
                           </div>
 
@@ -4568,13 +4616,7 @@ export default function PainelAluno() {
                                                   : 'border-border bg-background hover:border-primary/40'
                                               }`}
                                               onClick={() =>
-                                                setAtividadeRespostas((prev) => ({
-                                                  ...prev,
-                                                  [atividade.id]: {
-                                                    ...(prev[atividade.id] || {}),
-                                                    [perguntaId]: selected ? '' : String(opcao),
-                                                  },
-                                                }))
+                                                updateAtividadeResposta(atividade.id, perguntaId, selected ? '' : String(opcao))
                                               }
                                             >
                                               {String(opcao)}
@@ -4587,15 +4629,7 @@ export default function PainelAluno() {
                                         rows={2}
                                         placeholder="Digite sua resposta..."
                                         value={respostaAtual}
-                                        onChange={(e) =>
-                                          setAtividadeRespostas((prev) => ({
-                                            ...prev,
-                                            [atividade.id]: {
-                                              ...(prev[atividade.id] || {}),
-                                              [perguntaId]: e.target.value,
-                                            },
-                                          }))
-                                        }
+                                        onChange={(e) => updateAtividadeResposta(atividade.id, perguntaId, e.target.value)}
                                       />
                                     )}
                                   </div>
@@ -4648,10 +4682,10 @@ export default function PainelAluno() {
                                     <button
                                       type="button"
                                       onClick={() =>
-                                        setAtividadeImagens((prev) => ({
-                                          ...prev,
-                                          [atividade.id]: ensureArray(prev[atividade.id]).filter((_, i) => i !== imageIndex),
-                                        }))
+                                        updateAtividadeImagens(
+                                          atividade.id,
+                                          ensureArray(atividadeImagens[atividade.id]).filter((_, i) => i !== imageIndex),
+                                        )
                                       }
                                       className="absolute -top-2 -right-2 rounded-full bg-destructive p-1 text-destructive-foreground"
                                     >
@@ -4797,13 +4831,7 @@ export default function PainelAluno() {
                                                   : 'border-border bg-background hover:border-primary/40'
                                               }`}
                                               onClick={() =>
-                                                setAtividadeRespostas((prev) => ({
-                                                  ...prev,
-                                                  [atividadePendenteAberta.id]: {
-                                                    ...(prev[atividadePendenteAberta.id] || {}),
-                                                    [perguntaId]: selected ? '' : String(opcao),
-                                                  },
-                                                }))
+                                                updateAtividadeResposta(atividadePendenteAberta.id, perguntaId, selected ? '' : String(opcao))
                                               }
                                             >
                                               {String(opcao)}
@@ -4816,15 +4844,7 @@ export default function PainelAluno() {
                                         rows={2}
                                         placeholder="Digite sua resposta..."
                                         value={respostaAtual}
-                                        onChange={(e) =>
-                                          setAtividadeRespostas((prev) => ({
-                                            ...prev,
-                                            [atividadePendenteAberta.id]: {
-                                              ...(prev[atividadePendenteAberta.id] || {}),
-                                              [perguntaId]: e.target.value,
-                                            },
-                                          }))
-                                        }
+                                        onChange={(e) => updateAtividadeResposta(atividadePendenteAberta.id, perguntaId, e.target.value)}
                                       />
                                     )}
                                   </div>
@@ -4839,7 +4859,7 @@ export default function PainelAluno() {
                               rows={6}
                               placeholder="Escreva sua resposta..."
                               value={atividadeTexto[atividadePendenteAberta.id] ?? parseEntregaPayload(atividadePendenteAberta.entrega?.texto_entrega).texto ?? ''}
-                              onChange={(e) => setAtividadeTexto((prev) => ({ ...prev, [atividadePendenteAberta.id]: e.target.value }))}
+                              onChange={(e) => updateAtividadeTexto(atividadePendenteAberta.id, e.target.value)}
                             />
                           </div>
 
