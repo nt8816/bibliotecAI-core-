@@ -6,6 +6,15 @@
   "android": {
     "allowMixedContent": true
   },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
+    }
+  },
   "server": {
     "androidScheme": "https"
   }

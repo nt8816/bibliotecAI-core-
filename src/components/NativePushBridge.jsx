@@ -7,19 +7,23 @@ import { useAuth } from '@/hooks/useAuth';
 import { registerPushDeviceToken, unregisterPushDeviceToken } from '@/services/notificationsService';
 
 const APP_VERSION = '1.0.0';
+const PUSH_SOUND = 'bibliotecai_alert.wav';
 const PUSH_CHANNELS = [
   {
-    id: 'comunicados',
+    id: 'comunicados_sonoro_v2',
+    legacyId: 'comunicados',
     name: 'Comunicados',
     description: 'Comunicados e avisos gerais da biblioteca e da escola.',
   },
   {
-    id: 'mensagens',
+    id: 'mensagens_sonoro_v2',
+    legacyId: 'mensagens',
     name: 'Mensagens da Bibliotecaria',
     description: 'Mensagens e respostas da biblioteca nas solicitacoes de emprestimo.',
   },
   {
-    id: 'atividades',
+    id: 'atividades_sonoro_v2',
+    legacyId: 'atividades',
     name: 'Atividades',
     description: 'Atividades e lembretes enviados pelos professores.',
   },
@@ -49,13 +53,24 @@ function buildNotificationRoute(notification, userRole) {
 
 async function ensureAndroidPushChannels() {
   await Promise.all(
+    PUSH_CHANNELS.map((channel) => (
+      channel.legacyId
+        ? PushNotifications.deleteChannel({ id: channel.legacyId }).catch(() => null)
+        : null
+    )),
+  );
+
+  await Promise.all(
     PUSH_CHANNELS.map((channel) => PushNotifications.createChannel({
       id: channel.id,
       name: channel.name,
       description: channel.description,
       importance: 5,
       visibility: 1,
-      sound: 'default',
+      sound: PUSH_SOUND,
+      lights: true,
+      lightColor: '#2563EB',
+      vibration: true,
     })),
   );
 }
@@ -106,7 +121,7 @@ export function NativePushBridge() {
               platform: 'android',
               device_label: 'BibliotecAi Android',
               app_version: APP_VERSION,
-              channels: PUSH_CHANNELS.map((channel) => channel.id),
+              channels: PUSH_CHANNELS.map((channel) => channel.legacyId || channel.id),
             });
             registeredTokenRef.current = token;
           } catch (error) {

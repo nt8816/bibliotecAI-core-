@@ -1011,6 +1011,13 @@ async function sendFirebasePushWithAccessToken(
 ) {
   const config = getFirebaseConfig(env);
   if (!config || !accessToken) return;
+  const androidChannelIdByCategory = {
+    comunicados: 'comunicados_sonoro_v2',
+    mensagens: 'mensagens_sonoro_v2',
+    atividades: 'atividades_sonoro_v2',
+  } as const;
+  const androidChannelId = androidChannelIdByCategory[channelId] || channelId;
+  const androidSound = 'bibliotecai_alert.wav';
 
   const filteredRows = rows.filter((row) => {
     const token = String(row?.token || '').trim();
@@ -1047,9 +1054,13 @@ async function sendFirebasePushWithAccessToken(
           android: {
             priority: 'high',
             notification: {
-              channel_id: channelId,
+              channel_id: androidChannelId,
               click_action: 'FCM_PLUGIN_ACTIVITY',
-              sound: 'default',
+              sound: androidSound,
+              default_sound: false,
+              default_vibrate_timings: false,
+              notification_priority: 'PRIORITY_MAX',
+              visibility: 'PUBLIC',
             },
           },
         },
