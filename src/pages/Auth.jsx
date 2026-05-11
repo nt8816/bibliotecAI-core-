@@ -5,7 +5,12 @@ import { Loader2, Eye, EyeOff, QrCode, ShieldCheck, Smartphone, MonitorSmartphon
 
 import { useAuth } from '@/hooks/useAuth';
 import { getDefaultRouteForRole } from '@/lib/defaultRoute';
-import { appendQueryParam, buildTenantAccessUrl, shouldRedirectToTenantHost } from '@/lib/tenantRouting';
+import {
+  appendQueryParam,
+  buildTenantAccessUrl,
+  isNativeMobileApp,
+  shouldRedirectToTenantHost,
+} from '@/lib/tenantRouting';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -188,7 +193,7 @@ export default function Auth() {
             const handoffToken = String(handoff?.handoffToken || '').trim();
             const fallbackRedirectUrl = String(handoff?.redirectUrl || '').trim();
             const tenantUrl = buildTenantAccessUrl(tenantContext, defaultRoute);
-            const redirectUrl = fallbackRedirectUrl || (
+            const redirectUrl = (!isNativeMobileApp() && fallbackRedirectUrl) || (
               handoffToken
                 ? appendQueryParam(tenantUrl, 'sessionHandoff', handoffToken)
                 : tenantUrl

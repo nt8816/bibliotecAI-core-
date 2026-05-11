@@ -1,7 +1,17 @@
+import { Capacitor } from '@capacitor/core';
+
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
 
 function removePort(hostname) {
   return String(hostname || '').toLowerCase().split(':')[0];
+}
+
+export function isNativeMobileApp() {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
 }
 
 export function buildTenantAccessUrl(tenant, nextPath = '/dashboard') {
@@ -14,7 +24,7 @@ export function buildTenantAccessUrl(tenant, nextPath = '/dashboard') {
   const normalizedPath = String(nextPath || '/dashboard').trim() || '/dashboard';
   const path = normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`;
 
-  if (baseDomain && !LOCAL_HOSTS.has(host)) {
+  if (baseDomain && !LOCAL_HOSTS.has(host) && !isNativeMobileApp()) {
     return `${protocol}//${subdomain}.${baseDomain}${path}`;
   }
 
@@ -44,7 +54,7 @@ export function shouldRedirectToTenantHost(tenant) {
   const query = new URLSearchParams(window.location.search);
   const currentTenant = String(query.get('tenant') || '').trim().toLowerCase();
 
-  if (LOCAL_HOSTS.has(host)) {
+  if (isNativeMobileApp() || LOCAL_HOSTS.has(host)) {
     return currentTenant !== subdomain;
   }
 
