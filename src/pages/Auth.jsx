@@ -187,13 +187,18 @@ export default function Auth() {
       if (!userRole) return;
 
       const defaultRoute = getDefaultRouteForRole(userRole);
+      if (isNativeMobileApp()) {
+        navigate(defaultRoute, { replace: true });
+        return;
+      }
+
       if (userRole !== 'super_admin' && tenantContext?.subdominio && shouldRedirectToTenantHost(tenantContext)) {
         createTenantSessionHandoff(tenantContext.subdominio, defaultRoute)
           .then((handoff) => {
             const handoffToken = String(handoff?.handoffToken || '').trim();
             const fallbackRedirectUrl = String(handoff?.redirectUrl || '').trim();
             const tenantUrl = buildTenantAccessUrl(tenantContext, defaultRoute);
-            const redirectUrl = (!isNativeMobileApp() && fallbackRedirectUrl) || (
+            const redirectUrl = fallbackRedirectUrl || (
               handoffToken
                 ? appendQueryParam(tenantUrl, 'sessionHandoff', handoffToken)
                 : tenantUrl

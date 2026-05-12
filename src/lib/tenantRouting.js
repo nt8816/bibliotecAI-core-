@@ -54,7 +54,11 @@ export function shouldRedirectToTenantHost(tenant) {
   const query = new URLSearchParams(window.location.search);
   const currentTenant = String(query.get('tenant') || '').trim().toLowerCase();
 
-  if (isNativeMobileApp() || LOCAL_HOSTS.has(host)) {
+  if (isNativeMobileApp()) {
+    return false;
+  }
+
+  if (LOCAL_HOSTS.has(host)) {
     return currentTenant !== subdomain;
   }
 
