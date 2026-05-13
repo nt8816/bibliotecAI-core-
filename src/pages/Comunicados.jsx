@@ -1,7 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { AudioLines, BellRing, CheckCircle2, Download, FileQuestion, ImagePlus, Mic, Megaphone, PauseCircle, Plus, Send, Trash2, Upload, Users, X } from 'lucide-react';
+import { AudioLines, BellRing, CheckCircle2, Download, Eye, FileQuestion, FileStack, FileText, ImagePlus, Mic, Megaphone, PauseCircle, Plus, Send, Trash2, Upload, Users, X } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -26,9 +26,41 @@ import { cn } from '@/lib/utils';
 const ALL_TURMAS_OPTION = '__all_turmas__';
 const FORM_MARKER = '[FORM_CONFIG_V1]';
 const COMUNICADOS_FORM_MARKER = '[FORM_ORIGIN_COMUNICADOS_V1]';
+const MAX_COMUNICADO_FILES = 6;
+const MAX_COMUNICADO_FILE_SIZE = 50 * 1024 * 1024;
+const ACCEPTED_FILE_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg', 'ppt', 'pptx'];
+const ACCEPTED_FILE_INPUT = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.ppt,.pptx';
 
 function ensureArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function safeText(value, fallback = '-') {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return fallback;
+}
+
+function getFileExtension(fileName) {
+  const parts = String(fileName || '').split('.');
+  return parts.length > 1 ? parts.pop().toLowerCase() : '';
+}
+
+function formatBytes(value) {
+  const size = Number(value || 0);
+  if (!size) return '0 B';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isPreviewableFile(arquivo) {
+  const mimeType = String(arquivo?.mime_type || arquivo?.file?.type || '').toLowerCase();
+  const extension = getFileExtension(arquivo?.nome || arquivo?.name || arquivo?.file?.name);
+  return mimeType.startsWith('image/')
+    || mimeType === 'application/pdf'
+    || extension === 'pdf'
+    || ['png', 'jpg', 'jpeg'].includes(extension);
 }
 
 function normalizeTurmaKey(value) {
@@ -117,6 +149,14 @@ function createPendingImage(file) {
   };
 }
 
+function createPendingFile(file) {
+  return {
+    id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`,
+    file,
+    previewUrl: isPreviewableFile({ nome: file.name, mime_type: file.type }) ? URL.createObjectURL(file) : '',
+  };
+}
+
 function downloadFromUrl(url, fileName = 'arquivo') {
   if (!url) return;
   const link = document.createElement('a');
@@ -140,10 +180,31 @@ function repairMojibakeText(value) {
 }
 
 async function resolveComunicadoMedia(post) {
+  const arquivos = await Promise.all(
+    ensureArray(post?.arquivos).map(async (arquivo, index) => {
+      const objectKey = String(arquivo?.object_key || arquivo?.path || '').trim();
+      const nome = safeText(arquivo?.nome || arquivo?.name, `arquivo-${index + 1}`);
+      let previewUrl = String(arquivo?.preview_url || arquivo?.public_url || '').trim();
+
+      if (!previewUrl && objectKey && (String(arquivo?.provider || '').toLowerCase() === 'r2' || objectKey.startsWith('escolas/'))) {
+        previewUrl = await getR2DownloadUrl(objectKey, nome).catch(() => '');
+      }
+
+      return {
+        ...arquivo,
+        nome,
+        object_key: objectKey || arquivo?.object_key,
+        path: objectKey || arquivo?.path,
+        preview_url: previewUrl,
+      };
+    }),
+  );
+
   return {
     ...(post || {}),
     imagem_urls_r2_keys: ensureArray(post?.imagem_urls),
     audio_url_r2_key: String(post?.audio_url || '').trim(),
+    arquivos,
     imagem_urls: await resolveR2MediaUrls(ensureArray(post?.imagem_urls), `comunicado-${post?.id || 'item'}`),
     audio_url: await resolveR2MediaUrl(post?.audio_url, `comunicado-${post?.id || 'item'}.webm`),
   };
@@ -275,9 +336,12 @@ export default function Comunicados() {
   const [expiraEm, setExpiraEm] = useState('');
   const [audioFile, setAudioFile] = useState(null);
   const [pendingImages, setPendingImages] = useState([]);
+  const [pendingFiles, setPendingFiles] = useState([]);
   const [busca, setBusca] = useState('');
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [selectedImagePreview, setSelectedImagePreview] = useState({ src: '', title: 'Visualizacao da imagem' });
+  const [filePreviewOpen, setFilePreviewOpen] = useState(false);
+  const [selectedFilePreview, setSelectedFilePreview] = useState({ src: '', title: 'Visualizacao do arquivo', mimeType: '', extension: '' });
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isFormularioDialogOpen, setIsFormularioDialogOpen] = useState(false);
   const [formularioSaving, setFormularioSaving] = useState(false);
@@ -294,6 +358,7 @@ export default function Comunicados() {
   const [recordingLevels, setRecordingLevels] = useState(() => Array.from({ length: 24 }, () => 0.18));
   const audioInputRef = useRef(null);
   const imageInputRef = useRef(null);
+  const fileInputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const recordingChunksRef = useRef([]);
@@ -313,6 +378,12 @@ export default function Comunicados() {
     ensureArray(pendingImages).forEach((image) => {
       if (image?.previewUrl?.startsWith('blob:')) {
         URL.revokeObjectURL(image.previewUrl);
+      }
+    });
+
+    ensureArray(pendingFiles).forEach((fileItem) => {
+      if (fileItem?.previewUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(fileItem.previewUrl);
       }
     });
 
@@ -344,7 +415,7 @@ export default function Comunicados() {
       audioContextRef.current.close().catch(() => null);
       audioContextRef.current = null;
     }
-  }, [audioFile, pendingImages]);
+  }, [audioFile, pendingFiles, pendingImages]);
 
   const loadData = useCallback(async () => {
     let cancelled = false;
@@ -502,6 +573,49 @@ export default function Comunicados() {
     });
   };
 
+  const handleSelectFiles = (files) => {
+    const selectedFiles = Array.from(files || []);
+    if (selectedFiles.length === 0) return;
+
+    const invalidFile = selectedFiles.find((file) => !ACCEPTED_FILE_EXTENSIONS.includes(getFileExtension(file.name)));
+    if (invalidFile) {
+      toast({
+        variant: 'destructive',
+        title: 'Formato nao suportado',
+        description: 'Use PDF, Word, Excel, PNG, JPG/JPEG ou PowerPoint.',
+      });
+      return;
+    }
+
+    const tooLargeFile = selectedFiles.find((file) => Number(file.size || 0) > MAX_COMUNICADO_FILE_SIZE);
+    if (tooLargeFile) {
+      toast({
+        variant: 'destructive',
+        title: 'Arquivo muito grande',
+        description: 'Cada arquivo do comunicado pode ter no maximo 50MB.',
+      });
+      return;
+    }
+
+    setPendingFiles((current) => {
+      const currentList = ensureArray(current);
+      const knownKeys = new Set(currentList.map((item) => `${item.file.name}-${item.file.size}-${item.file.lastModified}`));
+      const dedupedFiles = selectedFiles.filter((file) => !knownKeys.has(`${file.name}-${file.size}-${file.lastModified}`));
+      const availableSlots = Math.max(0, MAX_COMUNICADO_FILES - currentList.length);
+      const acceptedFiles = dedupedFiles.slice(0, availableSlots);
+      const discardedFiles = dedupedFiles.slice(availableSlots);
+
+      if (discardedFiles.length > 0) {
+        toast({
+          title: 'Limite de arquivos atingido',
+          description: `Cada comunicado aceita no maximo ${MAX_COMUNICADO_FILES} arquivos.`,
+        });
+      }
+
+      return [...currentList, ...acceptedFiles.map(createPendingFile)];
+    });
+  };
+
   const handleSelectAudioFile = async (files) => {
     const file = files?.[0];
     await setSelectedAudioFile(file);
@@ -517,9 +631,28 @@ export default function Comunicados() {
     });
   };
 
+  const removePendingFile = (fileId) => {
+    setPendingFiles((current) => {
+      const found = ensureArray(current).find((item) => item.id === fileId);
+      if (found?.previewUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(found.previewUrl);
+      }
+      return ensureArray(current).filter((item) => item.id !== fileId);
+    });
+  };
+
   const handleDownloadPendingImage = (image) => {
     if (!image?.previewUrl) return;
     downloadFromUrl(image.previewUrl, image?.file?.name || 'imagem-comunicado');
+  };
+
+  const handleDownloadPendingFile = (fileItem) => {
+    if (!fileItem?.file) return;
+    const url = fileItem.previewUrl || URL.createObjectURL(fileItem.file);
+    downloadFromUrl(url, fileItem.file.name || 'arquivo');
+    if (!fileItem.previewUrl && url.startsWith('blob:')) {
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
   };
 
   const handleDownloadPublishedImage = async (post, index) => {
@@ -544,10 +677,67 @@ export default function Comunicados() {
     }
   };
 
+  const handleDownloadPublishedFile = async (arquivo) => {
+    const objectKey = String(arquivo?.object_key || arquivo?.path || '').trim();
+    const fileName = safeText(arquivo?.nome, 'arquivo');
+
+    try {
+      if (objectKey && (String(arquivo?.provider || '').toLowerCase() === 'r2' || objectKey.startsWith('escolas/'))) {
+        const downloadUrl = await getR2DownloadUrl(objectKey, fileName);
+        downloadFromUrl(downloadUrl, fileName);
+        return;
+      }
+
+      const publicUrl = String(arquivo?.public_url || arquivo?.preview_url || '').trim();
+      if (publicUrl) {
+        downloadFromUrl(publicUrl, fileName);
+        return;
+      }
+
+      throw new Error('Arquivo sem rota de download suportada.');
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Falha no download',
+        description: error?.message || 'Nao foi possivel baixar o arquivo agora.',
+      });
+    }
+  };
+
   const openImagePreview = (src, title = 'Visualizacao da imagem') => {
     if (!src) return;
     setSelectedImagePreview({ src, title });
     setImagePreviewOpen(true);
+  };
+
+  const openFilePreview = async (arquivo) => {
+    if (!isPreviewableFile(arquivo)) return;
+
+    let previewUrl = String(arquivo?.previewUrl || arquivo?.preview_url || arquivo?.public_url || '').trim();
+    const objectKey = String(arquivo?.object_key || arquivo?.path || '').trim();
+    const fileName = safeText(arquivo?.nome || arquivo?.file?.name, 'arquivo');
+
+    try {
+      if (!previewUrl && objectKey) {
+        previewUrl = await getR2DownloadUrl(objectKey, fileName);
+      }
+
+      if (!previewUrl) throw new Error('Previa indisponivel para este arquivo.');
+
+      setSelectedFilePreview({
+        src: previewUrl,
+        title: fileName,
+        mimeType: String(arquivo?.mime_type || arquivo?.file?.type || ''),
+        extension: getFileExtension(fileName),
+      });
+      setFilePreviewOpen(true);
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Previa indisponivel',
+        description: error?.message || 'Nao foi possivel abrir a pre visualizacao.',
+      });
+    }
   };
 
   const stopRecordingResources = () => {
@@ -720,6 +910,18 @@ export default function Comunicados() {
     }
   };
 
+  const clearPendingFiles = () => {
+    ensureArray(pendingFiles).forEach((fileItem) => {
+      if (fileItem?.previewUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(fileItem.previewUrl);
+      }
+    });
+    setPendingFiles([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const clearForm = () => {
     setTitulo('');
     setConteudo('');
@@ -727,6 +929,7 @@ export default function Comunicados() {
     setExpiraEm('');
     clearAudio();
     clearPendingImages();
+    clearPendingFiles();
   };
 
   const resetFormularioForm = () => {
@@ -851,11 +1054,11 @@ export default function Comunicados() {
   const handlePublish = async () => {
     if (!canPublish || !perfil?.id || !perfil?.escola_id) return;
 
-    if (!titulo.trim() && !conteudo.trim() && !audioFile?.file) {
+    if (!titulo.trim() && !conteudo.trim() && !audioFile?.file && pendingImages.length === 0 && pendingFiles.length === 0) {
       toast({
         variant: 'destructive',
         title: 'Comunicado vazio',
-        description: 'Adicione um titulo, um texto ou um audio antes de publicar.',
+        description: 'Adicione um titulo, um texto, um audio, uma imagem ou um arquivo antes de publicar.',
       });
       return;
     }
@@ -880,6 +1083,7 @@ export default function Comunicados() {
 
     setSaving(true);
     let uploadedImages = [];
+    let uploadedFiles = [];
     let uploadedAudio = null;
     try {
       uploadedImages = pendingImages.length > 0
@@ -905,6 +1109,30 @@ export default function Comunicados() {
           })
         : null;
 
+      uploadedFiles = pendingFiles.length > 0
+        ? await Promise.all(
+            pendingFiles.map(async (fileItem) => {
+              const upload = await uploadFileToR2({
+                file: fileItem.file,
+                escolaId: perfil.escola_id,
+                ownerId: perfil.id,
+                scope: 'comunicados-arquivos',
+              });
+
+              return {
+                nome: fileItem.file.name,
+                path: upload.objectKey,
+                object_key: upload.objectKey,
+                provider: upload.provider,
+                public_url: upload.publicUrl,
+                tamanho: fileItem.file.size,
+                mime_type: fileItem.file.type || null,
+                extensao: getFileExtension(fileItem.file.name),
+              };
+            }),
+          )
+        : [];
+
       const payload = {
         tipo: 'comunicado',
         titulo: titulo.trim() || 'Novo comunicado',
@@ -913,6 +1141,7 @@ export default function Comunicados() {
         expires_at: toEndOfDayIso(expiraEm),
         tags: ['comunicado'],
         imagem_urls: uploadedImages,
+        arquivos: uploadedFiles,
         audio_url: uploadedAudio?.objectKey || null,
         audio_duration_seconds: audioFile?.durationSeconds || null,
       };
@@ -933,6 +1162,7 @@ export default function Comunicados() {
     } catch (error) {
       const cleanupTargets = [
         ...uploadedImages,
+        ...uploadedFiles.map((arquivo) => arquivo?.object_key || arquivo?.path),
         uploadedAudio?.objectKey,
       ].filter(Boolean);
 
@@ -961,6 +1191,7 @@ export default function Comunicados() {
       const cleanupTargets = [
         ...ensureArray(post?.imagem_urls_r2_keys),
         post?.audio_url_r2_key || null,
+        ...ensureArray(post?.arquivos).map((arquivo) => arquivo?.object_key || arquivo?.path),
       ].map((item) => String(item || '').trim()).filter(Boolean);
 
       if (cleanupTargets.length > 0) {
@@ -1100,6 +1331,17 @@ export default function Comunicados() {
                       e.target.value = '';
                     }}
                   />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={ACCEPTED_FILE_INPUT}
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      handleSelectFiles(e.target.files);
+                      e.target.value = '';
+                    }}
+                  />
                   <div className="flex flex-wrap gap-3">
                     <Button
                       type="button"
@@ -1126,6 +1368,16 @@ export default function Comunicados() {
                     >
                       <ImagePlus className="mr-2 h-4 w-4" />
                       Adicionar imagens
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-full"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={pendingFiles.length >= MAX_COMUNICADO_FILES}
+                    >
+                      <FileStack className="mr-2 h-4 w-4" />
+                      Anexar arquivos
                     </Button>
                   </div>
                 </div>
@@ -1217,6 +1469,47 @@ export default function Comunicados() {
                             >
                               <X className="h-4 w-4" />
                             </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  ) : null}
+
+                  {pendingFiles.length > 0 ? (
+                  <div className="mt-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Arquivos anexados</p>
+                      <Button type="button" variant="ghost" size="sm" onClick={clearPendingFiles}>
+                        <X className="mr-1 h-3.5 w-3.5" /> Limpar arquivos
+                      </Button>
+                    </div>
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {pendingFiles.map((fileItem) => (
+                        <div key={fileItem.id} className="rounded-2xl border border-emerald-100 bg-white/85 p-3 shadow-sm dark:border-white/10 dark:bg-slate-950/45">
+                          <div className="flex items-center gap-3">
+                            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">
+                              <FileText className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{fileItem.file.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {getFileExtension(fileItem.file.name).toUpperCase() || 'ARQ'} • {formatBytes(fileItem.file.size)}
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 gap-1">
+                              {isPreviewableFile({ nome: fileItem.file.name, mime_type: fileItem.file.type }) ? (
+                                <Button type="button" variant="ghost" size="icon" onClick={() => openFilePreview(fileItem)} aria-label={`Pre visualizar ${fileItem.file.name}`}>
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              ) : null}
+                              <Button type="button" variant="ghost" size="icon" onClick={() => handleDownloadPendingFile(fileItem)} aria-label={`Baixar ${fileItem.file.name}`}>
+                                <Download className="h-4 w-4" />
+                              </Button>
+                              <Button type="button" variant="ghost" size="icon" onClick={() => removePendingFile(fileItem.id)} aria-label={`Remover ${fileItem.file.name}`}>
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -1414,6 +1707,42 @@ export default function Comunicados() {
                         ))}
                       </div>
                     ) : null}
+
+                    {ensureArray(post.arquivos).length > 0 ? (
+                      <div className="mt-4 rounded-[24px] border border-emerald-100 bg-emerald-50/45 p-4 dark:border-white/10 dark:bg-emerald-950/15">
+                        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                          <FileStack className="h-4 w-4 text-emerald-700 dark:text-emerald-300" />
+                          Arquivos do comunicado
+                        </div>
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          {ensureArray(post.arquivos).map((arquivo, index) => (
+                            <div key={`${post.id}-arquivo-${index}`} className="rounded-2xl border bg-white/90 p-3 shadow-sm dark:bg-slate-950/45">
+                              <div className="flex items-center gap-3">
+                                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">
+                                  <FileText className="h-4 w-4" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{safeText(arquivo?.nome, 'Arquivo')}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {safeText(arquivo?.extensao || getFileExtension(arquivo?.nome), '').toUpperCase() || 'ARQ'} • {formatBytes(arquivo?.tamanho)}
+                                  </p>
+                                </div>
+                                <div className="flex shrink-0 gap-1">
+                                  {isPreviewableFile(arquivo) ? (
+                                    <Button type="button" size="icon" variant="ghost" onClick={() => openFilePreview(arquivo)} aria-label={`Pre visualizar ${safeText(arquivo?.nome, 'arquivo')}`}>
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                  ) : null}
+                                  <Button type="button" size="icon" variant="ghost" onClick={() => handleDownloadPublishedFile(arquivo)} aria-label={`Baixar ${safeText(arquivo?.nome, 'arquivo')}`}>
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -1460,6 +1789,41 @@ export default function Comunicados() {
                 className="max-h-[78vh] w-full object-contain"
               />
             ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={filePreviewOpen} onOpenChange={setFilePreviewOpen}>
+        <DialogContent className="max-w-5xl overflow-hidden border-emerald-100 bg-white/95 p-4 sm:p-6 dark:border-white/10 dark:bg-slate-950/95">
+          <DialogHeader className="border-b border-border/60 bg-gradient-to-r from-primary/8 via-background to-emerald-500/8 px-8 py-6">
+            <DialogTitle>{selectedFilePreview.title || 'Visualizacao do arquivo'}</DialogTitle>
+          </DialogHeader>
+          <div className="overflow-hidden rounded-[24px] border border-emerald-100 bg-white dark:border-white/10 dark:bg-slate-900">
+            {selectedFilePreview.src && (
+              selectedFilePreview.mimeType.startsWith('image/') || ['png', 'jpg', 'jpeg'].includes(selectedFilePreview.extension) ? (
+                <img
+                  src={selectedFilePreview.src}
+                  alt={selectedFilePreview.title || 'Visualizacao do arquivo'}
+                  className="max-h-[78vh] w-full object-contain"
+                />
+              ) : selectedFilePreview.extension === 'pdf' || selectedFilePreview.mimeType === 'application/pdf' ? (
+                <iframe
+                  title={selectedFilePreview.title || 'Visualizacao do PDF'}
+                  src={selectedFilePreview.src}
+                  className="h-[78vh] w-full"
+                />
+              ) : (
+                <div className="p-8 text-center text-sm text-muted-foreground">
+                  Pre visualizacao indisponivel para este formato.
+                </div>
+              )
+            )}
+          </div>
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" onClick={() => downloadFromUrl(selectedFilePreview.src, selectedFilePreview.title || 'arquivo')}>
+              <Download className="mr-2 h-4 w-4" />
+              Baixar arquivo
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

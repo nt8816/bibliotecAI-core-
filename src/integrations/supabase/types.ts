@@ -363,6 +363,7 @@ export type Database = {
       comunidade_posts: {
         Row: {
           audiobook_id: string | null
+          arquivos: Json
           autor_id: string
           conteudo: string
           created_at: string
@@ -377,6 +378,7 @@ export type Database = {
         }
         Insert: {
           audiobook_id?: string | null
+          arquivos?: Json
           autor_id: string
           conteudo: string
           created_at?: string
@@ -391,6 +393,7 @@ export type Database = {
         }
         Update: {
           audiobook_id?: string | null
+          arquivos?: Json
           autor_id?: string
           conteudo?: string
           created_at?: string
@@ -1560,4 +1563,3 @@ export const Constants = {
     },
   },
 } as const
-

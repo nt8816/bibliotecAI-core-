@@ -9451,7 +9451,7 @@ const routes: Record<string, RouteHandler> = {
       ? await supabaseAdminRequest(
           env,
           `/rest/v1/comunidade_posts?${new URLSearchParams({
-            select: 'id,titulo,conteudo,turma_publico,created_at,tipo,expires_at,audio_url,audio_duration_seconds',
+            select: 'id,titulo,conteudo,turma_publico,created_at,tipo,expires_at,audio_url,audio_duration_seconds,arquivos',
             escola_id: `eq.${escolaId}`,
             tipo: 'eq.comunicado',
             order: 'created_at.desc',
