@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { registerPushDeviceToken, unregisterPushDeviceToken } from '@/services/notificationsService';
 
 const APP_VERSION = '1.0.0';
+const ENABLE_NATIVE_PUSH = import.meta.env.VITE_ENABLE_NATIVE_PUSH === 'true';
 const PUSH_SOUND = 'bibliotecai_alert.wav';
 const PUSH_CHANNELS = [
   {
@@ -30,7 +31,7 @@ const PUSH_CHANNELS = [
 ];
 
 function isNativeAndroidApp() {
-  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+  return ENABLE_NATIVE_PUSH && Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 }
 
 function buildNotificationRoute(notification, userRole) {

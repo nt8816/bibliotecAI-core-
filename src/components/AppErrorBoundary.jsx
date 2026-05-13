@@ -3,8 +3,23 @@ import React from 'react';
 export class AppErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, message: '' };
+    this.state = {
+      hasError: Boolean(props.hasError),
+      message: props.message || '',
+    };
     this.handleReload = this.handleReload.bind(this);
+  }
+
+  componentDidUpdate(prevProps) {
+    if (
+      this.props.hasError
+      && (this.props.hasError !== prevProps.hasError || this.props.message !== prevProps.message)
+    ) {
+      this.setState({
+        hasError: true,
+        message: this.props.message || 'Erro inesperado na interface.',
+      });
+    }
   }
 
   static getDerivedStateFromError(error) {
