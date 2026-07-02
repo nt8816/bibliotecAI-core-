@@ -116,6 +116,7 @@ function AppRoutes() {
 
   return (
     <Routes>
+      <Route path="/" element={<LandingPage />} />
       <Route path="/landing" element={<LandingPage />} />
       <Route path="/auth" element={<Auth />} />
       <Route path="/privacidade" element={<Privacidade />} />
@@ -252,7 +253,6 @@ function AppRoutes() {
           </RoleProtectedRoute>
         )}
       />
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
       <Route
         path="/admin"
