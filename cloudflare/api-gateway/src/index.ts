@@ -8164,7 +8164,6 @@ const routes: Record<string, RouteHandler> = {
               select: '*',
               escola_id: `eq.${escolaId}`,
               order: 'titulo.asc',
-              limit: '10000',
             }).toString()}`,
           )
         : Promise.resolve([]),
@@ -8174,7 +8173,6 @@ const routes: Record<string, RouteHandler> = {
           select: '*',
           escola_id: 'is.null',
           order: 'titulo.asc',
-          limit: '10000',
         }).toString()}`,
       ),
       escolaId
