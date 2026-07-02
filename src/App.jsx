@@ -1,4 +1,4 @@
-﻿import { Suspense, lazy } from 'react';
+import { Suspense, lazy } from 'react';
 import { Toaster } from '@/components/ui/toaster';
 import { Toaster as Sonner } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -18,6 +18,7 @@ import { AppShellState } from '@/components/AppShellState';
 import { ConnectivityStatus } from '@/components/ConnectivityStatus';
 import { NativePushBridge } from '@/components/NativePushBridge';
 
+const LandingPage = lazy(() => import('./pages/LandingPage'));
 const Auth = lazy(() => import('./pages/Auth'));
 const Privacidade = lazy(() => import('./pages/Privacidade'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -115,6 +116,7 @@ function AppRoutes() {
 
   return (
     <Routes>
+      <Route path="/landing" element={<LandingPage />} />
       <Route path="/auth" element={<Auth />} />
       <Route path="/privacidade" element={<Privacidade />} />
       <Route path="/admin/acesso" element={<AdminAcesso />} />

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 180" fill="none">
+  <rect width="280" height="180" rx="16" fill="#FFF8E1"/>
+  <rect x="15" y="10" width="250" height="160" rx="12" fill="#fff" stroke="#43A047" stroke-width="1.5"/>
+  <rect x="15" y="10" width="250" height="28" rx="12" fill="#43A047" fill-opacity="0.06"/>
+  <rect x="25" y="17" width="70" height="8" rx="3" fill="#43A047" fill-opacity="0.2"/>
+  <circle cx="60" cy="70" r="20" fill="#43A047" fill-opacity="0.08" stroke="#43A047" stroke-width="2"/>
+  <circle cx="60" cy="70" r="14" fill="#43A047" fill-opacity="0.12"/>
+  <text x="60" y="74" text-anchor="middle" fill="#43A047" font-size="12" font-weight="900" font-family="sans-serif">5</text>
+  <text x="60" y="100" text-anchor="middle" fill="#43A047" fill-opacity="0.5" font-size="7" font-weight="700" font-family="sans-serif">Nivel 5</text>
+  <rect x="110" y="55" width="150" height="8" rx="4" fill="#43A047" fill-opacity="0.08"/>
+  <rect x="110" y="55" width="105" height="8" rx="4" fill="#43A047" fill-opacity="0.25"/>
+  <text x="185" y="53" text-anchor="middle" fill="#43A047" fill-opacity="0.4" font-size="7" font-weight="700" font-family="sans-serif">70%</text>
+  <rect x="25" y="115" width="55" height="45" rx="8" fill="#F9A825" fill-opacity="0.08" stroke="#F9A825" stroke-width="1"/>
+  <circle cx="52" cy="130" r="10" fill="#F9A825" fill-opacity="0.15"/>
+  <text x="52" y="134" text-anchor="middle" fill="#F9A825" font-size="10" font-family="sans-serif">⭐</text>
+  <text x="52" y="152" text-anchor="middle" fill="#F9A825" fill-opacity="0.5" font-size="5" font-weight="700" font-family="sans-serif">Leitor</text>
+  <rect x="90" y="115" width="55" height="45" rx="8" fill="#43A047" fill-opacity="0.08" stroke="#43A047" stroke-width="1"/>
+  <circle cx="117" cy="130" r="10" fill="#43A047" fill-opacity="0.15"/>
+  <text x="117" y="134" text-anchor="middle" fill="#43A047" font-size="10" font-family="sans-serif">🏆</text>
+  <text x="117" y="152" text-anchor="middle" fill="#43A047" fill-opacity="0.5" font-size="5" font-weight="700" font-family="sans-serif">Expert</text>
+  <rect x="155" y="115" width="55" height="45" rx="8" fill="#0288D1" fill-opacity="0.08" stroke="#0288D1" stroke-width="1"/>
+  <circle cx="182" cy="130" r="10" fill="#0288D1" fill-opacity="0.15"/>
+  <text x="182" y="134" text-anchor="middle" fill="#0288D1" font-size="10" font-family="sans-serif">📚</text>
+  <text x="182" y="152" text-anchor="middle" fill="#0288D1" fill-opacity="0.5" font-size="5" font-weight="700" font-family="sans-serif">Bibliofilo</text>
+  <rect x="220" y="115" width="40" height="45" rx="8" fill="#9E9E9E" fill-opacity="0.06" stroke="#9E9E9E" stroke-width="1" stroke-dasharray="3 2"/>
+  <circle cx="240" cy="130" r="10" fill="#9E9E9E" fill-opacity="0.08"/>
+  <text x="240" y="134" text-anchor="middle" fill="#9E9E9E" font-size="10" font-family="sans-serif">🔒</text>
+  <text x="240" y="152" text-anchor="middle" fill="#9E9E9E" fill-opacity="0.4" font-size="5" font-weight="700" font-family="sans-serif">Bloq.</text>
+</svg>
