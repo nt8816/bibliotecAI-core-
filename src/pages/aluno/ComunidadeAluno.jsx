@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { AudioLines, Check, ChevronsUpDown, Filter, Heart, ImagePlus, MessageSquare, Pencil, Plus, Send, Sparkles, Trash2, Upload, X } from 'lucide-react';
@@ -356,7 +356,7 @@ async function insertCommunityPostCompat(payload, options = {}) {
   let { data, error } = await runInsert(payload);
 
   if (error) {
-    const missingColumns = ['escola_id', 'imagem_urls', 'audiobook_id', 'turma_publico', 'expires_at', 'audio_url', 'audio_duration_seconds'];
+    const missingColumns = ['escola_id', 'imagem_urls', 'audiobook_id', 'turma_publico', 'expires_at', 'audio_url', 'audio_duration_seconds', 'arquivos'];
     for (const column of missingColumns) {
       if (Object.hasOwn(payload, column) && isMissingColumnError(error, column, 'comunidade_posts')) {
         const { [column]: _ignored, ...fallbackPayload } = payload;
