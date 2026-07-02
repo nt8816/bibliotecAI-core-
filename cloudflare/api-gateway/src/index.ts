@@ -3307,6 +3307,7 @@ const routes: Record<string, RouteHandler> = {
             select: 'id,titulo,autor,disponivel,escola_id',
             escola_id: `eq.${profile.escola_id}`,
             order: 'titulo.asc',
+            limit: '5000',
           }).toString()}`,
         ),
         supabaseAdminRequest(
@@ -3315,6 +3316,7 @@ const routes: Record<string, RouteHandler> = {
             select: 'id,nome,email,turma,tipo,escola_id',
             escola_id: `eq.${profile.escola_id}`,
             order: 'nome.asc',
+            limit: '5000',
           }).toString()}`,
         ),
         supabaseAdminRequest(
@@ -3323,6 +3325,7 @@ const routes: Record<string, RouteHandler> = {
             select: 'id,livro_id,usuario_id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livros(id,titulo,autor,escola_id),usuarios_biblioteca(id,nome,email,turma,tipo,escola_id)',
             order: 'data_emprestimo.desc',
             'livros.escola_id': `eq.${profile.escola_id}`,
+            limit: '5000',
           }).toString()}`,
         ),
       ]);
@@ -5923,8 +5926,9 @@ const routes: Record<string, RouteHandler> = {
           ? `/rest/v1/livros?${new URLSearchParams({
             select: 'id,disponivel,escola_id',
             escola_id: `eq.${escolaId}`,
+            limit: '5000',
           }).toString()}`
-          : '/rest/v1/livros?select=id,disponivel,escola_id',
+          : '/rest/v1/livros?select=id,disponivel,escola_id&limit=5000',
       ),
       supabaseAdminRequest(
         env,
@@ -5932,8 +5936,9 @@ const routes: Record<string, RouteHandler> = {
           ? `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
             select: 'id,escola_id',
             escola_id: `eq.${escolaId}`,
+            limit: '5000',
           }).toString()}`
-          : '/rest/v1/usuarios_biblioteca?select=id,escola_id',
+          : '/rest/v1/usuarios_biblioteca?select=id,escola_id&limit=5000',
       ),
       supabaseAdminRequest(
         env,
@@ -5941,8 +5946,9 @@ const routes: Record<string, RouteHandler> = {
           ? `/rest/v1/emprestimos?${new URLSearchParams({
             select: 'id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livro_id,livros(titulo,escola_id),usuarios_biblioteca(nome,escola_id)',
             'livros.escola_id': `eq.${escolaId}`,
+            limit: '5000',
           }).toString()}`
-          : '/rest/v1/emprestimos?select=id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livro_id,livros(titulo,escola_id),usuarios_biblioteca(nome,escola_id)',
+          : '/rest/v1/emprestimos?select=id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livro_id,livros(titulo,escola_id),usuarios_biblioteca(nome,escola_id)&limit=5000',
       ),
       supabaseAdminRequest(env, '/rest/v1/tenants?select=id,nome,subdominio,ativo,escola_id'),
       supabaseAdminRequest(env, '/rest/v1/escolas?select=id,nome,gestor_id'),
