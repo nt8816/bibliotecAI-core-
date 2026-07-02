@@ -3322,16 +3322,14 @@ const routes: Record<string, RouteHandler> = {
           `/rest/v1/emprestimos?${new URLSearchParams({
             select: 'id,livro_id,usuario_id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livros(id,titulo,autor,escola_id),usuarios_biblioteca(id,nome,email,turma,tipo,escola_id)',
             order: 'data_emprestimo.desc',
+            'livros.escola_id': `eq.${profile.escola_id}`,
           }).toString()}`,
         ),
       ]);
 
-      const sameSchool = (candidateEscolaId: unknown) => String(candidateEscolaId || '') === String(profile.escola_id || '');
       const livrosArray = ensureArray<Record<string, unknown>>(livros);
       const usuariosArray = ensureArray<Record<string, unknown>>(usuarios);
-      const emprestimosArray = ensureArray<Record<string, unknown>>(emprestimos).filter(
-        (item) => sameSchool(item?.livros?.escola_id) || sameSchool(item?.usuarios_biblioteca?.escola_id),
-      );
+      const emprestimosArray = ensureArray<Record<string, unknown>>(emprestimos);
 
       const livrosDisponiveisArray = livrosArray.filter((item) => Boolean(item?.disponivel));
       const livroTituloById = new Map(livrosArray.map((item) => [String(item?.id || '').trim(), String(item?.titulo || 'Desconhecido')]));
@@ -5942,6 +5940,7 @@ const routes: Record<string, RouteHandler> = {
         isSchoolScopedDashboard
           ? `/rest/v1/emprestimos?${new URLSearchParams({
             select: 'id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livro_id,livros(titulo,escola_id),usuarios_biblioteca(nome,escola_id)',
+            'livros.escola_id': `eq.${escolaId}`,
           }).toString()}`
           : '/rest/v1/emprestimos?select=id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livro_id,livros(titulo,escola_id),usuarios_biblioteca(nome,escola_id)',
       ),
@@ -5959,7 +5958,7 @@ const routes: Record<string, RouteHandler> = {
       ? usuarios.filter((item) => sameSchool(item?.escola_id))
       : usuarios;
     const emprestimosBase = isSchoolScopedDashboard
-      ? emprestimos.filter((item) => sameSchool(item?.livros?.escola_id) || sameSchool(item?.usuarios_biblioteca?.escola_id))
+      ? emprestimos.filter((item) => sameSchool(item?.livros?.escola_id))
       : emprestimos;
 
     const emprestimosAtivos = emprestimosBase.filter((item) => item?.status === 'ativo');
@@ -5984,7 +5983,7 @@ const routes: Record<string, RouteHandler> = {
     const monthlyMap = new Map(
       monthlyKeys.map((key) => [key, { key, mes: formatMonthLabel(`${key}-01T12:00:00`), emprestimos: 0 }]),
     );
-    const livroCountMap = new Map<string, number>();
+    const livroCountMap = new Map<string, { titulo: string; count: number }>();
 
     emprestimosBase.forEach((emp) => {
       const loanDate = emp?.data_emprestimo || emp?.created_at;
@@ -5995,8 +5994,13 @@ const routes: Record<string, RouteHandler> = {
         }
       }
 
-      const livroNome = emp?.livros?.titulo || 'Livro sem titulo';
-      livroCountMap.set(livroNome, (livroCountMap.get(livroNome) || 0) + 1);
+      const livroId = String(emp?.livro_id || '').trim();
+      const livroTitulo = emp?.livros?.titulo || 'Livro sem titulo';
+      if (livroId) {
+        const current = livroCountMap.get(livroId) || { titulo: livroTitulo, count: 0 };
+        current.count += 1;
+        livroCountMap.set(livroId, current);
+      }
     });
 
     const tenantByEscolaId = new Map(
@@ -6073,8 +6077,8 @@ const routes: Record<string, RouteHandler> = {
       },
       atividades,
       emprestimosPorMes: Array.from(monthlyMap.values()),
-      livrosMaisEmprestados: Array.from(livroCountMap.entries())
-        .map(([titulo, emprestimos]) => ({ titulo, emprestimos }))
+      livrosMaisEmprestados: Array.from(livroCountMap.values())
+        .map((item) => ({ titulo: item.titulo, emprestimos: item.count }))
         .sort((a, b) => b.emprestimos - a.emprestimos)
         .slice(0, 5),
       escolasCadastradas,
