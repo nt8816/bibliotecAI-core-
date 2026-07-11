@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Copy, Building2, Link as LinkIcon, Power, KeyRound, ExternalLink, Sparkles, Volume2, Trash2 } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -51,7 +51,6 @@ async function insertCommunityPostCompat(payload) {
 function supportsWildcardSubdomain(baseDomain) {
   const normalized = String(baseDomain || '').trim().toLowerCase();
   if (!normalized) return false;
-  if (normalized.endsWith('.vercel.app')) return false;
   if (normalized === 'localhost' || normalized.endsWith('.localhost')) return false;
   return true;
 }
@@ -654,7 +653,7 @@ export default function AdminTenants() {
 
               {!wildcardEnabled && (
                 <div className="md:col-span-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-muted-foreground">
-                  `vercel.app` não suporta wildcard de subdomínio para onboarding de tenant.
+                  O domínio base não suporta wildcard de subdomínio para onboarding de tenant.
                   O sistema vai gerar link compatível no domínio atual com `?tenant=...`.
                 </div>
               )}
