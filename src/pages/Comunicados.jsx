@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { AudioLines, BellRing, CheckCircle2, Download, Eye, FileQuestion, FileStack, FileText, ImagePlus, Mic, Megaphone, PauseCircle, Plus, Send, Trash2, Upload, Users, X } from 'lucide-react';
@@ -1146,7 +1146,18 @@ export default function Comunicados() {
         audio_duration_seconds: audioFile?.durationSeconds || null,
       };
 
-      const result = await createComunidadePost(payload, { roleHint: profileRoleHint });
+      let result;
+      try {
+        result = await createComunidadePost(payload, { roleHint: profileRoleHint });
+      } catch (firstError) {
+        const msg = `${firstError?.message || ''} ${firstError?.details || ''}`.toLowerCase();
+        if (msg.includes("could not find the 'arquivos' column")) {
+          const { arquivos: _arquivos, ...payloadWithoutArquivos } = payload;
+          result = await createComunidadePost(payloadWithoutArquivos, { roleHint: profileRoleHint });
+        } else {
+          throw firstError;
+        }
+      }
       const createdPost = await resolveComunicadoMedia({
         id: result?.postId || crypto.randomUUID(),
         ...payload,
