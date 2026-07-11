@@ -40,8 +40,6 @@ export const COLLECTIONS = {
   SUPER_ADMIN_LOGIN_ATTEMPTS: 'super_admin_login_attempts',
   GESTORES: 'gestores',
   USUARIOS: 'usuarios',
-  ANALYTICS_EVENTS: 'analytics_events',
-  ANALYTICS_SESSIONS: 'analytics_sessions',
 };
 
 export function col(name) {

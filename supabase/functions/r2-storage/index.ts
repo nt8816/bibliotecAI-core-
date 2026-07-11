@@ -1,18 +1,25 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", "http://localhost:5173", "http://localhost:3000"];
+
+function getCorsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get("Origin") || "";
+  const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": safeOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-user-access-token",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Max-Age": "86400",
+  };
+}
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from 'npm:@aws-sdk/client-s3';
 import { getSignedUrl } from 'npm:@aws-sdk/s3-request-presigner';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-user-access-token',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Max-Age': '86400',
-};
 
-const jsonResponse = (body: unknown, status = 200) =>
+const jsonResponse = (body: unknown, status = 200, request?: Request) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' },
   });
 
 type Payload = {
@@ -38,7 +45,10 @@ function buildPublicUrl(baseUrl: string, objectKey: string) {
 function sanitizeObjectKey(objectKey: string) {
   return String(objectKey || '')
     .replace(/^\/+/, '')
-    .replace(/\.\./g, '')
+    .replace(/%/g, '')       // Remove URL-encoded characters
+    .replace(/\.\./g, '')    // Remove path traversal
+    .replace(/\0/g, '')      // Remove null bytes
+    .replace(/[^a-zA-Z0-9._/\-]/g, '_')  // Allow only safe characters
     .trim();
 }
 
@@ -127,7 +137,7 @@ async function getSupabaseRestServiceToken(serviceRoleKey: string) {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders });
+    return new Response(null, { status: 204, headers: getCorsHeaders(req) });
   }
 
   try {

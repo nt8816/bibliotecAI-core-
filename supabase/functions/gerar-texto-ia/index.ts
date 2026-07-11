@@ -1,8 +1,14 @@
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Content-Type": "application/json",
-};
+const ALLOWED_ORIGINS = ['https://bibliotecai.com.br', 'https://app.bibliotecai.com.br', 'http://localhost:5173', 'http://localhost:3000'];
+
+function getCorsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get('Origin') || '';
+  const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": safeOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Content-Type": "application/json",
+  };
+}
 
 const DEFAULT_TEXT_MODEL = "gemini-2.0-flash";
 class HttpError extends Error {
@@ -217,19 +223,34 @@ const callGemini = async (
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: getCorsHeaders(req) });
   }
 
   try {
     if (req.method !== "POST") {
-      return new Response(JSON.stringify({ error: "Método não permitido." }), { status: 405, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: "Método não permitido." }), { status: 405, headers: getCorsHeaders(req) });
+    }
+
+    // Auth check — require valid JWT
+    const authHeader = req.headers.get("Authorization") || "";
+    const token = authHeader.replace("Bearer ", "").trim();
+    if (!token) {
+      return new Response(JSON.stringify({ error: "Autenticacao necessaria." }), { status: 401, headers: getCorsHeaders(req) });
+    }
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const authClient = createClient(supabaseUrl, anonKey, { auth: { autoRefreshToken: false, persistSession: false } });
+    const { data: { user }, error: authError } = await authClient.auth.getUser(token);
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Token invalido ou expirado." }), { status: 401, headers: getCorsHeaders(req) });
     }
 
     const apiKey = Deno.env.get("GEMINI_API_KEY")?.trim();
     if (!apiKey) {
       return new Response(JSON.stringify({ error: "Secret GEMINI_API_KEY nao configurado." }), {
         status: 500,
-        headers: corsHeaders,
+        headers: getCorsHeaders(req),
       });
     }
 
@@ -241,7 +262,7 @@ Deno.serve(async (req) => {
     if (!config.userPrompt) {
       return new Response(JSON.stringify({ error: "Entrada invalida para gerar texto." }), {
         status: 400,
-        headers: corsHeaders,
+        headers: getCorsHeaders(req),
       });
     }
 
@@ -255,11 +276,11 @@ Deno.serve(async (req) => {
         text,
         data: parsed,
       }),
-      { status: 200, headers: corsHeaders },
+      { status: 200, headers: getCorsHeaders(req) },
     );
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;
     const message = error instanceof Error ? error.message : "Erro desconhecido";
-    return new Response(JSON.stringify({ error: message }), { status, headers: corsHeaders });
+    return new Response(JSON.stringify({ error: message }), { status, headers: getCorsHeaders(req) });
   }
 });

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 180" fill="none">
+  <rect width="280" height="180" rx="16" fill="#FBE9E7"/>
+  <circle cx="140" cy="75" r="40" fill="#E65100" fill-opacity="0.06" stroke="#E65100" stroke-width="1.5"/>
+  <path d="M140 45c-16.5 0-30 10-30 25v15c0 5 4 10 10 12l20 8 20-8c6-2 10-7 10-12V70c0-15-13.5-25-30-25z" fill="#E65100" fill-opacity="0.08" stroke="#E65100" stroke-width="1.5"/>
+  <path d="M128 75l8 8 16-16" stroke="#E65100" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="140" cy="75" r="50" fill="none" stroke="#E65100" stroke-width="1" stroke-dasharray="4 4" opacity="0.2"/>
+  <rect x="40" y="130" width="70" height="30" rx="8" fill="#E65100" fill-opacity="0.04" stroke="#E65100" stroke-width="1"/>
+  <text x="75" y="148" text-anchor="middle" fill="#E65100" fill-opacity="0.4" font-size="7" font-weight="700" font-family="sans-serif">Criptografia</text>
+  <rect x="120" y="130" width="45" height="30" rx="8" fill="#E65100" fill-opacity="0.04" stroke="#E65100" stroke-width="1"/>
+  <text x="142" y="148" text-anchor="middle" fill="#E65100" fill-opacity="0.4" font-size="7" font-weight="700" font-family="sans-serif">LGPD</text>
+  <rect x="175" y="130" width="65" height="30" rx="8" fill="#E65100" fill-opacity="0.04" stroke="#E65100" stroke-width="1"/>
+  <text x="207" y="148" text-anchor="middle" fill="#E65100" fill-opacity="0.4" font-size="7" font-weight="700" font-family="sans-serif">Privacidade</text>
+</svg>

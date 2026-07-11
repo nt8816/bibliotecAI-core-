@@ -1,4 +1,4 @@
-﻿import {
+import {
   LayoutDashboard,
   BookOpen,
   Users,
@@ -18,6 +18,7 @@
   Settings,
   ShieldCheck,
   ClipboardList,
+  BarChart2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -67,6 +68,7 @@ export function AppSidebar() {
         { title: 'Tenants', url: '/admin/tenants', icon: Building2 },
         { title: 'Super Admins', url: '/admin/super-admins', icon: ShieldCheck },
         { title: 'Reclamacoes', url: '/reclamacoes', icon: Bell },
+        { title: 'Analytics', url: '/analytics', icon: BarChart2 },
       ];
     }
 

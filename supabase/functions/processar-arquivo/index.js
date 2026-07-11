@@ -1,16 +1,25 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", "http://localhost:5173", "http://localhost:3000"];
+
+function getCorsHeaders(request) {
+  const origin = request.headers.get("Origin") || "";
+  const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": safeOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-user-access-token",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Max-Age": "86400",
+  };
+}
+
 
 const MAX_BASE64_LENGTH = 8 * 1024 * 1024; // ~6MB binary payload
 
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: getCorsHeaders(request || new Request("http://localhost")) });
   }
 
   try {
@@ -19,14 +28,14 @@ Deno.serve(async (req) => {
     if (!base64Data) {
       return new Response(
         JSON.stringify({ success: false, error: 'Nenhum dado fornecido' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        { headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' }, status: 400 }
       );
     }
 
     if (typeof base64Data !== 'string' || base64Data.length > MAX_BASE64_LENGTH) {
       return new Response(
         JSON.stringify({ success: false, error: 'Arquivo excede o limite permitido para processamento' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 413 }
+        { headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' }, status: 413 }
       );
     }
 
@@ -36,7 +45,7 @@ Deno.serve(async (req) => {
           success: false,
           error: 'Tipo de arquivo não suportado por este endpoint',
         }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        { headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' }, status: 400 }
       );
     }
 
@@ -97,7 +106,7 @@ Deno.serve(async (req) => {
           if (livros.length > 0) {
             return new Response(
               JSON.stringify({ success: true, livros }),
-              { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+              { headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' }, status: 200 }
             );
           }
         }
@@ -109,7 +118,7 @@ Deno.serve(async (req) => {
           error: 'Não foi possível identificar uma tabela textual no PDF. Use Excel/CSV ou converta o PDF para planilha.',
           suggestion: 'Se o PDF for escaneado (imagem), use OCR antes da importação.',
         }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        { headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' }, status: 400 }
       );
     }
 
@@ -119,14 +128,14 @@ Deno.serve(async (req) => {
         error: 'O processamento de PDF requer OCR. Por favor, converta o PDF para Excel ou CSV antes de importar.',
         suggestion: 'Use ferramentas como Adobe Acrobat, iLovePDF ou SmallPDF para converter o PDF em Excel.',
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' } }
     );
   } catch (error) {
     console.error('Error processing file:', error);
     const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      { headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' }, status: 500 }
     );
   }
 });

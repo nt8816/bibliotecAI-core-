@@ -1,5 +1,4 @@
-﻿const DEFAULT_BASE_URL = 'https://api-bibliotecai.ntn3223.workers.dev';
-const API_BASE_URL = String(import.meta.env.VITE_BIBLIOTECA_AI_API_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
+const API_BASE_URL = String(import.meta.env.VITE_BIBLIOTECA_AI_API_URL || '').replace(/\/+$/, '');
 const TEXT_CACHE_TTL_MS = 10 * 60 * 1000;
 const textResponseCache = new Map();
 

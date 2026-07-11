@@ -6,8 +6,10 @@ compatibility_date = "2026-03-22"
 APP_ENV = "production"
 APP_BASE_DOMAIN = "bibliotecai.com.br"
 API_BASE_URL = "https://bibliotecai-api-gateway.bibliotecai.workers.dev"
+SUPABASE_URL = "https://dhjkjwkitufsvhlhcsec.supabase.co"
+SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRoamtqd2tpdHVmc3ZobGhjc2VjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0NDA4MjIsImV4cCI6MjA4NzAxNjgyMn0.kEJaYvTaPwC0pxfzt06lBeKa5EKAIPQX5s4C1mXy0W8"
 
-# Ajuste estes bindings quando a API for conectada ao ambiente real.
-# Exemplo:
-# R2_BUCKET = "bibliotec-ia"
-# API_BASE_URL = "https://api.seudominio.com"
+# Secrets configurados via: wrangler secret put <NAME>
+# SUPABASE_SERVICE_ROLE_KEY
+# SUPABASE_JWT_SECRET
+# HANDOFF_ENCRYPTION_SECRET

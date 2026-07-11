@@ -1,8 +1,14 @@
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Content-Type": "application/json",
-};
+const ALLOWED_ORIGINS = ['https://bibliotecai.com.br', 'https://app.bibliotecai.com.br', 'http://localhost:5173', 'http://localhost:3000'];
+
+function getCorsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get('Origin') || '';
+  const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": safeOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Content-Type": "application/json",
+  };
+}
 
 const HF_DEFAULT_MODEL = "black-forest-labs/FLUX.1-dev";
 const HF_DEFAULT_PROVIDER = "fal-ai";
@@ -148,12 +154,27 @@ const loadSupportedModels = async (apiKey: string): Promise<string[]> => {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: getCorsHeaders(req) });
   }
 
   try {
     if (req.method !== "POST") {
-      return new Response(JSON.stringify({ error: "Método não permitido." }), { status: 405, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: "Método não permitido." }), { status: 405, headers: getCorsHeaders(req) });
+    }
+
+    // Auth check — require valid JWT
+    const authHeader = req.headers.get("Authorization") || "";
+    const token = authHeader.replace("Bearer ", "").trim();
+    if (!token) {
+      return new Response(JSON.stringify({ error: "Autenticacao necessaria." }), { status: 401, headers: getCorsHeaders(req) });
+    }
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const authClient = createClient(supabaseUrl, anonKey, { auth: { autoRefreshToken: false, persistSession: false } });
+    const { data: { user }, error: authError } = await authClient.auth.getUser(token);
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Token invalido ou expirado." }), { status: 401, headers: getCorsHeaders(req) });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -161,7 +182,7 @@ Deno.serve(async (req) => {
     if (!prompt) {
       return new Response(JSON.stringify({ error: "Informe o prompt para gerar a imagem." }), {
         status: 400,
-        headers: corsHeaders,
+        headers: getCorsHeaders(req),
       });
     }
 
@@ -181,7 +202,7 @@ Deno.serve(async (req) => {
 
       try {
         const result = await generateWithHuggingFace(hfToken, prompt, model, provider, numInferenceSteps);
-        return new Response(JSON.stringify(result), { status: 200, headers: corsHeaders });
+        return new Response(JSON.stringify(result), { status: 200, headers: getCorsHeaders(req) });
       } catch (hfError) {
         hfErrorMessage = hfError instanceof Error ? hfError.message : "Erro desconhecido no Hugging Face";
       }
@@ -198,7 +219,7 @@ Deno.serve(async (req) => {
     if (!geminiApiKey) {
       return new Response(JSON.stringify({ error: hfErrorMessage || "Secret HF_TOKEN ou GEMINI_API_KEY nao configurado." }), {
         status: 500,
-        headers: corsHeaders,
+        headers: getCorsHeaders(req),
       });
     }
 
@@ -232,7 +253,7 @@ Deno.serve(async (req) => {
       if (response.ok) {
         const imageDataUrl = isImagenModel ? extractImagenDataUrl(payload) : extractGeminiImageDataUrl(payload);
         if (imageDataUrl) {
-          return new Response(JSON.stringify({ imageDataUrl, model }), { status: 200, headers: corsHeaders });
+          return new Response(JSON.stringify({ imageDataUrl, model }), { status: 200, headers: getCorsHeaders(req) });
         }
 
         errors.push(`${model}: respondeu sem imagem`);
@@ -248,20 +269,20 @@ Deno.serve(async (req) => {
     if (errors.some((e) => e.includes(": 429"))) {
       return new Response(
         JSON.stringify({ error: "Limite de cota da API de imagens atingido. Verifique faturamento/limites no Google AI Studio." }),
-        { status: 429, headers: corsHeaders },
+        { status: 429, headers: getCorsHeaders(req) },
       );
     }
 
     if (hfErrorMessage && errors.length === 0) {
-      return new Response(JSON.stringify({ error: hfErrorMessage }), { status: 502, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: hfErrorMessage }), { status: 502, headers: getCorsHeaders(req) });
     }
 
     return new Response(
       JSON.stringify({ error: `Não foi possível gerar imagem. Tentativas: ${[hfErrorMessage, ...errors].filter(Boolean).join(" | ") || "sem detalhes"}` }),
-      { status: 502, headers: corsHeaders },
+      { status: 502, headers: getCorsHeaders(req) },
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro desconhecido";
-    return new Response(JSON.stringify({ error: message }), { status: 500, headers: corsHeaders });
+    return new Response(JSON.stringify({ error: message }), { status: 500, headers: getCorsHeaders(req) });
   }
 });

@@ -1,13 +1,19 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const ALLOWED_ORIGINS = ['https://bibliotecai.com.br', 'https://app.bibliotecai.com.br', 'http://localhost:5173', 'http://localhost:3000'];
 
-const jsonResponse = (body: Record<string, unknown>, status = 200) =>
+function getCorsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get('Origin') || '';
+  const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': safeOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  };
+}
+
+const jsonResponse = (body: Record<string, unknown>, status = 200, request?: Request) =>
   new Response(JSON.stringify(body), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...getCorsHeaders(request || new Request('http://localhost')), 'Content-Type': 'application/json' },
     status,
   });
 
@@ -32,7 +38,7 @@ async function findAuthUserByEmail(adminClient: ReturnType<typeof createClient>,
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: getCorsHeaders(req) });
   }
 
   try {
@@ -40,7 +46,25 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
     if (!supabaseUrl || !serviceRoleKey) {
-      return jsonResponse({ success: false, error: 'Configuracao incompleta do servidor' }, 500);
+      return jsonResponse({ success: false, error: 'Configuracao incompleta do servidor' }, 500, req);
+    }
+
+    // Auth check — require gestor, bibliotecaria, or super_admin
+    const authHeader = req.headers.get('Authorization') || '';
+    const token = authHeader.replace('Bearer ', '').trim();
+    if (!token) {
+      return jsonResponse({ success: false, error: 'Autenticacao necessaria' }, 401, req);
+    }
+    const authClient = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
+    const { data: { user }, error: authError } = await authClient.auth.getUser(token);
+    if (authError || !user) {
+      return jsonResponse({ success: false, error: 'Token invalido ou expirado' }, 401, req);
+    }
+    const { data: callerRoles } = await authClient.from('user_roles').select('role').eq('user_id', user.id);
+    const allowedRoles = ['gestor', 'bibliotecaria', 'super_admin'];
+    const hasAccess = (callerRoles || []).some((r) => allowedRoles.includes(r.role));
+    if (!hasAccess) {
+      return jsonResponse({ success: false, error: 'Sem permissao para ativar contas' }, 403, req);
     }
 
     let payload: Record<string, unknown>;

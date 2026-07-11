@@ -1,15 +1,9 @@
-﻿import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-user-access-token',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Max-Age': '86400',
-};
 
-const jsonResponse = (body, status = 200) =>
+const jsonResponse = (body, status = 200, request) =>
   new Response(JSON.stringify(body), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' },
     status,
   });
 
@@ -94,7 +88,7 @@ async function getSupabaseAdminApiKey(serviceRoleKey) {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders, status: 204 });
+    return new Response(null, { headers: getCorsHeaders(request || new Request("http://localhost")), status: 204 });
   }
 
   try {
@@ -196,7 +190,6 @@ Deno.serve(async (req) => {
       gestor_id: gestorProfile.id,
       gestor_nome: gestorProfile.nome,
       gestor_email: gestorProfile.email,
-      senha_temporaria: novaSenha,
     });
   } catch (error) {
     console.error('redefinir-senha-gestor error', error);
