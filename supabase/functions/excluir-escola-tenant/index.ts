@@ -68,6 +68,17 @@ Deno.serve(async (req) => {
     hasSuperAdminRole = Array.isArray(roles)
       && roles.some((item) => String(item?.role || '').trim().toLowerCase() === 'super_admin');
 
+    if (hasSuperAdminRole) {
+      const { data: saAccount } = await adminClient
+        .from('super_admin_accounts')
+        .select('id, ativo, bloqueado')
+        .eq('auth_user_id', user.id)
+        .maybeSingle();
+      if (!saAccount || saAccount.ativo === false || saAccount.bloqueado === true) {
+        return jsonResponse({ error: 'Conta de super admin inativa ou bloqueada.' }, 403);
+      }
+    }
+
     if (!hasSuperAdminRole) {
       return jsonResponse({ error: 'Apenas o super admin pode excluir escolas.' }, 403);
     }

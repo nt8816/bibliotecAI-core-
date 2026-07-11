@@ -34,6 +34,19 @@ async function findAuthUserByEmail(adminClient: ReturnType<typeof createClient>,
   return data?.users?.[0] || null;
 }
 
+async function checkRateLimit(supabaseAdmin: any, key: string, limit = 10, windowSeconds = 60): Promise<boolean> {
+  try {
+    const { data } = await supabaseAdmin.rpc('check_ai_rate_limit', {
+      _key: `ratelimit:${key}`,
+      _limit: limit,
+      _window_seconds: windowSeconds,
+    }).single();
+    return data === true;
+  } catch {
+    return true; // fail open if rate limit check fails
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: getCorsHeaders(req) });
@@ -64,6 +77,12 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || 'unknown';
+    const rateKey = `${clientIp}:provisionar-aluno`;
+    if (!(await checkRateLimit(adminClient, rateKey, 10, 60))) {
+      return jsonResponse({ success: false, error: 'Limite de requisicoes atingido. Tente novamente em alguns minutos.' }, 429);
+    }
 
     const { data: callerUserData, error: callerUserError } = await callerClient.auth.getUser();
     const callerId = callerUserData?.user?.id;

@@ -37,7 +37,7 @@ export interface Env {
 
 type RouteHandler = (request: Request, env: Env) => Promise<Response> | Response;
 
-const DEFAULT_CORS_ALLOW_HEADERS = 'authorization, content-type, x-user-access-token, x-profile-role-hint';
+const DEFAULT_CORS_ALLOW_HEADERS = 'authorization, content-type, x-user-access-token';
 const DEFAULT_CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
 
 let firebaseAccessTokenCache: { token: string; expiresAt: number } | null = null;
@@ -140,12 +140,30 @@ function getUserToken(request: Request) {
   return String(bearerToken || customToken).trim();
 }
 
-function parseJwtPayload(token: string) {
+async function parseJwtPayload(token: string, env: Env) {
+  const secret = String(env.SUPABASE_JWT_SECRET || '').trim();
+  if (!secret) return null;
+
   const parts = String(token || '').split('.');
-  if (parts.length < 2) return null;
+  if (parts.length !== 3) return null;
 
   try {
-    const decoded = base64UrlDecode(parts[1]);
+    const [headerB64, payloadB64, signatureB64] = parts;
+    const signingInput = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify'],
+    );
+
+    const signature = base64UrlDecode(signatureB64);
+    const valid = await crypto.subtle.verify('HMAC', key, signature, signingInput);
+    if (!valid) return null;
+
+    const decoded = base64UrlDecode(payloadB64);
     return JSON.parse(new TextDecoder().decode(decoded));
   } catch {
     return null;
@@ -450,7 +468,7 @@ async function isAuthorizedSuperAdminRequest(
   }
 
   const token = getUserToken(request);
-  const jwtPayload = parseJwtPayload(token);
+  const jwtPayload = await parseJwtPayload(token, env);
   const issuedAtSeconds = Number(jwtPayload?.iat || 0);
   if (!Number.isFinite(issuedAtSeconds) || issuedAtSeconds <= 0) {
     return false;
@@ -542,8 +560,7 @@ async function getUserProfileForRequest(
 
   const payload = await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${params.toString()}`);
   const profiles = Array.isArray(payload) ? payload : [];
-  const roleHint = normalizeProfileRoleHint(request.headers.get('x-profile-role-hint'));
-  const preferred = [roleHint, ...preferredTypes.map((item) => normalizeProfileRoleHint(item))].filter(Boolean);
+  const preferred = preferredTypes.map((item) => normalizeProfileRoleHint(item)).filter(Boolean);
 
   const profile = preferred
     .map((tipo) => profiles.find((item) => String(item?.tipo || '').trim().toLowerCase() === tipo))
@@ -1880,9 +1897,10 @@ async function getTenantBySubdomain(subdomain: string, env: Env) {
   };
 }
 
-function normalizeSessionPayloadForHandoff(
+async function normalizeSessionPayloadForHandoff(
   session: unknown,
-  authenticatedUserId?: string | null,
+  authenticatedUserId: string | null | undefined,
+  env: Env,
 ) {
   const source = session && typeof session === 'object' && 'session' in session
     ? (session as Record<string, unknown>).session
@@ -1895,7 +1913,7 @@ function normalizeSessionPayloadForHandoff(
   const refreshToken = String(rawSession.refresh_token || '').trim();
   if (!accessToken || !refreshToken) return null;
 
-  const jwtPayload = parseJwtPayload(accessToken);
+  const jwtPayload = await parseJwtPayload(accessToken, env);
   const sessionUser = rawSession.user && typeof rawSession.user === 'object'
     ? rawSession.user as Record<string, unknown>
     : null;
@@ -3897,7 +3915,7 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const body = await request.json().catch(() => ({}));
-    const incomingSession = normalizeSessionPayloadForHandoff(body?.session, String(user.id));
+    const incomingSession = await normalizeSessionPayloadForHandoff(body?.session, String(user.id), env);
     if (!incomingSession?.access_token || !incomingSession?.refresh_token) {
       return jsonResponse({ success: false, error: 'Sessao atual invalida para o redirecionamento seguro.' }, 400);
     }
@@ -3921,7 +3939,7 @@ const routes: Record<string, RouteHandler> = {
       );
     }
 
-    const refreshedSession = normalizeSessionPayloadForHandoff(refreshPayload, String(user.id));
+    const refreshedSession = await normalizeSessionPayloadForHandoff(refreshPayload, String(user.id), env);
     if (!refreshedSession?.access_token || !refreshedSession?.refresh_token) {
       return jsonResponse({ success: false, error: 'Sessao renovada invalida para o redirecionamento seguro.' }, 400);
     }
@@ -4010,7 +4028,7 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const decryptedSessionPayload = await decryptHandoffSessionPayload(handoff.session_payload, env).catch(() => null);
-    const session = normalizeSessionPayloadForHandoff(decryptedSessionPayload, String(handoff.user_id || ''));
+    const session = await normalizeSessionPayloadForHandoff(decryptedSessionPayload, String(handoff.user_id || ''), env);
     if (!session?.access_token || !session?.refresh_token) {
       return jsonResponse({ success: false, error: 'Sessao vinculada ao handoff esta invalida.' }, 410);
     }

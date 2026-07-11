@@ -7,6 +7,7 @@ APP_ENV = "production"
 APP_BASE_DOMAIN = "bibliotecai.com.br"
 API_BASE_URL = "https://bibliotecai-api-gateway.bibliotecai.workers.dev"
 SUPABASE_URL = "https://dhjkjwkitufsvhlhcsec.supabase.co"
+# SUPABASE_PUBLISHABLE_KEY is the public anon key - safe to commit (PostgREST access gated by RLS)
 SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRoamtqd2tpdHVmc3ZobGhjc2VjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0NDA4MjIsImV4cCI6MjA4NzAxNjgyMn0.kEJaYvTaPwC0pxfzt06lBeKa5EKAIPQX5s4C1mXy0W8"
 
 # Secrets configurados via: wrangler secret put <NAME>

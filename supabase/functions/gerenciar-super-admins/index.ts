@@ -107,6 +107,18 @@ Deno.serve(async (req) => {
     }
 
     const isSuperAdmin = (callerRoles || []).some((item) => item.role === 'super_admin');
+
+    if (isSuperAdmin) {
+      const { data: saAccount } = await adminClient
+        .from('super_admin_accounts')
+        .select('id, ativo, bloqueado')
+        .eq('auth_user_id', caller.id)
+        .maybeSingle();
+      if (!saAccount || saAccount.ativo === false || saAccount.bloqueado === true) {
+        return jsonResponse({ success: false, error: 'Conta de super admin inativa ou bloqueada.' }, 403);
+      }
+    }
+
     if (!isSuperAdmin) {
       return jsonResponse({ success: false, error: 'Sem permissao para gerenciar Super Admins' }, 403);
     }

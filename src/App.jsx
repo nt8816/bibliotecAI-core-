@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { Toaster } from '@/components/ui/toaster';
 import { Toaster as Sonner } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -47,17 +47,6 @@ const PainelProfessor = lazy(() => import('./pages/professor/PainelProfessor'));
 const RelatoriosLeitura = lazy(() => import('./pages/professor/RelatoriosLeitura'));
 const PainelAluno = lazy(() => import('./pages/aluno/PainelAluno'));
 const RankingAluno = lazy(() => import('./pages/aluno/RankingAluno'));
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 60 * 1000,
-      gcTime: 10 * 60 * 1000,
-      refetchOnWindowFocus: false,
-      retry: 1,
-    },
-  },
-});
 
 function isLegacyDisabledHost() {
   if (typeof window === 'undefined') return false;
@@ -449,8 +438,20 @@ function AppRoutes() {
   );
 }
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
+const App = () => {
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 60 * 1000,
+        gcTime: 10 * 60 * 1000,
+        refetchOnWindowFocus: false,
+        retry: 1,
+      },
+    },
+  }));
+
+  return (
+    <QueryClientProvider client={queryClient}>
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <TenantProvider>
         <AuthProvider>
@@ -480,6 +481,7 @@ const App = () => (
       </TenantProvider>
     </ThemeProvider>
   </QueryClientProvider>
-);
+  );
+};
 
 export default App;

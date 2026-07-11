@@ -22,6 +22,19 @@ const jsonResponse = (body, status = 200, request) =>
 
 const MATRICULA_REGEX = /^[A-Za-z0-9._-]{6,32}$/;
 
+async function checkRateLimit(supabaseAdmin, key, limit = 10, windowSeconds = 60) {
+  try {
+    const { data } = await supabaseAdmin.rpc('check_ai_rate_limit', {
+      _key: `ratelimit:${key}`,
+      _limit: limit,
+      _window_seconds: windowSeconds,
+    }).single();
+    return data === true;
+  } catch (_err) {
+    return true; // fail open if rate limit check fails
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: getCorsHeaders(request || new Request("http://localhost")) });
@@ -49,6 +62,12 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || 'unknown';
+    const rateKey = `${clientIp}:provisionar-aluno`;
+    if (!(await checkRateLimit(adminClient, rateKey, 10, 60))) {
+      return jsonResponse({ success: false, error: 'Limite de requisicoes atingido. Tente novamente em alguns minutos.' }, 429);
+    }
 
     const { data: callerUserData, error: callerUserError } = await callerClient.auth.getUser();
     const callerId = callerUserData?.user?.id;

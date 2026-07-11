@@ -23,6 +23,19 @@ const jsonResponse = (body, status = 200, request) =>
 
 const TOKEN_REGEX = /^[a-f0-9]{32,128}$/;
 
+async function checkRateLimit(supabaseAdmin: any, key: string, limit = 10, windowSeconds = 60): Promise<boolean> {
+  try {
+    const { data } = await supabaseAdmin.rpc('check_ai_rate_limit', {
+      _key: `ratelimit:${key}`,
+      _limit: limit,
+      _window_seconds: windowSeconds,
+    }).single();
+    return data === true;
+  } catch {
+    return true; // fail open if rate limit check fails
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: getCorsHeaders(request || new Request("http://localhost")) });
@@ -79,6 +92,12 @@ Deno.serve(async (req) => {
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || 'unknown';
+    const rateKey = `${clientIp}:registrar-gestor`;
+    if (!(await checkRateLimit(supabaseAdmin, rateKey, 10, 60))) {
+      return jsonResponse({ success: false, error: 'Limite de requisicoes atingido. Tente novamente em alguns minutos.' }, 429);
+    }
 
     const { data: inviteCtx, error: inviteCtxError } = await supabaseCaller
       .rpc('get_tenant_invite_context', { _token: normalizedToken })
