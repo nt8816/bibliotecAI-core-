@@ -1,5 +1,17 @@
-﻿import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+const ALLOWED_ORIGINS = ['https://bibliotecai.com.br', 'https://app.bibliotecai.com.br', 'http://localhost:5173', 'http://localhost:3000'];
+
+function getCorsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get('Origin') || '';
+  const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': safeOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-user-access-token',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Max-Age': '86400',
+  };
+}
 
 const jsonResponse = (body: unknown, status = 200, request?: Request) =>
   new Response(JSON.stringify(body), {
@@ -8,7 +20,7 @@ const jsonResponse = (body: unknown, status = 200, request?: Request) =>
   });
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(request || new Request("http://localhost")) });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(req) });
 
   try {
     if (req.method !== 'POST') {
@@ -50,7 +62,7 @@ Deno.serve(async (req) => {
       .eq('user_id', user.id);
 
     if (rolesError) {
-      return jsonResponse({ error: rolesError.message || 'Não foi possível validar permissões.' }, 403);
+      return jsonResponse({ error: 'Não foi possível validar permissões.' }, 403);
     }
 
     hasSuperAdminRole = Array.isArray(roles)
@@ -77,7 +89,7 @@ Deno.serve(async (req) => {
       });
 
       if (error) {
-        return jsonResponse({ error: error.message || 'Não foi possível excluir a escola.' }, 400);
+        return jsonResponse({ error: 'Erro ao processar exclusao do tenant.' }, 400);
       }
 
       const authUserIds = Array.isArray(data?.auth_user_ids) ? data.auth_user_ids : [];
@@ -89,7 +101,7 @@ Deno.serve(async (req) => {
 
         const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(normalizedUserId);
         if (deleteUserError && !String(deleteUserError.message || '').toLowerCase().includes('user not found')) {
-          authDeleteFailures.push(`${normalizedUserId}: ${deleteUserError.message}`);
+          authDeleteFailures.push(`${normalizedUserId}: Erro ao excluir usuario.`);
         }
       }
 
@@ -112,7 +124,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (escolaError) {
-      return jsonResponse({ error: escolaError.message || 'Não foi possível localizar a escola.' }, 400);
+      return jsonResponse({ error: 'Erro ao localizar escola.' }, 400);
     }
 
     if (!escola) {
@@ -125,7 +137,7 @@ Deno.serve(async (req) => {
       .eq('escola_id', escolaId);
 
     if (usersError) {
-      return jsonResponse({ error: usersError.message || 'Não foi possível carregar os usuários da escola.' }, 400);
+      return jsonResponse({ error: 'Erro ao carregar usuarios.' }, 400);
     }
 
     const authUserIds = Array.isArray(usersData)
@@ -166,7 +178,7 @@ Deno.serve(async (req) => {
           || message.includes('could not find the table');
 
         if (!isMissingTable) {
-          return jsonResponse({ error: tableDeleteError.message || `Não foi possível limpar ${tableName}.` }, 400);
+          return jsonResponse({ error: 'Erro ao limpar dados da tabela.' }, 400);
         }
       }
     }
@@ -177,7 +189,7 @@ Deno.serve(async (req) => {
       .eq('escola_id', escolaId);
 
     if (tenantDeleteError) {
-      return jsonResponse({ error: tenantDeleteError.message || 'Não foi possível remover o tenant vinculado.' }, 400);
+      return jsonResponse({ error: 'Erro ao remover tenant.' }, 400);
     }
 
     const { error: escolaDeleteError } = await adminClient
@@ -186,7 +198,7 @@ Deno.serve(async (req) => {
       .eq('id', escolaId);
 
     if (escolaDeleteError) {
-      return jsonResponse({ error: escolaDeleteError.message || 'Não foi possível remover a escola.' }, 400);
+      return jsonResponse({ error: 'Erro ao remover escola.' }, 400);
     }
 
     const authUserIdsToDelete = authUserIds.filter((userId) => userId && userId !== currentUserId);
@@ -194,7 +206,7 @@ Deno.serve(async (req) => {
     for (const userId of authUserIdsToDelete) {
       const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(userId);
       if (deleteUserError && !String(deleteUserError.message || '').toLowerCase().includes('user not found')) {
-        authDeleteFailures.push(`${userId}: ${deleteUserError.message}`);
+        authDeleteFailures.push(`${userId}: Erro ao excluir usuario.`);
       }
     }
 
@@ -209,7 +221,6 @@ Deno.serve(async (req) => {
       auth_delete_failures: authDeleteFailures,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Erro desconhecido';
-    return jsonResponse({ error: message }, 500);
+    return jsonResponse({ error: 'Erro interno ao excluir escola.' }, 500);
   }
 });

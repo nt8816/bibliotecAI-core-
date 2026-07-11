@@ -159,7 +159,7 @@ export function getStats() {
 
   const sectionCounts = {};
   sections.forEach(e => {
-    const key = `${e.data.section}_${e.data.action}`;
+    const key = `${e.data.section}_${e.name.replace('section_', '')}`;
     sectionCounts[key] = (sectionCounts[key] || 0) + 1;
   });
 
@@ -168,7 +168,7 @@ export function getStats() {
     clickCounts[e.data.element] = (clickCounts[e.data.element] || 0) + 1;
   });
 
-  const maxScroll = scrolls.length > 0 ? Math.max(...scrolls.map(e => e.data.depth)) : 0;
+  const maxScroll = scrolls.length > 0 ? Math.max(...scrolls.filter(e => e?.data?.depth != null).map(e => e.data.depth)) : 0;
 
   return {
     totalEvents: events.length,

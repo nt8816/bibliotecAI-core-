@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const ALLOWED_ORIGINS = ['https://bibliotecai.com.br', 'https://app.bibliotecai.com.br', 'http://localhost:5173', 'http://localhost:3000'];
+const isDev = !['production', 'prod'].includes(String(Deno.env.get('SUPABASE_ENV') || '').trim().toLowerCase());
+const ALLOWED_ORIGINS = ['https://bibliotecai.com.br', 'https://app.bibliotecai.com.br', ...(isDev ? ['http://localhost:5173', 'http://localhost:3000'] : [])];
 
 function getCorsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get('Origin') || '';
@@ -17,23 +18,20 @@ const jsonResponse = (body, status = 200, request?: Request) =>
     status,
   });
 
+function generateSecurePassword(length = 16): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => chars[b % chars.length]).join('');
+}
+
 const MATRICULA_REGEX = /^[A-Za-z0-9._-]{6,32}$/;
 const DUPLICATE_EMAIL_MARKERS = ['already been registered', 'already exists', 'already registered'];
 
-async function findAuthUserByEmail(adminClient, email) {
-  let page = 1;
-  const perPage = 1000;
-
-  while (true) {
-    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage });
-    if (error) throw error;
-
-    const users = data?.users || [];
-    const found = users.find((item) => String(item.email || '').toLowerCase() === String(email || '').toLowerCase());
-    if (found) return found;
-    if (users.length < perPage) return null;
-    page += 1;
-  }
+async function findAuthUserByEmail(adminClient: ReturnType<typeof createClient>, email: string) {
+  const { data, error } = await adminClient.auth.admin.listUsers({ filter: `email=eq.${email}` });
+  if (error) throw error;
+  return data?.users?.[0] || null;
 }
 
 Deno.serve(async (req) => {
@@ -113,7 +111,7 @@ Deno.serve(async (req) => {
     }
 
     const authEmail = `${matricula.replace(/\s+/g, '')}@temp.bibliotecai.com`.toLowerCase();
-    const authPassword = matricula;
+    const authPassword = generateSecurePassword();
 
     const { data: existingByMatricula, error: existingError } = await adminClient
       .from('usuarios_biblioteca')
@@ -145,7 +143,7 @@ Deno.serve(async (req) => {
     if (createAuthError) {
       const createAuthMessage = String(createAuthError.message || '').toLowerCase();
       if (!DUPLICATE_EMAIL_MARKERS.some((marker) => createAuthMessage.includes(marker))) {
-        return jsonResponse({ success: false, error: createAuthError.message || 'Não foi possível criar credenciais do aluno' }, 400);
+        return jsonResponse({ success: false, error: 'Não foi possível criar credenciais do aluno' }, 400);
       }
 
       const existingAuthUser = await findAuthUserByEmail(adminClient, authEmail);
@@ -160,7 +158,7 @@ Deno.serve(async (req) => {
       });
 
       if (updateAuthError) {
-        return jsonResponse({ success: false, error: updateAuthError.message || 'Não foi possível atualizar a conta existente do aluno' }, 400);
+        return jsonResponse({ success: false, error: 'Não foi possível atualizar a conta existente do aluno' }, 400);
       }
 
       userId = existingAuthUser.id;
@@ -249,11 +247,11 @@ Deno.serve(async (req) => {
         email: authEmail,
         matricula,
       },
-      message: 'Aluno provisionado com sucesso. As credenciais foram definidas pela matricula.',
+      senha: authPassword,
+      message: 'Aluno provisionado com sucesso.',
     });
   } catch (error) {
     console.error('provisionar-aluno-matricula error', error);
-    const message = error instanceof Error ? error.message : 'Erro desconhecido';
-    return jsonResponse({ success: false, error: message }, 500);
+    return jsonResponse({ success: false, error: 'Erro interno do servidor.' }, 500);
   }
 });

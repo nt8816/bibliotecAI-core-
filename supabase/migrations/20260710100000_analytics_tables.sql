@@ -40,12 +40,15 @@ CREATE INDEX IF NOT EXISTS idx_sessions_started ON analytics_sessions (started_a
 ALTER TABLE analytics_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE analytics_sessions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Service role full access on analytics_events"
-  ON analytics_events FOR ALL
-  USING (true)
-  WITH CHECK (true);
+DROP POLICY IF EXISTS "Service role full access on analytics_events" ON analytics_events;
+DROP POLICY IF EXISTS "Service role full access on analytics_sessions" ON analytics_sessions;
 
-CREATE POLICY "Service role full access on analytics_sessions"
+CREATE POLICY "Service role only access on analytics_events"
+  ON analytics_events FOR ALL
+  USING (current_setting('request.jwt.claims', true)::json->>'role' = 'service_role')
+  WITH CHECK (current_setting('request.jwt.claims', true)::json->>'role' = 'service_role');
+
+CREATE POLICY "Service role only access on analytics_sessions"
   ON analytics_sessions FOR ALL
-  USING (true)
-  WITH CHECK (true);
+  USING (current_setting('request.jwt.claims', true)::json->>'role' = 'service_role')
+  WITH CHECK (current_setting('request.jwt.claims', true)::json->>'role' = 'service_role');

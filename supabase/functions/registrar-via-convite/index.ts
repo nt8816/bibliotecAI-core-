@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", "http://localhost:5173", "http://localhost:3000"];
+const isDev = !['production', 'prod'].includes(String(Deno.env.get('SUPABASE_ENV') || '').trim().toLowerCase());
+const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", ...(isDev ? ['http://localhost:5173', 'http://localhost:3000'] : [])];
 
 function getCorsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get("Origin") || "";
@@ -36,7 +37,7 @@ const releaseTokenReservation = async (supabaseAdmin, tokenId) => {
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: getCorsHeaders(request || new Request("http://localhost")) });
+    return new Response('ok', { headers: getCorsHeaders(req) });
   }
 
   try {
@@ -145,7 +146,7 @@ Deno.serve(async (req) => {
     if (authError) {
       console.error('Auth error:', authError);
       await releaseTokenReservation(supabaseAdmin, tokenData.id);
-      return jsonResponse({ success: false, error: authError.message }, 400);
+      return jsonResponse({ success: false, error: 'Erro ao criar conta de autenticacao.' }, 400);
     }
 
     const userId = authData.user.id;
@@ -279,7 +280,6 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('Error processing registration:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-    return jsonResponse({ success: false, error: errorMessage }, 500);
+    return jsonResponse({ success: false, error: 'Erro interno ao processar registro.' }, 500);
   }
 });

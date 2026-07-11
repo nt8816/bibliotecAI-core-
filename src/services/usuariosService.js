@@ -38,8 +38,12 @@ function isUnsupportedJwtAlgorithmError(error) {
   return message.includes('unsupported jwt algorithm');
 }
 
-export async function fetchUsuariosModuleData() {
-  return requestPlatformApi('/v1/usuarios');
+export async function fetchUsuariosModuleData({ userId, tenantEscolaId } = {}) {
+  const params = new URLSearchParams();
+  if (userId) params.set('userId', userId);
+  if (tenantEscolaId) params.set('escolaId', tenantEscolaId);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return requestPlatformApi(`/v1/usuarios${query}`);
 }
 
 export async function saveProfessorTurmas({ professorId, professorUserId, currentEscolaId, turmas }) {

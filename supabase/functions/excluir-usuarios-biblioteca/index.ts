@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", "http://localhost:5173", "http://localhost:3000"];
+const isDev = !['production', 'prod'].includes(String(Deno.env.get('SUPABASE_ENV') || '').trim().toLowerCase());
+const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", ...(isDev ? ['http://localhost:5173', 'http://localhost:3000'] : [])];
 
 function getCorsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get("Origin") || "";
@@ -275,7 +276,7 @@ Deno.serve(async (req) => {
     }
 
     if (authDeleteFailures.length > 0) {
-      return jsonResponse({ success: false, error: `Falha ao excluir contas de autenticacao: ${authDeleteFailures.join(' | ')}` }, 500);
+      return jsonResponse({ success: false, error: 'Falha ao excluir contas de autenticacao.' }, 500);
     }
 
     const profileIdsToDelete = foundProfiles
@@ -304,7 +305,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('excluir-usuarios-biblioteca error', error);
     return jsonResponse(
-      { success: false, error: error instanceof Error ? error.message : 'Erro inesperado' },
+      { success: false, error: 'Erro interno do servidor.' },
       500,
     );
   }

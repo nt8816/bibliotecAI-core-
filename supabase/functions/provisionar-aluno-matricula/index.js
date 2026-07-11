@@ -204,7 +204,6 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('provisionar-aluno-matricula error', error);
-    const message = error instanceof Error ? error.message : 'Erro desconhecido';
-    return jsonResponse({ success: false, error: message }, 500);
+    return jsonResponse({ success: false, error: 'Erro interno do servidor.' }, 500);
   }
 });

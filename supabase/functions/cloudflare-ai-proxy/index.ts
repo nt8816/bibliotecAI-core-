@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", "http://localhost:5173", "http://localhost:3000"];
+const isDev = !['production', 'prod'].includes(String(Deno.env.get('SUPABASE_ENV') || '').trim().toLowerCase());
+const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", ...(isDev ? ['http://localhost:5173', 'http://localhost:3000'] : [])];
 
 function getCorsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get("Origin") || "";
@@ -273,20 +274,20 @@ Deno.serve(async (req) => {
         },
       });
 
-      if (contentType.includes('application/json')) {
-        const err = await upstream.json().catch(() => ({}));
-        return jsonResponse(err, upstream.status);
-      }
-      const text = await upstream.text().catch(() => '');
-      return jsonResponse({ error: text || `Erro upstream HTTP ${upstream.status}` }, upstream.status);
+      return jsonResponse({ error: 'Servico de IA temporariamente indisponivel.' }, upstream.status);
     }
 
     if (contentType.includes('application/json')) {
       const data = await upstream.json().catch(() => ({}));
       return new Response(JSON.stringify(redactObject(data)), {
         status: 200,
-        headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' },
+        headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
       });
+    }
+
+    const contentLength = parseInt(upstream.headers.get('content-length') || '0', 10);
+    if (contentLength > 50 * 1024 * 1024) {
+      return jsonResponse({ error: 'Resposta do servico de IA excede limite de tamanho.' }, 413);
     }
 
     const bytes = await upstream.arrayBuffer();
@@ -298,7 +299,6 @@ Deno.serve(async (req) => {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Erro desconhecido';
-    return jsonResponse({ error: message }, 500);
+    return jsonResponse({ error: 'Erro interno do servidor.' }, 500);
   }
 });

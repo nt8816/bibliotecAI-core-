@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", "http://localhost:5173", "http://localhost:3000"];
+const isDev = !['production', 'prod'].includes(String(Deno.env.get('SUPABASE_ENV') || '').trim().toLowerCase());
+const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", ...(isDev ? ['http://localhost:5173', 'http://localhost:3000'] : [])];
 
 function getCorsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get("Origin") || "";
@@ -121,7 +122,7 @@ Deno.serve(async (req) => {
         .update({ usado_em: null, usado_por: null })
         .eq('id', reservedInvite.id)
         .is('usado_por', null);
-      return jsonResponse({ success: false, error: createUserError.message }, 400);
+      return jsonResponse({ success: false, error: 'Erro ao criar conta de autenticacao.' }, 400);
     }
 
     const userId = createdUser.user.id;
@@ -215,7 +216,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('registrar-gestor-tenant error', error);
     return jsonResponse(
-      { success: false, error: error instanceof Error ? error.message : 'Erro inesperado' },
+      { success: false, error: 'Erro interno do servidor.' },
       500,
     );
   }

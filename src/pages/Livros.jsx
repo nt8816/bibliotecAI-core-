@@ -474,24 +474,6 @@ export default function Livros() {
 
       const usouComplementoIA = !freeSinopse || (!formData.autor && !freeAutor) || (!formData.ano && !freeAno) || (!formData.editora && !freeEditora);
 
-      if (false) {
-        try {
-          const iaPayload = await generateTextWithCloudflare({
-            task: 'sinopse_livro',
-            input: {
-              titulo: formData.titulo,
-              autor: formData.autor,
-              area: formData.area,
-              sinopseBase: formData.sinopse,
-            },
-            fallbackErrorMessage: 'Nao foi possivel gerar sinopse por IA.',
-          });
-          void iaPayload;
-        } catch {
-          void 0;
-        }
-      }
-
       const iaSinopse = String(iaData?.sinopse || '').trim();
       const iaAutor = String(iaData?.autor || '').trim();
       const iaAno = String(iaData?.ano || '').trim();

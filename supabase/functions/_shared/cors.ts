@@ -1,11 +1,11 @@
 // Shared CORS helper for Supabase Edge Functions
 // Replace wildcard '*' with origin validation
 
+const isDev = !['production', 'prod'].includes(String(Deno.env.get('SUPABASE_ENV') || '').trim().toLowerCase());
 const ALLOWED_ORIGINS = [
   'https://bibliotecai.com.br',
   'https://app.bibliotecai.com.br',
-  'http://localhost:5173',
-  'http://localhost:3000',
+  ...(isDev ? ['http://localhost:5173', 'http://localhost:3000'] : []),
 ];
 
 export function getCorsHeaders(request: Request): Record<string, string> {

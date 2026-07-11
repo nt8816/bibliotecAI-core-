@@ -1,5 +1,18 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+const isDev = !['production', 'prod'].includes(String(Deno.env.get('SUPABASE_ENV') || '').trim().toLowerCase());
+const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", ...(isDev ? ['http://localhost:5173', 'http://localhost:3000'] : [])];
+
+function getCorsHeaders(request) {
+  const origin = request.headers.get("Origin") || "";
+  const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": safeOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-user-access-token",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Max-Age": "86400",
+  };
+}
 
 const jsonResponse = (body, status = 200, request) =>
   new Response(JSON.stringify(body), {

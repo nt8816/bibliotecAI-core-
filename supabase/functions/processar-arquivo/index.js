@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", "http://localhost:5173", "http://localhost:3000"];
+const isDev = !['production', 'prod'].includes(String(Deno.env.get('SUPABASE_ENV') || '').trim().toLowerCase());
+const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", ...(isDev ? ['http://localhost:5173', 'http://localhost:3000'] : [])];
 
 function getCorsHeaders(request) {
   const origin = request.headers.get("Origin") || "";
@@ -19,7 +20,35 @@ const MAX_BASE64_LENGTH = 8 * 1024 * 1024; // ~6MB binary payload
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: getCorsHeaders(request || new Request("http://localhost")) });
+    return new Response('ok', { headers: getCorsHeaders(req) });
+  }
+
+  // Bearer token authentication
+  const authHeader = req.headers.get('Authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!token) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Autenticacao necessaria' }),
+      { headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }, status: 401 }
+    );
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  if (!supabaseUrl || !anonKey) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Configuracao do servidor incompleta' }),
+      { headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }, status: 500 }
+    );
+  }
+
+  const anonClient = createClient(supabaseUrl, anonKey);
+  const { data: { user }, error: authError } = await anonClient.auth.getUser(token);
+  if (authError || !user) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Autenticacao necessaria' }),
+      { headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }, status: 401 }
+    );
   }
 
   try {
@@ -28,14 +57,14 @@ Deno.serve(async (req) => {
     if (!base64Data) {
       return new Response(
         JSON.stringify({ success: false, error: 'Nenhum dado fornecido' }),
-        { headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' }, status: 400 }
+        { headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }, status: 400 }
       );
     }
 
     if (typeof base64Data !== 'string' || base64Data.length > MAX_BASE64_LENGTH) {
       return new Response(
         JSON.stringify({ success: false, error: 'Arquivo excede o limite permitido para processamento' }),
-        { headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' }, status: 413 }
+        { headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }, status: 413 }
       );
     }
 
@@ -45,7 +74,7 @@ Deno.serve(async (req) => {
           success: false,
           error: 'Tipo de arquivo não suportado por este endpoint',
         }),
-        { headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' }, status: 400 }
+        { headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }, status: 400 }
       );
     }
 
@@ -106,7 +135,7 @@ Deno.serve(async (req) => {
           if (livros.length > 0) {
             return new Response(
               JSON.stringify({ success: true, livros }),
-              { headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' }, status: 200 }
+              { headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }, status: 200 }
             );
           }
         }
@@ -118,7 +147,7 @@ Deno.serve(async (req) => {
           error: 'Não foi possível identificar uma tabela textual no PDF. Use Excel/CSV ou converta o PDF para planilha.',
           suggestion: 'Se o PDF for escaneado (imagem), use OCR antes da importação.',
         }),
-        { headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' }, status: 400 }
+        { headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }, status: 400 }
       );
     }
 
@@ -128,14 +157,13 @@ Deno.serve(async (req) => {
         error: 'O processamento de PDF requer OCR. Por favor, converta o PDF para Excel ou CSV antes de importar.',
         suggestion: 'Use ferramentas como Adobe Acrobat, iLovePDF ou SmallPDF para converter o PDF em Excel.',
       }),
-      { headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' } }
+      { headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' } }
     );
   } catch (error) {
     console.error('Error processing file:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
     return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
-      { headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' }, status: 500 }
+      JSON.stringify({ success: false, error: 'Erro interno' }),
+      { headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }, status: 500 }
     );
   }
 });
