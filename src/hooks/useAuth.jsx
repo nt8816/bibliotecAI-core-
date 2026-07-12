@@ -147,6 +147,17 @@ export function AuthProvider({ children }) {
       setTenantContext(null);
   }, []);
 
+  const applySuperAdminSession = useCallback((sessionData) => {
+    const resolvedSession = sessionData?.session || getPlatformSession() || null;
+    const resolvedUser = sessionData?.user || resolvedSession?.user || null;
+    const adminRoles = ['super_admin'];
+    setSession(resolvedSession);
+    setUser(resolvedUser);
+    setRoles(adminRoles);
+    setUserRole('super_admin');
+    setTenantContext(sessionData?.tenant || null);
+  }, []);
+
   const value = useMemo(() => ({
     user,
     session,
@@ -162,7 +173,8 @@ export function AuthProvider({ children }) {
     signIn,
     signUp,
     signOut,
-  }), [loading, roles, session, signIn, signOut, signUp, tenantContext, user, userRole]);
+    applySuperAdminSession,
+  }), [loading, roles, session, signIn, signOut, signUp, tenantContext, user, userRole, applySuperAdminSession]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
