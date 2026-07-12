@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { BarChart3, Clock, Eye, MousePointerClick, Scroll, Users, Activity } from 'lucide-react';
 import {
   LineChart,
@@ -56,6 +56,8 @@ export default function AnalyticsAdmin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const mountedRef = useRef(true);
+
   const load = useCallback(async () => {
     try {
       setLoading(true);
@@ -70,9 +72,15 @@ export default function AnalyticsAdmin() {
   }, [days]);
 
   useEffect(() => {
+    mountedRef.current = true;
     load();
-    const interval = setInterval(load, 30000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      if (mountedRef.current) load();
+    }, 30000);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(interval);
+    };
   }, [load]);
 
   const kpis = summary

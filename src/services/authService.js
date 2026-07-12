@@ -241,7 +241,6 @@ function buildPendingHeaders(pendingAccessToken) {
   return pendingAccessToken
     ? {
       Authorization: `Bearer ${pendingAccessToken}`,
-      'x-user-access-token': pendingAccessToken,
     }
     : {};
 }

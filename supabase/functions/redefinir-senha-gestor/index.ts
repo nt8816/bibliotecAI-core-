@@ -128,7 +128,7 @@ async function checkRateLimit(supabaseAdmin: any, key: string, limit = 10, windo
     }).single();
     return data === true;
   } catch {
-    return true; // fail open if rate limit check fails
+    return false; // fail closed if rate limit check fails
   }
 }
 
@@ -321,7 +321,7 @@ Deno.serve(async (req) => {
     });
 
     if (updateAuthError) {
-      return jsonResponse({ success: false, error: updateAuthError.message || 'Nao foi possivel redefinir a senha do gestor' }, 500);
+      return jsonResponse({ success: false, error: 'Nao foi possivel redefinir a senha do gestor' }, 500);
     }
 
     return jsonResponse({
@@ -333,7 +333,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('redefinir-senha-gestor error', error);
     return jsonResponse(
-      { success: false, error: error instanceof Error ? error.message : 'Erro inesperado' },
+      { success: false, error: 'Erro interno do servidor' },
       500,
     );
   }

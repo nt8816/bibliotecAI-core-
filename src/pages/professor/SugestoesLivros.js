@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, Lightbulb, Send, Sparkles, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -34,6 +34,8 @@ export default function SugestoesLivros() {
   const [selectedTurma, setSelectedTurma] = useState('');
   const [deleteSugestao, setDeleteSugestao] = useState(null);
 
+  const mountedRef = useRef(true);
+
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
@@ -51,12 +53,16 @@ export default function SugestoesLivros() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => {
-    const interval = window.setInterval(fetchData, 30000);
+    mountedRef.current = true;
+    const interval = window.setInterval(() => {
+      if (mountedRef.current) fetchData();
+    }, 30000);
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') fetchData();
+      if (mountedRef.current && document.visibilityState === 'visible') fetchData();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
+      mountedRef.current = false;
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };

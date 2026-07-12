@@ -261,7 +261,11 @@ export function useAnalyticsDashboard() {
 
   useEffect(() => {
     refresh();
-    const interval = setInterval(refresh, 5000);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refresh();
+      }
+    }, 5000);
     return () => clearInterval(interval);
   }, [refresh]);
 

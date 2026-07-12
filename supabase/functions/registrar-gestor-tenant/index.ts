@@ -32,13 +32,13 @@ async function checkRateLimit(supabaseAdmin: any, key: string, limit = 10, windo
     }).single();
     return data === true;
   } catch {
-    return true; // fail open if rate limit check fails
+    return false; // fail closed if rate limit check fails
   }
 }
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: getCorsHeaders(request || new Request("http://localhost")) });
+    return new Response('ok', { headers: getCorsHeaders(req) });
   }
 
   try {

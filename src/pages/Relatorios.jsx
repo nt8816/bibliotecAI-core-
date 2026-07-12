@@ -1,5 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { BarChart3, BookOpen, TrendingUp, Users, CalendarDays, AlertTriangle, Download } from 'lucide-react';
@@ -71,6 +70,8 @@ export default function Relatorios() {
   const [exportFormat, setExportFormat] = useState('xlsx');
   const [exporting, setExporting] = useState(false);
 
+  const mountedRef = useRef(true);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -96,12 +97,16 @@ export default function Relatorios() {
   }, [fetchData]);
 
   useEffect(() => {
-    const interval = window.setInterval(fetchData, 30000);
+    mountedRef.current = true;
+    const interval = window.setInterval(() => {
+      if (mountedRef.current) fetchData();
+    }, 30000);
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') fetchData();
+      if (mountedRef.current && document.visibilityState === 'visible') fetchData();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
+      mountedRef.current = false;
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };

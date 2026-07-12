@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Plus,
   Pencil,
@@ -135,6 +135,8 @@ export default function Usuarios() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState('xlsx');
   const [exporting, setExporting] = useState(false);
+
+  const mountedRef = useRef(true);
   const fileInputRef = useRef(null);
   const handleCpfChange = (value) => {
     const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
@@ -192,18 +194,20 @@ export default function Usuarios() {
   }, [fetchUsuarios]);
 
   useEffect(() => {
+    mountedRef.current = true;
     const interval = window.setInterval(() => {
-      fetchUsuarios();
+      if (mountedRef.current) fetchUsuarios();
     }, 30000);
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
+      if (mountedRef.current && document.visibilityState === 'visible') {
         fetchUsuarios();
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
+      mountedRef.current = false;
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };

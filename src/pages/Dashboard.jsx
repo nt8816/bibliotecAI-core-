@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -117,22 +117,27 @@ export default function Dashboard() {
   });
 
   const fetchInFlightRef = useRef(null);
+  const mountedRef = useRef(true);
   const fetchData = useCallback(async () => {
     if (fetchInFlightRef.current) return fetchInFlightRef.current;
 
     const request = (async () => {
-      const payload = await fetchDashboardData(userRole);
-      setStats((prev) => ({ ...prev, ...(payload?.stats || {}) }));
-      setAtividades(Array.isArray(payload?.atividades) ? payload.atividades : []);
-      setEmprestimosPorMes(Array.isArray(payload?.emprestimosPorMes) ? payload.emprestimosPorMes : []);
-      setLivrosMaisEmprestados(Array.isArray(payload?.livrosMaisEmprestados) ? payload.livrosMaisEmprestados : []);
-      setEscolasCadastradas(Array.isArray(payload?.escolasCadastradas) ? payload.escolasCadastradas : []);
+      try {
+        const payload = await fetchDashboardData(userRole);
+        setStats((prev) => ({ ...prev, ...(payload?.stats || {}) }));
+        setAtividades(Array.isArray(payload?.atividades) ? payload.atividades : []);
+        setEmprestimosPorMes(Array.isArray(payload?.emprestimosPorMes) ? payload.emprestimosPorMes : []);
+        setLivrosMaisEmprestados(Array.isArray(payload?.livrosMaisEmprestados) ? payload.livrosMaisEmprestados : []);
+        setEscolasCadastradas(Array.isArray(payload?.escolasCadastradas) ? payload.escolasCadastradas : []);
 
-      if (isSuperAdmin && payload?.superAdminStats) {
-        setSuperAdminStats(payload.superAdminStats);
+        if (isSuperAdmin && payload?.superAdminStats) {
+          setSuperAdminStats(payload.superAdminStats);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar dados do dashboard:', error);
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     })();
 
     fetchInFlightRef.current = request;
@@ -150,18 +155,20 @@ export default function Dashboard() {
   }, [fetchData]);
 
   useEffect(() => {
+    mountedRef.current = true;
     const interval = window.setInterval(() => {
-      fetchData();
+      if (mountedRef.current) fetchData();
     }, 30000);
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
+      if (mountedRef.current && document.visibilityState === 'visible') {
         fetchData();
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
+      mountedRef.current = false;
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };

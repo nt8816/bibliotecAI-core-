@@ -217,6 +217,7 @@ export default function Livros() {
   const fileInputRef = useRef(null);
   const isFetchingLivrosRef = useRef(false);
   const hasLoadedLivrosRef = useRef(false);
+  const mountedRef = useRef(true);
   const deferredSearchTerm = useDeferredValue(searchTerm);
 
   const { isGestor, isBibliotecaria, isProfessor, user } = useAuth();
@@ -273,18 +274,20 @@ export default function Livros() {
   }, [fetchLivros]);
 
   useEffect(() => {
+    mountedRef.current = true;
     const interval = window.setInterval(() => {
-      fetchLivros();
+      if (mountedRef.current) fetchLivros();
     }, 30000);
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
+      if (mountedRef.current && document.visibilityState === 'visible') {
         fetchLivros();
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
+      mountedRef.current = false;
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };

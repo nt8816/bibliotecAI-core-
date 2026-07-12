@@ -63,7 +63,7 @@ export async function requestPlatformApi(routePath, {
           method,
           headers: {
             'Content-Type': 'application/json',
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}`, 'x-user-access-token': accessToken } : {}),
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
             ...(headers || {}),
           },
           body: body === undefined ? undefined : JSON.stringify(body),

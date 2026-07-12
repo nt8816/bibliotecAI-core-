@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -1501,7 +1501,8 @@ export default function PainelAluno() {
   const persistirDesafioIA = useCallback(
     async ({ desafio, xpBonus }) => {
       if (!alunoId) {
-        throw new Error('Aluno não identificado para salvar o desafio.');
+        toast({ variant: 'destructive', title: 'Erro', description: 'Aluno não identificado para salvar o desafio.' });
+        return;
       }
       await savePainelAlunoChallenge({ desafio, xpBonus });
     },

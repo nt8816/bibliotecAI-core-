@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -132,6 +132,8 @@ export default function Emprestimos() {
   const [exporting, setExporting] = useState(false);
   const [deleteConfirmEmprestimo, setDeleteConfirmEmprestimo] = useState(null);
 
+  const mountedRef = useRef(true);
+
   const { isBibliotecaria, user } = useAuth();
   const { toast } = useToast();
   const { trackEvent } = usePrivateTelemetry();
@@ -161,18 +163,20 @@ export default function Emprestimos() {
   }, [fetchData]);
 
   useEffect(() => {
+    mountedRef.current = true;
     const interval = window.setInterval(() => {
-      fetchData();
+      if (mountedRef.current) fetchData();
     }, 30000);
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
+      if (mountedRef.current && document.visibilityState === 'visible') {
         fetchData();
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
+      mountedRef.current = false;
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
