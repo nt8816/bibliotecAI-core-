@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { addPlatformSessionListener, clearPlatformSession, getPlatformSession } from '@/lib/platformSession';
 import { pickPrimaryRole } from '@/lib/defaultRoute';
@@ -65,6 +65,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const syncAuthState = useCallback(async () => {
+    if (superAdminOverrideRef.current) return;
+
     const localSession = getPlatformSession();
 
     if (!localSession?.access_token) {
@@ -139,6 +141,7 @@ export function AuthProvider({ children }) {
   }, [syncAuthState]);
 
   const signOut = useCallback(async () => {
+    superAdminOverrideRef.current = false;
     await signOutWithPlatform();
       setSession(null);
       setUser(null);
@@ -146,6 +149,8 @@ export function AuthProvider({ children }) {
       setUserRole(null);
       setTenantContext(null);
   }, []);
+
+  const superAdminOverrideRef = useRef(false);
 
   const applySuperAdminSession = useCallback((sessionData) => {
     const resolvedSession = sessionData?.session || getPlatformSession() || null;
@@ -156,6 +161,7 @@ export function AuthProvider({ children }) {
     setRoles(adminRoles);
     setUserRole('super_admin');
     setTenantContext(sessionData?.tenant || null);
+    superAdminOverrideRef.current = true;
   }, []);
 
   const value = useMemo(() => ({
