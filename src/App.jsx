@@ -15,10 +15,11 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { PrivateTelemetryTracker } from '@/components/PrivateTelemetryTracker';
 import { SystemLogObserver } from '@/components/SystemLogObserver';
 import { AppShellState } from '@/components/AppShellState';
+import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { ConnectivityStatus } from '@/components/ConnectivityStatus';
 import { NativePushBridge } from '@/components/NativePushBridge';
 
-const LandingPage = lazy(() => import('./pages/LandingPage'));
+import LandingPage from './pages/LandingPage';
 const Auth = lazy(() => import('./pages/Auth'));
 const Privacidade = lazy(() => import('./pages/Privacidade'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -432,7 +433,9 @@ const App = () => {
                     />
                   )}
                 >
-                  <AppRoutes />
+                  <AppErrorBoundary>
+                    <AppRoutes />
+                  </AppErrorBoundary>
                 </Suspense>
               </BrowserRouter>
             </TooltipProvider>
