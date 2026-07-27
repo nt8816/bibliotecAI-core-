@@ -37,7 +37,7 @@ export interface Env {
 
 type RouteHandler = (request: Request, env: Env) => Promise<Response> | Response;
 
-const DEFAULT_CORS_ALLOW_HEADERS = 'authorization, content-type, x-user-access-token';
+const DEFAULT_CORS_ALLOW_HEADERS = 'authorization, content-type, x-profile-role-hint, x-user-access-token';
 const DEFAULT_CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
 
 let firebaseAccessTokenCache: { token: string; expiresAt: number } | null = null;

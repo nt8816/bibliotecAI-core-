@@ -1,4 +1,4 @@
-﻿import { getPlatformAccessToken } from '@/lib/platformSession';
+import { getPlatformAccessToken } from '@/lib/platformSession';
 import { requestPlatformApi } from '@/lib/platformApi';
 
 function sanitizeFileName(fileName) {
@@ -23,11 +23,11 @@ async function getUserAccessToken() {
 }
 
 function buildR2NetworkErrorMessage(error, action) {
-  const message = String(error?.message || '');
+  const message = String(error?.originalError?.message || error?.message || '');
   if (message.toLowerCase().includes('failed to fetch')) {
     return `Falha de rede ao ${action} no Cloudflare R2. Verifique o CORS do bucket e tente novamente.`;
   }
-  return message || `Não foi possível ${action} no Cloudflare R2.`;
+  return error?.message || `Não foi possível ${action} no Cloudflare R2.`;
 }
 
 function fileToBase64(file) {

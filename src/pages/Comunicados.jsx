@@ -417,21 +417,17 @@ export default function Comunicados() {
     }
   }, [audioFile, pendingFiles, pendingImages]);
 
-  const loadData = useCallback(async () => {
-    let cancelled = false;
+  const loadComunicados = useCallback(async () => {
     try {
-      setLoading(true);
       const [response, professorData] = await Promise.all([
         fetchComunidadeAlunoData({ roleHint: profileRoleHint }),
         isProfessor ? fetchProfessorPainelData() : Promise.resolve(null),
       ]);
-      if (cancelled) return;
 
       const perfilAtual = response?.perfil || null;
       const comunicados = ensureArray(response?.posts)
         .filter((item) => item?.tipo === 'comunicado' && !isExpiredComunicado(item));
       const resolvedPosts = await Promise.all(comunicados.map(resolveComunicadoMedia));
-      if (cancelled) return;
 
       setPerfil(perfilAtual);
       setPosts(resolvedPosts);
@@ -439,28 +435,18 @@ export default function Comunicados() {
       setProfessorAtividades(ensureArray(professorData?.atividades));
       setProfessorEntregas(ensureArray(professorData?.entregas));
     } catch (error) {
-      if (cancelled) return;
       toast({
         variant: 'destructive',
         title: 'Erro ao carregar comunicados',
         description: error?.message || 'Nao foi possivel carregar os comunicados agora.',
       });
-    } finally {
-      if (!cancelled) setLoading(false);
     }
-    return () => {
-      cancelled = true;
-    };
   }, [isProfessor, profileRoleHint, toast]);
 
   useEffect(() => {
-    let active = true;
-    loadData();
-    return () => {
-      active = false;
-      if (!active) return;
-    };
-  }, [loadData]);
+    setLoading(true);
+    loadComunicados().finally(() => setLoading(false));
+  }, [loadComunicados]);
 
   const comunicadosVisiveis = useMemo(() => {
     const turmaAluno = normalizeTurmaKey(perfil?.turma);
@@ -1043,7 +1029,7 @@ export default function Comunicados() {
       toast({ title: 'Formulário criado', description: 'O formulário já está disponível para os alunos da turma.' });
       setIsFormularioDialogOpen(false);
       resetFormularioForm();
-      await loadData();
+      await loadComunicados();
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro', description: error?.message || 'Não foi possível criar o formulário.' });
     } finally {
