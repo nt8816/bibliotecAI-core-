@@ -2347,6 +2347,17 @@ function isMissingTableMessage(error: unknown) {
   );
 }
 
+function isMissingColumnMessage(error: unknown) {
+  const message = String(error instanceof Error ? error.message : error || '').toLowerCase();
+  return (
+    message.includes('could not find the') && message.includes('column') ||
+    message.includes('column') && message.includes('does not exist') ||
+    message.includes('schema cache') && message.includes('column') ||
+    message.includes('42703') ||
+    message.includes('pgrst204')
+  );
+}
+
 async function releasePublicInviteReservation(env: Env, tokenId: string) {
   if (!tokenId) return;
   await supabaseAdminRequest(env, `/rest/v1/tokens_convite?${new URLSearchParams({ id: `eq.${tokenId}` }).toString()}`, {
@@ -2517,6 +2528,74 @@ function estimateArquivosBytes(arquivos: unknown) {
   }, 0);
 }
 
+const COMMUNITY_POST_SELECT =
+  '*,livros(titulo,autor),audiobooks_biblioteca(titulo,autor,audio_url),usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)';
+const COMMUNITY_POST_SELECT_LEGACY =
+  '*,livros(titulo,autor),audiobooks_biblioteca(titulo,autor),usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)';
+
+async function fetchCommunityPosts(env: Env, params: URLSearchParams) {
+  const query = new URLSearchParams(params);
+  query.set('select', COMMUNITY_POST_SELECT);
+
+  try {
+    return await supabaseAdminRequest(env, `/rest/v1/comunidade_posts?${query.toString()}`);
+  } catch (error) {
+    if (!isMissingColumnMessage(error)) throw error;
+    query.set('select', COMMUNITY_POST_SELECT_LEGACY);
+    return supabaseAdminRequest(env, `/rest/v1/comunidade_posts?${query.toString()}`);
+  }
+}
+
+async function fetchComunicadosRows(env: Env, params: URLSearchParams) {
+  const query = new URLSearchParams(params);
+  query.set('select', 'id,titulo,conteudo,turma_publico,created_at,tipo,expires_at,audio_url,audio_duration_seconds,arquivos');
+
+  try {
+    return await supabaseAdminRequest(env, `/rest/v1/comunidade_posts?${query.toString()}`);
+  } catch (error) {
+    if (!isMissingColumnMessage(error)) throw error;
+    query.set('select', 'id,titulo,conteudo,turma_publico,created_at,tipo,expires_at');
+    try {
+      return await supabaseAdminRequest(env, `/rest/v1/comunidade_posts?${query.toString()}`);
+    } catch (fallbackError) {
+      if (!isMissingColumnMessage(fallbackError)) throw fallbackError;
+      query.set('select', 'id,titulo,conteudo,created_at,tipo');
+      return supabaseAdminRequest(env, `/rest/v1/comunidade_posts?${query.toString()}`);
+    }
+  }
+}
+
+function withoutOptionalCommunityPostColumns(payload: Record<string, unknown>) {
+  const {
+    arquivos: _arquivos,
+    audio_duration_seconds: _audioDurationSeconds,
+    audio_url: _audioUrl,
+    audiobook_id: _audiobookId,
+    expires_at: _expiresAt,
+    imagem_urls: _imagemUrls,
+    turma_publico: _turmaPublico,
+    ...legacyPayload
+  } = payload;
+  return legacyPayload;
+}
+
+async function insertCommunityPost(env: Env, body: Record<string, unknown>) {
+  try {
+    return await supabaseAdminRequest(env, '/rest/v1/comunidade_posts?select=id', {
+      method: 'POST',
+      body,
+      headers: { Prefer: 'return=representation' },
+    });
+  } catch (error) {
+    if (!isMissingColumnMessage(error)) throw error;
+    return supabaseAdminRequest(env, '/rest/v1/comunidade_posts?select=id', {
+      method: 'POST',
+      body: withoutOptionalCommunityPostColumns(body),
+      headers: { Prefer: 'return=representation' },
+    });
+  }
+}
+
 const MAX_ATIVIDADE_MATERIAIS_BYTES = 1024 * 1024 * 1024;
 
 const ATIVIDADE_MATERIAIS_BODY_KEYS = [
@@ -2630,6 +2709,49 @@ function normalizeAtividadeMateriaisApoio(materiais: unknown) {
       return null;
     })
     .filter(Boolean);
+}
+
+function withoutOptionalAtividadeColumns(payload: Record<string, unknown>) {
+  const { materiais_apoio: _materiaisApoio, turmas_alvo: _turmasAlvo, ...legacyPayload } = payload;
+  return legacyPayload;
+}
+
+async function insertAtividadesLeitura(env: Env, body: Record<string, unknown> | Array<Record<string, unknown>>) {
+  try {
+    return await supabaseAdminRequest(env, '/rest/v1/atividades_leitura', {
+      method: 'POST',
+      body,
+      headers: { Prefer: 'return=minimal' },
+    });
+  } catch (error) {
+    if (!isMissingColumnMessage(error)) throw error;
+    const legacyBody = Array.isArray(body)
+      ? body.map((item) => withoutOptionalAtividadeColumns(item))
+      : withoutOptionalAtividadeColumns(body);
+    return supabaseAdminRequest(env, '/rest/v1/atividades_leitura', {
+      method: 'POST',
+      body: legacyBody,
+      headers: { Prefer: 'return=minimal' },
+    });
+  }
+}
+
+async function patchAtividadeLeitura(env: Env, id: string, body: Record<string, unknown>) {
+  const path = `/rest/v1/atividades_leitura?${new URLSearchParams({ id: `eq.${id}` }).toString()}`;
+  try {
+    return await supabaseAdminRequest(env, path, {
+      method: 'PATCH',
+      body,
+      headers: { Prefer: 'return=minimal' },
+    });
+  } catch (error) {
+    if (!isMissingColumnMessage(error)) throw error;
+    return supabaseAdminRequest(env, path, {
+      method: 'PATCH',
+      body: withoutOptionalAtividadeColumns(body),
+      headers: { Prefer: 'return=minimal' },
+    });
+  }
 }
 
 function monthKey(dateValue: unknown) {
@@ -3545,15 +3667,14 @@ const routes: Record<string, RouteHandler> = {
               : 'Nenhum aluno encontrado para as turmas selecionadas.',
           }, 400);
         }
-        await supabaseAdminRequest(env, '/rest/v1/atividades_leitura', {
-          method: 'POST',
-          body: alunosAlvo.map((item) => ({
+        await insertAtividadesLeitura(
+          env,
+          alunosAlvo.map((item) => ({
             ...dataBase,
             aluno_id: String(item?.id || '').trim(),
             turmas_alvo: turmasAlvo,
           })),
-          headers: { Prefer: 'return=minimal' },
-        });
+        );
 
         await notifyProfileIds(
           env,
@@ -3588,15 +3709,14 @@ const routes: Record<string, RouteHandler> = {
         return jsonResponse({ success: false, error: 'Aluno nao permitido para este professor.' }, 403);
       }
 
-      await supabaseAdminRequest(env, '/rest/v1/atividades_leitura', {
-        method: 'POST',
-        body: {
+      await insertAtividadesLeitura(
+        env,
+        {
           ...dataBase,
           aluno_id: alunoId,
           turmas_alvo: [],
         },
-        headers: { Prefer: 'return=minimal' },
-      });
+      );
 
       await notifyProfileIds(env, [alunoId], {
         title: 'Nova atividade de leitura',
@@ -3646,11 +3766,7 @@ const routes: Record<string, RouteHandler> = {
         updatePayload.materiais_apoio = materiaisApoio;
       }
 
-      await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ id: `eq.${id}` }).toString()}`, {
-        method: 'PATCH',
-        body: updatePayload,
-        headers: { Prefer: 'return=minimal' },
-      });
+      await patchAtividadeLeitura(env, id, updatePayload);
       return jsonResponse({ success: true });
     } catch (error) {
       return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Falha ao atualizar atividade.' }, 400);
@@ -6326,16 +6442,12 @@ const routes: Record<string, RouteHandler> = {
           }).toString()}`,
         ).catch(() => []),
         profile.escola_id
-          ? supabaseAdminRequest(
-            env,
-            `/rest/v1/comunidade_posts?${new URLSearchParams({
-              select: 'id,titulo,conteudo,turma_publico,created_at,expires_at',
-              escola_id: `eq.${profile.escola_id}`,
-              tipo: 'eq.comunicado',
-              order: 'created_at.desc',
-              limit: '20',
-            }).toString()}`,
-          )
+          ? fetchComunicadosRows(env, new URLSearchParams({
+            escola_id: `eq.${profile.escola_id}`,
+            tipo: 'eq.comunicado',
+            order: 'created_at.desc',
+            limit: '20',
+          })).catch(() => [])
           : [],
         supabaseAdminRequest(
           env,
@@ -9395,11 +9507,10 @@ const routes: Record<string, RouteHandler> = {
       supabaseAdminRequest(env, '/rest/v1/comunidade_curtidas?select=post_id,usuario_id'),
       supabaseAdminRequest(env, '/rest/v1/audiobooks_biblioteca?select=id,titulo,autor&order=titulo.asc').catch(() => []),
       escolaId
-        ? supabaseAdminRequest(env, `/rest/v1/comunidade_posts?${new URLSearchParams({
-          select: '*,livros(titulo,autor),audiobooks_biblioteca(titulo,autor,audio_url),usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)',
+        ? fetchCommunityPosts(env, new URLSearchParams({
           escola_id: `eq.${escolaId}`,
           order: 'created_at.desc',
-        }).toString()}`).catch(() => [])
+        })).catch(() => [])
         : Promise.resolve([]),
       isProfessor && alunoId
         ? supabaseAdminRequest(env, `/rest/v1/professor_turmas?${new URLSearchParams({ select: 'turma', professor_id: `eq.${alunoId}` }).toString()}`).catch(() => [])
@@ -9450,16 +9561,12 @@ const routes: Record<string, RouteHandler> = {
     }).catch(() => null);
 
     const comunicados = escolaId
-      ? await supabaseAdminRequest(
-          env,
-          `/rest/v1/comunidade_posts?${new URLSearchParams({
-            select: 'id,titulo,conteudo,turma_publico,created_at,tipo,expires_at,audio_url,audio_duration_seconds,arquivos',
-            escola_id: `eq.${escolaId}`,
-            tipo: 'eq.comunicado',
-            order: 'created_at.desc',
-            limit: '20',
-          }).toString()}`,
-        ).catch(() => [])
+      ? await fetchComunicadosRows(env, new URLSearchParams({
+        escola_id: `eq.${escolaId}`,
+        tipo: 'eq.comunicado',
+        order: 'created_at.desc',
+        limit: '20',
+      })).catch(() => [])
       : [];
 
     const [
@@ -9953,15 +10060,11 @@ const routes: Record<string, RouteHandler> = {
     const url = new URL(request.url);
     const offset = Math.max(0, Number.parseInt(url.searchParams.get('offset') || '0', 10) || 0);
     const limit = Math.min(50, Math.max(1, Number.parseInt(url.searchParams.get('limit') || '20', 10) || 20));
-    const posts = await supabaseAdminRequest(
-      env,
-      `/rest/v1/comunidade_posts?${new URLSearchParams({
-        select: '*,livros(titulo,autor),audiobooks_biblioteca(titulo,autor,audio_url),usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)',
-        order: 'created_at.desc',
-        offset: String(offset),
-        limit: String(limit),
-      }).toString()}`,
-    ).catch(() => []);
+    const posts = await fetchCommunityPosts(env, new URLSearchParams({
+      order: 'created_at.desc',
+      offset: String(offset),
+      limit: String(limit),
+    })).catch(() => []);
 
     return jsonResponse({ success: true, posts: Array.isArray(posts) ? posts : [] });
   },
@@ -9969,14 +10072,10 @@ const routes: Record<string, RouteHandler> = {
   'GET /v1/aluno/comunidade/posts/:id': async (request, env) => {
     await getCommunityModuleContext(request, env);
     const postId = getPathParam(request, /^\/v1\/aluno\/comunidade\/posts\/([^/]+)$/i);
-    const [post] = await supabaseAdminRequest(
-      env,
-      `/rest/v1/comunidade_posts?${new URLSearchParams({
-        select: '*,livros(titulo,autor),audiobooks_biblioteca(titulo,autor,audio_url),usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)',
-        id: `eq.${postId}`,
-        limit: '1',
-      }).toString()}`,
-    ) as Array<Record<string, unknown>>;
+    const [post] = await fetchCommunityPosts(env, new URLSearchParams({
+      id: `eq.${postId}`,
+      limit: '1',
+    })) as Array<Record<string, unknown>>;
     return jsonResponse({ success: true, post: post || null });
   },
 
@@ -10034,10 +10133,11 @@ const routes: Record<string, RouteHandler> = {
       }
     }
 
-    const created = await supabaseAdminRequest(env, '/rest/v1/comunidade_posts?select=id', {
-      method: 'POST',
-      body: { ...body, autor_id: alunoId, escola_id: escolaId, turma_publico: turmaPublico },
-      headers: { Prefer: 'return=representation' },
+    const created = await insertCommunityPost(env, {
+      ...body,
+      autor_id: alunoId,
+      escola_id: escolaId,
+      turma_publico: turmaPublico,
     }) as Array<Record<string, unknown>>;
 
     if (tipoPost === 'comunicado') {
