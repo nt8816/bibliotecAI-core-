@@ -23,14 +23,17 @@ const ChartStyle = ({ id, config }) => {
     if (!colorConfig.length) {
         return null;
     }
+    // Sanitize CSS values to prevent injection
+    const sanitizeCssValue = (val) => String(val || '').replace(/[^a-zA-Z0-9#(),.\s%]/g, '').slice(0, 100);
+    const safeId = sanitizeCssValue(id);
     return (_jsx("style", { dangerouslySetInnerHTML: {
             __html: Object.entries(THEMES)
                 .map(([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
+${prefix} [data-chart=${safeId}] {
 ${colorConfig
                 .map(([key, itemConfig]) => {
                 const color = itemConfig.theme?.[theme] || itemConfig.color;
-                return color ? `  --color-${key}: ${color};` : null;
+                return color ? `  --color-${sanitizeCssValue(key)}: ${sanitizeCssValue(color)};` : null;
             })
                 .join("\n")}
 }

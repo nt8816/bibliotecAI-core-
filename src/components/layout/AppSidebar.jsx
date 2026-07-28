@@ -1,4 +1,4 @@
-﻿import {
+import {
   LayoutDashboard,
   BookOpen,
   Users,
@@ -18,8 +18,10 @@
   Settings,
   ShieldCheck,
   ClipboardList,
+  BarChart2,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -44,8 +46,16 @@ export function AppSidebar() {
   const { state, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === 'collapsed';
   const navigate = useNavigate();
+  const location = useLocation();
   const { signOut, user, userRole, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
   const { counts, notifications, canViewNotifications } = useSystemNotifications();
+
+  useEffect(() => {
+    if (isMobile) {
+      const timer = setTimeout(() => setOpenMobile(false), 100);
+      return () => clearTimeout(timer);
+    }
+  }, [location.pathname, isMobile, setOpenMobile]);
   const settingsPath = '/configuracoes';
   const isTempLoginEmail = /@temp\.bibliotecai\.com$/i.test(String(user?.email || ''));
   const visibleUserIdentity = isTempLoginEmail
@@ -56,7 +66,9 @@ export function AppSidebar() {
     await signOut();
   };
   const handleMenuItemClick = () => {
-    if (isMobile) setOpenMobile(false);
+    if (isMobile) {
+      setTimeout(() => setOpenMobile(false), 50);
+    }
   };
   const getMenuItems = () => {
     const commonItems = [{ title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard }];
@@ -67,6 +79,7 @@ export function AppSidebar() {
         { title: 'Tenants', url: '/admin/tenants', icon: Building2 },
         { title: 'Super Admins', url: '/admin/super-admins', icon: ShieldCheck },
         { title: 'Reclamacoes', url: '/reclamacoes', icon: Bell },
+        { title: 'Analytics', url: '/analytics', icon: BarChart2 },
       ];
     }
 

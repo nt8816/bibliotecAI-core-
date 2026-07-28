@@ -53,8 +53,7 @@ export function randomDigits(length = 6) {
 }
 
 export function getRequestOrigin(request: Request, env: SecurityEnv, bodyContext?: Record<string, unknown> | null) {
-  const contextOrigin = String(bodyContext?.app_origin || bodyContext?.origin || '').trim();
-  if (contextOrigin) return contextOrigin.replace(/\/+$/g, '');
+  // Prioritize server-side origin headers over client-supplied body values
   const headerOrigin = String(request.headers.get('origin') || '').trim();
   if (headerOrigin) return headerOrigin.replace(/\/+$/g, '');
   const appBase = String(env.API_BASE_URL || '').trim();

@@ -1,7 +1,8 @@
 import { requestPlatformApi } from '@/lib/platformApi';
 
-export async function fetchDashboardData() {
-  const payload = await requestPlatformApi('/v1/dashboard');
+export async function fetchDashboardData(userRole) {
+  const query = userRole ? `?role=${encodeURIComponent(userRole)}` : '';
+  const payload = await requestPlatformApi(`/v1/dashboard${query}`);
   return {
     stats: payload?.stats || {},
     atividades: Array.isArray(payload?.atividades) ? payload.atividades : [],

@@ -123,7 +123,7 @@ CREATE POLICY "Platform admins read system logs"
   USING (
     public.is_super_admin()
     OR public.is_tenant_platform_admin()
-    OR lower(coalesce(auth.jwt() ->> 'email', '')) = 'nt@gmail.com'
+    OR exists (select 1 from user_roles where user_id = auth.uid() and role = 'super_admin')
   );
 
 GRANT SELECT ON public.system_logs TO authenticated;

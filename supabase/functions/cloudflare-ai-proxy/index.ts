@@ -1,16 +1,24 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Max-Age": "86400",
-};
+const isDev = !['production', 'prod'].includes(String(Deno.env.get('SUPABASE_ENV') || '').trim().toLowerCase());
+const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", ...(isDev ? ['http://localhost:5173', 'http://localhost:3000'] : [])];
 
-const jsonResponse = (body: unknown, status = 200) =>
+function getCorsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get("Origin") || "";
+  const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": safeOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-user-access-token",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Max-Age": "86400",
+  };
+}
+
+
+const jsonResponse = (body: unknown, status = 200, request?: Request) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...getCorsHeaders(request || new Request("http://localhost")), "Content-Type": "application/json" },
   });
 
 const isAllowedPath = (path: string) => path === "/text" || path === "/image" || path === "/audio";
@@ -150,7 +158,7 @@ const logSecurityEvent = async (
 };
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: getCorsHeaders(req) });
 
   try {
     if (req.method !== 'POST') return jsonResponse({ error: 'Método não permitido.' }, 405);
@@ -266,32 +274,31 @@ Deno.serve(async (req) => {
         },
       });
 
-      if (contentType.includes('application/json')) {
-        const err = await upstream.json().catch(() => ({}));
-        return jsonResponse(err, upstream.status);
-      }
-      const text = await upstream.text().catch(() => '');
-      return jsonResponse({ error: text || `Erro upstream HTTP ${upstream.status}` }, upstream.status);
+      return jsonResponse({ error: 'Servico de IA temporariamente indisponivel.' }, upstream.status);
     }
 
     if (contentType.includes('application/json')) {
       const data = await upstream.json().catch(() => ({}));
       return new Response(JSON.stringify(redactObject(data)), {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
       });
+    }
+
+    const contentLength = parseInt(upstream.headers.get('content-length') || '0', 10);
+    if (contentLength > 50 * 1024 * 1024) {
+      return jsonResponse({ error: 'Resposta do servico de IA excede limite de tamanho.' }, 413);
     }
 
     const bytes = await upstream.arrayBuffer();
     return new Response(bytes, {
       status: 200,
       headers: {
-        ...corsHeaders,
+        ...getCorsHeaders(req),
         'Content-Type': contentType || 'application/octet-stream',
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Erro desconhecido';
-    return jsonResponse({ error: message }, 500);
+    return jsonResponse({ error: 'Erro interno do servidor.' }, 500);
   }
 });

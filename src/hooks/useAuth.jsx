@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { addPlatformSessionListener, clearPlatformSession, getPlatformSession } from '@/lib/platformSession';
 import { pickPrimaryRole } from '@/lib/defaultRoute';
@@ -65,6 +65,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const syncAuthState = useCallback(async () => {
+    if (superAdminOverrideRef.current) return;
+
     const localSession = getPlatformSession();
 
     if (!localSession?.access_token) {
@@ -139,12 +141,27 @@ export function AuthProvider({ children }) {
   }, [syncAuthState]);
 
   const signOut = useCallback(async () => {
+    superAdminOverrideRef.current = false;
     await signOutWithPlatform();
       setSession(null);
       setUser(null);
       setRoles([]);
       setUserRole(null);
       setTenantContext(null);
+  }, []);
+
+  const superAdminOverrideRef = useRef(false);
+
+  const applySuperAdminSession = useCallback((sessionData) => {
+    const resolvedSession = sessionData?.session || getPlatformSession() || null;
+    const resolvedUser = sessionData?.user || resolvedSession?.user || null;
+    const adminRoles = ['super_admin'];
+    setSession(resolvedSession);
+    setUser(resolvedUser);
+    setRoles(adminRoles);
+    setUserRole('super_admin');
+    setTenantContext(sessionData?.tenant || null);
+    superAdminOverrideRef.current = true;
   }, []);
 
   const value = useMemo(() => ({
@@ -162,7 +179,8 @@ export function AuthProvider({ children }) {
     signIn,
     signUp,
     signOut,
-  }), [loading, roles, session, signIn, signOut, signUp, tenantContext, user, userRole]);
+    applySuperAdminSession,
+  }), [loading, roles, session, signIn, signOut, signUp, tenantContext, user, userRole, applySuperAdminSession]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

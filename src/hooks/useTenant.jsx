@@ -17,7 +17,6 @@ function getBaseDomainFromEnv() {
 function extractSubdomain(hostname) {
   const host = removePort(hostname);
   const envBaseDomain = getBaseDomainFromEnv();
-  const vercelProjectHost = (import.meta.env.VITE_VERCEL_PROJECT_HOST || '').trim().toLowerCase();
   const query = new URLSearchParams(window.location.search);
   const forcedTenant = (query.get('tenant') || '').trim().toLowerCase();
   const forcedAdmin = query.get('admin') === '1';
@@ -34,17 +33,6 @@ function extractSubdomain(hostname) {
     if (!subdomain) return { mode: 'root', subdomain: null };
     if (subdomain === 'admin') return { mode: 'admin', subdomain: null };
     return { mode: 'tenant', subdomain };
-  }
-
-  if (host.endsWith('.vercel.app')) {
-    if (host.includes('--')) return { mode: 'root', subdomain: null };
-    if (vercelProjectHost && host === vercelProjectHost) return { mode: 'root', subdomain: null };
-    const parts = host.split('.');
-    if (parts.length === 3) return { mode: 'root', subdomain: null };
-    if (parts.length >= 4) {
-      if (parts[0] === 'admin') return { mode: 'admin', subdomain: null };
-      if (!RESERVED_SUBDOMAINS.has(parts[0])) return { mode: 'tenant', subdomain: parts[0] };
-    }
   }
 
   return { mode: 'root', subdomain: null };

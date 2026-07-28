@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Download, GraduationCap, Search, Users } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -40,6 +40,8 @@ export default function MeusAlunos() {
   const [filterTurma, setFilterTurma] = useState('');
   const [turmasPermitidas, setTurmasPermitidas] = useState([]);
 
+  const mountedRef = useRef(true);
+
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
 
@@ -64,12 +66,16 @@ export default function MeusAlunos() {
   }, [fetchData]);
 
   useEffect(() => {
-    const interval = window.setInterval(fetchData, 30000);
+    mountedRef.current = true;
+    const interval = window.setInterval(() => {
+      if (mountedRef.current) fetchData();
+    }, 30000);
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') fetchData();
+      if (mountedRef.current && document.visibilityState === 'visible') fetchData();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
+      mountedRef.current = false;
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };

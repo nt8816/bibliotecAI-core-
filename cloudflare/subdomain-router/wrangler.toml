@@ -1,0 +1,7 @@
+name = "bibliotecai-subdomain-router"
+main = "src/index.ts"
+compatibility_date = "2026-03-22"
+
+routes = [
+  { pattern = "*.bibliotecai.com.br/*", zone_name = "bibliotecai.com.br" }
+]

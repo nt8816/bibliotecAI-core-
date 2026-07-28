@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 180" fill="none">
+  <rect width="280" height="180" rx="16" fill="#FFF8E1"/>
+  <rect x="15" y="10" width="250" height="160" rx="12" fill="#fff" stroke="#F9A825" stroke-width="1.5"/>
+  <rect x="15" y="10" width="250" height="28" rx="12" fill="#F9A825" fill-opacity="0.06"/>
+  <rect x="25" y="17" width="60" height="8" rx="3" fill="#F9A825" fill-opacity="0.2"/>
+  <rect x="25" y="48" width="230" height="22" rx="6" fill="#F9A825" fill-opacity="0.08"/>
+  <circle cx="42" cy="59" r="8" fill="#F9A825" fill-opacity="0.2"/>
+  <text x="42" y="62" text-anchor="middle" fill="#F9A825" font-size="8" font-weight="900" font-family="sans-serif">1</text>
+  <rect x="58" y="54" width="80" height="5" rx="2" fill="#F9A825" fill-opacity="0.2"/>
+  <rect x="58" y="62" width="50" height="4" rx="2" fill="#F9A825" fill-opacity="0.1"/>
+  <rect x="195" y="53" width="45" height="12" rx="6" fill="#F9A825" fill-opacity="0.15"/>
+  <text x="218" y="62" text-anchor="middle" fill="#F9A825" font-size="7" font-weight="700" font-family="sans-serif">1250 XP</text>
+  <rect x="25" y="76" width="230" height="22" rx="6" fill="#F9A825" fill-opacity="0.04"/>
+  <circle cx="42" cy="87" r="8" fill="#F9A825" fill-opacity="0.12"/>
+  <text x="42" y="90" text-anchor="middle" fill="#F9A825" font-size="8" font-weight="900" font-family="sans-serif">2</text>
+  <rect x="58" y="82" width="70" height="5" rx="2" fill="#F9A825" fill-opacity="0.12"/>
+  <rect x="58" y="90" width="45" height="4" rx="2" fill="#F9A825" fill-opacity="0.07"/>
+  <rect x="200" y="81" width="40" height="12" rx="6" fill="#F9A825" fill-opacity="0.1"/>
+  <text x="220" y="90" text-anchor="middle" fill="#F9A825" font-size="7" font-weight="700" font-family="sans-serif">980 XP</text>
+  <rect x="25" y="104" width="230" height="22" rx="6" fill="#F9A825" fill-opacity="0.04"/>
+  <circle cx="42" cy="115" r="8" fill="#F9A825" fill-opacity="0.12"/>
+  <text x="42" y="118" text-anchor="middle" fill="#F9A825" font-size="8" font-weight="900" font-family="sans-serif">3</text>
+  <rect x="58" y="110" width="65" height="5" rx="2" fill="#F9A825" fill-opacity="0.12"/>
+  <rect x="58" y="118" width="40" height="4" rx="2" fill="#F9A825" fill-opacity="0.07"/>
+  <rect x="200" y="109" width="40" height="12" rx="6" fill="#F9A825" fill-opacity="0.1"/>
+  <text x="220" y="118" text-anchor="middle" fill="#F9A825" font-size="7" font-weight="700" font-family="sans-serif">750 XP</text>
+  <rect x="25" y="135" width="230" height="25" rx="6" fill="#F9A825" fill-opacity="0.03"/>
+  <circle cx="42" cy="147" r="8" fill="#F9A825" fill-opacity="0.08"/>
+  <text x="42" y="150" text-anchor="middle" fill="#F9A825" font-size="8" font-weight="900" font-family="sans-serif">4</text>
+  <rect x="58" y="143" width="55" height="5" rx="2" fill="#F9A825" fill-opacity="0.08"/>
+  <rect x="210" y="142" width="30" height="10" rx="5" fill="#F9A825" fill-opacity="0.08"/>
+  <text x="225" y="150" text-anchor="middle" fill="#F9A825" font-size="6" font-weight="700" font-family="sans-serif">520</text>
+</svg>

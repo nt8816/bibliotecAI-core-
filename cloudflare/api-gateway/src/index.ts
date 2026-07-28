@@ -37,7 +37,7 @@ export interface Env {
 
 type RouteHandler = (request: Request, env: Env) => Promise<Response> | Response;
 
-const DEFAULT_CORS_ALLOW_HEADERS = 'authorization, content-type, x-user-access-token, x-profile-role-hint';
+const DEFAULT_CORS_ALLOW_HEADERS = 'authorization, content-type, x-profile-role-hint, x-user-access-token';
 const DEFAULT_CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
 
 let firebaseAccessTokenCache: { token: string; expiresAt: number } | null = null;
@@ -55,7 +55,8 @@ function isAllowedCorsOrigin(origin: string, env: Env) {
     const apiBaseUrl = String(env.API_BASE_URL || '').trim();
 
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return protocol === 'http:' || protocol === 'https:';
+      // Only allow localhost in non-production environments
+      return String(env.APP_ENV || '').trim().toLowerCase() !== 'production' && (protocol === 'http:' || protocol === 'https:');
     }
 
     if (appBaseDomain && (hostname === appBaseDomain || hostname.endsWith(`.${appBaseDomain}`))) {
@@ -127,12 +128,10 @@ async function notImplemented(feature: string) {
 }
 
 function getUserToken(request: Request) {
-  const url = new URL(request.url);
-  const queryToken = url.searchParams.get('accessToken') || '';
   const manualToken = request.headers.get('x-user-access-token') || '';
   const authHeader = request.headers.get('authorization') || request.headers.get('Authorization') || '';
   const bearerToken = String(authHeader.replace(/^Bearer\s+/i, '')).trim();
-  const customToken = String(manualToken || queryToken || '').trim();
+  const customToken = String(manualToken || '').trim();
 
   if (customToken && bearerToken && customToken !== bearerToken) {
     return '';
@@ -141,12 +140,30 @@ function getUserToken(request: Request) {
   return String(bearerToken || customToken).trim();
 }
 
-function parseJwtPayload(token: string) {
+async function parseJwtPayload(token: string, env: Env) {
+  const secret = String(env.SUPABASE_JWT_SECRET || '').trim();
+  if (!secret) return null;
+
   const parts = String(token || '').split('.');
-  if (parts.length < 2) return null;
+  if (parts.length !== 3) return null;
 
   try {
-    const decoded = base64UrlDecode(parts[1]);
+    const [headerB64, payloadB64, signatureB64] = parts;
+    const signingInput = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify'],
+    );
+
+    const signature = base64UrlDecode(signatureB64);
+    const valid = await crypto.subtle.verify('HMAC', key, signature, signingInput);
+    if (!valid) return null;
+
+    const decoded = base64UrlDecode(payloadB64);
     return JSON.parse(new TextDecoder().decode(decoded));
   } catch {
     return null;
@@ -451,7 +468,7 @@ async function isAuthorizedSuperAdminRequest(
   }
 
   const token = getUserToken(request);
-  const jwtPayload = parseJwtPayload(token);
+  const jwtPayload = await parseJwtPayload(token, env);
   const issuedAtSeconds = Number(jwtPayload?.iat || 0);
   if (!Number.isFinite(issuedAtSeconds) || issuedAtSeconds <= 0) {
     return false;
@@ -543,8 +560,7 @@ async function getUserProfileForRequest(
 
   const payload = await supabaseAdminRequest(env, `/rest/v1/usuarios_biblioteca?${params.toString()}`);
   const profiles = Array.isArray(payload) ? payload : [];
-  const roleHint = normalizeProfileRoleHint(request.headers.get('x-profile-role-hint'));
-  const preferred = [roleHint, ...preferredTypes.map((item) => normalizeProfileRoleHint(item))].filter(Boolean);
+  const preferred = preferredTypes.map((item) => normalizeProfileRoleHint(item)).filter(Boolean);
 
   const profile = preferred
     .map((tipo) => profiles.find((item) => String(item?.tipo || '').trim().toLowerCase() === tipo))
@@ -1881,9 +1897,10 @@ async function getTenantBySubdomain(subdomain: string, env: Env) {
   };
 }
 
-function normalizeSessionPayloadForHandoff(
+async function normalizeSessionPayloadForHandoff(
   session: unknown,
-  authenticatedUserId?: string | null,
+  authenticatedUserId: string | null | undefined,
+  env: Env,
 ) {
   const source = session && typeof session === 'object' && 'session' in session
     ? (session as Record<string, unknown>).session
@@ -1896,7 +1913,7 @@ function normalizeSessionPayloadForHandoff(
   const refreshToken = String(rawSession.refresh_token || '').trim();
   if (!accessToken || !refreshToken) return null;
 
-  const jwtPayload = parseJwtPayload(accessToken);
+  const jwtPayload = await parseJwtPayload(accessToken, env);
   const sessionUser = rawSession.user && typeof rawSession.user === 'object'
     ? rawSession.user as Record<string, unknown>
     : null;
@@ -1920,7 +1937,11 @@ function normalizeSessionPayloadForHandoff(
 }
 
 function getHandoffEncryptionSecret(env: Env) {
-  return String(env.HANDOFF_ENCRYPTION_SECRET || env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  const secret = String(env.HANDOFF_ENCRYPTION_SECRET || '').trim();
+  if (!secret) {
+    console.error('CRITICAL: HANDOFF_ENCRYPTION_SECRET is not configured. Session handoffs will fail.');
+  }
+  return secret;
 }
 
 async function getHandoffEncryptionKey(env: Env) {
@@ -1988,6 +2009,10 @@ async function decryptHandoffSessionPayload(
 function normalizeAppPath(value: unknown, fallback = '/dashboard') {
   const normalized = String(value || '').trim();
   if (!normalized) return fallback;
+  // Prevent open redirects: reject protocol-relative URLs, newlines, and non-path values
+  if (normalized.startsWith('//') || normalized.startsWith('http:') || normalized.startsWith('https:') || normalized.includes('\r') || normalized.includes('\n')) {
+    return fallback;
+  }
   return normalized.startsWith('/') ? normalized : `/${normalized}`;
 }
 
@@ -2027,7 +2052,7 @@ function isAuthorizedTenantHandoffOrigin(request: Request, targetSubdomain: stri
     const baseDomain = String(env.APP_BASE_DOMAIN || 'bibliotecai.com.br').trim().toLowerCase();
 
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return true;
+      return String(env.APP_ENV || '').trim().toLowerCase() !== 'production';
     }
 
     if (!baseDomain || !expectedSubdomain) {
@@ -3133,7 +3158,10 @@ function isExpiredComunicado(item: Record<string, unknown> | null | undefined) {
 function sanitizeR2ObjectKey(objectKey: string) {
   return String(objectKey || '')
     .replace(/^\/+/, '')
-    .replace(/\.\./g, '')
+    .replace(/%/g, '')       // Remove URL-encoded characters
+    .replace(/\.\./g, '')    // Remove path traversal
+    .replace(/\0/g, '')      // Remove null bytes
+    .replace(/[^a-zA-Z0-9._/\-]/g, '_')  // Allow only safe characters
     .trim();
 }
 
@@ -4000,7 +4028,7 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const body = await request.json().catch(() => ({}));
-    const incomingSession = normalizeSessionPayloadForHandoff(body?.session, String(user.id));
+    const incomingSession = await normalizeSessionPayloadForHandoff(body?.session, String(user.id), env);
     if (!incomingSession?.access_token || !incomingSession?.refresh_token) {
       return jsonResponse({ success: false, error: 'Sessao atual invalida para o redirecionamento seguro.' }, 400);
     }
@@ -4024,7 +4052,7 @@ const routes: Record<string, RouteHandler> = {
       );
     }
 
-    const refreshedSession = normalizeSessionPayloadForHandoff(refreshPayload, String(user.id));
+    const refreshedSession = await normalizeSessionPayloadForHandoff(refreshPayload, String(user.id), env);
     if (!refreshedSession?.access_token || !refreshedSession?.refresh_token) {
       return jsonResponse({ success: false, error: 'Sessao renovada invalida para o redirecionamento seguro.' }, 400);
     }
@@ -4113,7 +4141,7 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const decryptedSessionPayload = await decryptHandoffSessionPayload(handoff.session_payload, env).catch(() => null);
-    const session = normalizeSessionPayloadForHandoff(decryptedSessionPayload, String(handoff.user_id || ''));
+    const session = await normalizeSessionPayloadForHandoff(decryptedSessionPayload, String(handoff.user_id || ''), env);
     if (!session?.access_token || !session?.refresh_token) {
       return jsonResponse({ success: false, error: 'Sessao vinculada ao handoff esta invalida.' }, 410);
     }
@@ -4331,7 +4359,7 @@ const routes: Record<string, RouteHandler> = {
         : email;
     const authPassword = isAluno ? normalizedMatricula : senha;
 
-    if ((usesCpfAsLogin && (!cpf || !isValidCpf(cpf))) || !authEmail || !authPassword || authPassword.length < 6) {
+    if ((usesCpfAsLogin && (!cpf || !isValidCpf(cpf))) || !authEmail || !authPassword || authPassword.length < 8) {
       await releasePublicInviteReservation(env, String(tokenInfo.id));
       return jsonResponse({ success: false, error: 'Dados invalidos para criacao da conta.' }, 400);
     }
@@ -4627,7 +4655,7 @@ const routes: Record<string, RouteHandler> = {
     const cpf = normalizeCpf(body?.cpf);
     const senha = String(body?.senha || '');
 
-    if (!token || !nome || cpf.length !== 11 || senha.length < 6) {
+    if (!token || !nome || cpf.length !== 11 || senha.length < 8) {
       return jsonResponse({ success: false, error: 'Dados invalidos.' }, 400);
     }
 
@@ -5635,7 +5663,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Matricula invalida' }, 400);
     }
 
-    if (senhaInput.length < 6) {
+    if (senhaInput.length < 8) {
       return jsonResponse({ success: false, error: 'A senha deve ter pelo menos 6 caracteres' }, 400);
     }
 
@@ -5938,7 +5966,7 @@ const routes: Record<string, RouteHandler> = {
     const password = String(body?.password || '').trim();
     const metadata = body?.metadata && typeof body.metadata === 'object' ? body.metadata : {};
 
-    if (password.length < 6) {
+    if (password.length < 8) {
       return jsonResponse({ success: false, error: 'Senha deve ter pelo menos 6 caracteres.' }, 400);
     }
 
@@ -6846,7 +6874,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'CPF invalido' }, 400);
     }
 
-    if (senha.length < 6) {
+    if (senha.length < 8) {
       return jsonResponse({ success: false, error: 'Senha deve ter pelo menos 6 caracteres' }, 400);
     }
 
@@ -10307,6 +10335,173 @@ const routes: Record<string, RouteHandler> = {
 
   'POST /v1/media/sign-upload': async () => notImplemented('Assinatura de upload pela API propria'),
   'POST /v1/media/sign-download': async () => notImplemented('Assinatura de download pela API propria'),
+
+  // ── Analytics ──────────────────────────────────────────────────────────────
+  'POST /v1/analytics/events': async (request, env) => {
+    try {
+      const body = await request.json().catch(() => ({}));
+      const event = {
+        event_type: String(body?.event_type || 'unknown').slice(0, 50),
+        page_url: String(body?.page_url || '').slice(0, 500),
+        element_id: String(body?.element_id || '').slice(0, 200),
+        session_id: String(body?.session_id || '').slice(0, 100),
+        user_id: String(body?.user_id || '').slice(0, 100),
+        data: typeof body?.data === 'object' ? body.data : {},
+        viewport_w: Number(body?.viewport_w || 0),
+        screen_w: Number(body?.screen_w || 0),
+        platform: String(body?.platform || '').slice(0, 50),
+        user_agent: String(body?.user_agent || '').slice(0, 120),
+      };
+      await supabaseAdminRequest(env, '/rest/v1/analytics_events', {
+        method: 'POST',
+        body: JSON.stringify(event),
+        headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      });
+      return jsonResponse({ success: true });
+    } catch {
+      return jsonResponse({ success: true });
+    }
+  },
+
+  'POST /v1/analytics/sessions': async (request, env) => {
+    try {
+      const body = await request.json().catch(() => ({}));
+      const sessionId = String(body?.session_id || '').slice(0, 100);
+      if (!sessionId) return jsonResponse({ success: true });
+
+      const now = new Date().toISOString();
+      const existing = await supabaseAdminRequest(
+        env,
+        `/rest/v1/analytics_sessions?session_id=eq.${encodeURIComponent(sessionId)}&select=id,page_views,max_scroll_depth`,
+      );
+
+      const rows = Array.isArray(existing) ? existing : [];
+      if (rows.length > 0) {
+        const row = rows[0];
+        await supabaseAdminRequest(
+          env,
+          `/rest/v1/analytics_sessions?id=eq.${row.id}`,
+          {
+            method: 'PATCH',
+            body: JSON.stringify({
+              last_active_at: now,
+              page_views: (row.page_views || 0) + 1,
+              max_scroll_depth: Math.max(row.max_scroll_depth || 0, Number(body?.scrollDepth || 0)),
+            }),
+            headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          },
+        );
+      } else {
+        await supabaseAdminRequest(env, '/rest/v1/analytics_sessions', {
+          method: 'POST',
+          body: JSON.stringify({
+            session_id: sessionId,
+            user_id: String(body?.user_id || '').slice(0, 100),
+            started_at: now,
+            last_active_at: now,
+            page_views: 1,
+            max_scroll_depth: Number(body?.scrollDepth || 0),
+            platform: String(body?.platform || '').slice(0, 50),
+            user_agent: String(body?.userAgent || '').slice(0, 120),
+          }),
+          headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        });
+      }
+      return jsonResponse({ success: true });
+    } catch {
+      return jsonResponse({ success: true });
+    }
+  },
+
+  'GET /v1/analytics/events': async (request, env) => {
+    const url = new URL(request.url);
+    const limit = Math.min(Number(url.searchParams.get('limit') || 100), 500);
+    const eventType = url.searchParams.get('event_type') || '';
+    const pageUrl = url.searchParams.get('page_url') || '';
+    const startDate = url.searchParams.get('start_date') || '';
+    const endDate = url.searchParams.get('end_date') || '';
+
+    const params = new URLSearchParams({
+      order: 'created_at.desc',
+      limit: String(limit),
+    });
+    if (eventType) params.set('event_type', `eq.${eventType}`);
+    if (pageUrl) params.set('page_url', `eq.${pageUrl}`);
+    if (startDate) params.append('created_at', `gte.${startDate}`);
+    if (endDate) params.append('created_at', `lte.${endDate}`);
+
+    const data = await supabaseAdminRequest(env, `/rest/v1/analytics_events?${params}`);
+    return jsonResponse({ success: true, data: Array.isArray(data) ? data : [] });
+  },
+
+  'GET /v1/analytics/summary': async (request, env) => {
+    const url = new URL(request.url);
+    const days = Math.min(Math.max(Number(url.searchParams.get('days') || 30), 1), 365);
+    const startDate = new Date(Date.now() - days * 86400000).toISOString();
+
+    const eventsParams = new URLSearchParams({
+      order: 'created_at.desc',
+      limit: '1000',
+      created_at: `gte.${startDate}`,
+    });
+    const sessionsParams = new URLSearchParams({
+      order: 'started_at.desc',
+      limit: '500',
+      started_at: `gte.${startDate}`,
+    });
+
+    const [events, sessions] = await Promise.all([
+      supabaseAdminRequest(env, `/rest/v1/analytics_events?${eventsParams}`).catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/analytics_sessions?${sessionsParams}`).catch(() => []),
+    ]);
+
+    const eventsArr = Array.isArray(events) ? events : [];
+    const sessionsArr = Array.isArray(sessions) ? sessions : [];
+
+    const pageViews: Record<string, number> = {};
+    const eventTypes: Record<string, number> = {};
+    let totalScrollDepth = 0;
+    let scrollCount = 0;
+
+    for (const e of eventsArr) {
+      const url = e.page_url || '/';
+      pageViews[url] = (pageViews[url] || 0) + 1;
+      const type = e.event_type || 'unknown';
+      eventTypes[type] = (eventTypes[type] || 0) + 1;
+      if (e.event_type === 'scroll_depth') {
+        try {
+          const data = typeof e.data === 'string' ? JSON.parse(e.data) : (e.data || {});
+          if (data.depth) {
+            totalScrollDepth += data.depth;
+            scrollCount++;
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
+    const pageViewsList = Object.entries(pageViews)
+      .map(([url, views]) => ({ url, views }))
+      .sort((a, b) => b.views - a.views)
+      .slice(0, 20);
+
+    const eventTypesList = Object.entries(eventTypes)
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count);
+
+    return jsonResponse({
+      success: true,
+      data: {
+        totalEvents: eventsArr.length,
+        totalSessions: sessionsArr.length,
+        totalPageViews: eventsArr.filter((e: Record<string, unknown>) => e.event_type === 'page_view').length,
+        avgScrollDepth: scrollCount > 0 ? Math.round(totalScrollDepth / scrollCount) : 0,
+        pageViews: pageViewsList,
+        eventTypes: eventTypesList,
+        recentEvents: eventsArr.slice(0, 50),
+        recentSessions: sessionsArr.slice(0, 20),
+      },
+    });
+  },
 };
 
 function normalizeDynamicRoute(routeKey: string) {

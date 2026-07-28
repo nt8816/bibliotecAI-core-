@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 180" fill="none">
+  <rect width="280" height="180" rx="16" fill="#FFF8E1"/>
+  <rect x="15" y="10" width="250" height="160" rx="12" fill="#fff" stroke="#0288D1" stroke-width="1.5"/>
+  <rect x="15" y="10" width="250" height="28" rx="12" fill="#0288D1" fill-opacity="0.06"/>
+  <rect x="25" y="17" width="80" height="8" rx="3" fill="#0288D1" fill-opacity="0.2"/>
+  <rect x="25" y="48" width="230" height="35" rx="8" fill="#0288D1" fill-opacity="0.06"/>
+  <circle cx="45" cy="65" r="10" fill="#0288D1" fill-opacity="0.15"/>
+  <text x="45" y="69" text-anchor="middle" fill="#0288D1" font-size="10" font-family="sans-serif">🎯</text>
+  <rect x="65" y="57" width="120" height="6" rx="3" fill="#0288D1" fill-opacity="0.15"/>
+  <rect x="65" y="67" width="80" height="4" rx="2" fill="#0288D1" fill-opacity="0.08"/>
+  <rect x="200" y="58" width="55" height="16" rx="8" fill="#F9A825" fill-opacity="0.15"/>
+  <text x="228" y="69" text-anchor="middle" fill="#F9A825" font-size="7" font-weight="700" font-family="sans-serif">+50 XP</text>
+  <rect x="25" y="90" width="230" height="35" rx="8" fill="#0288D1" fill-opacity="0.04"/>
+  <circle cx="45" cy="107" r="10" fill="#0288D1" fill-opacity="0.1"/>
+  <text x="45" y="111" text-anchor="middle" fill="#0288D1" font-size="10" font-family="sans-serif">📖</text>
+  <rect x="65" y="99" width="100" height="6" rx="3" fill="#0288D1" fill-opacity="0.12"/>
+  <rect x="65" y="109" width="70" height="4" rx="2" fill="#0288D1" fill-opacity="0.06"/>
+  <rect x="200" y="100" width="55" height="16" rx="8" fill="#F9A825" fill-opacity="0.12"/>
+  <text x="228" y="111" text-anchor="middle" fill="#F9A825" font-size="7" font-weight="700" font-family="sans-serif">+30 XP</text>
+  <rect x="25" y="132" width="230" height="35" rx="8" fill="#0288D1" fill-opacity="0.03"/>
+  <circle cx="45" cy="149" r="10" fill="#0288D1" fill-opacity="0.08"/>
+  <text x="45" y="153" text-anchor="middle" fill="#0288D1" font-size="10" font-family="sans-serif">🔬</text>
+  <rect x="65" y="141" width="110" height="6" rx="3" fill="#0288D1" fill-opacity="0.1"/>
+  <rect x="65" y="151" width="75" height="4" rx="2" fill="#0288D1" fill-opacity="0.05"/>
+  <rect x="200" y="142" width="55" height="16" rx="8" fill="#F9A825" fill-opacity="0.1"/>
+  <text x="228" y="153" text-anchor="middle" fill="#F9A825" font-size="7" font-weight="700" font-family="sans-serif">+40 XP</text>
+</svg>

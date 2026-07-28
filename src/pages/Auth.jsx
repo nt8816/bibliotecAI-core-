@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { Loader2, Eye, EyeOff, QrCode, ShieldCheck, Smartphone, MonitorSmartphone, MailCheck } from 'lucide-react';
@@ -152,7 +152,7 @@ export default function Auth() {
   const [passkeyEnvironmentInfo, setPasskeyEnvironmentInfo] = useState(null);
 
   const desktopApprovalTokenRef = useRef(getDesktopApprovalToken());
-  const { signIn, user, tenantContext, userRole } = useAuth();
+  const { signIn, user, tenantContext, userRole, applySuperAdminSession } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -246,6 +246,7 @@ export default function Auth() {
         setFinalizingDesktop(true);
         await finalizePlatformSession(pendingSecurity.pendingSession);
         if (!active) return;
+        applySuperAdminSession({ session: pendingSecurity.pendingSession });
         saveDesktopResumeState(null);
         setPendingSecurity(null);
         setSecurityStep('login');
@@ -367,6 +368,7 @@ export default function Auth() {
 
   const finishSuperAdminLogin = async ({ pendingSession, email, context, mfaChallengeId, desktopChallengeToken }) => {
     await finalizePlatformSession(pendingSession);
+    applySuperAdminSession({ session: pendingSession });
     saveDesktopResumeState(null);
     await registerPlatformSuperAdminLoginSuccess(email, {
       context,

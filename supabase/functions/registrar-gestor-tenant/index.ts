@@ -1,21 +1,44 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const isDev = !['production', 'prod'].includes(String(Deno.env.get('SUPABASE_ENV') || '').trim().toLowerCase());
+const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", ...(isDev ? ['http://localhost:5173', 'http://localhost:3000'] : [])];
 
-const jsonResponse = (body, status = 200) =>
+function getCorsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get("Origin") || "";
+  const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": safeOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-user-access-token",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Max-Age": "86400",
+  };
+}
+
+
+const jsonResponse = (body, status = 200, request) =>
   new Response(JSON.stringify(body), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' },
     status,
   });
 
 const TOKEN_REGEX = /^[a-f0-9]{32,128}$/;
 
+async function checkRateLimit(supabaseAdmin: any, key: string, limit = 10, windowSeconds = 60): Promise<boolean> {
+  try {
+    const { data } = await supabaseAdmin.rpc('check_ai_rate_limit', {
+      _key: `ratelimit:${key}`,
+      _limit: limit,
+      _window_seconds: windowSeconds,
+    }).single();
+    return data === true;
+  } catch {
+    return false; // fail closed if rate limit check fails
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: getCorsHeaders(req) });
   }
 
   try {
@@ -70,6 +93,12 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || 'unknown';
+    const rateKey = `${clientIp}:registrar-gestor`;
+    if (!(await checkRateLimit(supabaseAdmin, rateKey, 10, 60))) {
+      return jsonResponse({ success: false, error: 'Limite de requisicoes atingido. Tente novamente em alguns minutos.' }, 429);
+    }
+
     const { data: inviteCtx, error: inviteCtxError } = await supabaseCaller
       .rpc('get_tenant_invite_context', { _token: normalizedToken })
       .maybeSingle();
@@ -112,7 +141,7 @@ Deno.serve(async (req) => {
         .update({ usado_em: null, usado_por: null })
         .eq('id', reservedInvite.id)
         .is('usado_por', null);
-      return jsonResponse({ success: false, error: createUserError.message }, 400);
+      return jsonResponse({ success: false, error: 'Erro ao criar conta de autenticacao.' }, 400);
     }
 
     const userId = createdUser.user.id;
@@ -206,7 +235,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('registrar-gestor-tenant error', error);
     return jsonResponse(
-      { success: false, error: error instanceof Error ? error.message : 'Erro inesperado' },
+      { success: false, error: 'Erro interno do servidor.' },
       500,
     );
   }

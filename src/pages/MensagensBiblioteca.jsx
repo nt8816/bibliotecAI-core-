@@ -183,6 +183,7 @@ export default function MensagensBiblioteca() {
   const [selectedId, setSelectedId] = useState('');
   const [drafts, setDrafts] = useState({});
   const readNotificationIdsRef = useRef(new Set());
+  const mountedRef = useRef(true);
 
   const canAccess = isAluno || isBibliotecaria;
   const selectedParam = searchParams.get('solicitacao');
@@ -231,17 +232,21 @@ export default function MensagensBiblioteca() {
 
   useEffect(() => {
     if (!canAccess || !user?.id) return undefined;
+    mountedRef.current = true;
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
+      if (mountedRef.current && document.visibilityState === 'visible') {
         fetchData();
       }
     };
 
-    const interval = window.setInterval(fetchData, 8000);
+    const interval = window.setInterval(() => {
+      if (mountedRef.current) fetchData();
+    }, 8000);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
+      mountedRef.current = false;
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };

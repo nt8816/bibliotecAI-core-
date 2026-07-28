@@ -4,6 +4,7 @@ import { trackAnalyticsEvent, upsertAnalyticsSession } from '@/services/analytic
 const STORAGE_KEY = 'bibliotecai_analytics';
 const SESSION_KEY = 'bibliotecai_session';
 const APPWRITE_THROTTLE_MS = 2000;
+const ANALYTICS_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
@@ -26,7 +27,15 @@ function getSession() {
 function getStore() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const store = JSON.parse(raw);
+      // Expire old events (7 days)
+      const cutoff = Date.now() - ANALYTICS_TTL_MS;
+      if (store.events) {
+        store.events = store.events.filter((e) => e.ts > cutoff);
+      }
+      return store;
+    }
   } catch {}
   return { sessions: [], events: [], stats: {} };
 }
@@ -59,7 +68,7 @@ function canWriteToAppwrite(key) {
   return true;
 }
 
-function persistToAppwrite(event) {
+function persistToApi(event) {
   if (!canWriteToAppwrite(`${event.name}:${event.path}`)) return;
   const session = getSession();
   trackAnalyticsEvent({
@@ -91,7 +100,7 @@ export function trackEvent(name, data = {}) {
     store.events = store.events.slice(-1500);
   }
   saveStore(store);
-  persistToAppwrite(event);
+  persistToApi(event);
   return event;
 }
 
@@ -150,7 +159,7 @@ export function getStats() {
 
   const sectionCounts = {};
   sections.forEach(e => {
-    const key = `${e.data.section}_${e.data.action}`;
+    const key = `${e.data.section}_${e.name.replace('section_', '')}`;
     sectionCounts[key] = (sectionCounts[key] || 0) + 1;
   });
 
@@ -159,7 +168,7 @@ export function getStats() {
     clickCounts[e.data.element] = (clickCounts[e.data.element] || 0) + 1;
   });
 
-  const maxScroll = scrolls.length > 0 ? Math.max(...scrolls.map(e => e.data.depth)) : 0;
+  const maxScroll = scrolls.length > 0 ? Math.max(...scrolls.filter(e => e?.data?.depth != null).map(e => e.data.depth)) : 0;
 
   return {
     totalEvents: events.length,
@@ -252,7 +261,11 @@ export function useAnalyticsDashboard() {
 
   useEffect(() => {
     refresh();
-    const interval = setInterval(refresh, 5000);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refresh();
+      }
+    }, 5000);
     return () => clearInterval(interval);
   }, [refresh]);
 

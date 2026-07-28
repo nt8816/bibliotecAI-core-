@@ -38,6 +38,17 @@ function wait(ms) {
   });
 }
 
+function describeNetworkError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  if (message.includes('failed to fetch') || message.includes('network request failed')) {
+    return 'Nao foi possivel conectar ao servidor. Verifique sua conexao com a internet.';
+  }
+  if (message.includes('networkerror') || message.includes('load failed')) {
+    return 'Erro de rede ao acessar a API. Tente novamente em instantes.';
+  }
+  return error?.message || 'Falha ao comunicar com a API. Tente novamente.';
+}
+
 export async function requestPlatformApi(routePath, {
   method = 'GET',
   body,
@@ -63,7 +74,7 @@ export async function requestPlatformApi(routePath, {
           method,
           headers: {
             'Content-Type': 'application/json',
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}`, 'x-user-access-token': accessToken } : {}),
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
             ...(headers || {}),
           },
           body: body === undefined ? undefined : JSON.stringify(body),
@@ -71,13 +82,15 @@ export async function requestPlatformApi(routePath, {
       } catch (error) {
         lastError = error;
         if (!isTransientNetworkError(error) || attempt >= maxAttempts) {
-          throw error;
+          const wrappedError = new Error(describeNetworkError(error));
+          wrappedError.originalError = error;
+          throw wrappedError;
         }
         await wait(350 * attempt);
       }
     }
 
-    throw lastError || new Error('Falha de rede ao acessar a Platform API.');
+    throw new Error(describeNetworkError(lastError));
   };
 
   let response = await executeRequest();

@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { Toaster } from '@/components/ui/toaster';
 import { Toaster as Sonner } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -15,10 +15,11 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { PrivateTelemetryTracker } from '@/components/PrivateTelemetryTracker';
 import { SystemLogObserver } from '@/components/SystemLogObserver';
 import { AppShellState } from '@/components/AppShellState';
+import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { ConnectivityStatus } from '@/components/ConnectivityStatus';
 import { NativePushBridge } from '@/components/NativePushBridge';
 
-const LandingPage = lazy(() => import('./pages/LandingPage'));
+import LandingPage from './pages/LandingPage';
 const Auth = lazy(() => import('./pages/Auth'));
 const Privacidade = lazy(() => import('./pages/Privacidade'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -34,6 +35,7 @@ const Convite = lazy(() => import('./pages/Convite'));
 const ConfiguracaoEscola = lazy(() => import('./pages/ConfiguracaoEscola.jsx'));
 const AdminTenants = lazy(() => import('./pages/AdminTenants'));
 const SuperAdmins = lazy(() => import('./pages/SuperAdmins'));
+const AnalyticsAdmin = lazy(() => import('./pages/AnalyticsAdmin'));
 const AdminAcesso = lazy(() => import('./pages/AdminAcesso'));
 const OnboardingGestor = lazy(() => import('./pages/OnboardingGestor'));
 const Configuracoes = lazy(() => import('./pages/Configuracoes'));
@@ -47,59 +49,8 @@ const RelatoriosLeitura = lazy(() => import('./pages/professor/RelatoriosLeitura
 const PainelAluno = lazy(() => import('./pages/aluno/PainelAluno'));
 const RankingAluno = lazy(() => import('./pages/aluno/RankingAluno'));
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 60 * 1000,
-      gcTime: 10 * 60 * 1000,
-      refetchOnWindowFocus: false,
-      retry: 1,
-    },
-  },
-});
-
-function isLegacyDisabledHost() {
-  if (typeof window === 'undefined') return false;
-  return String(window.location.hostname || '').toLowerCase() === 'bibliotec-ai-core.vercel.app';
-}
-
-function LegacyHostShutdownNotice() {
-  return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_top,rgba(220,38,38,0.1),transparent_32%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.75))] p-6">
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(220,38,38,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(220,38,38,0.05)_1px,transparent_1px)] bg-[size:32px_32px]" />
-      <div className="relative w-full max-w-2xl rounded-[2rem] border border-destructive/35 bg-card/95 p-8 text-center shadow-[0_24px_70px_hsl(var(--destructive)/0.16)] backdrop-blur-sm sm:p-10">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-destructive/30 bg-destructive/10 text-destructive shadow-[0_12px_30px_hsl(var(--destructive)/0.18)]">
-          <span className="text-2xl font-black">!</span>
-        </div>
-        <p className="mt-5 text-xs font-semibold uppercase tracking-[0.35em] text-destructive/80">Host desativado</p>
-        <h1 className="mt-4 text-3xl font-black tracking-tight text-destructive sm:text-4xl">
-          APLICACAO FORA DO AR PERMANENTEMENTE
-        </h1>
-        <p className="mt-4 text-base leading-7 text-muted-foreground sm:text-lg">
-          Contate rapidamente o responsavel mais proximo.
-        </p>
-        <div className="mt-6 rounded-2xl border border-destructive/20 bg-destructive/5 px-5 py-4 text-left">
-          <p className="text-sm font-semibold text-foreground">Desligamento definitivo do host legado</p>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Este endereco antigo sera removido definitivamente em <span className="font-semibold text-foreground">11 de abril de 2026</span>.
-            Use apenas os acessos oficiais da plataforma.
-          </p>
-        </div>
-        <div className="mt-6 rounded-2xl border border-border/70 bg-muted/30 px-5 py-4 text-left">
-          <p className="text-sm font-semibold text-foreground">Acessos oficiais</p>
-          <p className="mt-2 text-sm text-muted-foreground">Plataforma: <span className="font-medium text-foreground">https://bibliotecai.com.br</span></p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function AppRoutes() {
   const { loading, isTenantHost, tenant, error } = useTenant();
-
-  if (isLegacyDisabledHost()) {
-    return <LegacyHostShutdownNotice />;
-  }
 
   if (loading) {
     return (
@@ -279,6 +230,16 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/analytics"
+        element={
+          <ProtectedRoute>
+            <SuperAdminRoute>
+              <AnalyticsAdmin />
+            </SuperAdminRoute>
+          </ProtectedRoute>
+        }
+      />
 
       <Route
         path="/dashboard"
@@ -438,8 +399,20 @@ function AppRoutes() {
   );
 }
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
+const App = () => {
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 60 * 1000,
+        gcTime: 10 * 60 * 1000,
+        refetchOnWindowFocus: false,
+        retry: 1,
+      },
+    },
+  }));
+
+  return (
+    <QueryClientProvider client={queryClient}>
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <TenantProvider>
         <AuthProvider>
@@ -460,7 +433,9 @@ const App = () => (
                     />
                   )}
                 >
-                  <AppRoutes />
+                  <AppErrorBoundary>
+                    <AppRoutes />
+                  </AppErrorBoundary>
                 </Suspense>
               </BrowserRouter>
             </TooltipProvider>
@@ -469,6 +444,7 @@ const App = () => (
       </TenantProvider>
     </ThemeProvider>
   </QueryClientProvider>
-);
+  );
+};
 
 export default App;

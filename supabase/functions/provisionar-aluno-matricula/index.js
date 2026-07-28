@@ -1,21 +1,43 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", "http://localhost:5173", "http://localhost:3000"];
 
-const jsonResponse = (body, status = 200) =>
+function getCorsHeaders(request) {
+  const origin = request.headers.get("Origin") || "";
+  const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": safeOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-user-access-token",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Max-Age": "86400",
+  };
+}
+
+
+const jsonResponse = (body, status = 200, request) =>
   new Response(JSON.stringify(body), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' },
     status,
   });
 
 const MATRICULA_REGEX = /^[A-Za-z0-9._-]{6,32}$/;
 
+async function checkRateLimit(supabaseAdmin, key, limit = 10, windowSeconds = 60) {
+  try {
+    const { data } = await supabaseAdmin.rpc('check_ai_rate_limit', {
+      _key: `ratelimit:${key}`,
+      _limit: limit,
+      _window_seconds: windowSeconds,
+    }).single();
+    return data === true;
+  } catch (_err) {
+    return true; // fail open if rate limit check fails
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: getCorsHeaders(request || new Request("http://localhost")) });
   }
 
   try {
@@ -40,6 +62,12 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || 'unknown';
+    const rateKey = `${clientIp}:provisionar-aluno`;
+    if (!(await checkRateLimit(adminClient, rateKey, 10, 60))) {
+      return jsonResponse({ success: false, error: 'Limite de requisicoes atingido. Tente novamente em alguns minutos.' }, 429);
+    }
 
     const { data: callerUserData, error: callerUserError } = await callerClient.auth.getUser();
     const callerId = callerUserData?.user?.id;
@@ -191,14 +219,10 @@ Deno.serve(async (req) => {
         email: authEmail,
         matricula,
       },
-      credenciais_iniciais: {
-        login: matricula,
-        senha: matricula,
-      },
+      message: 'Aluno provisionado com sucesso.',
     });
   } catch (error) {
     console.error('provisionar-aluno-matricula error', error);
-    const message = error instanceof Error ? error.message : 'Erro desconhecido';
-    return jsonResponse({ success: false, error: message }, 500);
+    return jsonResponse({ success: false, error: 'Erro interno do servidor.' }, 500);
   }
 });

@@ -217,6 +217,7 @@ export default function Livros() {
   const fileInputRef = useRef(null);
   const isFetchingLivrosRef = useRef(false);
   const hasLoadedLivrosRef = useRef(false);
+  const mountedRef = useRef(true);
   const deferredSearchTerm = useDeferredValue(searchTerm);
 
   const { isGestor, isBibliotecaria, isProfessor, user } = useAuth();
@@ -273,18 +274,20 @@ export default function Livros() {
   }, [fetchLivros]);
 
   useEffect(() => {
+    mountedRef.current = true;
     const interval = window.setInterval(() => {
-      fetchLivros();
+      if (mountedRef.current) fetchLivros();
     }, 30000);
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
+      if (mountedRef.current && document.visibilityState === 'visible') {
         fetchLivros();
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
+      mountedRef.current = false;
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
@@ -473,24 +476,6 @@ export default function Livros() {
       const freeEditora = String(resultado?.autoData?.editora || '').trim();
 
       const usouComplementoIA = !freeSinopse || (!formData.autor && !freeAutor) || (!formData.ano && !freeAno) || (!formData.editora && !freeEditora);
-
-      if (false) {
-        try {
-          const iaPayload = await generateTextWithCloudflare({
-            task: 'sinopse_livro',
-            input: {
-              titulo: formData.titulo,
-              autor: formData.autor,
-              area: formData.area,
-              sinopseBase: formData.sinopse,
-            },
-            fallbackErrorMessage: 'Nao foi possivel gerar sinopse por IA.',
-          });
-          void iaPayload;
-        } catch {
-          void 0;
-        }
-      }
 
       const iaSinopse = String(iaData?.sinopse || '').trim();
       const iaAutor = String(iaData?.autor || '').trim();

@@ -1237,7 +1237,7 @@ function ContactForm() {
               <div className="contact-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label style={labelStyle}>Seu nome</label>
-                  <input name="nome" type="text" placeholder="como se chama?" required value={nome} onChange={(e) => setNome(e.target.value)} style={fieldStyle('nome')}
+                  <input name="nome" type="text" placeholder="como se chama?" required value={nome} onChange={(e) => setNome(e.target.value)} maxLength={100} style={fieldStyle('nome')}
                     onFocus={() => setFocusedField('nome')} onBlur={() => setFocusedField(null)} />
                 </div>
                 <div>
@@ -1248,7 +1248,7 @@ function ContactForm() {
               </div>
               <div>
                 <label style={labelStyle}>Escola</label>
-                <input name="escola" type="text" placeholder="qual escola? (opcional)" value={escola} onChange={(e) => setEscola(e.target.value)} style={fieldStyle('escola')}
+                <input name="escola" type="text" placeholder="qual escola? (opcional)" value={escola} onChange={(e) => setEscola(e.target.value)} maxLength={200} style={fieldStyle('escola')}
                   onFocus={() => setFocusedField('escola')} onBlur={() => setFocusedField(null)} />
               </div>
               <div>
@@ -1265,7 +1265,7 @@ function ContactForm() {
               </div>
               <div>
                 <label style={labelStyle}>Mensagem</label>
-                <textarea name="mensagem" placeholder="escreva aqui..." rows={4} required value={mensagem} onChange={(e) => setMensagem(e.target.value)} autoFocus style={{ ...fieldStyle('mensagem'), resize: 'vertical', minHeight: 100, borderBottom: 'none', border: '1px solid rgba(90,62,27,0.12)', borderRadius: 4, padding: '0.8rem 1rem', fontSize: '1rem' }}
+                <textarea name="mensagem" placeholder="escreva aqui..." rows={4} required value={mensagem} onChange={(e) => setMensagem(e.target.value)} maxLength={2000} autoFocus style={{ ...fieldStyle('mensagem'), resize: 'vertical', minHeight: 100, borderBottom: 'none', border: '1px solid rgba(90,62,27,0.12)', borderRadius: 4, padding: '0.8rem 1rem', fontSize: '1rem' }}
                   onFocus={() => setFocusedField('mensagem')} onBlur={() => setFocusedField(null)} />
               </div>
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.3rem', alignItems: 'stretch' }}>

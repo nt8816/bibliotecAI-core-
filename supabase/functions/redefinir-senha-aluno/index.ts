@@ -1,15 +1,22 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-auth',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Max-Age': '86400',
-};
+const isDev = !['production', 'prod'].includes(String(Deno.env.get('SUPABASE_ENV') || '').trim().toLowerCase());
+const ALLOWED_ORIGINS = ['https://bibliotecai.com.br', 'https://app.bibliotecai.com.br', ...(isDev ? ['http://localhost:5173', 'http://localhost:3000'] : [])];
 
-const jsonResponse = (body: unknown, status = 200) =>
+function getCorsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get('Origin') || '';
+  const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': safeOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-auth',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
+const jsonResponse = (body: unknown, status = 200, request?: Request) =>
   new Response(JSON.stringify(body), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...getCorsHeaders(request || new Request('http://localhost')), 'Content-Type': 'application/json' },
     status,
   });
 
@@ -92,9 +99,22 @@ async function getSupabaseAdminApiKey(serviceRoleKey: string) {
   return getSupabaseAdminServiceToken(serviceRoleKey);
 }
 
+async function checkRateLimit(supabaseAdmin: any, key: string, limit = 10, windowSeconds = 60): Promise<boolean> {
+  try {
+    const { data } = await supabaseAdmin.rpc('check_ai_rate_limit', {
+      _key: `ratelimit:${key}`,
+      _limit: limit,
+      _window_seconds: windowSeconds,
+    }).single();
+    return data === true;
+  } catch {
+    return false; // fail closed if rate limit check fails
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders, status: 204 });
+    return new Response(null, { headers: getCorsHeaders(req), status: 204 });
   }
 
   try {
@@ -125,6 +145,12 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, adminApiKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || 'unknown';
+    const rateKey = `${clientIp}:reset-aluno`;
+    if (!(await checkRateLimit(adminClient, rateKey, 10, 60))) {
+      return jsonResponse({ success: false, error: 'Limite de requisicoes atingido. Tente novamente em alguns minutos.' }, 429);
+    }
 
     const {
       data: { user },
@@ -217,13 +243,12 @@ Deno.serve(async (req) => {
       success: true,
       aluno_id: alunoProfile.id,
       aluno_nome: alunoProfile.nome,
-      senha_temporaria: novaSenha,
       message: 'Senha redefinida com sucesso',
     });
   } catch (error) {
     console.error('redefinir-senha-aluno error', error);
     return jsonResponse(
-      { success: false, error: error instanceof Error ? error.message : 'Erro inesperado' },
+      { success: false, error: 'Erro interno do servidor' },
       500,
     );
   }
