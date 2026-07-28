@@ -2553,22 +2553,37 @@ function estimateArquivosBytes(arquivos: unknown) {
   }, 0);
 }
 
-const COMMUNITY_POST_SELECT =
-  '*,livros(titulo,autor),audiobooks_biblioteca(titulo,autor,audio_url),usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)';
-const COMMUNITY_POST_SELECT_LEGACY =
-  '*,livros(titulo,autor),audiobooks_biblioteca(titulo,autor),usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)';
+const COMMUNITY_POST_SELECT_VARIANTS = [
+  '*,livros(titulo,autor),audiobooks_biblioteca(titulo,autor,audio_url),usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)',
+  '*,livros(titulo,autor),audiobooks_biblioteca(titulo,autor),usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)',
+  '*,livros(titulo,autor),usuarios_biblioteca!comunidade_posts_autor_id_fkey(nome)',
+  '*',
+];
+
+function isOptionalCommunityPostSelectMessage(error: unknown) {
+  const message = String(error instanceof Error ? error.message : error || '').toLowerCase();
+  return isMissingColumnMessage(error) || (
+    message.includes('could not find') &&
+    (message.includes('relationship') || message.includes('schema cache')) &&
+    (message.includes('audiobooks_biblioteca') || message.includes('livros') || message.includes('usuarios_biblioteca'))
+  );
+}
 
 async function fetchCommunityPosts(env: Env, params: URLSearchParams) {
   const query = new URLSearchParams(params);
-  query.set('select', COMMUNITY_POST_SELECT);
+  let lastError: unknown = null;
 
-  try {
-    return await supabaseAdminRequest(env, `/rest/v1/comunidade_posts?${query.toString()}`);
-  } catch (error) {
-    if (!isMissingColumnMessage(error)) throw error;
-    query.set('select', COMMUNITY_POST_SELECT_LEGACY);
-    return supabaseAdminRequest(env, `/rest/v1/comunidade_posts?${query.toString()}`);
+  for (const select of COMMUNITY_POST_SELECT_VARIANTS) {
+    query.set('select', select);
+    try {
+      return await supabaseAdminRequest(env, `/rest/v1/comunidade_posts?${query.toString()}`);
+    } catch (error) {
+      lastError = error;
+      if (!isOptionalCommunityPostSelectMessage(error)) throw error;
+    }
   }
+
+  throw lastError;
 }
 
 async function fetchComunicadosRows(env: Env, params: URLSearchParams) {

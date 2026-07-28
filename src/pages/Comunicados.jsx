@@ -239,8 +239,22 @@ function isComunicadosFormActivity(descricao) {
   return String(descricao || '').includes(COMUNICADOS_FORM_MARKER);
 }
 
+function getErrorSearchText(error) {
+  const payload = error?.payload;
+  return [
+    error?.message,
+    error?.details,
+    error?.code,
+    payload?.error,
+    payload?.message,
+    payload?.details,
+    payload?.code,
+    typeof payload === 'string' ? payload : '',
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
 function isMissingColumnError(error, columnName, tableName) {
-  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  const message = getErrorSearchText(error);
   const column = String(columnName || '').toLowerCase();
   const table = String(tableName || '').toLowerCase();
   return (

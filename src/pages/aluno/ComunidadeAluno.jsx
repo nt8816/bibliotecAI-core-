@@ -303,8 +303,22 @@ function extractQuizFromConteudo(rawConteudo) {
   };
 }
 
+function getErrorSearchText(error) {
+  const payload = error?.payload;
+  return [
+    error?.message,
+    error?.details,
+    error?.code,
+    payload?.error,
+    payload?.message,
+    payload?.details,
+    payload?.code,
+    typeof payload === 'string' ? payload : '',
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
 function isMissingTableError(error) {
-  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  const message = getErrorSearchText(error);
   return (
     error?.code === '42P01' ||
     error?.code === 'PGRST205' ||
@@ -314,12 +328,17 @@ function isMissingTableError(error) {
 }
 
 function isMissingColumnError(error, columnName, tableName) {
-  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  const message = getErrorSearchText(error);
   const column = String(columnName || '').toLowerCase();
   const table = String(tableName || '').toLowerCase();
   return (
-    message.includes(`could not find the '${column}' column`) &&
-    (!table || message.includes(`'${table}'`) || message.includes(`"${table}"`))
+    (
+      message.includes(`could not find the '${column}' column`) ||
+      message.includes(`'${column}' column`) ||
+      message.includes(`column "${column}"`) ||
+      message.includes(`column ${column}`)
+    ) &&
+    (!table || message.includes(`'${table}'`) || message.includes(`"${table}"`) || message.includes(table))
   );
 }
 
@@ -353,17 +372,21 @@ async function insertCommunityPostCompat(payload, options = {}) {
     }
   };
 
-  let { data, error } = await runInsert(payload);
+  let currentPayload = payload;
+  let { data, error } = await runInsert(currentPayload);
+  const missingColumns = ['escola_id', 'imagem_urls', 'audiobook_id', 'turma_publico', 'expires_at', 'audio_url', 'audio_duration_seconds', 'arquivos'];
 
-  if (error) {
-    const missingColumns = ['escola_id', 'imagem_urls', 'audiobook_id', 'turma_publico', 'expires_at', 'audio_url', 'audio_duration_seconds', 'arquivos'];
-    for (const column of missingColumns) {
-      if (Object.prototype.hasOwnProperty.call(payload, column) && isMissingColumnError(error, column, 'comunidade_posts')) {
-        const { [column]: _ignored, ...fallbackPayload } = payload;
-        ({ data, error } = await runInsert(fallbackPayload));
-        if (!error) break;
-      }
-    }
+  while (error) {
+    const missingColumn = missingColumns.find((column) => (
+      Object.prototype.hasOwnProperty.call(currentPayload, column) &&
+      isMissingColumnError(error, column, 'comunidade_posts')
+    ));
+
+    if (!missingColumn) break;
+
+    const { [missingColumn]: _ignored, ...fallbackPayload } = currentPayload;
+    currentPayload = fallbackPayload;
+    ({ data, error } = await runInsert(currentPayload));
   }
 
   return { data, error };
