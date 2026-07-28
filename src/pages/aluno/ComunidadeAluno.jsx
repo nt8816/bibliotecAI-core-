@@ -358,7 +358,7 @@ async function insertCommunityPostCompat(payload, options = {}) {
   if (error) {
     const missingColumns = ['escola_id', 'imagem_urls', 'audiobook_id', 'turma_publico', 'expires_at', 'audio_url', 'audio_duration_seconds', 'arquivos'];
     for (const column of missingColumns) {
-      if (Object.hasOwn(payload, column) && isMissingColumnError(error, column, 'comunidade_posts')) {
+      if (Object.prototype.hasOwnProperty.call(payload, column) && isMissingColumnError(error, column, 'comunidade_posts')) {
         const { [column]: _ignored, ...fallbackPayload } = payload;
         ({ data, error } = await runInsert(fallbackPayload));
         if (!error) break;
@@ -992,7 +992,7 @@ export default function ComunidadeAluno() {
     try {
       const imagemUrls = [];
       if (shareImageDataUrl) {
-        const sharedUrl = await uploadDataUrlToR2(shareImageDataUrl, {
+        const sharedUrl = await uploadDataUrlToR2({
           dataUrl: shareImageDataUrl,
           escolaId,
           ownerId: alunoId,

@@ -239,6 +239,51 @@ function isComunicadosFormActivity(descricao) {
   return String(descricao || '').includes(COMUNICADOS_FORM_MARKER);
 }
 
+function isMissingColumnError(error, columnName, tableName) {
+  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  const column = String(columnName || '').toLowerCase();
+  const table = String(tableName || '').toLowerCase();
+  return (
+    (
+      message.includes(`could not find the '${column}' column`) ||
+      message.includes(`'${column}' column`) ||
+      message.includes(`column "${column}"`) ||
+      message.includes(`column ${column}`)
+    ) &&
+    (!table || message.includes(`'${table}'`) || message.includes(`"${table}"`) || message.includes(table))
+  );
+}
+
+async function createComunicadoPostCompat(payload, options = {}) {
+  const runCreate = async (nextPayload) => {
+    try {
+      return { result: await createComunidadePost(nextPayload, options), payload: nextPayload, error: null };
+    } catch (error) {
+      return { result: null, payload: nextPayload, error };
+    }
+  };
+
+  let currentPayload = payload;
+  let response = await runCreate(currentPayload);
+  const optionalColumns = ['arquivos', 'audio_duration_seconds', 'audio_url', 'expires_at', 'imagem_urls', 'turma_publico'];
+
+  while (response.error) {
+    const missingColumn = optionalColumns.find((column) => (
+      Object.prototype.hasOwnProperty.call(currentPayload, column) &&
+      isMissingColumnError(response.error, column, 'comunidade_posts')
+    ));
+
+    if (!missingColumn) break;
+
+    const { [missingColumn]: _ignored, ...payloadWithoutMissingColumn } = currentPayload;
+    currentPayload = payloadWithoutMissingColumn;
+    response = await runCreate(currentPayload);
+  }
+
+  if (response.error) throw response.error;
+  return response;
+}
+
 function serializeFormularioDescricao(descricao, perguntas) {
   const descricaoLimpa = String(descricao || '').trim();
   const perguntasNormalizadas = ensureArray(perguntas)
@@ -1132,21 +1177,10 @@ export default function Comunicados() {
         audio_duration_seconds: audioFile?.durationSeconds || null,
       };
 
-      let result;
-      try {
-        result = await createComunidadePost(payload, { roleHint: profileRoleHint });
-      } catch (firstError) {
-        const msg = `${firstError?.message || ''} ${firstError?.details || ''}`.toLowerCase();
-        if (msg.includes("could not find the 'arquivos' column")) {
-          const { arquivos: _arquivos, ...payloadWithoutArquivos } = payload;
-          result = await createComunidadePost(payloadWithoutArquivos, { roleHint: profileRoleHint });
-        } else {
-          throw firstError;
-        }
-      }
+      const { result, payload: persistedPayload } = await createComunicadoPostCompat(payload, { roleHint: profileRoleHint });
       const createdPost = await resolveComunicadoMedia({
         id: result?.postId || crypto.randomUUID(),
-        ...payload,
+        ...persistedPayload,
         autor_id: perfil.id,
         autor_nome: perfil.nome || null,
         usuarios_biblioteca: perfil?.nome ? { nome: perfil.nome } : null,
