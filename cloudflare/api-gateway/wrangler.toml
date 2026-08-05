@@ -2,6 +2,10 @@ name = "bibliotecai-api-gateway"
 main = "src/index.ts"
 compatibility_date = "2026-03-22"
 
+routes = [
+  { pattern = "api.bibliotecai.com.br/*", zone_name = "bibliotecai.com.br" }
+]
+
 [vars]
 APP_ENV = "production"
 APP_BASE_DOMAIN = "bibliotecai.com.br"
