@@ -9536,6 +9536,11 @@ const routes: Record<string, RouteHandler> = {
   'GET /v1/aluno/comunidade': async (request, env) => {
     const { profile, escolaId, alunoId, isProfessor, canPublicarComunicado } = await getCommunityModuleContext(request, env);
 
+    await supabaseAdminRequest(env, '/rest/v1/rpc/cleanup_expired_comunicados', {
+      method: 'POST',
+      body: {},
+    }).catch(() => null);
+
     const [
       livros,
       likes,
@@ -9546,8 +9551,8 @@ const routes: Record<string, RouteHandler> = {
       usuariosSala,
       professorTurmasEscola,
     ] = await Promise.all([
-      supabaseAdminRequest(env, '/rest/v1/livros?select=id,titulo&order=titulo.asc'),
-      supabaseAdminRequest(env, '/rest/v1/comunidade_curtidas?select=post_id,usuario_id'),
+      supabaseAdminRequest(env, '/rest/v1/livros?select=id,titulo&order=titulo.asc').catch(() => []),
+      supabaseAdminRequest(env, '/rest/v1/comunidade_curtidas?select=post_id,usuario_id').catch(() => []),
       supabaseAdminRequest(env, '/rest/v1/audiobooks_biblioteca?select=id,titulo,autor&order=titulo.asc').catch(() => []),
       escolaId
         ? fetchCommunityPosts(env, new URLSearchParams({
@@ -9580,13 +9585,15 @@ const routes: Record<string, RouteHandler> = {
       extras.set(key, nome);
     });
 
+    const postsVisiveis = (Array.isArray(posts) ? posts : []).filter((item) => !isExpiredComunicado(item));
+
     return jsonResponse({
       success: true,
       perfil: profile,
       livros: Array.isArray(livros) ? livros : [],
       likes: Array.isArray(likes) ? likes : [],
       audiobooks: Array.isArray(audiobooks) ? audiobooks : [],
-      posts: Array.isArray(posts) ? posts : [],
+      posts: postsVisiveis,
       professorTurmas: [...new Set((Array.isArray(professorTurmas) ? professorTurmas : []).map((item) => String(item?.turma || '').trim()).filter(Boolean))].sort(),
       turmasPublicacao: [...oficiais, ...Array.from(extras.values())].sort((a, b) => a.localeCompare(b, 'pt-BR')),
     });
@@ -9626,12 +9633,12 @@ const routes: Record<string, RouteHandler> = {
       notificacoesLidas,
       preferenciasAluno,
     ] = await Promise.all([
-      supabaseAdminRequest(env, `/rest/v1/emprestimos?${new URLSearchParams({ select: '*,livros(titulo,autor)', usuario_id: `eq.${profile.id}`, order: 'data_emprestimo.desc' }).toString()}`),
-      supabaseAdminRequest(env, `/rest/v1/avaliacoes_livros?${new URLSearchParams({ select: '*,livros(titulo,autor)', usuario_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
-      supabaseAdminRequest(env, `/rest/v1/lista_desejos?${new URLSearchParams({ select: 'livro_id', usuario_id: `eq.${profile.id}` }).toString()}`),
-      supabaseAdminRequest(env, `/rest/v1/sugestoes_livros?${new URLSearchParams({ select: '*,livros(titulo,autor)', aluno_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
-        supabaseAdminRequest(env, `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({ select: '*,livros(titulo,autor),solicitacoes_emprestimo_mensagens(id,mensagem,autor_tipo,created_at)', usuario_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
-      supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: '*,livros(titulo,autor),professor:usuarios_biblioteca!atividades_leitura_professor_id_fkey(nome)', aluno_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
+      supabaseAdminRequest(env, `/rest/v1/emprestimos?${new URLSearchParams({ select: '*,livros(titulo,autor)', usuario_id: `eq.${profile.id}`, order: 'data_emprestimo.desc' }).toString()}`).catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/avaliacoes_livros?${new URLSearchParams({ select: '*,livros(titulo,autor)', usuario_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`).catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/lista_desejos?${new URLSearchParams({ select: 'livro_id', usuario_id: `eq.${profile.id}` }).toString()}`).catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/sugestoes_livros?${new URLSearchParams({ select: '*,livros(titulo,autor)', aluno_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`).catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({ select: '*,livros(titulo,autor),solicitacoes_emprestimo_mensagens(id,mensagem,autor_tipo,created_at)', usuario_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`).catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: '*,livros(titulo,autor),professor:usuarios_biblioteca!atividades_leitura_professor_id_fkey(nome)', aluno_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`).catch(() => []),
       supabaseAdminRequest(env, `/rest/v1/atividades_entregas?${new URLSearchParams({ select: '*', aluno_id: `eq.${profile.id}`, order: 'updated_at.desc' }).toString()}`).catch(() => []),
       supabaseAdminRequest(env, '/rest/v1/audiobooks_biblioteca?select=*,livros(titulo,autor)&order=created_at.desc').catch(() => []),
       supabaseAdminRequest(env, `/rest/v1/aluno_audiobooks?${new URLSearchParams({ select: '*,audiobooks_biblioteca(*,livros(titulo,autor))', aluno_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`).catch(() => []),
@@ -10099,7 +10106,7 @@ const routes: Record<string, RouteHandler> = {
   },
 
   'GET /v1/aluno/comunidade/feed': async (request, env) => {
-    await getCommunityModuleContext(request, env);
+    const { profile, escolaId } = await getCommunityModuleContext(request, env);
     const url = new URL(request.url);
     const offset = Math.max(0, Number.parseInt(url.searchParams.get('offset') || '0', 10) || 0);
     const limit = Math.min(50, Math.max(1, Number.parseInt(url.searchParams.get('limit') || '20', 10) || 20));
@@ -10107,19 +10114,37 @@ const routes: Record<string, RouteHandler> = {
       order: 'created_at.desc',
       offset: String(offset),
       limit: String(limit),
+      ...(escolaId ? { escola_id: `eq.${escolaId}` } : {}),
     })).catch(() => []);
 
-    return jsonResponse({ success: true, posts: Array.isArray(posts) ? posts : [] });
+    const postsVisiveis = (Array.isArray(posts) ? posts : []).filter((item) => !isExpiredComunicado(item));
+    return jsonResponse({ success: true, posts: postsVisiveis, profileId: profile?.id || null });
   },
 
   'GET /v1/aluno/comunidade/posts/:id': async (request, env) => {
-    await getCommunityModuleContext(request, env);
+    const { escolaId, isSuperAdmin, isGestor, isBibliotecaria } = await getCommunityModuleContext(request, env);
     const postId = getPathParam(request, /^\/v1\/aluno\/comunidade\/posts\/([^/]+)$/i);
-    const [post] = await fetchCommunityPosts(env, new URLSearchParams({
+    const canCrossEscola = Boolean(isSuperAdmin || isGestor || isBibliotecaria);
+
+    const params = new URLSearchParams({
       id: `eq.${postId}`,
       limit: '1',
-    })) as Array<Record<string, unknown>>;
-    return jsonResponse({ success: true, post: post || null });
+      ...(escolaId && !canCrossEscola ? { escola_id: `eq.${escolaId}` } : {}),
+    });
+
+    let post: Record<string, unknown> | null = null;
+    try {
+      const [row] = await fetchCommunityPosts(env, params) as Array<Record<string, unknown>>;
+      post = row || null;
+    } catch {
+      post = null;
+    }
+
+    if (!post || isExpiredComunicado(post)) {
+      return jsonResponse({ success: true, post: null });
+    }
+
+    return jsonResponse({ success: true, post });
   },
 
   'POST /v1/aluno/comunidade/posts': async (request, env) => {
@@ -10130,7 +10155,29 @@ const routes: Record<string, RouteHandler> = {
 
     const body = await request.json().catch(() => ({}));
     const tipoPost = String(body?.tipo || '').trim().toLowerCase();
+    const allowedTipos = new Set(['resenha', 'sugestao', 'dica', 'quiz', 'comunicado']);
+    if (!allowedTipos.has(tipoPost)) {
+      return jsonResponse({ success: false, error: 'Tipo de publicacao invalido.' }, 400);
+    }
+
     const turmaPublico = body?.turma_publico ? String(body.turma_publico).trim() : null;
+    const insertFields = [
+      'tipo',
+      'titulo',
+      'conteudo',
+      'livro_id',
+      'audiobook_id',
+      'tags',
+      'imagem_urls',
+      'arquivos',
+      'audio_url',
+      'audio_duration_seconds',
+      'expires_at',
+    ] as const;
+    const sanitizedBody: Record<string, unknown> = {};
+    for (const field of insertFields) {
+      if (body?.[field] !== undefined) sanitizedBody[field] = body[field];
+    }
 
     if (tipoPost === 'comunicado') {
       if (!canPublicarComunicado) {
@@ -10176,12 +10223,19 @@ const routes: Record<string, RouteHandler> = {
       }
     }
 
-    const created = await insertCommunityPost(env, {
-      ...body,
-      autor_id: alunoId,
-      escola_id: escolaId,
-      turma_publico: turmaPublico,
-    }) as Array<Record<string, unknown>>;
+    let created: Array<Record<string, unknown>> = [];
+    try {
+      created = await insertCommunityPost(env, {
+        ...sanitizedBody,
+        tipo: tipoPost,
+        autor_id: alunoId,
+        escola_id: escolaId,
+        turma_publico: turmaPublico,
+      }) as Array<Record<string, unknown>>;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Falha ao salvar a publicacao.';
+      return jsonResponse({ success: false, error: message }, 400);
+    }
 
     if (tipoPost === 'comunicado') {
       await notifyComunicadoAudience(env, {

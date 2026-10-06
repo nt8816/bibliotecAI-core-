@@ -28,6 +28,7 @@ import {
 } from '@/services/comunidadeAlunoService';
 import { uploadDataUrlToR2, uploadFileToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
+import { resolvePostsSafely } from '@/lib/comunidadeGuards';
 import { cn } from '@/lib/utils';
 import { AudioMessagePlayer } from '@/components/community/AudioMessagePlayer';
 
@@ -534,17 +535,22 @@ export default function ComunidadeAluno() {
         setTurmasPublicacao([]);
         return;
       }
-      const response = await fetchComunidadeAlunoData({ roleHint: profileRoleHint });
-      const perfil = response?.perfil;
+      try {
+        const response = await fetchComunidadeAlunoData({ roleHint: profileRoleHint });
+        const perfil = response?.perfil;
 
-      if (String(perfil?.escola_id || '') !== String(escolaIdAtual || '')) {
+        if (String(perfil?.escola_id || '') !== String(escolaIdAtual || '')) {
+          setProfessorTurmas([]);
+          setTurmasPublicacao([]);
+          return;
+        }
+
+        setProfessorTurmas(ensureArray(response?.professorTurmas));
+        setTurmasPublicacao(ensureArray(response?.turmasPublicacao));
+      } catch {
         setProfessorTurmas([]);
         setTurmasPublicacao([]);
-        return;
       }
-
-      setProfessorTurmas(ensureArray(response?.professorTurmas));
-      setTurmasPublicacao(ensureArray(response?.turmasPublicacao));
     },
     [canPublicarComunicado, profileRoleHint],
   );
@@ -580,10 +586,9 @@ export default function ComunidadeAluno() {
       setPostsLoadingMore(true);
       try {
         const response = await fetchComunidadeAlunoPostsPage({ offset, limit: POSTS_PAGE_SIZE, roleHint: profileRoleHint });
-        const items = await Promise.all(
-          ensureArray(response?.posts)
-            .filter((item) => !isExpiredComunicado(item))
-            .map(resolvePostMedia),
+        const items = await resolvePostsSafely(
+          ensureArray(response?.posts).filter((item) => !isExpiredComunicado(item)),
+          resolvePostMedia,
         );
         setPosts((prev) => (reset ? items : mergeById(prev, items)));
         setPostsOffset(offset + items.length);
@@ -611,10 +616,8 @@ export default function ComunidadeAluno() {
 
         setQuizRankingByPost((prev) => ({ ...prev, ...(response?.rankingByPost || {}) }));
         setQuizHistoricoByPost((prev) => ({ ...prev, ...(response?.historicoByPost || {}) }));
-      } catch (error) {
-        if (error && !isMissingTableError(error)) {
-          console.warn('Falha ao carregar ranking do quiz.', error);
-        }
+      } catch {
+        // Quiz ranking load failure is non-critical
       }
     },
     [alunoTurma, quizRankingEscopo, quizRankingFromDate],
@@ -644,10 +647,9 @@ export default function ComunidadeAluno() {
         return;
       }
 
-      const hydratedPosts = await Promise.all(
-        ensureArray(response?.posts)
-          .filter((item) => !isExpiredComunicado(item))
-          .map(resolvePostMedia),
+      const hydratedPosts = await resolvePostsSafely(
+        ensureArray(response?.posts).filter((item) => !isExpiredComunicado(item)),
+        resolvePostMedia,
       );
       setPosts(hydratedPosts);
       setPostsOffset(hydratedPosts.length);
@@ -657,8 +659,6 @@ export default function ComunidadeAluno() {
       if (canPublicarComunicado) {
         setProfessorTurmas(ensureArray(response?.professorTurmas));
         setTurmasPublicacao(ensureArray(response?.turmasPublicacao));
-      } else {
-        await loadTurmasPublicacao({ perfilId: perfil.id, escolaIdAtual: perfil.escola_id || null });
       }
 
       const quizPostIds = hydratedPosts
@@ -681,7 +681,7 @@ export default function ComunidadeAluno() {
     } finally {
       setLoading(false);
     }
-  }, [canPublicarComunicado, enabled, loadQuizRankingForPosts, loadTurmasPublicacao, profileRoleHint, toast, user]);
+  }, [canPublicarComunicado, enabled, loadQuizRankingForPosts, profileRoleHint, toast, user]);
 
   useEffect(() => {
     fetchData();

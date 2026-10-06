@@ -478,15 +478,24 @@ export default function Comunicados() {
 
   const loadComunicados = useCallback(async () => {
     try {
-      const [response, professorData] = await Promise.all([
+      const [responseResult, professorResult] = await Promise.allSettled([
         fetchComunidadeAlunoData({ roleHint: profileRoleHint }),
         isProfessor ? fetchProfessorPainelData() : Promise.resolve(null),
       ]);
 
+      if (responseResult.status === 'rejected') {
+        throw responseResult.reason;
+      }
+
+      const response = responseResult.value;
+      const professorData = professorResult.status === 'fulfilled' ? professorResult.value : null;
+
       const perfilAtual = response?.perfil || null;
       const comunicados = ensureArray(response?.posts)
         .filter((item) => item?.tipo === 'comunicado' && !isExpiredComunicado(item));
-      const resolvedPosts = await Promise.all(comunicados.map(resolveComunicadoMedia));
+      const resolvedPosts = (await Promise.allSettled(comunicados.map(resolveComunicadoMedia)))
+        .filter((r) => r.status === 'fulfilled')
+        .map((r) => r.value);
 
       setPerfil(perfilAtual);
       setPosts(resolvedPosts);
