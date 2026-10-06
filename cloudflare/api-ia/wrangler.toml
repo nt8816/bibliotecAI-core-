@@ -1,0 +1,14 @@
+name = "api-bibliotecai"
+main = "src/index.ts"
+compatibility_date = "2026-03-22"
+
+# Workers AI binding used for /text, /image and /audio
+[ai]
+binding = "AI"
+
+[vars]
+APP_ENV = "production"
+APP_BASE_DOMAIN = "bibliotecai.com.br"
+
+# Secrets via: wrangler secret put CLOUDFLARE_ACCOUNT_ID
+# Optional: wrangler secret put CLOUDFLARE_AI_API_TOKEN
