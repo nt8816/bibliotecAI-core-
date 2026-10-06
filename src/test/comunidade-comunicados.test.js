@@ -134,6 +134,11 @@ describe('api-gateway comunidade/comunicados hardening', () => {
     expect(section).toContain('sanitizedBody');
     expect(section).not.toContain('body: { ...body, autor_id: alunoId');
   });
+
+  it('global handler maps auth failures to HTTP 401 for session refresh', () => {
+    expect(gateway).toContain("normalized.includes('nao autenticado')");
+    expect(gateway).toMatch(/\) \? 401 : 500/);
+  });
 });
 
 describe('frontend comunidade/comunicados resilience', () => {

@@ -10709,12 +10709,22 @@ export default {
     try {
       return withCorsHeaders(await handler(request, env), request, env);
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Falha inesperada no worker.';
+      const normalized = message.toLowerCase();
+      const status = (
+        normalized.includes('nao autenticado')
+        || normalized.includes('não autenticado')
+        || normalized.includes('sessao invalida')
+        || normalized.includes('sessão inválida')
+        || normalized.includes('token do usuario ausente')
+        || normalized.includes('token do usuário ausente')
+      ) ? 401 : 500;
       return withCorsHeaders(jsonResponse(
         {
           success: false,
-          error: error instanceof Error ? error.message : 'Falha inesperada no worker.',
+          error: message,
         },
-        500,
+        status,
       ), request, env);
     }
   },
