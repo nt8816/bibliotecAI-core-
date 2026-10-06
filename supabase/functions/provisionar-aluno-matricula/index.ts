@@ -8,7 +8,7 @@ function getCorsHeaders(request: Request): Record<string, string> {
   const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': safeOrigin,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-user-access-token',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   };
 }
 
@@ -34,16 +34,21 @@ async function findAuthUserByEmail(adminClient: ReturnType<typeof createClient>,
   return data?.users?.[0] || null;
 }
 
-async function checkRateLimit(supabaseAdmin: any, key: string, limit = 10, windowSeconds = 60): Promise<boolean> {
+async function checkRateLimit(supabaseAdmin: any, key: string, limit = 60, windowSeconds = 60): Promise<boolean> {
   try {
-    const { data } = await supabaseAdmin.rpc('check_ai_rate_limit', {
+    const { data, error } = await supabaseAdmin.rpc('check_ai_rate_limit', {
       _key: `ratelimit:${key}`,
       _limit: limit,
       _window_seconds: windowSeconds,
     }).single();
-    return data === true;
+    if (error) {
+      // Fail open: missing/broken rate-limit RPC must not block user creation.
+      return true;
+    }
+    return data !== false;
   } catch {
-    return false; // fail closed if rate limit check fails
+    // Fail open if rate limit check fails.
+    return true;
   }
 }
 
@@ -61,28 +66,20 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Configuração do servidor incompleta' }, 500);
     }
 
-    const userAccessToken = req.headers.get('x-user-access-token') || req.headers.get('Authorization');
-    const normalizedAuthHeader = userAccessToken?.toLowerCase().startsWith('bearer ')
-      ? userAccessToken
-      : `Bearer ${userAccessToken || ''}`;
+    const authHeader = req.headers.get('Authorization') || '';
+    const userAccessToken = authHeader.replace(/^Bearer\s+/i, '').trim();
     if (!userAccessToken) {
-      return jsonResponse({ success: false, error: 'Não autenticado' }, 401);
+      return jsonResponse({ success: false, error: 'Nao autenticado' }, 401);
     }
 
     const callerClient = createClient(supabaseUrl, anonKey, {
       auth: { autoRefreshToken: false, persistSession: false },
-      global: { headers: { Authorization: normalizedAuthHeader } },
+      global: { headers: { Authorization: `Bearer ${userAccessToken}` } },
     });
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-
-    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || 'unknown';
-    const rateKey = `${clientIp}:provisionar-aluno`;
-    if (!(await checkRateLimit(adminClient, rateKey, 10, 60))) {
-      return jsonResponse({ success: false, error: 'Limite de requisicoes atingido. Tente novamente em alguns minutos.' }, 429);
-    }
 
     const { data: callerUserData, error: callerUserError } = await callerClient.auth.getUser();
     const callerId = callerUserData?.user?.id;
@@ -106,6 +103,12 @@ Deno.serve(async (req) => {
 
     if (callerProfile.tipo !== 'gestor' && callerProfile.tipo !== 'bibliotecaria') {
       return jsonResponse({ success: false, error: 'Sem permissão para criar aluno' }, 403);
+    }
+
+    // Key by the authenticated manager, not by IP: Worker-proxied calls share one egress IP.
+    const rateKey = `user:${callerId}:provisionar-aluno`;
+    if (!(await checkRateLimit(adminClient, rateKey, 60, 60))) {
+      return jsonResponse({ success: false, error: 'Limite de requisicoes atingido. Tente novamente em alguns minutos.' }, 429);
     }
 
     let payload;

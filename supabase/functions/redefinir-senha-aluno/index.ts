@@ -108,7 +108,7 @@ async function checkRateLimit(supabaseAdmin: any, key: string, limit = 10, windo
     }).single();
     return data === true;
   } catch {
-    return false; // fail closed if rate limit check fails
+    return true; // fail open if rate limit check fails
   }
 }
 

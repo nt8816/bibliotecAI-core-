@@ -213,3 +213,32 @@ describe('frontend comunidade/comunicados resilience', () => {
     expect(section).toContain('catch {');
   });
 });
+
+describe('provisionar aluno rate limit (server/request limit on create user)', () => {
+  const fn = read('supabase/functions/provisionar-aluno-matricula/index.ts');
+  const gateway = read('cloudflare/api-gateway/src/index.ts');
+
+  it('rate limit fails open when RPC is unavailable (not permanent 429)', () => {
+    expect(fn.toLowerCase()).toContain('fail open');
+    expect(fn.toLowerCase()).not.toContain('fail closed');
+  });
+
+  it('rate key uses authenticated user id, not a shared worker IP', () => {
+    expect(fn).toContain('user:${callerId}:provisionar-aluno');
+  });
+
+  it('allows enough provisionar attempts for bulk student import', () => {
+    const match = fn.match(/checkRateLimit\([^,]+,\s*rateKey,\s*(\d+)/);
+    expect(Number(match?.[1] || 0)).toBeGreaterThanOrEqual(30);
+  });
+
+  it('gateway forwards client IP headers to Supabase edge functions', () => {
+    expect(gateway).toContain('cf-connecting-ip');
+    expect(gateway).toContain('x-forwarded-for');
+  });
+
+  it('rate-limit RPC is executable by service_role', () => {
+    const migration = read('supabase/migrations/20261006120000_grant_service_role_rate_limit.sql');
+    expect(migration).toMatch(/GRANT EXECUTE ON FUNCTION public\.check_ai_rate_limit[\s\S]*service_role/);
+  });
+});

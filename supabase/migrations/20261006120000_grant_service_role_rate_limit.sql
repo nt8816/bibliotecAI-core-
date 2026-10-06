@@ -1,4 +1,6 @@
--- Rate limit para chamadas de IA
+-- Rate limit infra for Edge Functions (provisionar aluno, redefinicao de senha, etc.).
+-- Production previously had check_ai_rate_limit missing, so rate checks failed
+-- closed and blocked user creation with 429 "Limite de requisicoes atingido".
 
 BEGIN;
 

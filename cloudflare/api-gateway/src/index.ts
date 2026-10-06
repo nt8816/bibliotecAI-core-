@@ -3325,6 +3325,10 @@ async function callSupabaseFunction(
   }
 
   const { supabaseUrl, publishableKey } = getSupabaseConfig(env);
+  const clientIp = request.headers.get('cf-connecting-ip')
+    || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || request.headers.get('x-real-ip')
+    || '';
   const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
     method: 'POST',
     headers: {
@@ -3333,6 +3337,7 @@ async function callSupabaseFunction(
       'x-user-access-token': userToken,
       'x-supabase-auth': userToken,
       'Content-Type': 'application/json',
+      ...(clientIp ? { 'cf-connecting-ip': clientIp, 'x-forwarded-for': clientIp } : {}),
     },
     body: JSON.stringify(body),
   });
