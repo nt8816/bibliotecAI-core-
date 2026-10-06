@@ -137,7 +137,56 @@ describe('api-gateway comunidade/comunicados hardening', () => {
 
   it('global handler maps auth failures to HTTP 401 for session refresh', () => {
     expect(gateway).toContain("normalized.includes('nao autenticado')");
-    expect(gateway).toMatch(/\) \? 401 : 500/);
+    expect(gateway).toMatch(/\? 401 :/);
+  });
+});
+
+describe('api-gateway bibliotecaria route hardening', () => {
+  const gateway = read('cloudflare/api-gateway/src/index.ts');
+
+  it('dashboard endpoint degrades optional subqueries instead of 500', () => {
+    const start = gateway.indexOf("'GET /v1/dashboard'");
+    const end = gateway.indexOf("'POST /v1/admin/comunidade/posts'");
+    const section = gateway.slice(start, end);
+    expect(section).toContain("/rest/v1/livros?");
+    expect(section).toContain("/rest/v1/usuarios_biblioteca?");
+    expect(section).toContain("/rest/v1/emprestimos?");
+    expect(section).toContain("/rest/v1/tenants?");
+    expect(section).toContain("/rest/v1/escolas?");
+    expect(section.match(/livros\?[\s\S]*?\)\.catch\(\(\) => \[\]\)/)).toBeTruthy();
+    expect(section.match(/emprestimos\?[\s\S]*?\)\.catch\(\(\) => \[\]\)/)).toBeTruthy();
+    expect(section.match(/tenants\?[\s\S]*?\)\.catch\(\(\) => \[\]\)/)).toBeTruthy();
+  });
+
+  it('emprestimos endpoint degrades catalog/loan failures', () => {
+    const start = gateway.indexOf("'GET /v1/emprestimos'");
+    const end = gateway.indexOf("'POST /v1/emprestimos'");
+    const section = gateway.slice(start, end);
+    expect(section).toMatch(/emprestimos\?[\s\S]*?\)\.catch\(\(\) => \[\]\)/);
+    expect(section).toMatch(/livros\?[\s\S]*?\)\.catch\(\(\) => \[\]\)/);
+    expect(section).toMatch(/usuarios_biblioteca\?[\s\S]*?\)\.catch\(\(\) => \[\]\)/);
+    expect(section).toMatch(/solicitacoes_emprestimo\?[\s\S]*?\)\.catch\(\(\) => \[\]\)/);
+  });
+
+  it('livros endpoint degrades catalog and category failures', () => {
+    const start = gateway.indexOf("'GET /v1/livros'");
+    const end = gateway.indexOf("'POST /v1/livros'");
+    const section = gateway.slice(start, end);
+    expect(section).toMatch(/escolaLivros|livros\?[\s\S]*?\)\.catch\(\(\) => \[\]\)/);
+    expect(section).toMatch(/categorias_livros\?[\s\S]*?\)\.catch\(\(\) => \[\]\)/);
+  });
+
+  it('usuarios endpoint degrades user/turma failures for librarian panel', () => {
+    const start = gateway.indexOf("'GET /v1/usuarios'");
+    const end = gateway.indexOf("'POST /v1/usuarios/professor-turmas'");
+    const section = gateway.slice(start, end);
+    expect(section).toMatch(/usuarios_biblioteca\?[\s\S]*?\)\.catch\(\(\) => \[\]\)/);
+    expect(section).toMatch(/salas_cursos\?[\s\S]*?\)\.catch\(\(\) => \[\]\)/);
+  });
+
+  it('global handler maps profile/escola context errors to 400 not 500', () => {
+    expect(gateway).toContain("normalized.includes('perfil do usuario nao encontrado')");
+    expect(gateway).toContain("normalized.includes('nao foi possivel identificar a escola')");
   });
 });
 

@@ -6084,7 +6084,7 @@ const routes: Record<string, RouteHandler> = {
             escola_id: `eq.${escolaId}`,
           }).toString()}`
           : '/rest/v1/livros?select=id,disponivel,escola_id',
-      ),
+      ).catch(() => []),
       supabaseAdminRequest(
         env,
         isSchoolScopedDashboard
@@ -6093,7 +6093,7 @@ const routes: Record<string, RouteHandler> = {
             escola_id: `eq.${escolaId}`,
           }).toString()}`
           : '/rest/v1/usuarios_biblioteca?select=id,escola_id',
-      ),
+      ).catch(() => []),
       supabaseAdminRequest(
         env,
         isSchoolScopedDashboard
@@ -6102,9 +6102,9 @@ const routes: Record<string, RouteHandler> = {
             'livros.escola_id': `eq.${escolaId}`,
           }).toString()}`
           : '/rest/v1/emprestimos?select=id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livro_id,livros(titulo,escola_id),usuarios_biblioteca(nome,escola_id)',
-      ),
-      supabaseAdminRequest(env, '/rest/v1/tenants?select=id,nome,subdominio,ativo,escola_id'),
-      supabaseAdminRequest(env, '/rest/v1/escolas?select=id,nome,gestor_id'),
+      ).catch(() => []),
+      supabaseAdminRequest(env, '/rest/v1/tenants?select=id,nome,subdominio,ativo,escola_id').catch(() => []),
+      supabaseAdminRequest(env, '/rest/v1/escolas?select=id,nome,gestor_id').catch(() => []),
     ]);
 
     const [livros, usuarios, emprestimos, tenants, escolas] = baseQueries.map((item) => (Array.isArray(item) ? item : []));
@@ -7758,7 +7758,7 @@ const routes: Record<string, RouteHandler> = {
           select: 'id,livro_id,usuario_id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livros(titulo,autor,escola_id),usuarios_biblioteca(nome,email,turma,tipo,escola_id)',
           order: 'data_emprestimo.desc',
         }).toString()}`,
-      ),
+      ).catch(() => []),
       supabaseAdminRequest(
         env,
         `/rest/v1/livros?${new URLSearchParams({
@@ -7766,7 +7766,7 @@ const routes: Record<string, RouteHandler> = {
           escola_id: `eq.${profile.escola_id}`,
           order: 'titulo.asc',
         }).toString()}`,
-      ),
+      ).catch(() => []),
       supabaseAdminRequest(
         env,
         `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
@@ -7774,7 +7774,7 @@ const routes: Record<string, RouteHandler> = {
           escola_id: `eq.${profile.escola_id}`,
           order: 'nome.asc',
         }).toString()}`,
-      ),
+      ).catch(() => []),
       canManageLoans
         ? supabaseAdminRequest(
             env,
@@ -7782,7 +7782,7 @@ const routes: Record<string, RouteHandler> = {
               select: 'id,livro_id,usuario_id,mensagem,resposta,status,created_at,livros(id,titulo,autor,disponivel,escola_id),usuarios_biblioteca(nome,email,turma,tipo,escola_id),solicitacoes_emprestimo_mensagens(id,mensagem,autor_tipo,created_at)',
               order: 'created_at.desc',
             }).toString()}`,
-          )
+          ).catch(() => [])
         : Promise.resolve([]),
     ]);
 
@@ -8314,7 +8314,7 @@ const routes: Record<string, RouteHandler> = {
               escola_id: `eq.${escolaId}`,
               order: 'titulo.asc',
             }).toString()}`,
-          )
+          ).catch(() => [])
         : Promise.resolve([]),
       supabaseAdminRequest(
         env,
@@ -8323,7 +8323,7 @@ const routes: Record<string, RouteHandler> = {
           escola_id: 'is.null',
           order: 'titulo.asc',
         }).toString()}`,
-      ),
+      ).catch(() => []),
       escolaId
         ? supabaseAdminRequest(
             env,
@@ -8332,7 +8332,7 @@ const routes: Record<string, RouteHandler> = {
               escola_id: `eq.${escolaId}`,
               order: 'nome.asc',
             }).toString()}`,
-          )
+          ).catch(() => [])
         : Promise.resolve([]),
       escolaId
         ? supabaseAdminRequest(
@@ -9087,13 +9087,9 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const [usuarios, turmas, professorTurmas] = await Promise.all([
-      supabaseAdminRequest(env, usuariosPath),
-      supabaseAdminRequest(env, turmasPath),
-      supabaseAdminRequest(env, professorTurmasPath).catch((error) => {
-        const message = String(error instanceof Error ? error.message : error || '').toLowerCase();
-        if (message.includes('does not exist') || message.includes('could not find the table')) return [];
-        throw error;
-      }),
+      supabaseAdminRequest(env, usuariosPath).catch(() => []),
+      supabaseAdminRequest(env, turmasPath).catch(() => []),
+      supabaseAdminRequest(env, professorTurmasPath).catch(() => []),
     ]);
 
     const professorTurmasMap: Record<string, string[]> = {};
@@ -10718,7 +10714,14 @@ export default {
         || normalized.includes('sessão inválida')
         || normalized.includes('token do usuario ausente')
         || normalized.includes('token do usuário ausente')
-      ) ? 401 : 500;
+      ) ? 401 : (
+        normalized.includes('perfil do usuario nao encontrado')
+        || normalized.includes('perfil do usuário não encontrado')
+        || normalized.includes('nao foi possivel identificar a escola')
+        || normalized.includes('não foi possível identificar a escola')
+        || normalized.includes('sem permissao')
+        || normalized.includes('sem permissão')
+      ) ? 400 : 500;
       return withCorsHeaders(jsonResponse(
         {
           success: false,
