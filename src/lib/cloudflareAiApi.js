@@ -1,6 +1,14 @@
-const API_BASE_URL = String(import.meta.env.VITE_BIBLIOTECA_AI_API_URL || '').replace(/\/+$/, '');
+import { requestPlatformApi, isPlatformApiConfigured } from '@/lib/platformApi';
+
+const DIRECT_AI_BASE_URL = String(import.meta.env.VITE_BIBLIOTECA_AI_API_URL || '').replace(/\/+$/, '');
 const TEXT_CACHE_TTL_MS = 10 * 60 * 1000;
 const textResponseCache = new Map();
+
+const AI_ROUTES = {
+  '/text': '/v1/ai/text',
+  '/image': '/v1/ai/image',
+  '/audio': '/v1/ai/audio',
+};
 
 const ensureObject = (value) => (value && typeof value === 'object' ? value : {});
 const hasOwnKeys = (value) => Boolean(value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0);
@@ -300,16 +308,53 @@ const extractStructuredDataFromPayload = (payload) => {
   return {};
 };
 
-const callDirect = async (path, body, fallbackErrorMessage) => {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body || {}),
-  });
+function friendlyAiFetchError(error, fallbackErrorMessage) {
+  const raw = String(error?.message || error || '');
+  const lower = raw.toLowerCase();
+  if (
+    lower.includes('failed to fetch')
+    || lower.includes('networkerror')
+    || lower.includes('load failed')
+    || lower.includes('network request failed')
+  ) {
+    return new Error(
+      'Nao foi possivel conectar ao servico de IA. Verifique sua conexao e tente novamente.',
+    );
+  }
+  return new Error(raw || fallbackErrorMessage);
+}
 
-  const parsed = await parseResponseBody(response);
-  if (!response.ok) throw new Error(extractErrorMessage(parsed, `${fallbackErrorMessage} (HTTP ${response.status})`));
-  return parsed;
+const callDirect = async (path, body, fallbackErrorMessage) => {
+  // Prefer same-origin Platform API to avoid browser CORS "failed to fetch" on tenant subdomains.
+  const platformRoute = AI_ROUTES[path];
+  if (isPlatformApiConfigured() && platformRoute) {
+    try {
+      const payload = await requestPlatformApi(platformRoute, { method: 'POST', body });
+      return { kind: 'json', payload };
+    } catch (error) {
+      if (!DIRECT_AI_BASE_URL || error?.status === 401 || error?.status === 403) {
+        throw friendlyAiFetchError(error, fallbackErrorMessage);
+      }
+    }
+  }
+
+  if (!DIRECT_AI_BASE_URL) {
+    throw new Error(fallbackErrorMessage);
+  }
+
+  try {
+    const response = await fetch(`${DIRECT_AI_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+
+    const parsed = await parseResponseBody(response);
+    if (!response.ok) throw new Error(extractErrorMessage(parsed, `${fallbackErrorMessage} (HTTP ${response.status})`));
+    return parsed;
+  } catch (error) {
+    throw friendlyAiFetchError(error, fallbackErrorMessage);
+  }
 };
 
 const callBibliotecaAi = async (path, body, fallbackErrorMessage) => callDirect(path, body, fallbackErrorMessage);

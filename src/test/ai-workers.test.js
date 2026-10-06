@@ -32,8 +32,21 @@ describe('Workers AI models are not deprecated', () => {
     expect(proxy.toLowerCase()).toContain('fail open');
   });
 
-  it('frontend env points AI client at active worker', () => {
-    expect(env).toContain('VITE_BIBLIOTECA_AI_API_URL="https://api-bibliotecai.plataforma-bibliotecai.workers.dev"');
-    expect(frontend).toContain('VITE_BIBLIOTECA_AI_API_URL');
+  it('frontend uses same-origin Platform AI routes first', () => {
+    expect(frontend).toContain("'/text': '/v1/ai/text'");
+    expect(frontend).toContain('requestPlatformApi');
+    expect(frontend).toContain('failed to fetch');
+  });
+
+  it('gateway exposes same-origin AI routes', () => {
+    const gateway = read('cloudflare/api-gateway/src/index.ts');
+    expect(gateway).toContain("'POST /v1/ai/text'");
+    expect(gateway).toContain("'POST /v1/ai/image'");
+    expect(gateway).toContain("'POST /v1/ai/audio'");
+    expect(gateway).toContain('api-bibliotecai.plataforma-bibliotecai.workers.dev');
+  });
+
+  it('AI worker CORS allows tenant bibliotecai.com.br subdomains', () => {
+    expect(worker).toContain("endsWith('.bibliotecai.com.br')");
   });
 });

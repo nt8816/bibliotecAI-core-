@@ -3355,6 +3355,34 @@ async function callSupabaseFunction(
   return payload;
 }
 
+const AI_WORKER_BASE_URL = 'https://api-bibliotecai.plataforma-bibliotecai.workers.dev';
+
+async function callBibliotecAiWorker(path: string, body: unknown) {
+  const response = await fetch(`${AI_WORKER_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  const payload = await parseResponse(response);
+  if (!response.ok) {
+    throw new Error(
+      (typeof payload === 'string' && payload.trim()) ||
+      payload?.error ||
+      payload?.message ||
+      `Falha no servico de IA (HTTP ${response.status}).`,
+    );
+  }
+  return payload;
+}
+
+async function requirePlatformUser(request: Request, env: Env) {
+  const user = await fetchSupabaseUser(request, env);
+  if (!user?.id) {
+    throw new Error('Nao autenticado.');
+  }
+  return user;
+}
+
 const routes: Record<string, RouteHandler> = {
   'GET /health': async (_request, env) =>
     jsonResponse({
@@ -3397,6 +3425,26 @@ const routes: Record<string, RouteHandler> = {
       escola_id: body?.escolaId ? String(body.escolaId) : null,
     });
     return jsonResponse({ success: true });
+  },
+
+  // Same-origin AI proxy for the SPA (avoids browser CORS "failed to fetch").
+  'POST /v1/ai/text': async (request, env) => {
+    await requirePlatformUser(request, env);
+    const body = await request.json().catch(() => ({}));
+    const payload = await callBibliotecAiWorker('/text', body);
+    return jsonResponse({ success: true, ...(payload && typeof payload === 'object' ? payload : { payload }) });
+  },
+  'POST /v1/ai/image': async (request, env) => {
+    await requirePlatformUser(request, env);
+    const body = await request.json().catch(() => ({}));
+    const payload = await callBibliotecAiWorker('/image', body);
+    return jsonResponse({ success: true, ...(payload && typeof payload === 'object' ? payload : { payload }) });
+  },
+  'POST /v1/ai/audio': async (request, env) => {
+    await requirePlatformUser(request, env);
+    const body = await request.json().catch(() => ({}));
+    const payload = await callBibliotecAiWorker('/audio', body);
+    return jsonResponse({ success: true, ...(payload && typeof payload === 'object' ? payload : { payload }) });
   },
   'POST /v1/media/r2-storage': async (request, env) => {
     try {

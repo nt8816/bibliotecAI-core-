@@ -23,9 +23,28 @@ const MAX_TEXT_PROMPT = 4000;
 const MAX_IMAGE_PROMPT = 2000;
 const MAX_AUDIO_PROMPT = 4000;
 
+function isAllowedOrigin(origin: string): boolean {
+  if (!origin) return false;
+  if (origin === 'https://bibliotecai.pages.dev' || origin === 'http://localhost:5173' || origin === 'http://localhost:3000') {
+    return true;
+  }
+  try {
+    const host = new URL(origin).hostname.toLowerCase();
+    if (host === 'bibliotecai.com.br' || host === 'app.bibliotecai.com.br' || host === 'www.bibliotecai.com.br') {
+      return true;
+    }
+    // Multi-tenant school subdomains: escola.bibliotecai.com.br
+    if (host.endsWith('.bibliotecai.com.br')) return true;
+    if (host.endsWith('.bibliotecai.pages.dev')) return true;
+  } catch {
+    return false;
+  }
+  return ALLOWED_ORIGINS.includes(origin);
+}
+
 function corsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get('Origin') || '';
-  const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : (ALLOWED_ORIGINS[0] || '*');
+  const safeOrigin = isAllowedOrigin(origin) ? origin : (ALLOWED_ORIGINS[0] || '*');
   return {
     'Access-Control-Allow-Origin': safeOrigin,
     'Access-Control-Allow-Headers': 'authorization, content-type, apikey, x-client-info',
