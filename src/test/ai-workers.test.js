@@ -11,14 +11,15 @@ describe('Workers AI models are not deprecated', () => {
   const frontend = read('src/lib/cloudflareAiApi.js');
   const env = read('.env');
 
-  it('AI worker does not reference deprecated infire-llama model', () => {
-    expect(worker).not.toContain('@cf/meta/infire-llama');
+  it('AI worker does not call deprecated infire-llama model', () => {
+    // pickModel may mention the id only to reject/fallback it.
+    expect(worker).not.toMatch(/AI\.run\(['"]@cf\/meta\/infire-llama/);
     expect(worker).toContain('@cf/meta/llama-3.3-70b-instruct-fp8-fast');
     expect(worker).toContain('@cf/bfl/flux-1-schnell');
   });
 
   it('AI worker rejects deprecated model ids and falls back', () => {
-    expect(worker).toContain('infire-llama');
+    expect(worker).toContain("includes('infire-llama')");
     expect(worker).toContain('pickModel');
   });
 
