@@ -71,6 +71,7 @@ import {
   generateImageWithCloudflare,
   generateTextWithCloudflare,
 } from '@/lib/cloudflareAiApi';
+import { LabCreationCard, LabHeader, LabSectionTitle } from '@/components/community/LabWorkspace';
 import { canonicalizeBookArea } from '@/lib/bookAreas';
 import { getR2DownloadUrl, uploadDataUrlToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
@@ -4955,11 +4956,15 @@ export default function PainelAluno() {
             </TabsContent>
 
           <TabsContent value="laboratorio" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Gerar imagens</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <LabHeader creationCount={criacoesLaboratorio.length} />
+
+            <div className="rounded-[24px] border border-border/60 bg-card p-4 shadow-sm">
+              <LabSectionTitle
+                id="lab-studio"
+                title="Studio de imagens"
+                description="Gere imagens com IA, monte slides e publique no laboratório."
+              />
+              <div className="mt-4 space-y-4">
                 <div className="space-y-2">
                   <Label>Prompt da imagem</Label>
                   <div className="flex gap-2">
@@ -5019,14 +5024,16 @@ export default function PainelAluno() {
                     Compartilhar na comunidade
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Quiz com IA</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
+            <div className="rounded-[24px] border border-border/60 bg-card p-4 shadow-sm">
+              <LabSectionTitle
+                id="lab-quiz"
+                title="Quiz com IA"
+                description="Monte um quiz a partir de um livro da sua biblioteca."
+              />
+              <div className="mt-4 space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
                   <div className="space-y-1">
                     <Label htmlFor="quiz-livro">Livro</Label>
@@ -5125,37 +5132,16 @@ export default function PainelAluno() {
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            <Card>
-              <CardHeader>
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-2">
-                    <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
-                      <Sparkles className="h-3.5 w-3.5" />
-                      Ferramenta de estudo com IA
-                    </div>
-                    <div>
-                      <CardTitle className="text-base">Resumo com IA</CardTitle>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Gere um resumo inicial, refine com suas ideias e salve suas melhores versoes no laboratorio.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 sm:w-auto">
-                    <div className="rounded-xl border bg-muted/30 px-3 py-2 text-center">
-                      <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Livros</p>
-                      <p className="text-lg font-semibold">{meusLivrosOptions.length}</p>
-                    </div>
-                    <div className="rounded-xl border bg-muted/30 px-3 py-2 text-center">
-                      <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Salvos</p>
-                      <p className="text-lg font-semibold">{resumosCriados.length}</p>
-                    </div>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <div className="rounded-[24px] border border-border/60 bg-card p-4 shadow-sm">
+              <LabSectionTitle
+                id="lab-resumo"
+                title="Resumo com IA"
+                description="Gere um resumo inicial, refine com suas ideias e salve no laboratório."
+              />
+              <div className="mt-4 space-y-4">
                 <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/10 via-background to-warning/10 p-4">
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.9fr)]">
                     <div className="space-y-4">
@@ -5289,19 +5275,21 @@ export default function PainelAluno() {
                     )}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Criações salvas no laboratório</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex flex-wrap gap-2 rounded-lg border p-1 bg-muted/20">
+            <div className="rounded-[24px] border border-border/60 bg-card p-4 shadow-sm">
+              <LabSectionTitle
+                title="Criações salvas"
+                description="Resumos, quizzes e imagens que você salvou no laboratório."
+              />
+              <div className="mt-4 space-y-3">
+                <div className="flex flex-wrap gap-2 rounded-xl border p-1 bg-muted/20">
                   <Button
                     type="button"
                     size="sm"
                     variant={filtroCriacoesLaboratorio === 'todas' ? 'default' : 'ghost'}
+                    className="rounded-lg"
                     onClick={() => setFiltroCriacoesLaboratorio('todas')}
                   >
                     Todas
@@ -5310,6 +5298,7 @@ export default function PainelAluno() {
                     type="button"
                     size="sm"
                     variant={filtroCriacoesLaboratorio === 'imagem' ? 'default' : 'ghost'}
+                    className="rounded-lg"
                     onClick={() => setFiltroCriacoesLaboratorio('imagem')}
                   >
                     Imagens
@@ -5318,6 +5307,7 @@ export default function PainelAluno() {
                     type="button"
                     size="sm"
                     variant={filtroCriacoesLaboratorio === 'resumo' ? 'default' : 'ghost'}
+                    className="rounded-lg"
                     onClick={() => setFiltroCriacoesLaboratorio('resumo')}
                   >
                     Resumos
@@ -5326,6 +5316,7 @@ export default function PainelAluno() {
                     type="button"
                     size="sm"
                     variant={filtroCriacoesLaboratorio === 'quiz' ? 'default' : 'ghost'}
+                    className="rounded-lg"
                     onClick={() => setFiltroCriacoesLaboratorio('quiz')}
                   >
                     Quiz
@@ -5333,86 +5324,69 @@ export default function PainelAluno() {
                 </div>
 
                 {criacoesLaboratorioFiltradas.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nenhuma criação salva ainda.</p>
+                  <p className="py-8 text-center text-sm text-muted-foreground">Nenhuma criação salva ainda.</p>
                 ) : (
-                  <div className="space-y-3">
-                    {criacoesLaboratorioFiltradas.slice(0, criacoesLimit).map((criacao) => {
-                      const resumoTextoCompleto = criacao.tipo === 'resumo' ? extractResumoTextoFromCriacao(criacao) : '';
-                      return (
-                        <div key={criacao.id} className="rounded-md border p-3 space-y-2">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                              <p className="font-medium">{repairMojibakeText(criacao.titulo) || 'Criação sem título'}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {criacao.tipo} • {formatDateBR(criacao.created_at)}
-                              </p>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
+                  <>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      {criacoesLaboratorioFiltradas.slice(0, criacoesLimit).map((criacao) => {
+                        const resumoTextoCompleto = criacao.tipo === 'resumo' ? extractResumoTextoFromCriacao(criacao) : '';
+                        return (
+                          <div key={criacao.id} className="space-y-2">
+                            <LabCreationCard
+                              criacao={{ ...criacao, titulo: repairMojibakeText(criacao.titulo) || criacao.titulo }}
+                              canDelete
+                              onDelete={() => abrirConfirmacaoExclusaoCriacao(criacao)}
+                            />
+                            <div className="flex flex-wrap gap-2">
                               <Button
                                 type="button"
                                 size="sm"
                                 variant={criacao.publicado_comunidade || criacao.comunidade_post_id ? 'secondary' : 'outline'}
+                                className="h-8 rounded-xl"
                                 onClick={() => abrirCompartilhamentoCriacao(criacao)}
                                 disabled={saving || criacao.publicado_comunidade || Boolean(criacao.comunidade_post_id)}
                               >
                                 <Send className="w-3 h-3 mr-1" />
                                 {criacao.publicado_comunidade || criacao.comunidade_post_id ? 'Compartilhado' : 'Compartilhar'}
                               </Button>
-                              <Button type="button" size="sm" variant="destructive" onClick={() => abrirConfirmacaoExclusaoCriacao(criacao)} disabled={saving}>
-                                <Trash2 className="w-3 h-3 mr-1" />
-                                Apagar
-                              </Button>
+                              {criacao.tipo === 'quiz' ? (
+                                <Button type="button" size="sm" variant="ghost" className="h-8 rounded-xl" onClick={() => carregarQuizSalvo(criacao)}>
+                                  Jogar
+                                </Button>
+                              ) : null}
+                              {criacao.tipo === 'resumo' && resumoTextoCompleto ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 rounded-xl"
+                                  onClick={() =>
+                                    abrirResumoCompleto({
+                                      titulo: criacao.titulo || 'Resumo salvo',
+                                      texto: resumoTextoCompleto,
+                                      criadoEm: criacao.created_at,
+                                    })
+                                  }
+                                >
+                                  Ver completo
+                                </Button>
+                              ) : null}
                             </div>
                           </div>
-                          {ensureArray(criacao.imagem_urls).length > 0 && (
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                              {ensureArray(criacao.imagem_urls).slice(0, 4).map((img, index) => (
-                                <button type="button" key={`${criacao.id}-${index}`} onClick={() => setSelectedStudioImageUrl(img)}>
-                                  <img src={img} alt={`Criação ${index + 1}`} className="h-20 w-full rounded-md border object-cover cursor-zoom-in" />
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                          {criacao.descricao && <p className="text-sm text-muted-foreground">{repairMojibakeText(criacao.descricao)}</p>}
-                          {criacao.tipo === 'quiz' && (
-                            <div className="flex justify-end">
-                              <Button type="button" size="sm" variant="outline" onClick={() => carregarQuizSalvo(criacao)}>
-                                Jogar novamente
-                              </Button>
-                            </div>
-                          )}
-                          {criacao.tipo === 'resumo' && resumoTextoCompleto && (
-                            <div className="flex justify-end">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                onClick={() =>
-                                  abrirResumoCompleto({
-                                    titulo: criacao.titulo || 'Resumo salvo',
-                                    texto: resumoTextoCompleto,
-                                    criadoEm: criacao.created_at,
-                                  })
-                                }
-                              >
-                                Ver completo
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                     {criacoesLaboratorioFiltradas.length > criacoesLimit && (
                       <div className="flex justify-center">
-                        <Button type="button" variant="outline" size="sm" onClick={() => setCriacoesLimit((prev) => prev + 10)}>
+                        <Button type="button" variant="outline" size="sm" className="rounded-full px-5" onClick={() => setCriacoesLimit((prev) => prev + 10)}>
                           Carregar mais
                         </Button>
                       </div>
                     )}
-                  </div>
+                  </>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="biblioteca" className="space-y-4">
