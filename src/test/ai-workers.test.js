@@ -15,7 +15,8 @@ describe('Workers AI models are not deprecated', () => {
     // pickModel may mention the id only to reject/fallback it.
     expect(worker).not.toMatch(/AI\.run\(['"]@cf\/meta\/infire-llama/);
     expect(worker).toContain('@cf/meta/llama-3.3-70b-instruct-fp8-fast');
-    expect(worker).toContain('@cf/bfl/flux-1-schnell');
+    expect(worker).toContain('@cf/black-forest-labs/flux-1-schnell');
+    expect(worker).toContain('@cf/myshell-ai/melotts');
   });
 
   it('AI worker rejects deprecated model ids and falls back', () => {

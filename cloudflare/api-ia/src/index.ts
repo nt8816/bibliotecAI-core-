@@ -9,8 +9,8 @@ export interface Env {
 // Models active on Cloudflare Workers AI (2026). Old @cf/meta/infire-llama-3.1-8b-instruct is deprecated.
 const TEXT_MODEL_DEFAULT = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const TEXT_MODEL_FAST = '@cf/meta/llama-3.1-8b-instruct-fast';
-const IMAGE_MODEL_DEFAULT = '@cf/bfl/flux-1-schnell';
-const AUDIO_MODEL_DEFAULT = '@cf/myshell/melotts';
+const IMAGE_MODEL_DEFAULT = '@cf/black-forest-labs/flux-1-schnell';
+const AUDIO_MODEL_DEFAULT = '@cf/myshell-ai/melotts';
 
 const ALLOWED_ORIGINS = [
   'https://bibliotecai.com.br',
@@ -107,26 +107,30 @@ async function runText(env: Env, body: Record<string, unknown>, request: Request
 
   try {
     if (env.AI?.run) {
-      const result = (await env.AI.run(model as never, input as never)) as {
-        result?: string;
-        response?: string;
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      const text = String(result?.result || result?.response || result?.choices?.[0]?.message?.content || '').trim();
-      if (!text) return json({ error: 'Modelo nao retornou texto.' }, 502, request);
-      return json({ text, model, success: true }, 200, request);
+      try {
+        const result = (await env.AI.run(model as never, input as never)) as {
+          result?: string;
+          response?: string;
+          choices?: Array<{ message?: { content?: string } }>;
+        };
+        const text = String(result?.result || result?.response || result?.choices?.[0]?.message?.content || '').trim();
+        if (!text) return json({ error: 'Modelo nao retornou texto.' }, 502, request);
+        return json({ text, model, success: true }, 200, request);
+      } catch (primaryError) {
+        const message = primaryError instanceof Error ? primaryError.message : String(primaryError);
+        if (!message.includes('deprecated') && !message.includes('5028')) {
+          // still try the fast active model before giving up
+          console.error('primary text model failed', message);
+        }
+      }
     }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    // Fall through to REST API / fast model before failing hard.
-    if (!message.includes('deprecated') && !message.includes('5028')) {
-      return json({ error: `Falha ao gerar texto: ${message}` }, 502, request);
-    }
+  } catch {
+    // continue to fallback
   }
 
   // Fallback: still-active fast model via binding.
   try {
-    const fallbackInput = { ...input, messages: textToMessages(prompt) };
+    const fallbackInput = { messages: textToMessages(prompt), max_tokens: input.max_tokens, temperature: input.temperature };
     const result = (await env.AI.run(TEXT_MODEL_FAST as never, fallbackInput as never)) as {
       result?: string;
       response?: string;
@@ -141,22 +145,46 @@ async function runText(env: Env, body: Record<string, unknown>, request: Request
   }
 }
 
+function toBase64FromMaybeBinary(result: unknown): string {
+  if (!result) return '';
+  if (typeof result === 'string') {
+    // raw base64 or data URL
+    return result.startsWith('data:') ? result : result;
+  }
+  if (result instanceof ArrayBuffer) {
+    let binary = '';
+    const bytes = new Uint8Array(result);
+    for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+  }
+  if (ArrayBuffer.isView(result)) {
+    const view = result as ArrayBufferView;
+    const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+  }
+  const obj = result as Record<string, unknown>;
+  return String(obj.image || obj.audio || obj.b64_json || obj.audio_base64 || '').trim();
+}
+
 async function runImage(env: Env, body: Record<string, unknown>, request: Request): Promise<Response> {
   const prompt = sanitizeText(body?.prompt || '', MAX_IMAGE_PROMPT);
   if (!prompt) return json({ error: 'Prompt invalido.' }, 400, request);
 
   const model = pickModel(body, IMAGE_MODEL_DEFAULT);
-  const steps = Number(body?.parameters?.num_steps || body?.num_steps || 4);
+  const stepsRaw = Number(body?.parameters?.steps ?? body?.parameters?.num_steps ?? body?.steps ?? body?.num_steps ?? 4);
+  const steps = Number.isFinite(stepsRaw) ? Math.min(Math.max(stepsRaw, 1), 8) : 4;
 
   try {
     const result = (await env.AI.run(model as never, {
       prompt,
-      num_steps: Number.isFinite(steps) ? Math.min(Math.max(steps, 1), 8) : 4,
+      steps,
     } as never)) as { image?: string; b64_json?: string };
 
     const b64 = String(result?.image || result?.b64_json || '').trim();
     if (!b64) return json({ error: 'Modelo nao retornou imagem.' }, 502, request);
-    const dataUrl = b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
+    const dataUrl = b64.startsWith('data:') ? b64 : `data:image/jpeg;base64,${b64}`;
     return json({ imageDataUrl: dataUrl, model, success: true }, 200, request);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -165,24 +193,26 @@ async function runImage(env: Env, body: Record<string, unknown>, request: Reques
 }
 
 async function runAudio(env: Env, body: Record<string, unknown>, request: Request): Promise<Response> {
-  const text = sanitizeText(body?.text || body?.prompt || '', MAX_AUDIO_PROMPT);
+  const text = sanitizeText(body?.prompt || body?.text || '', MAX_AUDIO_PROMPT);
   if (!text) return json({ error: 'Texto invalido.' }, 400, request);
 
   const model = pickModel(body, AUDIO_MODEL_DEFAULT);
-  const language = String(body?.language || body?.lang || 'pt-BR');
-  const voice = String(body?.voice || 'default');
+  const langRaw = String(body?.language || body?.lang || 'en').toLowerCase();
+  // MeloTTS supports a limited language set; map pt-BR to en when needed.
+  const lang = ['en', 'es', 'fr', 'ja', 'zh', 'kr', 'it', 'pt'].includes(langRaw)
+    ? (langRaw === 'pt' || langRaw.startsWith('pt') ? 'en' : langRaw)
+    : 'en';
 
   try {
-    const result = (await env.AI.run(model as never, {
-      text,
-      language,
-      voice,
-    } as never)) as { audio?: string; b64_json?: string };
+    const result = await env.AI.run(model as never, {
+      prompt: text,
+      lang,
+    } as never);
 
-    const b64 = String(result?.audio || result?.b64_json || '').trim();
+    const b64 = toBase64FromMaybeBinary(result);
     if (!b64) return json({ error: 'Modelo nao retornou audio.' }, 502, request);
     const dataUrl = b64.startsWith('data:') ? b64 : `data:audio/mpeg;base64,${b64}`;
-    return json({ audioDataUrl: dataUrl, model, success: true }, 200, request);
+    return json({ audioDataUrl: dataUrl, model, success: true, lang }, 200, request);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return json({ error: `Falha ao gerar audio: ${message}` }, 502, request);

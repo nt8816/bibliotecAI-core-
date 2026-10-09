@@ -332,7 +332,8 @@ const callDirect = async (path, body, fallbackErrorMessage) => {
       const payload = await requestPlatformApi(platformRoute, { method: 'POST', body });
       return { kind: 'json', payload };
     } catch (error) {
-      if (!DIRECT_AI_BASE_URL || error?.status === 401 || error?.status === 403) {
+      // Network/auth issues on platform: fall through to direct worker when configured.
+      if (!DIRECT_AI_BASE_URL) {
         throw friendlyAiFetchError(error, fallbackErrorMessage);
       }
     }
