@@ -1,4 +1,4 @@
-import { Megaphone } from 'lucide-react';
+import { Megaphone, FlaskConical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -37,20 +37,23 @@ export function formatBytes(value) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function CompactChannelHeader({ title, meta, action, search, className }) {
+export function CompactChannelHeader({ title, meta, action, search, icon = 'mega', className }) {
+  const Icon = icon === 'lab' ? FlaskConical : Megaphone;
   return (
     <div
       className={cn(
-        'sticky top-0 z-20 -mx-1 mb-1 flex items-center gap-3 border-b border-emerald-200/70 bg-background/95 px-1 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80',
+        'sticky top-0 z-20 flex items-center gap-3 rounded-full border border-emerald-100/60 bg-[linear-gradient(135deg,rgba(236,253,245,0.92),rgba(255,255,255,0.98))] px-4 py-2.5 shadow-[0_8px_28px_rgba(15,23,42,0.05)] backdrop-blur supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(236,253,245,0.85),rgba(255,255,255,0.92))] dark:border-emerald-900/40 dark:bg-[linear-gradient(135deg,rgba(6,78,59,0.22),rgba(15,23,42,0.9))] dark:shadow-none',
         className,
       )}
     >
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-600 text-white">
-        <Megaphone className="h-4 w-4" />
+      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-sm">
+        <Icon className="h-4.5 w-4.5 h-[18px] w-[18px]" />
       </div>
       <div className="min-w-0 flex-1">
-        <h1 className="truncate text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100">{title}</h1>
-        {meta ? <p className="truncate text-xs text-muted-foreground">{meta}</p> : null}
+        <h1 className="truncate text-[15px] font-semibold tracking-tight text-slate-900 dark:text-slate-100">{title}</h1>
+        {meta ? (
+          <p className="mt-0.5 truncate text-xs font-medium text-emerald-800/70 dark:text-emerald-200/70">{meta}</p>
+        ) : null}
       </div>
       {search}
       {action}

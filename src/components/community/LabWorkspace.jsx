@@ -9,6 +9,7 @@ export function LabHeader({ creationCount = 0, className, activeTool, onSelectTo
   return (
     <div className={cn('space-y-3', className)}>
       <CompactChannelHeader
+        icon="lab"
         title="Laboratório"
         meta={`${creationCount} criaç${creationCount === 1 ? 'ão' : 'ões'} salva${creationCount === 1 ? '' : 's'}`}
       />
@@ -48,20 +49,20 @@ function LabToolCard({ id, icon, title, description, active, onClick }) {
       type="button"
       aria-pressed={Boolean(active)}
       className={cn(
-        'group rounded-2xl border px-4 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md',
+        'group rounded-full border px-4 py-2.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md',
         active
-          ? 'border-emerald-500 bg-emerald-50/90 ring-2 ring-emerald-500/30 dark:border-emerald-400 dark:bg-emerald-950/50'
-          : 'border-emerald-100/80 bg-card dark:border-emerald-900/40',
+          ? 'border-emerald-400 bg-emerald-50/95 ring-2 ring-emerald-400/35 dark:border-emerald-400 dark:bg-emerald-950/50'
+          : 'border-emerald-100/70 bg-card/90 dark:border-emerald-900/40 dark:bg-card/70',
       )}
       onClick={onClick}
     >
-      <div className="flex items-start gap-3">
-        <div className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white', active ? 'bg-emerald-600' : 'bg-emerald-600/90')}>
+      <div className="flex items-center gap-3">
+        <div className={cn('grid h-8 w-8 shrink-0 place-items-center rounded-full text-white', active ? 'bg-emerald-600' : 'bg-emerald-600/85')}>
           {icon}
         </div>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">{description}</p>
+          <p className="truncate text-[13px] font-semibold text-slate-900 dark:text-slate-100">{title}</p>
+          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{description}</p>
         </div>
       </div>
     </button>
