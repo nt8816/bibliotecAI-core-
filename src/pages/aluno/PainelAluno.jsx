@@ -1355,6 +1355,7 @@ export default function PainelAluno() {
   const [resumosCriados, setResumosCriados] = useState([]);
   const [criacoesLaboratorio, setCriacoesLaboratorio] = useState([]);
   const [filtroCriacoesLaboratorio, setFiltroCriacoesLaboratorio] = useState('todas');
+  const [labTool, setLabTool] = useState('studio');
   const [labCriacoesMissingTable, setLabCriacoesMissingTable] = useState(false);
   const [shareReviewToCommunity, setShareReviewToCommunity] = useState(false);
   const [gerandoResumoIA, setGerandoResumoIA] = useState(false);
@@ -4956,8 +4957,13 @@ export default function PainelAluno() {
             </TabsContent>
 
           <TabsContent value="laboratorio" className="space-y-4">
-            <LabHeader creationCount={criacoesLaboratorio.length} />
+            <LabHeader
+              creationCount={criacoesLaboratorio.length}
+              activeTool={labTool}
+              onSelectTool={setLabTool}
+            />
 
+            {labTool === 'studio' ? (
             <div className="rounded-[24px] border border-border/60 bg-card p-4 shadow-sm">
               <LabSectionTitle
                 id="lab-studio"
@@ -5026,7 +5032,9 @@ export default function PainelAluno() {
                 </div>
               </div>
             </div>
+            ) : null}
 
+            {labTool === 'quiz' ? (
             <div className="rounded-[24px] border border-border/60 bg-card p-4 shadow-sm">
               <LabSectionTitle
                 id="lab-quiz"
@@ -5134,7 +5142,9 @@ export default function PainelAluno() {
                 )}
               </div>
             </div>
+            ) : null}
 
+            {labTool === 'resumo' ? (
             <div className="rounded-[24px] border border-border/60 bg-card p-4 shadow-sm">
               <LabSectionTitle
                 id="lab-resumo"
@@ -5277,6 +5287,7 @@ export default function PainelAluno() {
                 )}
               </div>
             </div>
+            ) : null}
 
             <div className="rounded-[24px] border border-border/60 bg-card p-4 shadow-sm">
               <LabSectionTitle

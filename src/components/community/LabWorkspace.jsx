@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-export function LabHeader({ creationCount = 0, className }) {
+export function LabHeader({ creationCount = 0, className, activeTool, onSelectTool }) {
   return (
     <div className={cn('space-y-3', className)}>
       <CompactChannelHeader
@@ -14,43 +14,49 @@ export function LabHeader({ creationCount = 0, className }) {
       />
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <LabToolCard
-          id="lab-studio"
+          id="studio"
           icon={<ImageIcon className="h-4 w-4" />}
           title="Studio de imagens"
           description="Gerar e organizar imagens"
+          active={activeTool === 'studio'}
+          onClick={() => onSelectTool?.('studio')}
         />
         <LabToolCard
-          id="lab-quiz"
+          id="quiz"
           icon={<ListChecks className="h-4 w-4" />}
           title="Quiz com IA"
           description="Criar quiz de leitura"
+          active={activeTool === 'quiz'}
+          onClick={() => onSelectTool?.('quiz')}
         />
         <LabToolCard
-          id="lab-resumo"
+          id="resumo"
           icon={<Sparkles className="h-4 w-4" />}
           title="Resumo com IA"
           description="Resumir livros lidos"
+          active={activeTool === 'resumo'}
+          onClick={() => onSelectTool?.('resumo')}
         />
       </div>
     </div>
   );
 }
 
-function LabToolCard({ id, icon, title, description }) {
+function LabToolCard({ id, icon, title, description, active, onClick }) {
   return (
     <button
       type="button"
-      className="group rounded-2xl border border-emerald-100/80 bg-card px-4 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md dark:border-emerald-900/40 dark:hover:border-emerald-700"
-      onClick={() => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        el.classList.add('ring-2', 'ring-emerald-500/40');
-        window.setTimeout(() => el.classList.remove('ring-2', 'ring-emerald-500/40'), 1200);
-      }}
+      aria-pressed={Boolean(active)}
+      className={cn(
+        'group rounded-2xl border px-4 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md',
+        active
+          ? 'border-emerald-500 bg-emerald-50/90 ring-2 ring-emerald-500/30 dark:border-emerald-400 dark:bg-emerald-950/50'
+          : 'border-emerald-100/80 bg-card dark:border-emerald-900/40',
+      )}
+      onClick={onClick}
     >
       <div className="flex items-start gap-3">
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-600 text-white">
+        <div className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white', active ? 'bg-emerald-600' : 'bg-emerald-600/90')}>
           {icon}
         </div>
         <div className="min-w-0">
