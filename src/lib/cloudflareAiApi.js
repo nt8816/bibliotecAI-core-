@@ -382,17 +382,23 @@ export const generateTextWithCloudflare = async ({
 
   const parsed = await callBibliotecaAi('/text', { prompt: finalPrompt }, fallbackErrorMessage);
 
+  const isBadPlaceholder = (value) => {
+    const text = String(value || '').trim();
+    return !text || text === '[object Object]' || text === 'undefined' || text === 'null';
+  };
+
   let result;
   if (parsed.kind === 'text') {
     const text = String(parsed.payload || '').trim();
     const json = extractJsonFromText(text);
-    result = { data: ensureObject(json), text };
+    result = { data: ensureObject(json), text: isBadPlaceholder(text) ? '' : text };
   } else {
     const payload = ensureObject(parsed.payload);
     const fragments = extractTextFragmentsFromValue(payload);
     const rawText = fragments.join('\n\n').trim();
     const structuredData = extractStructuredDataFromPayload(payload);
-    const textJson = extractJsonFromText(rawText);
+    const payloadText = isBadPlaceholder(payload.text) ? '' : String(payload.text || '').trim();
+    const textJson = extractJsonFromText(payloadText || rawText);
     const data = ensureObject(
       (hasOwnKeys(payload.data) && payload.data)
         || (hasOwnKeys(structuredData) && structuredData)
@@ -400,14 +406,23 @@ export const generateTextWithCloudflare = async ({
         || {},
     );
     const text = String(
-      payload.text
+      payloadText
         || data.text
         || data.output_text
         || rawText
         || '',
     ).trim();
 
-    result = { data, text, raw: payload, prompt: finalPrompt };
+    result = {
+      data,
+      text: isBadPlaceholder(text) ? '' : text,
+      raw: payload,
+      prompt: finalPrompt,
+    };
+  }
+
+  if (!result.data || (!hasOwnKeys(result.data) && !result.text)) {
+    throw new Error('A IA respondeu sem conteudo valido. Tente novamente.');
   }
 
   if (!skipCache) {

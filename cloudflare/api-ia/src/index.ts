@@ -85,10 +85,71 @@ function textToMessages(prompt: string): Array<{ role: 'system' | 'user'; conten
     {
       role: 'system',
       content:
-        'Voce e um assistente de biblioteca escolar brasileira. Responda em portugues do Brasil, de forma clara, curta e util para estudantes e professores. Quando pedirem JSON, responda SOMENTE com JSON valido.',
+        'Voce e um assistente de biblioteca escolar brasileira. Responda em portugues do Brasil, de forma clara, curta e util para estudantes e professores. Quando pedirem JSON, responda SOMENTE com JSON valido, sem markdown nem comentarios.',
     },
     { role: 'user', content: prompt },
   ];
+}
+
+function firstString(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value).trim();
+  return '';
+}
+
+function extractTextFromAiResult(result: unknown): string {
+  if (!result) return '';
+  if (typeof result === 'string') return result.trim();
+
+  if (typeof result !== 'object') return '';
+
+  const record = result as Record<string, unknown>;
+
+  // Common Workers AI / OpenAI-compatible shapes
+  const directCandidates = [
+    record.result,
+    record.response,
+    record.text,
+    record.output_text,
+    record.content,
+    record.message,
+  ];
+  for (const candidate of directCandidates) {
+    const asString = firstString(candidate);
+    if (asString) return asString;
+  }
+
+  // choices: [{ message: { content } }] or [{ text }]
+  if (Array.isArray(record.choices) && record.choices.length > 0) {
+    const choice = record.choices[0] as Record<string, unknown>;
+    const content = choice?.message && typeof choice.message === 'object'
+      ? (choice.message as Record<string, unknown>).content
+      : choice?.text;
+    const asString = firstString(content);
+    if (asString) return asString;
+  }
+
+  // Nested response.result / response.response
+  for (const key of ['response', 'result', 'data', 'output']) {
+    const nested = record[key];
+    if (nested && typeof nested === 'object') {
+      const nestedText = extractTextFromAiResult(nested);
+      if (nestedText) return nestedText;
+    }
+  }
+
+  // Structured JSON payload returned as object — serialize so clients can parse.
+  const ignorableKeys = new Set(['id', 'model', 'usage', 'object', 'created', 'meta', 'timing']);
+  const meaningfulKeys = Object.keys(record).filter((key) => !ignorableKeys.has(key));
+  if (meaningfulKeys.length > 0) {
+    try {
+      return JSON.stringify(record);
+    } catch {
+      return '';
+    }
+  }
+
+  return '';
 }
 
 async function runText(env: Env, body: Record<string, unknown>, request: Request): Promise<Response> {
@@ -96,32 +157,26 @@ async function runText(env: Env, body: Record<string, unknown>, request: Request
   if (!prompt) return json({ error: 'Prompt invalido.' }, 400, request);
 
   const model = pickModel(body, TEXT_MODEL_DEFAULT);
-  const maxTokens = Number(body?.parameters?.max_tokens || body?.max_tokens || 800);
-  const temperature = Number(body?.parameters?.temperature ?? body?.temperature ?? 0.3);
+  const wantsJson = /\bjson\b/i.test(prompt) || prompt.includes('{"');
+  const maxTokens = Number(body?.parameters?.max_tokens || body?.max_tokens || (wantsJson ? 1600 : 800));
+  const temperature = Number(body?.parameters?.temperature ?? body?.temperature ?? 0.2);
 
   const input = {
     messages: textToMessages(prompt),
-    max_tokens: Number.isFinite(maxTokens) ? Math.min(Math.max(maxTokens, 64), 2000) : 800,
-    temperature: Number.isFinite(temperature) ? Math.min(Math.max(temperature, 0), 2) : 0.3,
+    max_tokens: Number.isFinite(maxTokens) ? Math.min(Math.max(maxTokens, 64), 3500) : 800,
+    temperature: Number.isFinite(temperature) ? Math.min(Math.max(temperature, 0), 2) : 0.2,
   };
 
   try {
     if (env.AI?.run) {
       try {
-        const result = (await env.AI.run(model as never, input as never)) as {
-          result?: string;
-          response?: string;
-          choices?: Array<{ message?: { content?: string } }>;
-        };
-        const text = String(result?.result || result?.response || result?.choices?.[0]?.message?.content || '').trim();
+        const result = await env.AI.run(model as never, input as never);
+        const text = extractTextFromAiResult(result);
         if (!text) return json({ error: 'Modelo nao retornou texto.' }, 502, request);
         return json({ text, model, success: true }, 200, request);
       } catch (primaryError) {
         const message = primaryError instanceof Error ? primaryError.message : String(primaryError);
-        if (!message.includes('deprecated') && !message.includes('5028')) {
-          // still try the fast active model before giving up
-          console.error('primary text model failed', message);
-        }
+        console.error('primary text model failed', message);
       }
     }
   } catch {
@@ -131,12 +186,8 @@ async function runText(env: Env, body: Record<string, unknown>, request: Request
   // Fallback: still-active fast model via binding.
   try {
     const fallbackInput = { messages: textToMessages(prompt), max_tokens: input.max_tokens, temperature: input.temperature };
-    const result = (await env.AI.run(TEXT_MODEL_FAST as never, fallbackInput as never)) as {
-      result?: string;
-      response?: string;
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const text = String(result?.result || result?.response || result?.choices?.[0]?.message?.content || '').trim();
+    const result = await env.AI.run(TEXT_MODEL_FAST as never, fallbackInput as never);
+    const text = extractTextFromAiResult(result);
     if (!text) return json({ error: 'Modelo nao retornou texto.' }, 502, request);
     return json({ text, model: TEXT_MODEL_FAST, success: true }, 200, request);
   } catch (error) {

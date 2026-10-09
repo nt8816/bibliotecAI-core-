@@ -50,4 +50,14 @@ describe('Workers AI models are not deprecated', () => {
   it('AI worker CORS allows tenant bibliotecai.com.br subdomains', () => {
     expect(worker).toContain("endsWith('.bibliotecai.com.br')");
   });
+
+  it('AI worker stringifies structured text results instead of [object Object]', () => {
+    expect(worker).toContain('extractTextFromAiResult');
+    expect(worker).not.toMatch(/String\(result\?\.result \|\| result\?\.response/);
+  });
+
+  it('frontend rejects [object Object] placeholder from text AI', () => {
+    expect(frontend).toContain('[object Object]');
+    expect(frontend).toContain('sem conteudo valido');
+  });
 });
