@@ -5,6 +5,7 @@ import { AudioLines, BellRing, CheckCircle2, Download, Eye, FileQuestion, FileSt
 import { Navigate } from 'react-router-dom';
 
 import { MainLayout } from '@/components/layout/MainLayout';
+import { ChannelFab, ChannelTopBar, FeedCardShell, FeedSkeleton, ImageGrid, AttachmentList, ComposerSheet, formatRelativeTime } from '@/components/community/ChannelUI';
 import { AudioMessagePlayer } from '@/components/community/AudioMessagePlayer';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -402,6 +403,7 @@ export default function Comunicados() {
   const [filePreviewOpen, setFilePreviewOpen] = useState(false);
   const [selectedFilePreview, setSelectedFilePreview] = useState({ src: '', title: 'Visualizacao do arquivo', mimeType: '', extension: '' });
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [composerOpen, setComposerOpen] = useState(false);
   const [isFormularioDialogOpen, setIsFormularioDialogOpen] = useState(false);
   const [formularioSaving, setFormularioSaving] = useState(false);
   const [selectedFormulario, setSelectedFormulario] = useState(null);
@@ -1272,37 +1274,126 @@ export default function Comunicados() {
 
   return (
     <MainLayout title="Comunicados">
-      <div className="space-y-6">
-        <Card className="overflow-hidden border-emerald-200/70 bg-[linear-gradient(135deg,rgba(236,253,245,0.95),rgba(255,255,255,0.98),rgba(240,253,250,0.95))] dark:border-emerald-900/60 dark:bg-[linear-gradient(135deg,rgba(6,78,59,0.28),rgba(15,23,42,0.92),rgba(5,46,22,0.34))]">
-          <CardContent className="grid gap-5 p-6 lg:grid-cols-[1.15fr_0.85fr]">
-            <div className="space-y-4">
-              <Badge className="w-fit rounded-full bg-emerald-600 px-3 py-1 text-white">
-                <Megaphone className="mr-1.5 h-3.5 w-3.5" /> Canal oficial da escola
-              </Badge>
-              <div className="space-y-2">
-                <h2 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Comunicados em destaque</h2>
-                <p className="max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-                  Um espaco proprio para avisos da escola, da biblioteca e dos professores. Os alunos acompanham tudo daqui,
-                  mas somente a equipe pode publicar novos comunicados.
+      <div className="space-y-5 pb-24">
+        <ChannelTopBar
+          eyebrow={<><Megaphone className="mr-1.5 inline h-3.5 w-3.5" /> Canal oficial da escola</>}
+          title="Comunicados"
+          description="Avisos da escola, biblioteca e professores em um feed limpo. Alunos leem; a equipe publica com mídia e anexos."
+          meta={
+            <div className="rounded-2xl border border-white/60 bg-white/80 px-4 py-2 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-emerald-700/80 dark:text-emerald-300/80">Ativos</p>
+              <p className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{comunicadosVisiveis.length}</p>
+            </div>
+          }
+          action={
+            canPublish ? (
+              <Button
+                type="button"
+                className="hidden rounded-2xl bg-emerald-600 px-5 text-white hover:bg-emerald-700 sm:inline-flex"
+                onClick={() => setComposerOpen(true)}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Novo comunicado
+              </Button>
+            ) : (
+              <Badge variant="outline" className="rounded-full">Somente leitura</Badge>
+            )
+          }
+        />
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            {canPublish ? 'Toque no botão verde para publicar.' : 'Acompanhe os avisos da equipe escolar.'}
+          </p>
+          <div className="w-full sm:max-w-xs">
+            <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar comunicado..." className="rounded-2xl" />
+          </div>
+        </div>
+
+        {loading ? (
+          <FeedSkeleton count={3} />
+        ) : comunicadosVisiveis.length === 0 ? (
+          <div className="rounded-[28px] border border-dashed p-10 text-center">
+            <BellRing className="mx-auto mb-3 h-8 w-8 text-emerald-600" />
+            <p className="font-medium text-slate-900 dark:text-slate-100">Nenhum comunicado por aqui</p>
+            <p className="mt-1 text-sm text-muted-foreground">Assim que a equipe publicar, os avisos aparecem neste feed.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {comunicadosVisiveis.map((post) => (
+              <FeedCardShell
+                key={post.id}
+                author={safeText(post?.usuarios_biblioteca?.nome || post?.autor_nome, 'Equipe')}
+                timeLabel={formatRelativeTime(post.created_at) || formatDateTimeBR(post.created_at)}
+                turmaLabel={post.turma_publico || 'Todas as turmas'}
+                title={post.titulo || 'Novo comunicado'}
+                actions={
+                  canDeleteComunicado(post) ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="rounded-xl text-destructive hover:text-destructive"
+                      onClick={() => setDeleteTarget(post)}
+                      disabled={saving}
+                    >
+                      <Trash2 className="mr-1 h-4 w-4" />
+                      Apagar
+                    </Button>
+                  ) : null
+                }
+                footer={
+                  post.expires_at ? (
+                    <p className="text-xs text-muted-foreground">Visível até {formatDateTimeBR(post.expires_at)}</p>
+                  ) : null
+                }
+              >
+                <p className="whitespace-pre-wrap text-[15px] leading-7 text-slate-700 dark:text-slate-200">
+                  {post.conteudo || 'Sem mensagem adicional.'}
                 </p>
-              </div>
-            </div>
 
-            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-              <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
-                <p className="text-xs uppercase tracking-[0.22em] text-emerald-700/80 dark:text-emerald-300/80">Ativos agora</p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{comunicadosVisiveis.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+                {post.audio_url ? (
+                  <AudioMessagePlayer
+                    src={post.audio_url}
+                    title="Áudio do comunicado"
+                    durationSeconds={post.audio_duration_seconds}
+                  />
+                ) : null}
 
-        {canPublish && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Novo comunicado</CardTitle>
-            </CardHeader>
-            <CardContent className="max-h-[calc(94vh-92px)] overflow-y-auto px-8 py-7">
+                <ImageGrid
+                  images={ensureArray(post.imagem_urls)}
+                  onPreview={(src) => openImagePreview(src, post?.titulo || 'Imagem')}
+                  onDownload={(_, index) => handleDownloadPublishedImage(post, index)}
+                />
+
+                <AttachmentList
+                  items={ensureArray(post.arquivos)}
+                  title="Arquivos anexados"
+                  onPreview={(arquivo) => isPreviewableFile(arquivo) && openFilePreview(arquivo)}
+                  onDownload={(arquivo) => handleDownloadPublishedFile(arquivo)}
+                />
+              </FeedCardShell>
+            ))}
+          </div>
+        )}
+
+      <ChannelFab
+        visible={canPublish}
+        label="Novo comunicado"
+        icon={<Plus className="h-5 w-5" />}
+        onClick={() => setComposerOpen(true)}
+      />
+
+      {canPublish ? (
+        <ComposerSheet
+          open={composerOpen}
+          onOpenChange={setComposerOpen}
+          title="Novo comunicado"
+          description="Envie um aviso com texto, imagens, áudio e anexos para a turma certa."
+          submitLabel={saving ? 'Publicando...' : 'Publicar comunicado'}
+          submitting={saving}
+          onSubmit={handlePublish}
+        >
               <div className="space-y-8">
                 <div className="grid gap-6 rounded-[26px] border border-primary/10 bg-card/80 p-6 shadow-sm xl:grid-cols-[minmax(0,1.15fr)_380px]">
                 <div className="space-y-2">
@@ -1571,17 +1662,9 @@ export default function Comunicados() {
                   </div>
                   ) : null}
                 </div>
-
-                <div className="flex justify-end pt-2">
-                  <Button className="h-14 rounded-2xl px-7 shadow-[0_16px_34px_rgba(22,163,74,0.24)]" onClick={handlePublish} disabled={saving}>
-                    <Send className="mr-2 h-4 w-4" />
-                    {saving ? 'Publicando...' : 'Publicar comunicado'}
-                  </Button>
-                </div>
               </div>
-            </CardContent>
-          </Card>
-        )}
+        </ComposerSheet>
+      ) : null}
 
         {isProfessor && (
           <Card>
@@ -1668,142 +1751,8 @@ export default function Comunicados() {
           </Card>
         )}
 
-        <Card>
-          <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="text-base">Mural de comunicados</CardTitle>
-              <p className="text-sm text-muted-foreground">Avisos organizados em um espaco proprio, sem misturar com a comunidade.</p>
-            </div>
-            <div className="w-full sm:max-w-xs">
-              <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar comunicado..." />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">Carregando comunicados...</p>
-            ) : comunicadosVisiveis.length === 0 ? (
-              <div className="rounded-[28px] border border-dashed p-8 text-center">
-                <BellRing className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Nenhum comunicado disponivel agora.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {comunicadosVisiveis.map((post) => (
-                  <div key={post.id} className="rounded-[30px] border border-border/70 bg-card/95 p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(15,23,42,0.06)]">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">{post.titulo || 'Novo comunicado'}</p>
-                          <Badge variant="destructive">Comunicado</Badge>
-                          <Badge variant="outline">
-                            <Users className="mr-1 h-3.5 w-3.5" />
-                            {post.turma_publico || 'Todas as turmas'}
-                          </Badge>
-                        </div>
-                        <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">{post.conteudo || 'Sem mensagem adicional.'}</p>
-                      </div>
-                      <div className="shrink-0 rounded-2xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          {formatDateTimeBR(post.created_at)}
-                        </div>
-                        {post.expires_at ? <p className="mt-1">Sai em {formatDateTimeBR(post.expires_at)}</p> : null}
-                        {canDeleteComunicado(post) ? (
-                          <div className="mt-3 flex justify-end">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="rounded-xl text-destructive hover:text-destructive"
-                              onClick={() => setDeleteTarget(post)}
-                              disabled={saving}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Apagar
-                            </Button>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {post.audio_url ? (
-                      <div className="mt-4">
-                        <AudioMessagePlayer
-                          src={post.audio_url}
-                          title="Audio do comunicado"
-                          durationSeconds={post.audio_duration_seconds}
-                        />
-                      </div>
-                    ) : null}
-
-                    {ensureArray(post.imagem_urls).length > 0 ? (
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        {ensureArray(post.imagem_urls).slice(0, 4).map((img, index) => (
-                          <div key={`${post.id}-${index}`} className="group relative overflow-hidden rounded-[24px] border">
-                            <img
-                              src={img}
-                              alt={`Imagem ${index + 1}`}
-                              className="h-44 w-full cursor-zoom-in object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                              onClick={() => openImagePreview(img, post?.titulo || `Imagem ${index + 1}`)}
-                            />
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              className="absolute right-2 top-2 h-9 w-9 rounded-full bg-white/92 shadow-sm backdrop-blur"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleDownloadPublishedImage(post, index);
-                              }}
-                              aria-label={`Baixar imagem ${index + 1}`}
-                            >
-                              <Download className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    {ensureArray(post.arquivos).length > 0 ? (
-                      <div className="mt-4 rounded-[24px] border border-emerald-100 bg-emerald-50/45 p-4 dark:border-white/10 dark:bg-emerald-950/15">
-                        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                          <FileStack className="h-4 w-4 text-emerald-700 dark:text-emerald-300" />
-                          Arquivos do comunicado
-                        </div>
-                        <div className="grid gap-3 lg:grid-cols-2">
-                          {ensureArray(post.arquivos).map((arquivo, index) => (
-                            <div key={`${post.id}-arquivo-${index}`} className="rounded-2xl border bg-white/90 p-3 shadow-sm dark:bg-slate-950/45">
-                              <div className="flex items-center gap-3">
-                                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">
-                                  <FileText className="h-4 w-4" />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{safeText(arquivo?.nome, 'Arquivo')}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {safeText(arquivo?.extensao || getFileExtension(arquivo?.nome), '').toUpperCase() || 'ARQ'} • {formatBytes(arquivo?.tamanho)}
-                                  </p>
-                                </div>
-                                <div className="flex shrink-0 gap-1">
-                                  {isPreviewableFile(arquivo) ? (
-                                    <Button type="button" size="icon" variant="ghost" onClick={() => openFilePreview(arquivo)} aria-label={`Pre visualizar ${safeText(arquivo?.nome, 'arquivo')}`}>
-                                      <Eye className="h-4 w-4" />
-                                    </Button>
-                                  ) : null}
-                                  <Button type="button" size="icon" variant="ghost" onClick={() => handleDownloadPublishedFile(arquivo)} aria-label={`Baixar ${safeText(arquivo?.nome, 'arquivo')}`}>
-                                    <Download className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
+
 
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && !saving && setDeleteTarget(null)}>
         <AlertDialogContent>

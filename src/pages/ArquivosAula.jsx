@@ -1,8 +1,8 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Download, FileStack, ImagePlus, Send, Trash2, X } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { AttachmentList, ChannelFab, ChannelTopBar, ComposerSheet, FeedCardShell, FeedSkeleton, formatBytes, formatRelativeTime, getFileExtension } from '@/components/community/ChannelUI';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
@@ -48,19 +48,6 @@ function normalizeTurmaKey(value) {
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function getFileExtension(fileName) {
-  const parts = String(fileName || '').split('.');
-  return parts.length > 1 ? parts.pop().toLowerCase() : '';
-}
-
-function formatBytes(value) {
-  const size = Number(value || 0);
-  if (!size) return '0 B';
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function formatDateBR(value) {
@@ -115,6 +102,7 @@ export default function ArquivosAula() {
   const [posts, setPosts] = useState([]);
   const [professorFilter, setProfessorFilter] = useState('all');
   const [deletePostTarget, setDeletePostTarget] = useState(null);
+  const [composerOpen, setComposerOpen] = useState(false);
   const canManageArquivos = (isProfessor || isGestor) && enabled;
   const turmaSelecionavel = turmaPublico || (isGestor ? ALL_TURMAS_OPTION : '');
   const canPublishArquivos = canManageArquivos && Boolean(mensagem.trim()) && selectedFiles.length > 0 && Boolean(turmaSelecionavel);
@@ -350,226 +338,210 @@ export default function ArquivosAula() {
 
   return (
     <MainLayout title="Arquivos Didáticos">
-      <div className="space-y-4 sm:space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <FileStack className="w-5 h-5" />
-              Arquivos Didáticos
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Professores e gestores podem publicar materiais com mensagem. Alunos podem baixar os arquivos disponíveis para sua turma.
-            </p>
-
-            {!enabled && (
-              <p className="text-sm text-muted-foreground">
-                Recurso indisponível no banco atual. Aplique a migration de Arquivos Didáticos.
-              </p>
-            )}
-
-            {(isProfessor || isGestor) && enabled && (
-              <div className="space-y-4 rounded-xl border p-4">
-                {isGestor ? (
-                  <div className="rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3 shadow-sm">
-                    <p className="text-sm font-semibold text-foreground">Acesso total do gestor</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Você pode publicar para qualquer turma da escola e também para todas as turmas de uma vez.
-                    </p>
-                  </div>
-                ) : turmasPublicacao.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Nenhuma turma disponível para o seu perfil ainda. Peça ao gestor para liberar suas turmas.
-                  </p>
-                ) : null}
-                <div className="space-y-2">
-                  <Label>Turma</Label>
-                  <select
-                    value={turmaPublico || (isGestor ? ALL_TURMAS_OPTION : 'none')}
-                    onChange={(e) => setTurmaPublico(e.target.value === 'none' ? '' : e.target.value)}
-                    className="flex h-11 w-full rounded-xl border border-primary/30 bg-background/80 px-4 py-2 text-sm shadow-sm transition-colors focus:border-primary focus:outline-none"
-                    disabled={!canManageArquivos || saving}
-                  >
-                    {!isGestor && <option value="none">Selecione a turma</option>}
-                    <option value={ALL_TURMAS_OPTION}>Todas as turmas</option>
-                    {turmasPublicacao.map((turma) => (
-                      <option key={turma} value={turma}>
-                        {turma}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-muted-foreground">
-                    {isGestor
-                      ? 'Como gestor, não é necessária autorização por turma: o acesso é completo dentro da escola.'
-                      : 'Escolha a turma específica que vai receber o material.'}
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Mensagem</Label>
-                  <Textarea
-                    rows={4}
-                    value={mensagem}
-                    onChange={(e) => setMensagem(e.target.value)}
-                    placeholder="Descreva o material da aula..."
-                    className="rounded-xl border-primary/20 bg-background/80"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <ImagePlus className="w-4 h-4" />
-                    Arquivos anexos
-                  </Label>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept={ACCEPTED_INPUT}
-                    className="hidden"
-                    onChange={(e) => handleSelectFiles(e.target.files)}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={!canManageArquivos || saving}
-                    className="rounded-xl border-primary/30 bg-background/80"
-                  >
-                    <ImagePlus className="w-4 h-4 mr-2" />
-                    Adicionar arquivos
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    Formatos aceitos: PDF, Word, Excel, PNG, JPG/JPEG e PowerPoint.
-                  </p>
-                  {selectedFiles.length > 0 && (
-                    <div className="space-y-2">
-                      {selectedFiles.map((file, index) => (
-                        <div key={`${file.name}-${index}`} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
-                          <div className="min-w-0">
-                            <p className="truncate font-medium">{file.name}</p>
-                            <p className="text-xs text-muted-foreground">{formatBytes(file.size)}</p>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setSelectedFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex justify-end">
-                  <Button type="button" onClick={handlePublish} disabled={!canManageArquivos || saving} className="rounded-xl">
-                    <Send className="w-4 h-4 mr-2" />
-                    {saving ? 'Publicando...' : 'Publicar material'}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Materiais publicados</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-4 grid gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Filtrar por autor</Label>
-                <select
-                  value={professorFilter}
-                  onChange={(e) => setProfessorFilter(e.target.value)}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="all">Todos os autores</option>
-                  {professoresDisponiveis.map((nome) => (
-                    <option key={nome} value={nome}>
-                      {nome}
-                    </option>
-                  ))}
-                </select>
-              </div>
+      <div className="space-y-5 pb-24">
+        <ChannelTopBar
+          eyebrow={<><FileStack className="mr-1.5 inline h-3.5 w-3.5" /> Material da escola</>}
+          title="Arquivos didáticos"
+          description="PDFs, imagens e documentos enviados pela equipe. Alunos baixam em um toque; professores e gestão publicam rapidinho."
+          meta={
+            <div className="rounded-2xl border border-white/60 bg-white/80 px-4 py-2 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-emerald-700/80 dark:text-emerald-300/80">Materiais</p>
+              <p className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{visiblePosts.length}</p>
             </div>
-
-            {loading ? (
-              <p className="text-center text-muted-foreground py-8">Carregando...</p>
-            ) : visiblePosts.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">Nenhum material publicado ainda.</p>
+          }
+          action={
+            canManageArquivos && enabled ? (
+              <Button
+                type="button"
+                className="hidden rounded-2xl bg-emerald-600 px-5 text-white hover:bg-emerald-700 sm:inline-flex"
+                onClick={() => setComposerOpen(true)}
+              >
+                <ImagePlus className="mr-2 h-4 w-4" />
+                Enviar material
+              </Button>
             ) : (
-              <div className="space-y-4">
-                {visiblePosts.map((post) => (
-                  <div key={post.id} className="rounded-xl border p-4 space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">{post?.turma_publico ? `Turma ${post.turma_publico}` : 'Todas as turmas'}</Badge>
-                        <span className="text-xs text-muted-foreground">{formatDateBR(post?.created_at)}</span>
-                      </div>
-                      {(isProfessor || isGestor) && post?.autor_id === perfilId && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setDeletePostTarget(post)}
-                          disabled={saving}
-                        >
-                          <Trash2 className="w-4 h-4 mr-2 text-destructive" />
-                          Excluir publicacao
-                        </Button>
-                      )}
-                    </div>
-                    <p className="text-sm font-medium">
-                      Publicado por: {safeText(getAuthorName(post), 'Autor não identificado')}
-                    </p>
-                    <p className="text-sm whitespace-pre-wrap">{safeText(post?.mensagem, '')}</p>
-                    <div className="space-y-2">
-                      {ensureArray(post?.arquivos).map((arquivo, index) => (
-                        <div key={`${post.id}-${index}`} className="flex items-center justify-between rounded-md border px-3 py-2 gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate font-medium">{safeText(arquivo?.nome, 'Arquivo')}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {safeText(arquivo?.extensao, '').toUpperCase() || 'ARQ'} • {formatBytes(arquivo?.tamanho)}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button type="button" size="sm" variant="outline" onClick={() => handleDownload(arquivo)}>
-                              <Download className="w-4 h-4 mr-2" />
-                              Baixar
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        <AlertDialog open={Boolean(deletePostTarget)} onOpenChange={(open) => !open && setDeletePostTarget(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Excluir publicacao?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Esta publicacao sera removida permanentemente, junto com todos os arquivos anexados.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDeletePost} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                Excluir publicacao
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+              <Badge variant="outline" className="rounded-full">Só download</Badge>
+            )
+          }
+        />
+
+        {!enabled ? (
+          <div className="rounded-2xl border border-dashed p-6 text-sm text-muted-foreground">
+            Recurso indisponível no banco atual. Aplique a migration de Arquivos Didáticos.
+          </div>
+        ) : null}
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="w-full sm:max-w-xs space-y-2">
+            <Label className="text-xs text-muted-foreground">Filtrar por autor</Label>
+            <select
+              value={professorFilter}
+              onChange={(e) => setProfessorFilter(e.target.value)}
+              className="flex h-11 w-full rounded-2xl border border-input bg-background px-3 py-2 text-sm shadow-sm"
+            >
+              <option value="all">Todos os autores</option>
+              {professoresDisponiveis.map((nome) => (
+                <option key={nome} value={nome}>{nome}</option>
+              ))}
+            </select>
+          </div>
+          {canManageArquivos ? (
+            <p className="text-sm text-muted-foreground">Toque em enviar para publicar material da aula.</p>
+          ) : null}
+        </div>
+
+        {loading ? (
+          <FeedSkeleton count={3} />
+        ) : visiblePosts.length === 0 ? (
+          <div className="rounded-[28px] border border-dashed p-10 text-center">
+            <FileStack className="mx-auto mb-3 h-8 w-8 text-emerald-600" />
+            <p className="font-medium text-slate-900 dark:text-slate-100">Nenhum material publicado</p>
+            <p className="mt-1 text-sm text-muted-foreground">Quando a equipe enviar arquivos, eles aparecem aqui.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {visiblePosts.map((post) => (
+              <FeedCardShell
+                key={post.id}
+                author={safeText(getAuthorName(post), 'Autor')}
+                timeLabel={formatRelativeTime(post?.created_at) || formatDateBR(post?.created_at)}
+                turmaLabel={post?.turma_publico ? `Turma ${post.turma_publico}` : 'Todas as turmas'}
+                actions={
+                  (isProfessor || isGestor) && post?.autor_id === perfilId ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="rounded-xl text-destructive hover:text-destructive"
+                      onClick={() => setDeletePostTarget(post)}
+                      disabled={saving}
+                    >
+                      <Trash2 className="mr-1 h-4 w-4" />
+                      Excluir
+                    </Button>
+                  ) : null
+                }
+              >
+                <p className="whitespace-pre-wrap text-[15px] leading-7 text-slate-700 dark:text-slate-200">
+                  {safeText(post?.mensagem, 'Material da aula disponível para download.')}
+                </p>
+                <AttachmentList
+                  items={ensureArray(post?.arquivos).map((arquivo) => ({
+                    ...arquivo,
+                    extensao: arquivo?.extensao || getFileExtension(arquivo?.nome),
+                  }))}
+                  title="Arquivos da aula"
+                  onDownload={(arquivo) => handleDownload(arquivo)}
+                />
+              </FeedCardShell>
+            ))}
+          </div>
+        )}
       </div>
+
+      <ChannelFab
+        visible={canManageArquivos && enabled}
+        label="Enviar material"
+        icon={<ImagePlus className="h-5 w-5" />}
+        onClick={() => setComposerOpen(true)}
+      />
+
+      {canManageArquivos && enabled ? (
+        <ComposerSheet
+          open={composerOpen}
+          onOpenChange={setComposerOpen}
+          title="Enviar material"
+          description="Escolha a turma, descreva o material e anexe os arquivos da aula."
+          submitLabel={saving ? 'Enviando...' : 'Publicar material'}
+          submitting={saving}
+          submitDisabled={!canPublishArquivos}
+          onSubmit={handlePublish}
+        >
+          {isGestor ? (
+            <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-3 text-sm dark:border-emerald-900/50 dark:bg-emerald-950/20">
+              Acesso total do gestor: pode publicar para qualquer turma ou todas de uma vez.
+            </div>
+          ) : turmasPublicacao.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nenhuma turma liberada para o seu perfil. Peça ao gestor para liberar suas turmas.
+            </p>
+          ) : null}
+
+          <div className="space-y-2">
+            <Label>Turma</Label>
+            <select
+              value={turmaPublico || (isGestor ? ALL_TURMAS_OPTION : 'none')}
+              onChange={(e) => setTurmaPublico(e.target.value === 'none' ? '' : e.target.value)}
+              className="flex h-12 w-full rounded-2xl border border-emerald-200/70 bg-background px-4 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-900/50"
+              disabled={!canManageArquivos || saving}
+            >
+              {!isGestor && <option value="none">Selecione a turma</option>}
+              <option value={ALL_TURMAS_OPTION}>Todas as turmas</option>
+              {turmasPublicacao.map((turma) => (
+                <option key={turma} value={turma}>{turma}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Mensagem</Label>
+            <Textarea
+              rows={4}
+              value={mensagem}
+              onChange={(e) => setMensagem(e.target.value)}
+              placeholder="Descreva o material da aula..."
+              className="rounded-2xl"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept={ACCEPTED_INPUT}
+              className="hidden"
+              onChange={(e) => handleSelectFiles(e.target.files)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!canManageArquivos || saving}
+              className="rounded-2xl"
+            >
+              <ImagePlus className="mr-2 h-4 w-4" />
+              Adicionar arquivos
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Formatos aceitos: PDF, Word, Excel, PNG, JPG/JPEG e PowerPoint.
+            </p>
+            {selectedFiles.length > 0 ? (
+              <AttachmentList
+                items={selectedFiles.map((file) => ({ nome: file.name, tamanho: file.size, extensao: getFileExtension(file.name) }))}
+                title="Na fila"
+              />
+            ) : null}
+          </div>
+        </ComposerSheet>
+      ) : null}
+
+      <AlertDialog open={Boolean(deletePostTarget)} onOpenChange={(open) => !open && setDeletePostTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir publicacao?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta publicacao sera removida permanentemente, junto com todos os arquivos anexados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeletePost} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Excluir publicacao
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </MainLayout>
   );
 }
