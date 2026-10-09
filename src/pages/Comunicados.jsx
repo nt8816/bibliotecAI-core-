@@ -5,7 +5,7 @@ import { AudioLines, BellRing, CheckCircle2, Download, Eye, FileQuestion, FileSt
 import { Navigate } from 'react-router-dom';
 
 import { MainLayout } from '@/components/layout/MainLayout';
-import { ChannelFab, ChannelTopBar, FeedCardShell, FeedSkeleton, ImageGrid, AttachmentList, ComposerSheet, formatRelativeTime } from '@/components/community/ChannelUI';
+import { ChannelFab, CompactChannelHeader, FeedSkeleton, ImageGrid, AttachmentList, ComposerSheet, WhatsAppIncomingMessage, formatRelativeTime } from '@/components/community/ChannelUI';
 import { AudioMessagePlayer } from '@/components/community/AudioMessagePlayer';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -1274,105 +1274,104 @@ export default function Comunicados() {
 
   return (
     <MainLayout title="Comunicados">
-      <div className="space-y-5 pb-24">
-        <ChannelTopBar
-          eyebrow={<><Megaphone className="mr-1.5 inline h-3.5 w-3.5" /> Canal oficial da escola</>}
+      <div className="space-y-4 pb-24">
+        <CompactChannelHeader
           title="Comunicados"
-          description="Avisos da escola, biblioteca e professores em um feed limpo. Alunos leem; a equipe publica com mídia e anexos."
-          meta={
-            <div className="rounded-2xl border border-white/60 bg-white/80 px-4 py-2 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-emerald-700/80 dark:text-emerald-300/80">Ativos</p>
-              <p className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{comunicadosVisiveis.length}</p>
+          meta={`${comunicadosVisiveis.length} aviso${comunicadosVisiveis.length === 1 ? '' : 's'}`}
+          search={
+            <div className="w-40 sm:w-56">
+              <Input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar..."
+                className="h-9 rounded-full bg-muted/50 text-sm"
+              />
             </div>
           }
           action={
             canPublish ? (
               <Button
                 type="button"
-                className="hidden rounded-2xl bg-emerald-600 px-5 text-white hover:bg-emerald-700 sm:inline-flex"
+                size="sm"
+                className="hidden h-9 rounded-full bg-emerald-600 px-4 text-white hover:bg-emerald-700 sm:inline-flex"
                 onClick={() => setComposerOpen(true)}
               >
-                <Plus className="mr-2 h-4 w-4" />
-                Novo comunicado
+                <Plus className="mr-1.5 h-4 w-4" />
+                Novo
               </Button>
-            ) : (
-              <Badge variant="outline" className="rounded-full">Somente leitura</Badge>
-            )
+            ) : null
           }
         />
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-muted-foreground">
-            {canPublish ? 'Toque no botão verde para publicar.' : 'Acompanhe os avisos da equipe escolar.'}
-          </p>
-          <div className="w-full sm:max-w-xs">
-            <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar comunicado..." className="rounded-2xl" />
-          </div>
-        </div>
 
         {loading ? (
           <FeedSkeleton count={3} />
         ) : comunicadosVisiveis.length === 0 ? (
-          <div className="rounded-[28px] border border-dashed p-10 text-center">
-            <BellRing className="mx-auto mb-3 h-8 w-8 text-emerald-600" />
-            <p className="font-medium text-slate-900 dark:text-slate-100">Nenhum comunicado por aqui</p>
-            <p className="mt-1 text-sm text-muted-foreground">Assim que a equipe publicar, os avisos aparecem neste feed.</p>
+          <div className="rounded-2xl border border-dashed p-8 text-center">
+            <BellRing className="mx-auto mb-2 h-6 w-6 text-emerald-600" />
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Nenhum comunicado</p>
+            <p className="mt-1 text-xs text-muted-foreground">Avisos da equipe aparecem aqui.</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {comunicadosVisiveis.map((post) => (
-              <FeedCardShell
+              <WhatsAppIncomingMessage
                 key={post.id}
                 author={safeText(post?.usuarios_biblioteca?.nome || post?.autor_nome, 'Equipe')}
                 timeLabel={formatRelativeTime(post.created_at) || formatDateTimeBR(post.created_at)}
-                turmaLabel={post.turma_publico || 'Todas as turmas'}
-                title={post.titulo || 'Novo comunicado'}
+                turmaLabel={post.turma_publico || 'Todas'}
+                title={post.titulo}
                 actions={
                   canDeleteComunicado(post) ? (
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="rounded-xl text-destructive hover:text-destructive"
+                      className="h-7 rounded-full px-2 text-xs text-destructive hover:text-destructive"
                       onClick={() => setDeleteTarget(post)}
                       disabled={saving}
                     >
-                      <Trash2 className="mr-1 h-4 w-4" />
+                      <Trash2 className="mr-1 h-3.5 w-3.5" />
                       Apagar
                     </Button>
                   ) : null
                 }
-                footer={
-                  post.expires_at ? (
-                    <p className="text-xs text-muted-foreground">Visível até {formatDateTimeBR(post.expires_at)}</p>
-                  ) : null
-                }
               >
-                <p className="whitespace-pre-wrap text-[15px] leading-7 text-slate-700 dark:text-slate-200">
-                  {post.conteudo || 'Sem mensagem adicional.'}
-                </p>
+                <p className="whitespace-pre-wrap">{post.conteudo || 'Sem mensagem adicional.'}</p>
 
                 {post.audio_url ? (
                   <AudioMessagePlayer
                     src={post.audio_url}
-                    title="Áudio do comunicado"
+                    title="Áudio"
                     durationSeconds={post.audio_duration_seconds}
+                    compact
                   />
                 ) : null}
 
-                <ImageGrid
-                  images={ensureArray(post.imagem_urls)}
-                  onPreview={(src) => openImagePreview(src, post?.titulo || 'Imagem')}
-                  onDownload={(_, index) => handleDownloadPublishedImage(post, index)}
-                />
+                {ensureArray(post.imagem_urls).length > 0 ? (
+                  <div className="space-y-2">
+                    <ImageGrid
+                      images={ensureArray(post.imagem_urls)}
+                      onPreview={(src) => openImagePreview(src, post?.titulo || 'Imagem')}
+                      onDownload={(_, index) => handleDownloadPublishedImage(post, index)}
+                    />
+                  </div>
+                ) : null}
 
-                <AttachmentList
-                  items={ensureArray(post.arquivos)}
-                  title="Arquivos anexados"
-                  onPreview={(arquivo) => isPreviewableFile(arquivo) && openFilePreview(arquivo)}
-                  onDownload={(arquivo) => handleDownloadPublishedFile(arquivo)}
-                />
-              </FeedCardShell>
+                {ensureArray(post.arquivos).length > 0 ? (
+                  <AttachmentList
+                    items={ensureArray(post.arquivos)}
+                    title="Anexos"
+                    onPreview={(arquivo) => isPreviewableFile(arquivo) && openFilePreview(arquivo)}
+                    onDownload={(arquivo) => handleDownloadPublishedFile(arquivo)}
+                  />
+                ) : null}
+
+                {post.expires_at ? (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Visível até {formatDateTimeBR(post.expires_at)}
+                  </p>
+                ) : null}
+              </WhatsAppIncomingMessage>
             ))}
           </div>
         )}

@@ -1,3 +1,4 @@
+import { Megaphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -34,6 +35,70 @@ export function formatBytes(value) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function CompactChannelHeader({ title, meta, action, search, className }) {
+  return (
+    <div
+      className={cn(
+        'sticky top-0 z-20 -mx-1 mb-1 flex items-center gap-3 border-b border-emerald-200/70 bg-background/95 px-1 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80',
+        className,
+      )}
+    >
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-600 text-white">
+        <Megaphone className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <h1 className="truncate text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100">{title}</h1>
+        {meta ? <p className="truncate text-xs text-muted-foreground">{meta}</p> : null}
+      </div>
+      {search}
+      {action}
+    </div>
+  );
+}
+
+export function WhatsAppIncomingMessage({
+  author,
+  timeLabel,
+  turmaLabel,
+  title,
+  children,
+  actions,
+  className,
+}) {
+  return (
+    <article className={cn('flex items-start gap-2.5', className)}>
+      <div className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-emerald-600 text-[11px] font-bold text-white">
+        {String(author || '?')
+          .split(' ')
+          .slice(0, 2)
+          .map((part) => part[0])
+          .join('')
+          .toUpperCase()}
+      </div>
+      <div className="min-w-0 max-w-[min(100%,42rem)] flex-1">
+        <div className="rounded-2xl rounded-tl-md border border-emerald-100/80 bg-emerald-50/90 px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-emerald-900/40 dark:bg-emerald-950/40">
+          <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="text-[13px] font-semibold text-emerald-900 dark:text-emerald-100">{author || 'Equipe'}</p>
+            {turmaLabel ? (
+              <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] text-emerald-800/80 dark:bg-slate-950/50 dark:text-emerald-200/90">
+                {turmaLabel}
+              </span>
+            ) : null}
+            {title ? (
+              <p className="w-full truncate text-sm font-medium text-slate-800 dark:text-slate-100">{title}</p>
+            ) : null}
+          </div>
+          <div className="space-y-3 text-[14.5px] leading-6 text-slate-700 dark:text-slate-200">{children}</div>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">{timeLabel}</p>
+            {actions}
+          </div>
+        </div>
+      </div>
+    </article>
+  );
 }
 
 export function ChannelTopBar({ eyebrow, title, description, action, meta, className }) {
