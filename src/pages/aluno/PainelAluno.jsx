@@ -57,6 +57,7 @@ import {
   savePainelAlunoReview,
   savePainelAlunoChallenge,
   sendPainelAlunoSolicitacaoChatMessage,
+  submitAlunoQuizLivroTentativa,
   submitPainelAlunoActivity,
   togglePainelAlunoWishlist,
   togglePainelAlunoAudiobook,
@@ -1983,12 +1984,25 @@ export default function PainelAluno() {
     }).length;
   }, [emprestimos]);
 
+  const xpQuizzesLivro = useMemo(() => {
+    return Object.values(quizHistory || {}).reduce((acc, entry) => {
+      return acc + Number(entry?.best?.acertos || 0) * 10;
+    }, 0);
+  }, [quizHistory]);
+
   const pontosExperiencia = useMemo(() => {
     const baseLeituras = xpLeituras;
     const baseAvaliacoes = avaliacoes.length * 15;
     const baseAtividades = atividadesAprovadas * 25;
-    return baseLeituras + baseAvaliacoes + baseAtividades + Number(pontosGanhos || 0) + Number(desafioXpBonus || 0);
-  }, [atividadesAprovadas, avaliacoes.length, desafioXpBonus, pontosGanhos, xpLeituras]);
+    return (
+      baseLeituras +
+      baseAvaliacoes +
+      baseAtividades +
+      Number(pontosGanhos || 0) +
+      Number(desafioXpBonus || 0) +
+      Number(xpQuizzesLivro || 0)
+    );
+  }, [atividadesAprovadas, avaliacoes.length, desafioXpBonus, pontosGanhos, xpLeituras, xpQuizzesLivro]);
 
   const nivelAtual = useMemo(() => Math.max(1, Math.floor(pontosExperiencia / 150) + 1), [pontosExperiencia]);
 
@@ -3451,6 +3465,15 @@ export default function PainelAluno() {
       } catch {
         // ignore storage errors
       }
+
+      submitAlunoQuizLivroTentativa({
+        livroId: quizLivroId,
+        tema: quizTema.trim() || 'geral',
+        acertos,
+        total,
+      }).catch(() => {
+        // ranking usa o servidor; localStorage mantém o histórico local
+      });
     },
     [quizHistory, quizHistoryKey, quizLivroId, quizTema],
   );

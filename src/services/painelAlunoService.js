@@ -1,4 +1,4 @@
-﻿import { requestPlatformApi } from '@/lib/platformApi';
+import { requestPlatformApi } from '@/lib/platformApi';
 
 export async function fetchPainelAlunoData() {
   const payload = await requestPlatformApi('/v1/aluno/painel');
@@ -165,5 +165,17 @@ export async function deletePainelAlunoLabCreation({ id, comunidadePostId }) {
   return requestPlatformApi(`/v1/aluno/laboratorio/criacoes/${id}/delete`, {
     method: 'POST',
     body: { comunidadePostId },
+  });
+}
+
+export async function submitAlunoQuizLivroTentativa({ livroId, tema, acertos, total }) {
+  return requestPlatformApi('/v1/aluno/quiz-livro-tentativas', {
+    method: 'POST',
+    body: {
+      livro_id: livroId,
+      tema: tema || 'geral',
+      acertos,
+      total,
+    },
   });
 }

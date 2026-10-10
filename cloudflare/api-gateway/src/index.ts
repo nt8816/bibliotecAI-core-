@@ -10387,14 +10387,72 @@ const routes: Record<string, RouteHandler> = {
   },
 
   'POST /v1/aluno/comunidade/quiz-tentativas': async (request, env) => {
-    await getCommunityModuleContext(request, env);
+    const { alunoId, escolaId } = await getCommunityModuleContext(request, env);
     const body = await request.json().catch(() => ({}));
-    await supabaseAdminRequest(env, '/rest/v1/comunidade_quiz_tentativas', {
+    const postId = String(body?.post_id || '').trim();
+    const acertos = Number(body?.acertos);
+    const total = Number(body?.total);
+
+    if (!postId || !alunoId) {
+      return jsonResponse({ success: false, error: 'Dados invalidos para registrar a tentativa.' }, 400);
+    }
+    if (!Number.isFinite(acertos) || !Number.isFinite(total) || total <= 0 || acertos < 0) {
+      return jsonResponse({ success: false, error: 'Resultado de quiz invalido.' }, 400);
+    }
+
+    const insertedPayload = await supabaseAdminRequest(env, '/rest/v1/comunidade_quiz_tentativas', {
       method: 'POST',
-      body,
-      headers: { Prefer: 'return=minimal' },
+      body: {
+        post_id: postId,
+        aluno_id: alunoId,
+        escola_id: escolaId,
+        acertos: Math.floor(acertos),
+        total: Math.floor(total),
+      },
+      headers: { Prefer: 'return=representation' },
     });
-    return jsonResponse({ success: true });
+    const inserted = Array.isArray(insertedPayload) ? insertedPayload[0] : insertedPayload;
+
+    if (!inserted?.id) {
+      return jsonResponse({ success: false, error: 'Nao foi possivel registrar a tentativa do quiz.' }, 500);
+    }
+
+    return jsonResponse({ success: true, tentativa: inserted });
+  },
+  'POST /v1/aluno/quiz-livro-tentativas': async (request, env) => {
+    const { alunoId, escolaId } = await getCommunityModuleContext(request, env);
+    const body = await request.json().catch(() => ({}));
+    const livroId = String(body?.livro_id || '').trim();
+    const tema = String(body?.tema || 'geral').trim().slice(0, 120) || 'geral';
+    const acertos = Number(body?.acertos);
+    const total = Number(body?.total);
+
+    if (!alunoId) {
+      return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
+    }
+    if (!Number.isFinite(acertos) || !Number.isFinite(total) || total <= 0 || acertos < 0) {
+      return jsonResponse({ success: false, error: 'Resultado de quiz invalido.' }, 400);
+    }
+
+    const insertedPayload = await supabaseAdminRequest(env, '/rest/v1/aluno_quiz_livro_tentativas', {
+      method: 'POST',
+      body: {
+        aluno_id: alunoId,
+        escola_id: escolaId,
+        livro_id: livroId || null,
+        tema,
+        acertos: Math.floor(acertos),
+        total: Math.floor(total),
+      },
+      headers: { Prefer: 'return=representation' },
+    });
+    const inserted = Array.isArray(insertedPayload) ? insertedPayload[0] : insertedPayload;
+
+    if (!inserted?.id) {
+      return jsonResponse({ success: false, error: 'Nao foi possivel registrar a tentativa do quiz do livro.' }, 500);
+    }
+
+    return jsonResponse({ success: true, tentativa: inserted });
   },
   'POST /v1/aluno/comunidade/quiz-ranking': async (request, env) => {
     const { alunoId, escolaId } = await getCommunityModuleContext(request, env);
