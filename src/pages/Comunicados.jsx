@@ -1351,8 +1351,9 @@ export default function Comunicados() {
 
   return (
     <MainLayout title="Comunicados">
-      <div className="relative space-y-4 pb-24">
+      <div className="relative pb-24">
         <ComunicadosBackdrop />
+        <div className="space-y-4">
         <CompactChannelHeader
           title="Comunicados"
           meta={`${comunicadosVisiveis.length} aviso${comunicadosVisiveis.length === 1 ? '' : 's'}`}
@@ -1382,7 +1383,9 @@ export default function Comunicados() {
         />
 
         {loading ? (
-          <FeedSkeleton count={3} />
+          <div className="relative">
+            <FeedSkeleton count={3} />
+          </div>
         ) : comunicadosVisiveis.length === 0 ? (
           <div className="relative rounded-2xl border border-dashed p-8 text-center">
             <BellRing className="mx-auto mb-2 h-6 w-6 text-emerald-600" />
@@ -1827,6 +1830,7 @@ export default function Comunicados() {
             </CardContent>
           </Card>
         )}
+        </div>
 
       </div>
 
