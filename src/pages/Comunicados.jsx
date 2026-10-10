@@ -366,83 +366,72 @@ function getAtividadeTargetSummary(atividade) {
   return aluno ? `${aluno}${turma ? ` - ${turma}` : ''}` : (turma || 'Destino individual');
 }
 
+const COMUNICADOS_BG_PATTERN = `data:image/svg+xml,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" width="280" height="220" viewBox="0 0 280 220">
+  <g fill="none" stroke="#047857" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(24 28) rotate(-12)">
+      <rect x="0" y="0" width="36" height="46" rx="3"/>
+      <line x1="7" y1="12" x2="29" y2="12"/>
+      <line x1="7" y1="20" x2="24" y2="20"/>
+      <line x1="7" y1="28" x2="27" y2="28"/>
+    </g>
+    <g transform="translate(170 36) rotate(8)">
+      <path d="M0 8 Q18 0 36 8 L36 40 Q18 32 0 40 Z"/>
+      <path d="M36 8 Q54 0 72 8 L72 40 Q54 32 36 40 Z"/>
+      <line x1="36" y1="8" x2="36" y2="40"/>
+    </g>
+    <g transform="translate(40 120) rotate(-6)">
+      <rect x="0" y="0" width="44" height="30" rx="3"/>
+      <path d="M0 4 L22 18 L44 4"/>
+    </g>
+    <g transform="translate(130 110) rotate(25)">
+      <path d="M3 38 L28 4 L34 10 L10 44 Z"/>
+      <line x1="8" y1="32" x2="14" y2="38"/>
+    </g>
+    <g transform="translate(210 130) rotate(4)">
+      <rect x="0" y="0" width="34" height="44" rx="2"/>
+      <line x1="9" y1="0" x2="9" y2="44"/>
+      <line x1="14" y1="12" x2="28" y2="12"/>
+      <line x1="14" y1="20" x2="28" y2="20"/>
+      <line x1="14" y1="28" x2="24" y2="28"/>
+    </g>
+    <g transform="translate(100 155) rotate(-8)">
+      <circle cx="10" cy="10" r="9"/>
+      <circle cx="34" cy="10" r="9"/>
+      <line x1="19" y1="10" x2="25" y2="10"/>
+    </g>
+    <g transform="translate(230 40) rotate(-4)">
+      <rect x="0" y="18" width="40" height="10" rx="1"/>
+      <rect x="3" y="8" width="40" height="10" rx="1"/>
+      <rect x="1" y="0" width="36" height="10" rx="1"/>
+    </g>
+    <g transform="translate(250 175) rotate(-3)">
+      <path d="M0 0 L14 0 L14 28 L7 22 L0 28 Z"/>
+    </g>
+    <g transform="translate(145 175) rotate(10)">
+      <rect x="0" y="0" width="38" height="26" rx="3"/>
+      <path d="M0 4 L19 16 L38 4"/>
+    </g>
+  </g>
+  <g fill="#047857" font-family="Georgia, serif">
+    <text x="90" y="95" font-size="42">A</text>
+    <text x="30" y="190" font-size="36">B</text>
+    <text x="180" y="200" font-size="28">abc</text>
+  </g>
+</svg>
+`)}`;
+
 function ComunicadosBackdrop() {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-0 overflow-hidden opacity-[0.07] dark:opacity-[0.1]"
-    >
-      <svg
-        className="h-full w-full text-emerald-900 dark:text-emerald-200"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      >
-        <defs>
-          <pattern id="comunicados-bg" width="280" height="220" patternUnits="userSpaceOnUse">
-            {/* book closed */}
-            <g transform="translate(24 28) rotate(-12)">
-              <rect x="0" y="0" width="36" height="46" rx="3" />
-              <line x1="7" y1="12" x2="29" y2="12" />
-              <line x1="7" y1="20" x2="24" y2="20" />
-              <line x1="7" y1="28" x2="27" y2="28" />
-            </g>
-            {/* open book */}
-            <g transform="translate(170 36) rotate(8)">
-              <path d="M0 8 Q18 0 36 8 L36 40 Q18 32 0 40 Z" />
-              <path d="M36 8 Q54 0 72 8 L72 40 Q54 32 36 40 Z" />
-              <line x1="36" y1="8" x2="36" y2="40" />
-            </g>
-            {/* envelope */}
-            <g transform="translate(40 120) rotate(-6)">
-              <rect x="0" y="0" width="44" height="30" rx="3" />
-              <path d="M0 4 L22 18 L44 4" />
-            </g>
-            {/* pen / quill */}
-            <g transform="translate(130 110) rotate(25)">
-              <path d="M3 38 L28 4 L34 10 L10 44 Z" />
-              <line x1="8" y1="32" x2="14" y2="38" />
-            </g>
-            {/* notebook */}
-            <g transform="translate(210 130) rotate(4)">
-              <rect x="0" y="0" width="34" height="44" rx="2" />
-              <line x1="9" y1="0" x2="9" y2="44" />
-              <line x1="14" y1="12" x2="28" y2="12" />
-              <line x1="14" y1="20" x2="28" y2="20" />
-              <line x1="14" y1="28" x2="24" y2="28" />
-            </g>
-            {/* letter A */}
-            <text x="90" y="95" fontSize="42" fontFamily="Georgia, serif" fill="currentColor" stroke="none">A</text>
-            {/* letter B */}
-            <text x="30" y="190" fontSize="36" fontFamily="Georgia, serif" fill="currentColor" stroke="none">B</text>
-            {/* abc */}
-            <text x="180" y="200" fontSize="28" fontFamily="Georgia, serif" fill="currentColor" stroke="none">abc</text>
-            {/* glasses */}
-            <g transform="translate(100 155) rotate(-8)">
-              <circle cx="10" cy="10" r="9" />
-              <circle cx="34" cy="10" r="9" />
-              <line x1="19" y1="10" x2="25" y2="10" />
-            </g>
-            {/* book stack */}
-            <g transform="translate(230 40) rotate(-4)">
-              <rect x="0" y="18" width="40" height="10" rx="1" />
-              <rect x="3" y="8" width="40" height="10" rx="1" />
-              <rect x="1" y="0" width="36" height="10" rx="1" />
-            </g>
-            {/* bookmark */}
-            <g transform="translate(250 175) rotate(-3)">
-              <path d="M0 0 L14 0 L14 28 L7 22 L0 28 Z" />
-            </g>
-            {/* envelope 2 */}
-            <g transform="translate(145 175) rotate(10)">
-              <rect x="0" y="0" width="38" height="26" rx="3" />
-              <path d="M0 4 L19 16 L38 4" />
-            </g>
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#comunicados-bg)" />
-      </svg>
-    </div>
+      className="pointer-events-none absolute inset-0 z-10 overflow-hidden opacity-[0.22] dark:opacity-[0.16]"
+      style={{
+        backgroundImage: `url("${COMUNICADOS_BG_PATTERN}")`,
+        backgroundRepeat: 'repeat',
+        backgroundSize: '280px 220px',
+      }}
+    />
   );
 }
 
