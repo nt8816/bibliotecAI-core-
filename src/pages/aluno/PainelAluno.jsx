@@ -1984,6 +1984,13 @@ export default function PainelAluno() {
     }).length;
   }, [emprestimos]);
 
+  const quizHistoryKey = useMemo(
+    () => (alunoId ? `aluno:quiz:history:${alunoId}` : 'aluno:quiz:history:anon'),
+    [alunoId],
+  );
+
+  const [quizHistory, setQuizHistory] = useState({});
+
   const xpQuizzesLivro = useMemo(() => {
     return Object.values(quizHistory || {}).reduce((acc, entry) => {
       return acc + Number(entry?.best?.acertos || 0) * 10;
@@ -3420,13 +3427,6 @@ export default function PainelAluno() {
     setQuizResultado(null);
     setAriaLiveMessage('Quiz reiniciado.');
   };
-
-  const quizHistoryKey = useMemo(
-    () => (alunoId ? `aluno:quiz:history:${alunoId}` : 'aluno:quiz:history:anon'),
-    [alunoId],
-  );
-
-  const [quizHistory, setQuizHistory] = useState({});
 
   useEffect(() => {
     try {
