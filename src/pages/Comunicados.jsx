@@ -366,71 +366,80 @@ function getAtividadeTargetSummary(atividade) {
   return aluno ? `${aluno}${turma ? ` - ${turma}` : ''}` : (turma || 'Destino individual');
 }
 
-const COMUNICADOS_BG_PATTERN = `data:image/svg+xml,${encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" width="320" height="280" viewBox="0 0 320 280">
-  <g fill="none" stroke="#047857" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-    <g transform="translate(16 24) rotate(-12)">
-      <rect x="0" y="0" width="58" height="74" rx="4"/>
-      <line x1="12" y1="18" x2="46" y2="18"/>
-      <line x1="12" y1="32" x2="40" y2="32"/>
-      <line x1="12" y1="46" x2="44" y2="46"/>
-    </g>
-    <g transform="translate(120 20) rotate(8)">
-      <path d="M0 12 Q28 0 56 12 L56 64 Q28 52 0 64 Z"/>
-      <path d="M56 12 Q84 0 112 12 L112 64 Q84 52 56 64 Z"/>
-      <line x1="56" y1="12" x2="56" y2="64"/>
-    </g>
-    <g transform="translate(250 30) rotate(-4)">
-      <rect x="0" y="28" width="58" height="14" rx="2"/>
-      <rect x="5" y="14" width="58" height="14" rx="2"/>
-      <rect x="2" y="0" width="52" height="14" rx="2"/>
-    </g>
-    <g transform="translate(20 130) rotate(-6)">
-      <rect x="0" y="0" width="64" height="44" rx="4"/>
-      <path d="M0 6 L32 28 L64 6"/>
-    </g>
-    <g transform="translate(130 120) rotate(25)">
-      <path d="M5 58 L44 6 L54 16 L15 68 Z"/>
-      <line x1="12" y1="48" x2="22" y2="58"/>
-    </g>
-    <g transform="translate(230 130) rotate(4)">
-      <rect x="0" y="0" width="52" height="68" rx="3"/>
-      <line x1="14" y1="0" x2="14" y2="68"/>
-      <line x1="22" y1="18" x2="44" y2="18"/>
-      <line x1="22" y1="32" x2="44" y2="32"/>
-      <line x1="22" y1="46" x2="38" y2="46"/>
-    </g>
-    <g transform="translate(40 220) rotate(-8)">
-      <circle cx="16" cy="16" r="14"/>
-      <circle cx="56" cy="16" r="14"/>
-      <line x1="30" y1="16" x2="42" y2="16"/>
-    </g>
-    <g transform="translate(160 220) rotate(10)">
-      <rect x="0" y="0" width="56" height="38" rx="4"/>
-      <path d="M0 6 L28 24 L56 6"/>
-    </g>
-  </g>
-  <g fill="#047857" font-family="Georgia, serif">
-    <text x="250" y="100" font-size="64">A</text>
-    <text x="20" y="120" font-size="52">B</text>
-    <text x="150" y="270" font-size="40">abc</text>
-  </g>
-</svg>
-`)}`;
-
 function ComunicadosBackdrop() {
   return (
     <div
       aria-hidden="true"
       className="pointer-events-none absolute inset-0 z-10 overflow-hidden opacity-[0.22] dark:opacity-[0.16]"
-      style={{
-        backgroundImage: `url("${COMUNICADOS_BG_PATTERN}")`,
-        backgroundRepeat: 'repeat',
-        backgroundSize: '320px 280px',
-        backgroundPosition: 'center top',
-        minHeight: '100%',
-      }}
-    />
+    >
+      <svg
+        className="block h-full w-full"
+        xmlns="http://www.w3.org/2000/svg"
+        width="100%"
+        height="100%"
+      >
+        <defs>
+          <pattern
+            id="comunicados-bg-pattern"
+            width="280"
+            height="240"
+            patternUnits="userSpaceOnUse"
+          >
+            <g fill="none" stroke="#047857" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <g transform="translate(12 18) rotate(-12)">
+                <rect x="0" y="0" width="52" height="66" rx="4" />
+                <line x1="10" y1="16" x2="42" y2="16" />
+                <line x1="10" y1="28" x2="36" y2="28" />
+                <line x1="10" y1="40" x2="40" y2="40" />
+              </g>
+              <g transform="translate(100 14) rotate(8)">
+                <path d="M0 10 Q24 0 48 10 L48 54 Q24 44 0 54 Z" />
+                <path d="M48 10 Q72 0 96 10 L96 54 Q72 44 48 54 Z" />
+                <line x1="48" y1="10" x2="48" y2="54" />
+              </g>
+              <g transform="translate(210 20) rotate(-4)">
+                <rect x="0" y="24" width="50" height="12" rx="2" />
+                <rect x="4" y="12" width="50" height="12" rx="2" />
+                <rect x="1" y="0" width="44" height="12" rx="2" />
+              </g>
+              <g transform="translate(16 110) rotate(-6)">
+                <rect x="0" y="0" width="56" height="38" rx="4" />
+                <path d="M0 5 L28 24 L56 5" />
+              </g>
+              <g transform="translate(110 100) rotate(25)">
+                <path d="M4 50 L38 5 L46 13 L12 58 Z" />
+                <line x1="10" y1="42" x2="18" y2="50" />
+              </g>
+              <g transform="translate(200 105) rotate(4)">
+                <rect x="0" y="0" width="46" height="60" rx="3" />
+                <line x1="12" y1="0" x2="12" y2="60" />
+                <line x1="18" y1="16" x2="38" y2="16" />
+                <line x1="18" y1="28" x2="38" y2="28" />
+                <line x1="18" y1="40" x2="32" y2="40" />
+              </g>
+              <g transform="translate(30 185) rotate(-8)">
+                <circle cx="14" cy="14" r="12" />
+                <circle cx="48" cy="14" r="12" />
+                <line x1="26" y1="14" x2="36" y2="14" />
+              </g>
+              <g transform="translate(140 185) rotate(10)">
+                <rect x="0" y="0" width="50" height="34" rx="4" />
+                <path d="M0 5 L25 22 L50 5" />
+              </g>
+              <g transform="translate(220 190) rotate(-3)">
+                <path d="M0 0 L16 0 L16 32 L8 24 L0 32 Z" />
+              </g>
+            </g>
+            <g fill="#047857" fontFamily="Georgia, serif">
+              <text x="220" y="90" fontSize="56">A</text>
+              <text x="16" y="100" fontSize="46">B</text>
+              <text x="130" y="235" fontSize="36">abc</text>
+            </g>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#comunicados-bg-pattern)" />
+      </svg>
+    </div>
   );
 }
 
@@ -1342,7 +1351,7 @@ export default function Comunicados() {
 
   return (
     <MainLayout title="Comunicados">
-      <div className="relative pb-24">
+      <div className="relative min-h-[calc(100vh-7rem)] pb-24">
         <ComunicadosBackdrop />
         <div className="relative space-y-4">
         <CompactChannelHeader
