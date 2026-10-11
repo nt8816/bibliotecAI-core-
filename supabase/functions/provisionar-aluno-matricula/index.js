@@ -30,12 +30,12 @@ async function checkRateLimit(supabaseAdmin, key, limit = 60, windowSeconds = 60
       _window_seconds: windowSeconds,
     }).single();
     if (error) {
-      // Fail open: missing/broken rate-limit RPC must not block user creation.
-      return true;
+      // Fail closed: missing/broken rate-limit RPC denies request.
+      return false;
     }
-    return data !== false;
+    return data === true;
   } catch (_err) {
-    return true; // fail open if rate limit check fails
+    return false; // fail closed if rate limit check fails
   }
 }
 

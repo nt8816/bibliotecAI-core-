@@ -218,9 +218,13 @@ describe('provisionar aluno rate limit (server/request limit on create user)', (
   const fn = read('supabase/functions/provisionar-aluno-matricula/index.ts');
   const gateway = read('cloudflare/api-gateway/src/index.ts');
 
-  it('rate limit fails open when RPC is unavailable (not permanent 429)', () => {
-    expect(fn.toLowerCase()).toContain('fail open');
-    expect(fn.toLowerCase()).not.toContain('fail closed');
+  it('rate limit fails closed when RPC is unavailable', () => {
+    expect(fn.toLowerCase()).not.toContain('fail open');
+    expect(fn.toLowerCase()).toContain('fail closed');
+  });
+
+  it('does not return generated password in response body', () => {
+    expect(fn).not.toContain('senha: authPassword');
   });
 
   it('rate key uses authenticated user id, not a shared worker IP', () => {

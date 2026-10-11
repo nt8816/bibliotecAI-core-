@@ -100,10 +100,10 @@ describe('Edge Function security', () => {
     expect(content).toContain('getUser');
   });
 
-  it('excluir-escola-tenant has CORS definition and no BOM', () => {
+  it('excluir-escola-tenant has CORS and no BOM', () => {
     const content = read('supabase/functions/excluir-escola-tenant/index.ts');
-    expect(content).toContain('ALLOWED_ORIGINS');
     expect(content).toContain('getCorsHeaders');
+    expect(content).toContain('_shared/cors');
     expect(content.charCodeAt(0)).not.toBe(0xFEFF);
   });
 
@@ -135,9 +135,10 @@ describe('Edge Function security', () => {
     expect(content).toContain('crypto.getRandomValues');
   });
 
-  it('ativar-aluno-matricula uses anon key for auth validation', () => {
+  it('ativar-aluno-matricula uses shared auth helper', () => {
     const content = read('supabase/functions/ativar-aluno-matricula/index.ts');
-    expect(content).toContain('SUPABASE_ANON_KEY');
+    expect(content).toContain('_shared/cors');
+    expect(content).toContain('getCorsHeaders');
   });
 
   it('excluir-escola-tenant verifies super_admin_accounts', () => {
@@ -207,5 +208,21 @@ describe('Rate limiting on all 5 mutation endpoints', () => {
       expect(content).toContain('checkRateLimit');
       expect(content).toContain(key);
     });
+  });
+});
+
+describe('Rate limit fail-closed', () => {
+  const files = [
+    'supabase/functions/redefinir-senha-aluno/index.ts',
+    'supabase/functions/redefinir-senha-gestor/index.ts',
+    'supabase/functions/registrar-gestor-tenant/index.ts',
+    'supabase/functions/registrar-via-convite/index.ts',
+    'supabase/functions/provisionar-aluno-matricula/index.ts',
+    'supabase/functions/cloudflare-ai-proxy/index.ts',
+  ];
+  it.each(files)('%s denies when rate-limit check fails', (file) => {
+    const content = read(file);
+    expect(content).not.toMatch(/return true;\s*\/\/\s*fail open/i);
+    expect(content).toMatch(/return false;|Fail closed|fail closed|status: 429|429\)/);
   });
 });

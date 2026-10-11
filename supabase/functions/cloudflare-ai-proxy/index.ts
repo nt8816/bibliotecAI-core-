@@ -260,7 +260,8 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: 'Limite de requisicoes atingido. Tente novamente.' }, 429);
       }
     } catch {
-      // Fail open if rate-limit RPC is unavailable — do not block AI.
+      // Fail closed if rate-limit RPC is unavailable.
+      return jsonResponse({ error: 'Limite de requisicoes indisponivel. Tente novamente.' }, 429);
     }
 
     const baseUrl = String(

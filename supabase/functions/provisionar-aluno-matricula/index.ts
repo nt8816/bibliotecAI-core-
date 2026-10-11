@@ -42,13 +42,13 @@ async function checkRateLimit(supabaseAdmin: any, key: string, limit = 60, windo
       _window_seconds: windowSeconds,
     }).single();
     if (error) {
-      // Fail open: missing/broken rate-limit RPC must not block user creation.
-      return true;
+      // Fail closed: missing/broken rate-limit RPC denies request.
+      return false;
     }
-    return data !== false;
+    return data === true;
   } catch {
-    // Fail open if rate limit check fails.
-    return true;
+    // Fail closed if rate limit check fails.
+    return false;
   }
 }
 
@@ -269,7 +269,6 @@ Deno.serve(async (req) => {
         email: authEmail,
         matricula,
       },
-      senha: authPassword,
       message: 'Aluno provisionado com sucesso.',
     });
   } catch (error) {

@@ -1,60 +1,25 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-const ALLOWED_ORIGINS = ['https://bibliotecai.com.br', 'https://app.bibliotecai.com.br', 'http://localhost:5173', 'http://localhost:3000'];
-
-function getCorsHeaders(request: Request): Record<string, string> {
-  const origin = request.headers.get('Origin') || '';
-  const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
-  return {
-    'Access-Control-Allow-Origin': safeOrigin,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-user-access-token',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Max-Age': '86400',
-  };
-}
-
-const jsonResponse = (body: unknown, status = 200, request?: Request) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...getCorsHeaders(request || new Request("http://localhost")), 'Content-Type': 'application/json' },
-  });
+import { getCorsHeaders, jsonResponse, requireAuth } from '../_shared/cors.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(req) });
 
   try {
     if (req.method !== 'POST') {
-      return jsonResponse({ error: 'Método não permitido.' }, 405);
+      return jsonResponse(req, { error: 'Metodo nao permitido.' }, 405);
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    const manualUserToken = req.headers.get('x-user-access-token') || '';
-    const authHeader = req.headers.get('authorization') || '';
-    const token = String(manualUserToken || authHeader.replace(/^Bearer\s+/i, '')).trim();
 
     if (!supabaseUrl || !serviceRoleKey) {
-      return jsonResponse({ error: 'Configuração do servidor incompleta.' }, 500);
+      return jsonResponse(req, { error: 'Configuracao do servidor incompleta.' }, 500);
     }
 
-    if (!token) {
-      return jsonResponse({ error: 'Sessão inválida. Faça login novamente.' }, 401);
+    const { user, adminClient, error: authError } = await requireAuth(req, supabaseUrl, serviceRoleKey);
+    if (authError || !user || !adminClient) {
+      return jsonResponse(req, { error: authError || 'Sessao invalida.' }, 401);
     }
-
-    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-
-    const {
-      data: { user },
-      error: userError,
-    } = await adminClient.auth.getUser(token);
-
-    if (userError || !user) {
-      return jsonResponse({ error: 'Sessão inválida. Faça login novamente.' }, 401);
-    }
-
-    let hasSuperAdminRole = false;
 
     const { data: roles, error: rolesError } = await adminClient
       .from('user_roles')
@@ -62,10 +27,10 @@ Deno.serve(async (req) => {
       .eq('user_id', user.id);
 
     if (rolesError) {
-      return jsonResponse({ error: 'Não foi possível validar permissões.' }, 403);
+      return jsonResponse(req, { error: 'Nao foi possivel validar permissoes.' }, 403);
     }
 
-    hasSuperAdminRole = Array.isArray(roles)
+    const hasSuperAdminRole = Array.isArray(roles)
       && roles.some((item) => String(item?.role || '').trim().toLowerCase() === 'super_admin');
 
     if (hasSuperAdminRole) {
@@ -75,12 +40,12 @@ Deno.serve(async (req) => {
         .eq('auth_user_id', user.id)
         .maybeSingle();
       if (!saAccount || saAccount.ativo === false || saAccount.bloqueado === true) {
-        return jsonResponse({ error: 'Conta de super admin inativa ou bloqueada.' }, 403);
+        return jsonResponse(req, { error: 'Conta de super admin inativa ou bloqueada.' }, 403);
       }
     }
 
     if (!hasSuperAdminRole) {
-      return jsonResponse({ error: 'Apenas o super admin pode excluir escolas.' }, 403);
+      return jsonResponse(req, { error: 'Apenas o super admin pode excluir escolas.' }, 403);
     }
 
     const body = await req.json().catch(() => ({}));
@@ -88,7 +53,7 @@ Deno.serve(async (req) => {
     const escolaId = String(body?.escola_id || '').trim();
 
     if (!tenantId && !escolaId) {
-      return jsonResponse({ error: 'tenant_id ou escola_id é obrigatório.' }, 400);
+      return jsonResponse(req, { error: 'tenant_id ou escola_id e obrigatorio.' }, 400);
     }
 
     const currentUserId = String(user.id || '').trim();
@@ -100,11 +65,11 @@ Deno.serve(async (req) => {
       });
 
       if (error) {
-        return jsonResponse({ error: 'Erro ao processar exclusao do tenant.' }, 400);
+        return jsonResponse(req, { error: 'Erro ao processar exclusao do tenant.' }, 400);
       }
 
       const authUserIds = Array.isArray(data?.auth_user_ids) ? data.auth_user_ids : [];
-      const authUserIdsToDelete = authUserIds.filter((userId) => String(userId || '').trim() && String(userId || '').trim() !== currentUserId);
+      const authUserIdsToDelete = authUserIds.filter((userId: string) => String(userId || '').trim() && String(userId || '').trim() !== currentUserId);
 
       for (const userId of authUserIdsToDelete) {
         const normalizedUserId = String(userId || '').trim();
@@ -116,7 +81,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      return jsonResponse({
+      return jsonResponse(req, {
         success: true,
         tenant_id: data?.tenant_id || tenantId,
         escola_id: data?.escola_id || null,
@@ -135,11 +100,11 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (escolaError) {
-      return jsonResponse({ error: 'Erro ao localizar escola.' }, 400);
+      return jsonResponse(req, { error: 'Erro ao localizar escola.' }, 400);
     }
 
     if (!escola) {
-      return jsonResponse({ error: 'Escola não encontrada.' }, 404);
+      return jsonResponse(req, { error: 'Escola nao encontrada.' }, 404);
     }
 
     const { data: usersData, error: usersError } = await adminClient
@@ -148,7 +113,7 @@ Deno.serve(async (req) => {
       .eq('escola_id', escolaId);
 
     if (usersError) {
-      return jsonResponse({ error: 'Erro ao carregar usuarios.' }, 400);
+      return jsonResponse(req, { error: 'Erro ao carregar usuarios.' }, 400);
     }
 
     const authUserIds = Array.isArray(usersData)
@@ -189,7 +154,7 @@ Deno.serve(async (req) => {
           || message.includes('could not find the table');
 
         if (!isMissingTable) {
-          return jsonResponse({ error: 'Erro ao limpar dados da tabela.' }, 400);
+          return jsonResponse(req, { error: 'Erro ao limpar dados da tabela.' }, 400);
         }
       }
     }
@@ -200,7 +165,7 @@ Deno.serve(async (req) => {
       .eq('escola_id', escolaId);
 
     if (tenantDeleteError) {
-      return jsonResponse({ error: 'Erro ao remover tenant.' }, 400);
+      return jsonResponse(req, { error: 'Erro ao remover tenant.' }, 400);
     }
 
     const { error: escolaDeleteError } = await adminClient
@@ -209,7 +174,7 @@ Deno.serve(async (req) => {
       .eq('id', escolaId);
 
     if (escolaDeleteError) {
-      return jsonResponse({ error: 'Erro ao remover escola.' }, 400);
+      return jsonResponse(req, { error: 'Erro ao remover escola.' }, 400);
     }
 
     const authUserIdsToDelete = authUserIds.filter((userId) => userId && userId !== currentUserId);
@@ -221,7 +186,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return jsonResponse({
+    return jsonResponse(req, {
       success: true,
       tenant_id: null,
       escola_id: escolaId,
@@ -232,6 +197,6 @@ Deno.serve(async (req) => {
       auth_delete_failures: authDeleteFailures,
     });
   } catch (error) {
-    return jsonResponse({ error: 'Erro interno ao excluir escola.' }, 500);
+    return jsonResponse(req, { error: 'Erro interno ao excluir escola.' }, 500);
   }
 });

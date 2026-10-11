@@ -1,8 +1,8 @@
 import { requestPlatformApi } from '@/lib/platformApi';
 
-function buildRoleHintHeaders(roleHint) {
-  const normalized = String(roleHint || '').trim().toLowerCase();
-  return normalized ? { 'x-profile-role-hint': normalized } : {};
+function buildRoleHintHeaders() {
+  // Role must come from the authenticated session, never from a client header.
+  return {};
 }
 
 export async function fetchProfessorPainelData({ roleHint } = {}) {
