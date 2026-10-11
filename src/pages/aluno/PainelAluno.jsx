@@ -3751,8 +3751,14 @@ export default function PainelAluno() {
     if (location.pathname === '/aluno/biblioteca') return 'biblioteca';
     if (location.pathname === '/aluno/laboratorio') return 'laboratorio';
     if (location.pathname === '/aluno/atividades') return 'atividades';
-    if (location.pathname === '/aluno/mensagens' || location.pathname === '/aluno/conversas') return 'conversas';
+    if (location.pathname === '/aluno/mensagens' || location.pathname === '/aluno/conversas') return 'biblioteca';
     return 'perfil';
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (location.pathname === '/aluno/mensagens' || location.pathname === '/aluno/conversas') {
+      setBibliotecaView('mensagens');
+    }
   }, [location.pathname]);
 
   const pageTitle = useMemo(() => {
@@ -5472,7 +5478,134 @@ export default function PainelAluno() {
                   >
                     Meus livros
                   </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={bibliotecaView === 'mensagens' ? 'default' : 'ghost'}
+                    onClick={() => {
+                      setBibliotecaView('mensagens');
+                      navigate('/aluno/mensagens');
+                    }}
+                  >
+                    Mensagens
+                  </Button>
                 </div>
+
+                {bibliotecaView === 'mensagens' && (
+                  <div className="space-y-4">
+                    <p className="text-sm font-semibold">Mensagens com a biblioteca</p>
+                    {conversasSolicitacoes.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                        Você ainda não iniciou nenhuma conversa com a biblioteca.
+                      </div>
+                    ) : (
+                      conversasSolicitacoes.map((solicitacao) => {
+                        const statusInfo = getSolicitacaoStatusInfo(solicitacao);
+                        const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
+                        const podeConversar = !['aprovada', 'aceita', 'recusada', 'negada', 'cancelada'].includes(
+                          String(solicitacao?.status || '').toLowerCase(),
+                        );
+                        const chatMensagens = [...ensureArray(solicitacao?.solicitacoes_emprestimo_mensagens)].sort(
+                          (a, b) => new Date(a?.created_at || 0).getTime() - new Date(b?.created_at || 0).getTime(),
+                        );
+
+                        return (
+                          <div key={solicitacao.id} className="space-y-3 rounded-2xl border p-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <p className="font-medium">{solicitacao.livros?.titulo || 'Livro'}</p>
+                                <p className="text-xs text-muted-foreground">{solicitacao.livros?.autor || '-'}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {isExtension ? 'Pedido de prorrogação' : 'Solicitação de empréstimo'} • criada em {formatDateBR(solicitacao.created_at)}
+                                </p>
+                              </div>
+                              <Badge variant={statusInfo.variant}>
+                                {statusInfo.icon}
+                                {statusInfo.label}
+                              </Badge>
+                            </div>
+
+                            <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
+                              <p className="text-xs text-muted-foreground">Mensagens da conversa</p>
+                              {solicitacao.mensagem && (
+                                <div className="mr-6 rounded-md border bg-background px-3 py-2 text-sm">
+                                  <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                                    <span>Você</span>
+                                    <span>{formatDateBR(solicitacao.created_at)}</span>
+                                  </div>
+                                  <p className="mt-1 whitespace-pre-wrap">{solicitacao.mensagem}</p>
+                                </div>
+                              )}
+                              {solicitacao.resposta && (
+                                <div className="ml-6 rounded-md border border-primary/20 bg-primary/10 px-3 py-2 text-sm">
+                                  <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                                    <span>Biblioteca</span>
+                                    <span>{formatDateBR(solicitacao.updated_at || solicitacao.created_at)}</span>
+                                  </div>
+                                  <p className="mt-1 whitespace-pre-wrap">{solicitacao.resposta}</p>
+                                </div>
+                              )}
+                              {chatMensagens.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">Nenhuma mensagem adicional registrada ainda.</p>
+                              ) : (
+                                <div className="max-h-72 space-y-2 overflow-y-auto">
+                                  {chatMensagens.map((mensagem) => {
+                                    const isBiblioteca = mensagem?.autor_tipo === 'bibliotecaria';
+                                    return (
+                                      <div
+                                        key={mensagem.id}
+                                        className={`rounded-md border px-3 py-2 text-sm ${
+                                          isBiblioteca ? 'ml-6 border-primary/20 bg-primary/10' : 'mr-6 bg-background'
+                                        }`}
+                                      >
+                                        <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                                          <span>{isBiblioteca ? 'Biblioteca' : 'Você'}</span>
+                                          <span>{formatDateBR(mensagem.created_at)}</span>
+                                        </div>
+                                        <p className="mt-1 whitespace-pre-wrap">{mensagem.mensagem}</p>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+
+                            {podeConversar ? (
+                              <div className="space-y-2">
+                                <Textarea
+                                  rows={3}
+                                  placeholder="Escreva sua mensagem para a biblioteca..."
+                                  value={mensagemSolicitacaoPorId[solicitacao.id] || ''}
+                                  onChange={(e) =>
+                                    setMensagemSolicitacaoPorId((prev) => ({
+                                      ...prev,
+                                      [solicitacao.id]: e.target.value,
+                                    }))
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                      e.preventDefault();
+                                      handleEnviarMensagemSolicitacao(solicitacao.id);
+                                    }
+                                  }}
+                                  disabled={saving}
+                                />
+                                <div className="flex justify-end">
+                                  <Button type="button" onClick={() => handleEnviarMensagemSolicitacao(solicitacao.id)} disabled={saving}>
+                                    <Send className="mr-2 h-4 w-4" />
+                                    Enviar mensagem
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">Esta conversa foi finalizada e está disponível apenas para consulta.</p>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
 
                 {bibliotecaView === 'meus_livros' && (
                   <div className="space-y-3">

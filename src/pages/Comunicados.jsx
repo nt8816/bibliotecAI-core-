@@ -367,56 +367,53 @@ function getAtividadeTargetSummary(atividade) {
 }
 
 const COMUNICADOS_BG_PATTERN = `data:image/svg+xml,${encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" width="280" height="220" viewBox="0 0 280 220">
-  <g fill="none" stroke="#047857" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-    <g transform="translate(24 28) rotate(-12)">
-      <rect x="0" y="0" width="36" height="46" rx="3"/>
-      <line x1="7" y1="12" x2="29" y2="12"/>
-      <line x1="7" y1="20" x2="24" y2="20"/>
-      <line x1="7" y1="28" x2="27" y2="28"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="280" viewBox="0 0 320 280">
+  <g fill="none" stroke="#047857" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(16 24) rotate(-12)">
+      <rect x="0" y="0" width="58" height="74" rx="4"/>
+      <line x1="12" y1="18" x2="46" y2="18"/>
+      <line x1="12" y1="32" x2="40" y2="32"/>
+      <line x1="12" y1="46" x2="44" y2="46"/>
     </g>
-    <g transform="translate(170 36) rotate(8)">
-      <path d="M0 8 Q18 0 36 8 L36 40 Q18 32 0 40 Z"/>
-      <path d="M36 8 Q54 0 72 8 L72 40 Q54 32 36 40 Z"/>
-      <line x1="36" y1="8" x2="36" y2="40"/>
+    <g transform="translate(120 20) rotate(8)">
+      <path d="M0 12 Q28 0 56 12 L56 64 Q28 52 0 64 Z"/>
+      <path d="M56 12 Q84 0 112 12 L112 64 Q84 52 56 64 Z"/>
+      <line x1="56" y1="12" x2="56" y2="64"/>
     </g>
-    <g transform="translate(40 120) rotate(-6)">
-      <rect x="0" y="0" width="44" height="30" rx="3"/>
-      <path d="M0 4 L22 18 L44 4"/>
+    <g transform="translate(250 30) rotate(-4)">
+      <rect x="0" y="28" width="58" height="14" rx="2"/>
+      <rect x="5" y="14" width="58" height="14" rx="2"/>
+      <rect x="2" y="0" width="52" height="14" rx="2"/>
     </g>
-    <g transform="translate(130 110) rotate(25)">
-      <path d="M3 38 L28 4 L34 10 L10 44 Z"/>
-      <line x1="8" y1="32" x2="14" y2="38"/>
+    <g transform="translate(20 130) rotate(-6)">
+      <rect x="0" y="0" width="64" height="44" rx="4"/>
+      <path d="M0 6 L32 28 L64 6"/>
     </g>
-    <g transform="translate(210 130) rotate(4)">
-      <rect x="0" y="0" width="34" height="44" rx="2"/>
-      <line x1="9" y1="0" x2="9" y2="44"/>
-      <line x1="14" y1="12" x2="28" y2="12"/>
-      <line x1="14" y1="20" x2="28" y2="20"/>
-      <line x1="14" y1="28" x2="24" y2="28"/>
+    <g transform="translate(130 120) rotate(25)">
+      <path d="M5 58 L44 6 L54 16 L15 68 Z"/>
+      <line x1="12" y1="48" x2="22" y2="58"/>
     </g>
-    <g transform="translate(100 155) rotate(-8)">
-      <circle cx="10" cy="10" r="9"/>
-      <circle cx="34" cy="10" r="9"/>
-      <line x1="19" y1="10" x2="25" y2="10"/>
+    <g transform="translate(230 130) rotate(4)">
+      <rect x="0" y="0" width="52" height="68" rx="3"/>
+      <line x1="14" y1="0" x2="14" y2="68"/>
+      <line x1="22" y1="18" x2="44" y2="18"/>
+      <line x1="22" y1="32" x2="44" y2="32"/>
+      <line x1="22" y1="46" x2="38" y2="46"/>
     </g>
-    <g transform="translate(230 40) rotate(-4)">
-      <rect x="0" y="18" width="40" height="10" rx="1"/>
-      <rect x="3" y="8" width="40" height="10" rx="1"/>
-      <rect x="1" y="0" width="36" height="10" rx="1"/>
+    <g transform="translate(40 220) rotate(-8)">
+      <circle cx="16" cy="16" r="14"/>
+      <circle cx="56" cy="16" r="14"/>
+      <line x1="30" y1="16" x2="42" y2="16"/>
     </g>
-    <g transform="translate(250 175) rotate(-3)">
-      <path d="M0 0 L14 0 L14 28 L7 22 L0 28 Z"/>
-    </g>
-    <g transform="translate(145 175) rotate(10)">
-      <rect x="0" y="0" width="38" height="26" rx="3"/>
-      <path d="M0 4 L19 16 L38 4"/>
+    <g transform="translate(160 220) rotate(10)">
+      <rect x="0" y="0" width="56" height="38" rx="4"/>
+      <path d="M0 6 L28 24 L56 6"/>
     </g>
   </g>
   <g fill="#047857" font-family="Georgia, serif">
-    <text x="90" y="95" font-size="42">A</text>
-    <text x="30" y="190" font-size="36">B</text>
-    <text x="180" y="200" font-size="28">abc</text>
+    <text x="250" y="100" font-size="64">A</text>
+    <text x="20" y="120" font-size="52">B</text>
+    <text x="150" y="270" font-size="40">abc</text>
   </g>
 </svg>
 `)}`;
@@ -429,7 +426,9 @@ function ComunicadosBackdrop() {
       style={{
         backgroundImage: `url("${COMUNICADOS_BG_PATTERN}")`,
         backgroundRepeat: 'repeat',
-        backgroundSize: '280px 220px',
+        backgroundSize: '320px 280px',
+        backgroundPosition: 'center top',
+        minHeight: '100%',
       }}
     />
   );
