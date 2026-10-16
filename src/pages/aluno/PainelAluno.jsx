@@ -4539,50 +4539,6 @@ export default function PainelAluno() {
                               <p className="text-xs text-muted-foreground">
                                 Professor: {atividade.professor?.nome || 'Professor nao informado'}
                               </p>
-                              {atividade.atividadeMeta?.descricaoLimpa && (
-                                <p className="rounded-2xl border border-primary/10 bg-primary/5 px-3 py-2 text-sm leading-6">
-                                  {atividade.atividadeMeta.descricaoLimpa}
-                                </p>
-                              )}
-                              {ensureArray(atividade.materiais_apoio).length > 0 && (
-                                <div className="space-y-2 rounded-2xl border border-border/70 bg-background/80 p-3">
-                                  <div className="flex items-center gap-2 text-sm font-medium">
-                                    <Paperclip className="h-4 w-4 text-primary" />
-                                    Conteudos de apoio
-                                  </div>
-                                  <div className="space-y-2">
-                                    {ensureArray(atividade.materiais_apoio).map((material, materialIndex) => (
-                                      <div key={`${atividade.id}-material-${materialIndex}`} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 px-3 py-2">
-                                        <div className="min-w-0">
-                                          <p className="truncate text-sm font-medium">
-                                            {String(material?.tipo || '') === 'link'
-                                              ? (material?.titulo || material?.url || 'Link de apoio')
-                                              : (material?.nome || 'Arquivo de apoio')}
-                                          </p>
-                                          <p className="text-xs text-muted-foreground">
-                                            {String(material?.tipo || '') === 'link'
-                                              ? (material?.url || '')
-                                              : formatBytes(material?.tamanho)}
-                                          </p>
-                                        </div>
-                                        <Button
-                                          type="button"
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => handleOpenAtividadeMaterial(material)}
-                                          className="shrink-0"
-                                        >
-                                          {String(material?.tipo || '') === 'link' ? (
-                                            <><ExternalLink className="mr-2 h-4 w-4" />Abrir</>
-                                          ) : (
-                                            <><Download className="mr-2 h-4 w-4" />Baixar</>
-                                          )}
-                                        </Button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
                             </div>
                             <div className="grid gap-2 text-left sm:max-w-xs sm:grid-cols-2 md:block md:text-right">
                               <Badge variant="outline" className="w-fit rounded-full px-3 py-1 md:ml-auto">
@@ -4599,6 +4555,30 @@ export default function PainelAluno() {
                             </div>
                           </div>
 
+                          <details className="group rounded-2xl border border-border/60 bg-background/40 p-3">
+                            <summary className="cursor-pointer list-none text-sm font-medium text-primary [&::-webkit-details-marker]:hidden">
+                              <span className="group-open:hidden">Ver completo</span>
+                              <span className="hidden group-open:inline">Recolher atividade</span>
+                            </summary>
+                            <div className="mt-4 space-y-4">
+                          {atividade.atividadeMeta?.descricaoLimpa && (
+                            <p className="rounded-2xl border border-primary/10 bg-primary/5 px-3 py-2 text-sm leading-6">
+                              {atividade.atividadeMeta.descricaoLimpa}
+                            </p>
+                          )}
+                          {ensureArray(atividade.materiais_apoio).length > 0 && (
+                            <div className="space-y-2 rounded-2xl border border-border/70 bg-background/80 p-3">
+                              <div className="flex items-center gap-2 text-sm font-medium"><Paperclip className="h-4 w-4 text-primary" />Conteúdos de apoio</div>
+                              {ensureArray(atividade.materiais_apoio).map((material, materialIndex) => (
+                                <div key={`${atividade.id}-material-completo-${materialIndex}`} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 px-3 py-2">
+                                  <p className="min-w-0 truncate text-sm font-medium">{String(material?.tipo || '') === 'link' ? (material?.titulo || material?.url || 'Link de apoio') : (material?.nome || 'Arquivo de apoio')}</p>
+                                  <Button type="button" variant="outline" size="sm" onClick={() => handleOpenAtividadeMaterial(material)} className="shrink-0">
+                                    {String(material?.tipo || '') === 'link' ? 'Abrir' : 'Baixar'}
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           <div className="space-y-2">
                             <Label>{atividadeJaEnviada ? 'Pré-visualização da minha entrega' : 'Minha entrega'}</Label>
                             <Textarea
@@ -4778,6 +4758,8 @@ export default function PainelAluno() {
                               <p className="text-sm">{atividade.entrega.feedback_professor}</p>
                             </div>
                           )}
+                            </div>
+                          </details>
                         </div>
                           );
                         })

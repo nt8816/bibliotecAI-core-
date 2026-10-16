@@ -3383,6 +3383,55 @@ async function requirePlatformUser(request: Request, env: Env) {
   return user;
 }
 
+const ACTIVITY_FORM_MARKER = '[FORM_CONFIG_V1]';
+const ACTIVITY_SUBMISSION_MARKER = '[ENTREGA_PAYLOAD_V1]';
+
+function decodeActivityJson(value: string): Record<string, unknown> | null {
+  try {
+    const binary = atob(String(value || '').trim());
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function getAutomaticActivityScore(descricao: unknown, textoEntrega: unknown, pontosPossiveis: unknown) {
+  const description = String(descricao || '');
+  const configIndex = description.indexOf(ACTIVITY_FORM_MARKER);
+  if (configIndex < 0) return null;
+
+  const config = decodeActivityJson(description.slice(configIndex + ACTIVITY_FORM_MARKER.length));
+  const questions = Array.isArray(config?.perguntas) ? config.perguntas : [];
+  const objectiveQuestions = questions.filter((question: any) => (
+    question?.tipo === 'multipla_escolha'
+    && Array.isArray(question?.opcoes)
+    && Number.isInteger(question?.correta)
+    && question.correta >= 0
+    && question.correta < question.opcoes.length
+  ));
+  if (objectiveQuestions.length === 0) return null;
+
+  const rawSubmission = String(textoEntrega || '');
+  const submission = rawSubmission.startsWith(ACTIVITY_SUBMISSION_MARKER)
+    ? decodeActivityJson(rawSubmission.slice(ACTIVITY_SUBMISSION_MARKER.length))
+    : null;
+  const answers = submission?.respostas && typeof submission.respostas === 'object'
+    ? submission.respostas as Record<string, unknown>
+    : {};
+  const correct = objectiveQuestions.filter((question: any, index: number) => {
+    const questionId = String(question?.id || `q_${index + 1}`);
+    return String(answers[questionId] || '').trim() === String(question.opcoes[question.correta] || '').trim();
+  }).length;
+  const totalPoints = Math.max(0, Number(pontosPossiveis || 0));
+  return {
+    correct,
+    total: objectiveQuestions.length,
+    points: Number(((totalPoints / objectiveQuestions.length) * correct).toFixed(2)),
+    onlyObjective: questions.length === objectiveQuestions.length,
+  };
+}
+
 const routes: Record<string, RouteHandler> = {
   'GET /health': async (_request, env) =>
     jsonResponse({
@@ -3972,10 +4021,6 @@ const routes: Record<string, RouteHandler> = {
       const entrega = ensureArray<Record<string, unknown>>(entregaPayload)[0] || null;
       if (!entrega?.id) {
         return jsonResponse({ success: false, error: 'Entrega nao encontrada.' }, 404);
-      }
-      const currentStatus = String(entrega?.status || '').trim().toLowerCase();
-      if (['aprovada', 'entregue', 'concluida', 'concluido'].includes(currentStatus)) {
-        return jsonResponse({ success: false, error: 'Esta entrega ja foi finalizada e nao pode ser alterada.' }, 409);
       }
       const atividadePayload = await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: 'id,professor_id', id: `eq.${String(entrega?.atividade_id || '')}`, limit: '1' }).toString()}`);
       const atividade = ensureArray<Record<string, unknown>>(atividadePayload)[0] || null;
@@ -10000,7 +10045,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Atividade invalida.' }, 400);
     }
     const atividadePayload = await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({
-      select: 'id,data_entrega',
+      select: 'id,data_entrega,descricao,pontos_extras',
       id: `eq.${atividadeId}`,
       limit: '1',
     }).toString()}`);
@@ -10023,13 +10068,26 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Esta atividade ja foi enviada e nao pode mais ser modificada.' }, 409);
     }
 
+    const textoEntrega = String(body?.textoEntrega || '');
+    const automaticScore = getAutomaticActivityScore(
+      atividade.descricao,
+      textoEntrega,
+      atividade.pontos_extras,
+    );
+    const status = automaticScore ? 'em_revisao' : String(body?.status || 'enviada');
+    const feedbackAutomatico = automaticScore
+      ? `Correção automática: ${automaticScore.correct}/${automaticScore.total} questão(ões) objetiva(s) correta(s). ${automaticScore.onlyObjective ? 'Aguardando aprovação do professor.' : 'Questões abertas ainda aguardam revisão do professor.'}`
+      : null;
+
     await supabaseAdminRequest(env, '/rest/v1/atividades_entregas', {
       method: 'POST',
       body: [{
         atividade_id: atividadeId,
         aluno_id: profile.id,
-        texto_entrega: String(body?.textoEntrega || ''),
-        status: String(body?.status || 'enviada'),
+        texto_entrega: textoEntrega,
+        status,
+        pontos_ganhos: automaticScore?.points || 0,
+        feedback_professor: feedbackAutomatico,
         enviado_em: body?.enviadoEm || new Date().toISOString(),
       }],
       headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
