@@ -1,14 +1,36 @@
-import { Link } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
 export default function Privacidade() {
+  const navigate = useNavigate();
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/auth');
+  };
+
   return (
     <div className="min-h-screen bg-background px-3 py-6 sm:px-4 sm:py-8">
       <div className="mx-auto w-full max-w-3xl space-y-4">
         <Card>
           <CardHeader className="space-y-3">
+            <Button
+              type="button"
+              variant="ghost"
+              className="-ml-2 w-fit gap-2 px-2"
+              onClick={handleBack}
+              aria-label="Voltar"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              Voltar
+            </Button>
             <CardTitle className="text-2xl sm:text-3xl">Política de Privacidade e Termos de Uso</CardTitle>
             <CardDescription>
               Ao acessar o BibliotecAi, o usuário concorda com estas condições de uso e privacidade.

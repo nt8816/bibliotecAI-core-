@@ -83,6 +83,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const DESAFIO_IA_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const ACTIVITY_DRAFT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const ACTIVITY_DRAFT_STORAGE_PREFIX = 'aluno:atividade-drafts';
+const CATALOGO_VISIBLE_LIMIT = 40;
 
 function formatDateBR(dateValue) {
   if (!dateValue) return '-';
@@ -1281,6 +1282,7 @@ export default function PainelAluno() {
   const [catalogoAreaFilter, setCatalogoAreaFilter] = useState('all');
   const [catalogoDisponibilidadeFilter, setCatalogoDisponibilidadeFilter] = useState('all');
   const [catalogoAutorFilter, setCatalogoAutorFilter] = useState('all');
+  const [catalogoVisibleLimit, setCatalogoVisibleLimit] = useState(CATALOGO_VISIBLE_LIMIT);
   const [livrosOffset, setLivrosOffset] = useState(0);
   const [livrosHasMore, setLivrosHasMore] = useState(false);
   const [livrosLoadingMore, setLivrosLoadingMore] = useState(false);
@@ -1376,7 +1378,6 @@ export default function PainelAluno() {
   const [resumosLimit, setResumosLimit] = useState(5);
   const warnedMissingFeaturesRef = useRef(false);
   const fetchInFlightRef = useRef(null);
-  const catalogoInicialCarregadoRef = useRef(false);
   const audioPlayerRef = useRef(null);
   const speechRequestRef = useRef(0);
   const speakingLivroIdRef = useRef(null);
@@ -1529,11 +1530,6 @@ export default function PainelAluno() {
         setAlunoId(perfil.id);
         setEscolaId(perfil.escola_id || null);
         setAlunoTurma(perfil.turma || null);
-
-        if (!catalogoInicialCarregadoRef.current) {
-          await fetchLivrosPage({ reset: true });
-          catalogoInicialCarregadoRef.current = true;
-        }
 
         setEmprestimos(painelData?.emprestimos || []);
         setAvaliacoes(painelData?.avaliacoes || []);
@@ -1802,10 +1798,14 @@ export default function PainelAluno() {
   }, [studioSlides]);
 
   useEffect(() => {
-    if (bibliotecaView === 'biblioteca') {
+    if (location.pathname === '/aluno/biblioteca' && bibliotecaView === 'biblioteca' && escolaId) {
       fetchLivrosPage({ reset: true });
     }
-  }, [bibliotecaView, catalogoSearchTerm, fetchLivrosPage]);
+  }, [bibliotecaView, catalogoSearchTerm, escolaId, fetchLivrosPage, location.pathname]);
+
+  useEffect(() => {
+    setCatalogoVisibleLimit(CATALOGO_VISIBLE_LIMIT);
+  }, [catalogoAreaFilter, catalogoAutorFilter, catalogoDisponibilidadeFilter, searchTerm]);
 
   useEffect(() => {
     if (!user?.id) return undefined;
@@ -2110,6 +2110,11 @@ export default function PainelAluno() {
       return true;
     });
   }, [catalogoAreaFilter, catalogoAutorFilter, catalogoDisponibilidadeFilter, filteredLivros]);
+
+  const catalogoVisivel = useMemo(
+    () => filteredCatalogo.slice(0, catalogoVisibleLimit),
+    [catalogoVisibleLimit, filteredCatalogo],
+  );
 
   const livrosSugeriveisDesafio = useMemo(() => {
     const readingBand = getBookReadingBandForLevel(nivelAtual);
@@ -5693,7 +5698,7 @@ export default function PainelAluno() {
                       </Button>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-stretch">
-                      {filteredCatalogo.map((livro) => {
+                      {catalogoVisivel.map((livro) => {
                         const isSpeakingThis = speakingLivroId === livro.id;
                         const isLoadingThis = isSpeakingThis && speakingPhase === 'loading';
                         const isPlayingThis = isSpeakingThis && speakingPhase === 'playing';
@@ -5805,6 +5810,13 @@ export default function PainelAluno() {
                       );
                     })}
                     </div>
+                    {filteredCatalogo.length > catalogoVisibleLimit && (
+                      <div className="flex justify-center pt-1">
+                        <Button type="button" variant="outline" onClick={() => setCatalogoVisibleLimit((limit) => limit + CATALOGO_VISIBLE_LIMIT)}>
+                          Carregar mais livros
+                        </Button>
+                      </div>
+                    )}
                     {livrosHasMore && (
                       <div className="flex justify-center pt-4">
                         <Button type="button" variant="outline" onClick={() => fetchLivrosPage({ reset: false })} disabled={livrosLoadingMore}>

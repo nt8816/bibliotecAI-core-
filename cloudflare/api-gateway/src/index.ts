@@ -39,6 +39,10 @@ type RouteHandler = (request: Request, env: Env) => Promise<Response> | Response
 
 const DEFAULT_CORS_ALLOW_HEADERS = 'authorization, content-type, x-user-access-token';
 const DEFAULT_CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
+// Capacitor serves the bundled Android app from this local, HTTPS origin.
+// It is an application origin, not a development server, so it must remain
+// available when the API gateway is running in production.
+const NATIVE_APP_CORS_ORIGINS = new Set(['https://localhost', 'capacitor://localhost']);
 
 let firebaseAccessTokenCache: { token: string; expiresAt: number } | null = null;
 let supabaseServiceRoleJwtCache: { token: string; expiresAt: number } | null = null;
@@ -46,6 +50,8 @@ let supabaseServiceRoleJwtCache: { token: string; expiresAt: number } | null = n
 function isAllowedCorsOrigin(origin: string, env: Env) {
   const normalizedOrigin = String(origin || '').trim();
   if (!normalizedOrigin) return false;
+
+  if (NATIVE_APP_CORS_ORIGINS.has(normalizedOrigin)) return true;
 
   try {
     const url = new URL(normalizedOrigin);
