@@ -2,7 +2,11 @@ import { jsx as _jsx } from "react/jsx-runtime";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
+import { installZoomRestrictions } from "@/lib/zoomRestrictions";
 import "./index.css";
+
+const removeZoomRestrictions = installZoomRestrictions();
+if (import.meta.hot) import.meta.hot.dispose(removeZoomRestrictions);
 
 let root;
 
