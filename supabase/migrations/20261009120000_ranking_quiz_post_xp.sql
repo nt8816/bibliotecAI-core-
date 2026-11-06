@@ -262,4 +262,3 @@ $$;
 GRANT EXECUTE ON FUNCTION public.get_school_rankings() TO authenticated;
 
 COMMIT;
-

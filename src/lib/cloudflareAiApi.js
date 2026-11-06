@@ -1,6 +1,14 @@
-const API_BASE_URL = String(import.meta.env.VITE_BIBLIOTECA_AI_API_URL || '').replace(/\/+$/, '');
+import { requestPlatformApi, isPlatformApiConfigured } from '@/lib/platformApi';
+
+const DIRECT_AI_BASE_URL = String(import.meta.env.VITE_BIBLIOTECA_AI_API_URL || '').replace(/\/+$/, '');
 const TEXT_CACHE_TTL_MS = 10 * 60 * 1000;
 const textResponseCache = new Map();
+
+const AI_ROUTES = {
+  '/text': '/v1/ai/text',
+  '/image': '/v1/ai/image',
+  '/audio': '/v1/ai/audio',
+};
 
 const ensureObject = (value) => (value && typeof value === 'object' ? value : {});
 const hasOwnKeys = (value) => Boolean(value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0);
@@ -300,16 +308,54 @@ const extractStructuredDataFromPayload = (payload) => {
   return {};
 };
 
-const callDirect = async (path, body, fallbackErrorMessage) => {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body || {}),
-  });
+function friendlyAiFetchError(error, fallbackErrorMessage) {
+  const raw = String(error?.message || error || '');
+  const lower = raw.toLowerCase();
+  if (
+    lower.includes('failed to fetch')
+    || lower.includes('networkerror')
+    || lower.includes('load failed')
+    || lower.includes('network request failed')
+  ) {
+    return new Error(
+      'Nao foi possivel conectar ao servico de IA. Verifique sua conexao e tente novamente.',
+    );
+  }
+  return new Error(raw || fallbackErrorMessage);
+}
 
-  const parsed = await parseResponseBody(response);
-  if (!response.ok) throw new Error(extractErrorMessage(parsed, `${fallbackErrorMessage} (HTTP ${response.status})`));
-  return parsed;
+const callDirect = async (path, body, fallbackErrorMessage) => {
+  // Prefer same-origin Platform API to avoid browser CORS "failed to fetch" on tenant subdomains.
+  const platformRoute = AI_ROUTES[path];
+  if (isPlatformApiConfigured() && platformRoute) {
+    try {
+      const payload = await requestPlatformApi(platformRoute, { method: 'POST', body });
+      return { kind: 'json', payload };
+    } catch (error) {
+      // Network/auth issues on platform: fall through to direct worker when configured.
+      if (!DIRECT_AI_BASE_URL) {
+        throw friendlyAiFetchError(error, fallbackErrorMessage);
+      }
+    }
+  }
+
+  if (!DIRECT_AI_BASE_URL) {
+    throw new Error(fallbackErrorMessage);
+  }
+
+  try {
+    const response = await fetch(`${DIRECT_AI_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+
+    const parsed = await parseResponseBody(response);
+    if (!response.ok) throw new Error(extractErrorMessage(parsed, `${fallbackErrorMessage} (HTTP ${response.status})`));
+    return parsed;
+  } catch (error) {
+    throw friendlyAiFetchError(error, fallbackErrorMessage);
+  }
 };
 
 const callBibliotecaAi = async (path, body, fallbackErrorMessage) => callDirect(path, body, fallbackErrorMessage);
@@ -336,17 +382,23 @@ export const generateTextWithCloudflare = async ({
 
   const parsed = await callBibliotecaAi('/text', { prompt: finalPrompt }, fallbackErrorMessage);
 
+  const isBadPlaceholder = (value) => {
+    const text = String(value || '').trim();
+    return !text || text === '[object Object]' || text === 'undefined' || text === 'null';
+  };
+
   let result;
   if (parsed.kind === 'text') {
     const text = String(parsed.payload || '').trim();
     const json = extractJsonFromText(text);
-    result = { data: ensureObject(json), text };
+    result = { data: ensureObject(json), text: isBadPlaceholder(text) ? '' : text };
   } else {
     const payload = ensureObject(parsed.payload);
     const fragments = extractTextFragmentsFromValue(payload);
     const rawText = fragments.join('\n\n').trim();
     const structuredData = extractStructuredDataFromPayload(payload);
-    const textJson = extractJsonFromText(rawText);
+    const payloadText = isBadPlaceholder(payload.text) ? '' : String(payload.text || '').trim();
+    const textJson = extractJsonFromText(payloadText || rawText);
     const data = ensureObject(
       (hasOwnKeys(payload.data) && payload.data)
         || (hasOwnKeys(structuredData) && structuredData)
@@ -354,14 +406,23 @@ export const generateTextWithCloudflare = async ({
         || {},
     );
     const text = String(
-      payload.text
+      payloadText
         || data.text
         || data.output_text
         || rawText
         || '',
     ).trim();
 
-    result = { data, text, raw: payload, prompt: finalPrompt };
+    result = {
+      data,
+      text: isBadPlaceholder(text) ? '' : text,
+      raw: payload,
+      prompt: finalPrompt,
+    };
+  }
+
+  if (!result.data || (!hasOwnKeys(result.data) && !result.text)) {
+    throw new Error('A IA respondeu sem conteudo valido. Tente novamente.');
   }
 
   if (!skipCache) {

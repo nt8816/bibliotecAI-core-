@@ -1866,15 +1866,6 @@ export default function PainelProfessor() {
   const handleAvaliarEntrega = async (entrega) => {
     const state = avaliacaoForm[entrega.id] || {};
     if (!isGestor && !professorProfileIds.includes(entrega?.atividades_leitura?.professor_id)) return;
-    if (isEntregaFinalizada(entrega?.status)) {
-      toast({
-        variant: 'destructive',
-        title: 'Entrega bloqueada',
-        description: 'Esta entrega ja foi finalizada e nao pode receber novas alteracoes ou pontos.',
-      });
-      return;
-    }
-
     setSaving(true);
     try {
       await avaliarProfessorEntrega(entrega.id, {
@@ -2016,6 +2007,7 @@ export default function PainelProfessor() {
           <TabsList className="grid h-auto w-full grid-cols-1 gap-2 rounded-2xl bg-muted/40 p-2 sm:flex sm:justify-start sm:overflow-x-auto sm:whitespace-nowrap sm:px-1 sm:py-1">
             <TabsTrigger value="atividades" className="min-h-[50px] whitespace-normal rounded-2xl px-3 py-3 text-left text-sm leading-5 sm:min-h-0 sm:text-center">Atividades</TabsTrigger>
             <TabsTrigger value="entregas" className="min-h-[50px] whitespace-normal rounded-2xl px-3 py-3 text-left text-sm leading-5 sm:min-h-0 sm:text-center">Entregas</TabsTrigger>
+            <TabsTrigger value="notas" className="min-h-[50px] whitespace-normal rounded-2xl px-3 py-3 text-left text-sm leading-5 sm:min-h-0 sm:text-center">Notas</TabsTrigger>
             <TabsTrigger value="sugestoes" className="min-h-[50px] whitespace-normal rounded-2xl px-3 py-3 text-left text-sm leading-5 sm:min-h-0 sm:text-center">Sugestões</TabsTrigger>
           </TabsList>
 
@@ -2129,7 +2121,10 @@ export default function PainelProfessor() {
                               {atividade.livros?.titulo || 'Sem livro vinculado'} - entrega em {formatDateLabel(atividade.data_entrega)}
                             </p>
                             {atividade.meta.descricaoLimpa && (
-                              <p className="text-sm leading-6 text-foreground/80">{atividade.meta.descricaoLimpa}</p>
+                              <details className="text-sm text-foreground/80">
+                                <summary className="cursor-pointer font-medium text-primary">Ver completo</summary>
+                                <p className="mt-2 whitespace-pre-wrap leading-6">{atividade.meta.descricaoLimpa}</p>
+                              </details>
                             )}
                           </div>
 
@@ -2179,6 +2174,39 @@ export default function PainelProfessor() {
             </div>
           </TabsContent>
 
+          <TabsContent value="notas">
+            <Card>
+              <CardHeader>
+                <CardTitle>Notas por aluno</CardTitle>
+                <p className="text-sm text-muted-foreground">Acompanhe a nota de cada entrega e identifique as que ainda aguardam aprovação.</p>
+              </CardHeader>
+              <CardContent>
+                {entregas.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">Ainda não há notas para mostrar.</p>
+                ) : (
+                  <div className="overflow-x-auto rounded-2xl border">
+                    <table className="w-full min-w-[640px] text-sm">
+                      <thead className="bg-muted/50 text-left text-muted-foreground">
+                        <tr><th className="p-3 font-medium">Aluno</th><th className="p-3 font-medium">Atividade</th><th className="p-3 font-medium">Nota</th><th className="p-3 font-medium">Status</th><th className="p-3 font-medium">Atualização</th></tr>
+                      </thead>
+                      <tbody>
+                        {entregas.map((entrega) => (
+                          <tr key={entrega.id} className="border-t">
+                            <td className="p-3 font-medium">{entrega.usuarios_biblioteca?.nome || 'Aluno'}</td>
+                            <td className="p-3">{entrega.atividades_leitura?.titulo || 'Atividade'}</td>
+                            <td className="p-3 font-semibold">{Number(entrega.pontos_ganhos || 0)} / {Number(entrega.atividades_leitura?.pontos_extras || 0)}</td>
+                            <td className="p-3"><Badge variant={entrega.status === 'aprovada' ? 'default' : 'secondary'}>{entrega.status === 'em_revisao' ? 'Aguardando aprovação' : entrega.status}</Badge></td>
+                            <td className="p-3 text-muted-foreground">{formatDateLabel(entrega.avaliado_em || entrega.updated_at || entrega.enviado_em)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           <TabsContent value="entregas">
             <Card>
               <CardHeader>
@@ -2194,7 +2222,6 @@ export default function PainelProfessor() {
                   <p className="text-sm text-muted-foreground">Nenhuma entrega para avaliar.</p>
                 ) : (
                   entregas.map((entrega) => {
-                    const entregaFinalizada = isEntregaFinalizada(entrega.status);
                     const state = avaliacaoForm[entrega.id] || {
                       status: 'enviada',
                       pontos_ganhos: 0,
@@ -2217,7 +2244,12 @@ export default function PainelProfessor() {
                           </p>
                         </div>
 
-                        <div className="space-y-4 rounded-3xl border border-primary/15 bg-primary/5 p-4">
+                        <details className="group rounded-3xl border border-primary/15 bg-primary/5 p-4">
+                          <summary className="cursor-pointer list-none text-sm font-semibold text-primary [&::-webkit-details-marker]:hidden">
+                            <span className="group-open:hidden">Ver entrega completa</span>
+                            <span className="hidden group-open:inline">Recolher entrega</span>
+                          </summary>
+                          <div className="mt-4 space-y-4">
                           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                               <p className="text-sm font-semibold text-foreground">Revisar atividade</p>
@@ -2228,9 +2260,9 @@ export default function PainelProfessor() {
                             <Badge variant="outline" className="w-fit rounded-full bg-background/80">
                               {entrega.enviado_em ? `Enviada em ${formatDateLabel(entrega.enviado_em)}` : 'Entrega recebida'}
                             </Badge>
-                            {entregaFinalizada && (
-                              <Badge className="w-fit rounded-full bg-success/10 text-success hover:bg-success/10">
-                                Avaliacao bloqueada
+                            {entrega.status === 'em_revisao' && (
+                              <Badge className="w-fit rounded-full bg-info/10 text-info hover:bg-info/10">
+                                Correção automática — aguarda aprovação
                               </Badge>
                             )}
                           </div>
@@ -2295,14 +2327,14 @@ export default function PainelProfessor() {
                               )}
                             </>
                           )}
-                        </div>
+                          </div>
+                        </details>
 
                         <div className="grid gap-4 lg:grid-cols-3">
                           <div className="space-y-2">
                             <Label>Status</Label>
                             <Select
                               value={state.status}
-                              disabled={entregaFinalizada}
                               onValueChange={(value) => setAvaliacaoForm((prev) => ({
                                 ...prev,
                                 [entrega.id]: { ...prev[entrega.id], status: value },
@@ -2311,8 +2343,9 @@ export default function PainelProfessor() {
                               <SelectTrigger className="min-h-[46px] rounded-2xl"><SelectValue /></SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="enviada">Enviada</SelectItem>
+                                <SelectItem value="em_revisao">Aguardando aprovação</SelectItem>
                                 <SelectItem value="aprovada">Aprovada</SelectItem>
-                            <SelectItem value="revisao">Revisão</SelectItem>
+                                <SelectItem value="revisar">Revisão</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
@@ -2323,7 +2356,6 @@ export default function PainelProfessor() {
                               min="0"
                               className="min-h-[46px] rounded-2xl"
                               value={state.pontos_ganhos}
-                              disabled={entregaFinalizada}
                               onChange={(e) => setAvaliacaoForm((prev) => ({
                                 ...prev,
                                 [entrega.id]: { ...prev[entrega.id], pontos_ganhos: Number(e.target.value || 0) },
@@ -2335,7 +2367,6 @@ export default function PainelProfessor() {
                             <Textarea
                               rows={4}
                               value={state.feedback_professor || ''}
-                              disabled={entregaFinalizada}
                               onChange={(e) => setAvaliacaoForm((prev) => ({
                                 ...prev,
                                 [entrega.id]: { ...prev[entrega.id], feedback_professor: e.target.value },

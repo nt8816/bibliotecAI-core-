@@ -46,6 +46,6 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.check_ai_rate_limit(text, integer, integer) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.check_ai_rate_limit(text, integer, integer) TO anon, authenticated, service_role;
 
 COMMIT;

@@ -18,6 +18,7 @@ import { AppShellState } from '@/components/AppShellState';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { ConnectivityStatus } from '@/components/ConnectivityStatus';
 import { NativePushBridge } from '@/components/NativePushBridge';
+import { isNativeMobileApp } from '@/lib/tenantRouting';
 
 import LandingPage from './pages/LandingPage';
 const Auth = lazy(() => import('./pages/Auth'));
@@ -67,7 +68,7 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/" element={<LandingPage />} />
+      <Route path="/" element={isNativeMobileApp() ? <Navigate to="/auth" replace /> : <LandingPage />} />
       <Route path="/landing" element={<LandingPage />} />
       <Route path="/auth" element={<Auth />} />
       <Route path="/privacidade" element={<Privacidade />} />

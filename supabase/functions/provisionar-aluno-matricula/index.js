@@ -22,22 +22,26 @@ const jsonResponse = (body, status = 200, request) =>
 
 const MATRICULA_REGEX = /^[A-Za-z0-9._-]{6,32}$/;
 
-async function checkRateLimit(supabaseAdmin, key, limit = 10, windowSeconds = 60) {
+async function checkRateLimit(supabaseAdmin, key, limit = 60, windowSeconds = 60) {
   try {
-    const { data } = await supabaseAdmin.rpc('check_ai_rate_limit', {
+    const { data, error } = await supabaseAdmin.rpc('check_ai_rate_limit', {
       _key: `ratelimit:${key}`,
       _limit: limit,
       _window_seconds: windowSeconds,
     }).single();
+    if (error) {
+      // Fail closed: missing/broken rate-limit RPC denies request.
+      return false;
+    }
     return data === true;
   } catch (_err) {
-    return true; // fail open if rate limit check fails
+    return false; // fail closed if rate limit check fails
   }
 }
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: getCorsHeaders(request || new Request("http://localhost")) });
+    return new Response('ok', { headers: getCorsHeaders(req || new Request("http://localhost")) });
   }
 
   try {
@@ -63,15 +67,35 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || 'unknown';
-    const rateKey = `${clientIp}:provisionar-aluno`;
-    if (!(await checkRateLimit(adminClient, rateKey, 10, 60))) {
-      return jsonResponse({ success: false, error: 'Limite de requisicoes atingido. Tente novamente em alguns minutos.' }, 429);
-    }
-
     const { data: callerUserData, error: callerUserError } = await callerClient.auth.getUser();
     const callerId = callerUserData?.user?.id;
 
+    if (callerUserError || !callerId) {
+      return jsonResponse({ success: false, error: 'Sessão inválida' }, 401);
+    }
+
+    const { data: callerProfile, error: callerProfileError } = await adminClient
+      .from('usuarios_biblioteca')
+      .select('id, tipo, escola_id')
+      .eq('user_id', callerId)
+      .order('updated_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (callerProfileError || !callerProfile) {
+      return jsonResponse({ success: false, error: 'Perfil do solicitante não encontrado' }, 403);
+    }
+
+    if (callerProfile.tipo !== 'gestor' && callerProfile.tipo !== 'bibliotecaria') {
+      return jsonResponse({ success: false, error: 'Sem permissão para criar aluno' }, 403);
+    }
+
+    // Key by the authenticated manager, not by IP: Worker-proxied calls share one egress IP.
+    const rateKey = `user:${callerId}:provisionar-aluno`;
+    if (!(await checkRateLimit(adminClient, rateKey, 60, 60))) {
+      return jsonResponse({ success: false, error: 'Limite de requisicoes atingido. Tente novamente em alguns minutos.' }, 429);
+    }
     if (callerUserError || !callerId) {
       return jsonResponse({ success: false, error: 'Sessão inválida' }, 401);
     }
@@ -128,6 +152,9 @@ Deno.serve(async (req) => {
 
     if (existingError) {
       return jsonResponse({ success: false, error: 'Não foi possível verificar matrícula' }, 500);
+    }
+    if (!callerProfile.escola_id || (existingByMatricula && existingByMatricula.escola_id !== callerProfile.escola_id)) {
+      return jsonResponse({ success: false, error: 'Matrícula indisponível ou escola não identificada' }, 409);
     }
 
     if (existingByMatricula?.user_id) {

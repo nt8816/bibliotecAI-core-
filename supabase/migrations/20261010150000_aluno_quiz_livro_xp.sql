@@ -15,19 +15,15 @@ CREATE TABLE IF NOT EXISTS public.aluno_quiz_livro_tentativas (
 
 CREATE INDEX IF NOT EXISTS aluno_quiz_livro_tentativas_aluno_idx
   ON public.aluno_quiz_livro_tentativas(aluno_id);
-
 CREATE INDEX IF NOT EXISTS aluno_quiz_livro_tentativas_escola_idx
   ON public.aluno_quiz_livro_tentativas(escola_id);
-
 CREATE INDEX IF NOT EXISTS aluno_quiz_livro_tentativas_livro_idx
   ON public.aluno_quiz_livro_tentativas(livro_id);
 
 ALTER TABLE public.aluno_quiz_livro_tentativas ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "School users can view book quiz attempts" ON public.aluno_quiz_livro_tentativas;
-
 DROP POLICY IF EXISTS "Students can insert book quiz attempts" ON public.aluno_quiz_livro_tentativas;
-
 DROP POLICY IF EXISTS "Students and staff can delete book quiz attempts" ON public.aluno_quiz_livro_tentativas;
 
 CREATE POLICY "School users can view book quiz attempts"
@@ -367,4 +363,3 @@ $$;
 GRANT EXECUTE ON FUNCTION public.get_school_rankings() TO authenticated;
 
 COMMIT;
-

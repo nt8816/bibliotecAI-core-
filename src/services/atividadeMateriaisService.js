@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 
 import { getPlatformAccessToken } from '@/lib/platformSession';
 
+let supabaseQueryClient = null;
+
 function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -13,7 +15,15 @@ function getSupabaseQueryClient() {
 
   if (!supabaseUrl || !supabaseAnonKey || !accessToken) return null;
 
-  return createClient(supabaseUrl, supabaseAnonKey, {
+  if (supabaseQueryClient) {
+    if (typeof supabaseQueryClient?.rest?.headers === 'object' && supabaseQueryClient.rest.headers) {
+      supabaseQueryClient.rest.headers.Authorization = `Bearer ${accessToken}`;
+    }
+    supabaseQueryClient.realtime?.setAuth?.(accessToken);
+    return supabaseQueryClient;
+  }
+
+  supabaseQueryClient = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
@@ -25,6 +35,8 @@ function getSupabaseQueryClient() {
       },
     },
   });
+
+  return supabaseQueryClient;
 }
 
 function getAtividadeIdsFromSaveResponse(response) {

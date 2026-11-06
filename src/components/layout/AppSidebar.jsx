@@ -129,7 +129,6 @@ export function AppSidebar() {
       { title: 'Biblioteca', url: '/aluno/biblioteca', icon: BookOpen },
       { title: 'Laboratório', url: '/aluno/laboratorio', icon: FlaskConical },
       { title: 'Atividades', url: '/aluno/atividades', icon: ClipboardList },
-      { title: 'Mensagens', url: '/aluno/mensagens', icon: MessageSquare },
       { title: 'Comunicados', url: '/aluno/comunicados', icon: Bell },
       { title: 'Comunidade', url: '/aluno/comunidade', icon: MessageSquare },
       { title: 'Arquivos Didáticos', url: '/aluno/arquivos-de-aula', icon: FileStack },

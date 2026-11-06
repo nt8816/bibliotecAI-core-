@@ -57,6 +57,7 @@ import {
   savePainelAlunoReview,
   savePainelAlunoChallenge,
   sendPainelAlunoSolicitacaoChatMessage,
+  submitAlunoQuizLivroTentativa,
   submitPainelAlunoActivity,
   togglePainelAlunoWishlist,
   togglePainelAlunoAudiobook,
@@ -71,6 +72,7 @@ import {
   generateImageWithCloudflare,
   generateTextWithCloudflare,
 } from '@/lib/cloudflareAiApi';
+import { LabCreationCard, LabHeader, LabSectionTitle } from '@/components/community/LabWorkspace';
 import { canonicalizeBookArea } from '@/lib/bookAreas';
 import { getR2DownloadUrl, uploadDataUrlToR2 } from '@/lib/r2Storage';
 import { resolveR2MediaUrl, resolveR2MediaUrls } from '@/lib/resolveR2Media';
@@ -81,6 +83,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const DESAFIO_IA_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const ACTIVITY_DRAFT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const ACTIVITY_DRAFT_STORAGE_PREFIX = 'aluno:atividade-drafts';
+const CATALOGO_VISIBLE_LIMIT = 40;
 
 function formatDateBR(dateValue) {
   if (!dateValue) return '-';
@@ -1279,6 +1282,7 @@ export default function PainelAluno() {
   const [catalogoAreaFilter, setCatalogoAreaFilter] = useState('all');
   const [catalogoDisponibilidadeFilter, setCatalogoDisponibilidadeFilter] = useState('all');
   const [catalogoAutorFilter, setCatalogoAutorFilter] = useState('all');
+  const [catalogoVisibleLimit, setCatalogoVisibleLimit] = useState(CATALOGO_VISIBLE_LIMIT);
   const [livrosOffset, setLivrosOffset] = useState(0);
   const [livrosHasMore, setLivrosHasMore] = useState(false);
   const [livrosLoadingMore, setLivrosLoadingMore] = useState(false);
@@ -1354,6 +1358,7 @@ export default function PainelAluno() {
   const [resumosCriados, setResumosCriados] = useState([]);
   const [criacoesLaboratorio, setCriacoesLaboratorio] = useState([]);
   const [filtroCriacoesLaboratorio, setFiltroCriacoesLaboratorio] = useState('todas');
+  const [labTool, setLabTool] = useState('studio');
   const [labCriacoesMissingTable, setLabCriacoesMissingTable] = useState(false);
   const [shareReviewToCommunity, setShareReviewToCommunity] = useState(false);
   const [gerandoResumoIA, setGerandoResumoIA] = useState(false);
@@ -1373,7 +1378,6 @@ export default function PainelAluno() {
   const [resumosLimit, setResumosLimit] = useState(5);
   const warnedMissingFeaturesRef = useRef(false);
   const fetchInFlightRef = useRef(null);
-  const catalogoInicialCarregadoRef = useRef(false);
   const audioPlayerRef = useRef(null);
   const speechRequestRef = useRef(0);
   const speakingLivroIdRef = useRef(null);
@@ -1526,11 +1530,6 @@ export default function PainelAluno() {
         setAlunoId(perfil.id);
         setEscolaId(perfil.escola_id || null);
         setAlunoTurma(perfil.turma || null);
-
-        if (!catalogoInicialCarregadoRef.current) {
-          await fetchLivrosPage({ reset: true });
-          catalogoInicialCarregadoRef.current = true;
-        }
 
         setEmprestimos(painelData?.emprestimos || []);
         setAvaliacoes(painelData?.avaliacoes || []);
@@ -1799,10 +1798,14 @@ export default function PainelAluno() {
   }, [studioSlides]);
 
   useEffect(() => {
-    if (bibliotecaView === 'biblioteca') {
+    if (location.pathname === '/aluno/biblioteca' && bibliotecaView === 'biblioteca' && escolaId) {
       fetchLivrosPage({ reset: true });
     }
-  }, [bibliotecaView, catalogoSearchTerm, fetchLivrosPage]);
+  }, [bibliotecaView, catalogoSearchTerm, escolaId, fetchLivrosPage, location.pathname]);
+
+  useEffect(() => {
+    setCatalogoVisibleLimit(CATALOGO_VISIBLE_LIMIT);
+  }, [catalogoAreaFilter, catalogoAutorFilter, catalogoDisponibilidadeFilter, searchTerm]);
 
   useEffect(() => {
     if (!user?.id) return undefined;
@@ -1981,12 +1984,32 @@ export default function PainelAluno() {
     }).length;
   }, [emprestimos]);
 
+  const quizHistoryKey = useMemo(
+    () => (alunoId ? `aluno:quiz:history:${alunoId}` : 'aluno:quiz:history:anon'),
+    [alunoId],
+  );
+
+  const [quizHistory, setQuizHistory] = useState({});
+
+  const xpQuizzesLivro = useMemo(() => {
+    return Object.values(quizHistory || {}).reduce((acc, entry) => {
+      return acc + Number(entry?.best?.acertos || 0) * 10;
+    }, 0);
+  }, [quizHistory]);
+
   const pontosExperiencia = useMemo(() => {
     const baseLeituras = xpLeituras;
     const baseAvaliacoes = avaliacoes.length * 15;
     const baseAtividades = atividadesAprovadas * 25;
-    return baseLeituras + baseAvaliacoes + baseAtividades + Number(pontosGanhos || 0) + Number(desafioXpBonus || 0);
-  }, [atividadesAprovadas, avaliacoes.length, desafioXpBonus, pontosGanhos, xpLeituras]);
+    return (
+      baseLeituras +
+      baseAvaliacoes +
+      baseAtividades +
+      Number(pontosGanhos || 0) +
+      Number(desafioXpBonus || 0) +
+      Number(xpQuizzesLivro || 0)
+    );
+  }, [atividadesAprovadas, avaliacoes.length, desafioXpBonus, pontosGanhos, xpLeituras, xpQuizzesLivro]);
 
   const nivelAtual = useMemo(() => Math.max(1, Math.floor(pontosExperiencia / 150) + 1), [pontosExperiencia]);
 
@@ -2087,6 +2110,11 @@ export default function PainelAluno() {
       return true;
     });
   }, [catalogoAreaFilter, catalogoAutorFilter, catalogoDisponibilidadeFilter, filteredLivros]);
+
+  const catalogoVisivel = useMemo(
+    () => filteredCatalogo.slice(0, catalogoVisibleLimit),
+    [catalogoVisibleLimit, filteredCatalogo],
+  );
 
   const livrosSugeriveisDesafio = useMemo(() => {
     const readingBand = getBookReadingBandForLevel(nivelAtual);
@@ -3405,13 +3433,6 @@ export default function PainelAluno() {
     setAriaLiveMessage('Quiz reiniciado.');
   };
 
-  const quizHistoryKey = useMemo(
-    () => (alunoId ? `aluno:quiz:history:${alunoId}` : 'aluno:quiz:history:anon'),
-    [alunoId],
-  );
-
-  const [quizHistory, setQuizHistory] = useState({});
-
   useEffect(() => {
     try {
       const raw = localStorage.getItem(quizHistoryKey);
@@ -3449,6 +3470,15 @@ export default function PainelAluno() {
       } catch {
         // ignore storage errors
       }
+
+      submitAlunoQuizLivroTentativa({
+        livroId: quizLivroId,
+        tema: quizTema.trim() || 'geral',
+        acertos,
+        total,
+      }).catch(() => {
+        // ranking usa o servidor; localStorage mantém o histórico local
+      });
     },
     [quizHistory, quizHistoryKey, quizLivroId, quizTema],
   );
@@ -3726,8 +3756,14 @@ export default function PainelAluno() {
     if (location.pathname === '/aluno/biblioteca') return 'biblioteca';
     if (location.pathname === '/aluno/laboratorio') return 'laboratorio';
     if (location.pathname === '/aluno/atividades') return 'atividades';
-    if (location.pathname === '/aluno/mensagens' || location.pathname === '/aluno/conversas') return 'conversas';
+    if (location.pathname === '/aluno/mensagens' || location.pathname === '/aluno/conversas') return 'biblioteca';
     return 'perfil';
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (location.pathname === '/aluno/mensagens' || location.pathname === '/aluno/conversas') {
+      setBibliotecaView('mensagens');
+    }
   }, [location.pathname]);
 
   const pageTitle = useMemo(() => {
@@ -4508,50 +4544,6 @@ export default function PainelAluno() {
                               <p className="text-xs text-muted-foreground">
                                 Professor: {atividade.professor?.nome || 'Professor nao informado'}
                               </p>
-                              {atividade.atividadeMeta?.descricaoLimpa && (
-                                <p className="rounded-2xl border border-primary/10 bg-primary/5 px-3 py-2 text-sm leading-6">
-                                  {atividade.atividadeMeta.descricaoLimpa}
-                                </p>
-                              )}
-                              {ensureArray(atividade.materiais_apoio).length > 0 && (
-                                <div className="space-y-2 rounded-2xl border border-border/70 bg-background/80 p-3">
-                                  <div className="flex items-center gap-2 text-sm font-medium">
-                                    <Paperclip className="h-4 w-4 text-primary" />
-                                    Conteudos de apoio
-                                  </div>
-                                  <div className="space-y-2">
-                                    {ensureArray(atividade.materiais_apoio).map((material, materialIndex) => (
-                                      <div key={`${atividade.id}-material-${materialIndex}`} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 px-3 py-2">
-                                        <div className="min-w-0">
-                                          <p className="truncate text-sm font-medium">
-                                            {String(material?.tipo || '') === 'link'
-                                              ? (material?.titulo || material?.url || 'Link de apoio')
-                                              : (material?.nome || 'Arquivo de apoio')}
-                                          </p>
-                                          <p className="text-xs text-muted-foreground">
-                                            {String(material?.tipo || '') === 'link'
-                                              ? (material?.url || '')
-                                              : formatBytes(material?.tamanho)}
-                                          </p>
-                                        </div>
-                                        <Button
-                                          type="button"
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => handleOpenAtividadeMaterial(material)}
-                                          className="shrink-0"
-                                        >
-                                          {String(material?.tipo || '') === 'link' ? (
-                                            <><ExternalLink className="mr-2 h-4 w-4" />Abrir</>
-                                          ) : (
-                                            <><Download className="mr-2 h-4 w-4" />Baixar</>
-                                          )}
-                                        </Button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
                             </div>
                             <div className="grid gap-2 text-left sm:max-w-xs sm:grid-cols-2 md:block md:text-right">
                               <Badge variant="outline" className="w-fit rounded-full px-3 py-1 md:ml-auto">
@@ -4568,6 +4560,30 @@ export default function PainelAluno() {
                             </div>
                           </div>
 
+                          <details className="group rounded-2xl border border-border/60 bg-background/40 p-3">
+                            <summary className="cursor-pointer list-none text-sm font-medium text-primary [&::-webkit-details-marker]:hidden">
+                              <span className="group-open:hidden">Ver completo</span>
+                              <span className="hidden group-open:inline">Recolher atividade</span>
+                            </summary>
+                            <div className="mt-4 space-y-4">
+                          {atividade.atividadeMeta?.descricaoLimpa && (
+                            <p className="rounded-2xl border border-primary/10 bg-primary/5 px-3 py-2 text-sm leading-6">
+                              {atividade.atividadeMeta.descricaoLimpa}
+                            </p>
+                          )}
+                          {ensureArray(atividade.materiais_apoio).length > 0 && (
+                            <div className="space-y-2 rounded-2xl border border-border/70 bg-background/80 p-3">
+                              <div className="flex items-center gap-2 text-sm font-medium"><Paperclip className="h-4 w-4 text-primary" />Conteúdos de apoio</div>
+                              {ensureArray(atividade.materiais_apoio).map((material, materialIndex) => (
+                                <div key={`${atividade.id}-material-completo-${materialIndex}`} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 px-3 py-2">
+                                  <p className="min-w-0 truncate text-sm font-medium">{String(material?.tipo || '') === 'link' ? (material?.titulo || material?.url || 'Link de apoio') : (material?.nome || 'Arquivo de apoio')}</p>
+                                  <Button type="button" variant="outline" size="sm" onClick={() => handleOpenAtividadeMaterial(material)} className="shrink-0">
+                                    {String(material?.tipo || '') === 'link' ? 'Abrir' : 'Baixar'}
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           <div className="space-y-2">
                             <Label>{atividadeJaEnviada ? 'Pré-visualização da minha entrega' : 'Minha entrega'}</Label>
                             <Textarea
@@ -4747,6 +4763,8 @@ export default function PainelAluno() {
                               <p className="text-sm">{atividade.entrega.feedback_professor}</p>
                             </div>
                           )}
+                            </div>
+                          </details>
                         </div>
                           );
                         })
@@ -4955,11 +4973,20 @@ export default function PainelAluno() {
             </TabsContent>
 
           <TabsContent value="laboratorio" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Gerar imagens</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <LabHeader
+              creationCount={criacoesLaboratorio.length}
+              activeTool={labTool}
+              onSelectTool={setLabTool}
+            />
+
+            {labTool === 'studio' ? (
+            <div className="rounded-[24px] border border-border/60 bg-card p-4 shadow-sm">
+              <LabSectionTitle
+                id="lab-studio"
+                title="Studio de imagens"
+                description="Gere imagens com IA, monte slides e publique no laboratório."
+              />
+              <div className="mt-4 space-y-4">
                 <div className="space-y-2">
                   <Label>Prompt da imagem</Label>
                   <div className="flex gap-2">
@@ -5019,14 +5046,18 @@ export default function PainelAluno() {
                     Compartilhar na comunidade
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
+            ) : null}
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Quiz com IA</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
+            {labTool === 'quiz' ? (
+            <div className="rounded-[24px] border border-border/60 bg-card p-4 shadow-sm">
+              <LabSectionTitle
+                id="lab-quiz"
+                title="Quiz com IA"
+                description="Monte um quiz a partir de um livro da sua biblioteca."
+              />
+              <div className="mt-4 space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
                   <div className="space-y-1">
                     <Label htmlFor="quiz-livro">Livro</Label>
@@ -5125,37 +5156,18 @@ export default function PainelAluno() {
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
+            ) : null}
 
-            <Card>
-              <CardHeader>
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-2">
-                    <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
-                      <Sparkles className="h-3.5 w-3.5" />
-                      Ferramenta de estudo com IA
-                    </div>
-                    <div>
-                      <CardTitle className="text-base">Resumo com IA</CardTitle>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Gere um resumo inicial, refine com suas ideias e salve suas melhores versoes no laboratorio.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 sm:w-auto">
-                    <div className="rounded-xl border bg-muted/30 px-3 py-2 text-center">
-                      <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Livros</p>
-                      <p className="text-lg font-semibold">{meusLivrosOptions.length}</p>
-                    </div>
-                    <div className="rounded-xl border bg-muted/30 px-3 py-2 text-center">
-                      <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Salvos</p>
-                      <p className="text-lg font-semibold">{resumosCriados.length}</p>
-                    </div>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            {labTool === 'resumo' ? (
+            <div className="rounded-[24px] border border-border/60 bg-card p-4 shadow-sm">
+              <LabSectionTitle
+                id="lab-resumo"
+                title="Resumo com IA"
+                description="Gere um resumo inicial, refine com suas ideias e salve no laboratório."
+              />
+              <div className="mt-4 space-y-4">
                 <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/10 via-background to-warning/10 p-4">
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.9fr)]">
                     <div className="space-y-4">
@@ -5289,19 +5301,22 @@ export default function PainelAluno() {
                     )}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
+            ) : null}
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Criações salvas no laboratório</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex flex-wrap gap-2 rounded-lg border p-1 bg-muted/20">
+            <div className="rounded-[24px] border border-border/60 bg-card p-4 shadow-sm">
+              <LabSectionTitle
+                title="Criações salvas"
+                description="Resumos, quizzes e imagens que você salvou no laboratório."
+              />
+              <div className="mt-4 space-y-3">
+                <div className="flex flex-wrap gap-2 rounded-xl border p-1 bg-muted/20">
                   <Button
                     type="button"
                     size="sm"
                     variant={filtroCriacoesLaboratorio === 'todas' ? 'default' : 'ghost'}
+                    className="rounded-lg"
                     onClick={() => setFiltroCriacoesLaboratorio('todas')}
                   >
                     Todas
@@ -5310,6 +5325,7 @@ export default function PainelAluno() {
                     type="button"
                     size="sm"
                     variant={filtroCriacoesLaboratorio === 'imagem' ? 'default' : 'ghost'}
+                    className="rounded-lg"
                     onClick={() => setFiltroCriacoesLaboratorio('imagem')}
                   >
                     Imagens
@@ -5318,6 +5334,7 @@ export default function PainelAluno() {
                     type="button"
                     size="sm"
                     variant={filtroCriacoesLaboratorio === 'resumo' ? 'default' : 'ghost'}
+                    className="rounded-lg"
                     onClick={() => setFiltroCriacoesLaboratorio('resumo')}
                   >
                     Resumos
@@ -5326,6 +5343,7 @@ export default function PainelAluno() {
                     type="button"
                     size="sm"
                     variant={filtroCriacoesLaboratorio === 'quiz' ? 'default' : 'ghost'}
+                    className="rounded-lg"
                     onClick={() => setFiltroCriacoesLaboratorio('quiz')}
                   >
                     Quiz
@@ -5333,86 +5351,69 @@ export default function PainelAluno() {
                 </div>
 
                 {criacoesLaboratorioFiltradas.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nenhuma criação salva ainda.</p>
+                  <p className="py-8 text-center text-sm text-muted-foreground">Nenhuma criação salva ainda.</p>
                 ) : (
-                  <div className="space-y-3">
-                    {criacoesLaboratorioFiltradas.slice(0, criacoesLimit).map((criacao) => {
-                      const resumoTextoCompleto = criacao.tipo === 'resumo' ? extractResumoTextoFromCriacao(criacao) : '';
-                      return (
-                        <div key={criacao.id} className="rounded-md border p-3 space-y-2">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                              <p className="font-medium">{repairMojibakeText(criacao.titulo) || 'Criação sem título'}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {criacao.tipo} • {formatDateBR(criacao.created_at)}
-                              </p>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
+                  <>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      {criacoesLaboratorioFiltradas.slice(0, criacoesLimit).map((criacao) => {
+                        const resumoTextoCompleto = criacao.tipo === 'resumo' ? extractResumoTextoFromCriacao(criacao) : '';
+                        return (
+                          <div key={criacao.id} className="space-y-2">
+                            <LabCreationCard
+                              criacao={{ ...criacao, titulo: repairMojibakeText(criacao.titulo) || criacao.titulo }}
+                              canDelete
+                              onDelete={() => abrirConfirmacaoExclusaoCriacao(criacao)}
+                            />
+                            <div className="flex flex-wrap gap-2">
                               <Button
                                 type="button"
                                 size="sm"
                                 variant={criacao.publicado_comunidade || criacao.comunidade_post_id ? 'secondary' : 'outline'}
+                                className="h-8 rounded-xl"
                                 onClick={() => abrirCompartilhamentoCriacao(criacao)}
                                 disabled={saving || criacao.publicado_comunidade || Boolean(criacao.comunidade_post_id)}
                               >
                                 <Send className="w-3 h-3 mr-1" />
                                 {criacao.publicado_comunidade || criacao.comunidade_post_id ? 'Compartilhado' : 'Compartilhar'}
                               </Button>
-                              <Button type="button" size="sm" variant="destructive" onClick={() => abrirConfirmacaoExclusaoCriacao(criacao)} disabled={saving}>
-                                <Trash2 className="w-3 h-3 mr-1" />
-                                Apagar
-                              </Button>
+                              {criacao.tipo === 'quiz' ? (
+                                <Button type="button" size="sm" variant="ghost" className="h-8 rounded-xl" onClick={() => carregarQuizSalvo(criacao)}>
+                                  Jogar
+                                </Button>
+                              ) : null}
+                              {criacao.tipo === 'resumo' && resumoTextoCompleto ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 rounded-xl"
+                                  onClick={() =>
+                                    abrirResumoCompleto({
+                                      titulo: criacao.titulo || 'Resumo salvo',
+                                      texto: resumoTextoCompleto,
+                                      criadoEm: criacao.created_at,
+                                    })
+                                  }
+                                >
+                                  Ver completo
+                                </Button>
+                              ) : null}
                             </div>
                           </div>
-                          {ensureArray(criacao.imagem_urls).length > 0 && (
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                              {ensureArray(criacao.imagem_urls).slice(0, 4).map((img, index) => (
-                                <button type="button" key={`${criacao.id}-${index}`} onClick={() => setSelectedStudioImageUrl(img)}>
-                                  <img src={img} alt={`Criação ${index + 1}`} className="h-20 w-full rounded-md border object-cover cursor-zoom-in" />
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                          {criacao.descricao && <p className="text-sm text-muted-foreground">{repairMojibakeText(criacao.descricao)}</p>}
-                          {criacao.tipo === 'quiz' && (
-                            <div className="flex justify-end">
-                              <Button type="button" size="sm" variant="outline" onClick={() => carregarQuizSalvo(criacao)}>
-                                Jogar novamente
-                              </Button>
-                            </div>
-                          )}
-                          {criacao.tipo === 'resumo' && resumoTextoCompleto && (
-                            <div className="flex justify-end">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                onClick={() =>
-                                  abrirResumoCompleto({
-                                    titulo: criacao.titulo || 'Resumo salvo',
-                                    texto: resumoTextoCompleto,
-                                    criadoEm: criacao.created_at,
-                                  })
-                                }
-                              >
-                                Ver completo
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                     {criacoesLaboratorioFiltradas.length > criacoesLimit && (
                       <div className="flex justify-center">
-                        <Button type="button" variant="outline" size="sm" onClick={() => setCriacoesLimit((prev) => prev + 10)}>
+                        <Button type="button" variant="outline" size="sm" className="rounded-full px-5" onClick={() => setCriacoesLimit((prev) => prev + 10)}>
                           Carregar mais
                         </Button>
                       </div>
                     )}
-                  </div>
+                  </>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="biblioteca" className="space-y-4">
@@ -5464,7 +5465,134 @@ export default function PainelAluno() {
                   >
                     Meus livros
                   </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={bibliotecaView === 'mensagens' ? 'default' : 'ghost'}
+                    onClick={() => {
+                      setBibliotecaView('mensagens');
+                      navigate('/aluno/mensagens');
+                    }}
+                  >
+                    Mensagens
+                  </Button>
                 </div>
+
+                {bibliotecaView === 'mensagens' && (
+                  <div className="space-y-4">
+                    <p className="text-sm font-semibold">Mensagens com a biblioteca</p>
+                    {conversasSolicitacoes.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                        Você ainda não iniciou nenhuma conversa com a biblioteca.
+                      </div>
+                    ) : (
+                      conversasSolicitacoes.map((solicitacao) => {
+                        const statusInfo = getSolicitacaoStatusInfo(solicitacao);
+                        const isExtension = String(solicitacao?.tipo || 'emprestimo') === 'prorrogacao';
+                        const podeConversar = !['aprovada', 'aceita', 'recusada', 'negada', 'cancelada'].includes(
+                          String(solicitacao?.status || '').toLowerCase(),
+                        );
+                        const chatMensagens = [...ensureArray(solicitacao?.solicitacoes_emprestimo_mensagens)].sort(
+                          (a, b) => new Date(a?.created_at || 0).getTime() - new Date(b?.created_at || 0).getTime(),
+                        );
+
+                        return (
+                          <div key={solicitacao.id} className="space-y-3 rounded-2xl border p-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <p className="font-medium">{solicitacao.livros?.titulo || 'Livro'}</p>
+                                <p className="text-xs text-muted-foreground">{solicitacao.livros?.autor || '-'}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {isExtension ? 'Pedido de prorrogação' : 'Solicitação de empréstimo'} • criada em {formatDateBR(solicitacao.created_at)}
+                                </p>
+                              </div>
+                              <Badge variant={statusInfo.variant}>
+                                {statusInfo.icon}
+                                {statusInfo.label}
+                              </Badge>
+                            </div>
+
+                            <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
+                              <p className="text-xs text-muted-foreground">Mensagens da conversa</p>
+                              {solicitacao.mensagem && (
+                                <div className="mr-6 rounded-md border bg-background px-3 py-2 text-sm">
+                                  <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                                    <span>Você</span>
+                                    <span>{formatDateBR(solicitacao.created_at)}</span>
+                                  </div>
+                                  <p className="mt-1 whitespace-pre-wrap">{solicitacao.mensagem}</p>
+                                </div>
+                              )}
+                              {solicitacao.resposta && (
+                                <div className="ml-6 rounded-md border border-primary/20 bg-primary/10 px-3 py-2 text-sm">
+                                  <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                                    <span>Biblioteca</span>
+                                    <span>{formatDateBR(solicitacao.updated_at || solicitacao.created_at)}</span>
+                                  </div>
+                                  <p className="mt-1 whitespace-pre-wrap">{solicitacao.resposta}</p>
+                                </div>
+                              )}
+                              {chatMensagens.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">Nenhuma mensagem adicional registrada ainda.</p>
+                              ) : (
+                                <div className="max-h-72 space-y-2 overflow-y-auto">
+                                  {chatMensagens.map((mensagem) => {
+                                    const isBiblioteca = mensagem?.autor_tipo === 'bibliotecaria';
+                                    return (
+                                      <div
+                                        key={mensagem.id}
+                                        className={`rounded-md border px-3 py-2 text-sm ${
+                                          isBiblioteca ? 'ml-6 border-primary/20 bg-primary/10' : 'mr-6 bg-background'
+                                        }`}
+                                      >
+                                        <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                                          <span>{isBiblioteca ? 'Biblioteca' : 'Você'}</span>
+                                          <span>{formatDateBR(mensagem.created_at)}</span>
+                                        </div>
+                                        <p className="mt-1 whitespace-pre-wrap">{mensagem.mensagem}</p>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+
+                            {podeConversar ? (
+                              <div className="space-y-2">
+                                <Textarea
+                                  rows={3}
+                                  placeholder="Escreva sua mensagem para a biblioteca..."
+                                  value={mensagemSolicitacaoPorId[solicitacao.id] || ''}
+                                  onChange={(e) =>
+                                    setMensagemSolicitacaoPorId((prev) => ({
+                                      ...prev,
+                                      [solicitacao.id]: e.target.value,
+                                    }))
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                      e.preventDefault();
+                                      handleEnviarMensagemSolicitacao(solicitacao.id);
+                                    }
+                                  }}
+                                  disabled={saving}
+                                />
+                                <div className="flex justify-end">
+                                  <Button type="button" onClick={() => handleEnviarMensagemSolicitacao(solicitacao.id)} disabled={saving}>
+                                    <Send className="mr-2 h-4 w-4" />
+                                    Enviar mensagem
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">Esta conversa foi finalizada e está disponível apenas para consulta.</p>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
 
                 {bibliotecaView === 'meus_livros' && (
                   <div className="space-y-3">
@@ -5570,7 +5698,7 @@ export default function PainelAluno() {
                       </Button>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-stretch">
-                      {filteredCatalogo.map((livro) => {
+                      {catalogoVisivel.map((livro) => {
                         const isSpeakingThis = speakingLivroId === livro.id;
                         const isLoadingThis = isSpeakingThis && speakingPhase === 'loading';
                         const isPlayingThis = isSpeakingThis && speakingPhase === 'playing';
@@ -5682,6 +5810,13 @@ export default function PainelAluno() {
                       );
                     })}
                     </div>
+                    {filteredCatalogo.length > catalogoVisibleLimit && (
+                      <div className="flex justify-center pt-1">
+                        <Button type="button" variant="outline" onClick={() => setCatalogoVisibleLimit((limit) => limit + CATALOGO_VISIBLE_LIMIT)}>
+                          Carregar mais livros
+                        </Button>
+                      </div>
+                    )}
                     {livrosHasMore && (
                       <div className="flex justify-center pt-4">
                         <Button type="button" variant="outline" onClick={() => fetchLivrosPage({ reset: false })} disabled={livrosLoadingMore}>

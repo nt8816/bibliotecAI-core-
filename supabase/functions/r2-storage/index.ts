@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { mayModifyR2Object } from '../_shared/r2-access.js';
 
 const isDev = !['production', 'prod'].includes(String(Deno.env.get('SUPABASE_ENV') || '').trim().toLowerCase());
 const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", ...(isDev ? ['http://localhost:5173', 'http://localhost:3000'] : [])];
@@ -8,7 +9,7 @@ function getCorsHeaders(request: Request): Record<string, string> {
   const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     "Access-Control-Allow-Origin": safeOrigin,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-user-access-token",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Max-Age": "86400",
   };
@@ -32,9 +33,8 @@ type Payload = {
 };
 
 function getUserToken(req: Request) {
-  const manualToken = req.headers.get('x-user-access-token') || '';
   const authHeader = req.headers.get('Authorization') || '';
-  return String(manualToken || authHeader.replace(/^Bearer\s+/i, '')).trim();
+  return String(authHeader.replace(/^Bearer\s+/i, '')).trim();
 }
 
 function buildPublicUrl(baseUrl: string, objectKey: string) {
@@ -225,6 +225,11 @@ Deno.serve(async (req) => {
     }
     if (isSuperAdmin && !objectSchoolId) {
       return jsonResponse({ success: false, error: 'Chave do objeto invalida para o R2.' }, 400);
+    }
+    if (['create_upload_url', 'upload_object', 'delete_object'].includes(operation) && !mayModifyR2Object({
+      isSuperAdmin, userId: caller.id, profileId: String(profile?.id || ''),
+    }, objectKey)) {
+      return jsonResponse({ success: false, error: 'Sem permissao para alterar arquivo de outro usuario.' }, 403);
     }
 
     const s3 = new S3Client({

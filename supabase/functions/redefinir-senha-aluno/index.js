@@ -109,7 +109,7 @@ async function checkRateLimit(supabaseAdmin, key, limit = 10, windowSeconds = 60
     }).single();
     return data === true;
   } catch (_err) {
-    return true; // fail open if rate limit check fails
+    return false; // fail closed if rate limit check fails
   }
 }
 

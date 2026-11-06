@@ -8,7 +8,7 @@ function getCorsHeaders(request: Request): Record<string, string> {
   const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': safeOrigin,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-user-access-token',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   };
 }
 
@@ -26,24 +26,21 @@ function generateSecurePassword(length = 16): string {
 }
 
 const MATRICULA_REGEX = /^[A-Za-z0-9._-]{6,32}$/;
-const DUPLICATE_EMAIL_MARKERS = ['already been registered', 'already exists', 'already registered'];
-
-async function findAuthUserByEmail(adminClient: ReturnType<typeof createClient>, email: string) {
-  const { data, error } = await adminClient.auth.admin.listUsers({ filter: `email=eq.${email}` });
-  if (error) throw error;
-  return data?.users?.[0] || null;
-}
-
-async function checkRateLimit(supabaseAdmin: any, key: string, limit = 10, windowSeconds = 60): Promise<boolean> {
+async function checkRateLimit(supabaseAdmin: any, key: string, limit = 60, windowSeconds = 60): Promise<boolean> {
   try {
-    const { data } = await supabaseAdmin.rpc('check_ai_rate_limit', {
+    const { data, error } = await supabaseAdmin.rpc('check_ai_rate_limit', {
       _key: `ratelimit:${key}`,
       _limit: limit,
       _window_seconds: windowSeconds,
     }).single();
+    if (error) {
+      // Fail closed: missing/broken rate-limit RPC denies request.
+      return false;
+    }
     return data === true;
   } catch {
-    return false; // fail closed if rate limit check fails
+    // Fail closed if rate limit check fails.
+    return false;
   }
 }
 
@@ -61,28 +58,20 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Configuração do servidor incompleta' }, 500);
     }
 
-    const userAccessToken = req.headers.get('x-user-access-token') || req.headers.get('Authorization');
-    const normalizedAuthHeader = userAccessToken?.toLowerCase().startsWith('bearer ')
-      ? userAccessToken
-      : `Bearer ${userAccessToken || ''}`;
+    const authHeader = req.headers.get('Authorization') || '';
+    const userAccessToken = authHeader.replace(/^Bearer\s+/i, '').trim();
     if (!userAccessToken) {
-      return jsonResponse({ success: false, error: 'Não autenticado' }, 401);
+      return jsonResponse({ success: false, error: 'Nao autenticado' }, 401);
     }
 
     const callerClient = createClient(supabaseUrl, anonKey, {
       auth: { autoRefreshToken: false, persistSession: false },
-      global: { headers: { Authorization: normalizedAuthHeader } },
+      global: { headers: { Authorization: `Bearer ${userAccessToken}` } },
     });
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-
-    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || 'unknown';
-    const rateKey = `${clientIp}:provisionar-aluno`;
-    if (!(await checkRateLimit(adminClient, rateKey, 10, 60))) {
-      return jsonResponse({ success: false, error: 'Limite de requisicoes atingido. Tente novamente em alguns minutos.' }, 429);
-    }
 
     const { data: callerUserData, error: callerUserError } = await callerClient.auth.getUser();
     const callerId = callerUserData?.user?.id;
@@ -106,6 +95,13 @@ Deno.serve(async (req) => {
 
     if (callerProfile.tipo !== 'gestor' && callerProfile.tipo !== 'bibliotecaria') {
       return jsonResponse({ success: false, error: 'Sem permissão para criar aluno' }, 403);
+    }
+    if (!callerProfile.escola_id) return jsonResponse({ success: false, error: 'Escola do solicitante não identificada' }, 403);
+
+    // Key by the authenticated manager, not by IP: Worker-proxied calls share one egress IP.
+    const rateKey = `user:${callerId}:provisionar-aluno`;
+    if (!(await checkRateLimit(adminClient, rateKey, 60, 60))) {
+      return jsonResponse({ success: false, error: 'Limite de requisicoes atingido. Tente novamente em alguns minutos.' }, 429);
     }
 
     let payload;
@@ -144,6 +140,9 @@ Deno.serve(async (req) => {
     if (existingError) {
       return jsonResponse({ success: false, error: 'Não foi possível verificar matrícula' }, 500);
     }
+    if (existingByMatricula && existingByMatricula.escola_id !== callerProfile.escola_id) {
+      return jsonResponse({ success: false, error: 'Matrícula indisponível' }, 409);
+    }
 
     if (existingByMatricula?.user_id) {
       return jsonResponse({ success: false, error: 'Esta matrícula já está vinculada a uma conta ativa' }, 409);
@@ -160,27 +159,7 @@ Deno.serve(async (req) => {
     });
 
     if (createAuthError) {
-      const createAuthMessage = String(createAuthError.message || '').toLowerCase();
-      if (!DUPLICATE_EMAIL_MARKERS.some((marker) => createAuthMessage.includes(marker))) {
-        return jsonResponse({ success: false, error: 'Não foi possível criar credenciais do aluno' }, 400);
-      }
-
-      const existingAuthUser = await findAuthUserByEmail(adminClient, authEmail);
-      if (!existingAuthUser?.id) {
-        return jsonResponse({ success: false, error: 'A conta de autenticação já existe, mas não foi possível reutilizá-la.' }, 409);
-      }
-
-      const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(existingAuthUser.id, {
-        password: authPassword,
-        email_confirm: true,
-        user_metadata: { ...(existingAuthUser.user_metadata || {}), nome },
-      });
-
-      if (updateAuthError) {
-        return jsonResponse({ success: false, error: 'Não foi possível atualizar a conta existente do aluno' }, 400);
-      }
-
-      userId = existingAuthUser.id;
+      return jsonResponse({ success: false, error: 'Não foi possível criar credenciais; verifique possível conflito de matrícula' }, 409);
     } else if (authData?.user?.id) {
       userId = authData.user.id;
       createdNewUser = true;
@@ -266,7 +245,6 @@ Deno.serve(async (req) => {
         email: authEmail,
         matricula,
       },
-      senha: authPassword,
       message: 'Aluno provisionado com sucesso.',
     });
   } catch (error) {

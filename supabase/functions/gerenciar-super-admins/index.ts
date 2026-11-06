@@ -8,7 +8,7 @@ function getCorsHeaders(request: Request): Record<string, string> {
   const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     "Access-Control-Allow-Origin": safeOrigin,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-user-access-token",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Max-Age": "86400",
   };
@@ -75,9 +75,8 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: 'Configuracao incompleta no servidor' }, 500);
     }
 
-    const manualUserToken = req.headers.get('x-user-access-token') || '';
     const authHeader = req.headers.get('Authorization') || '';
-    const userToken = String(manualUserToken || authHeader.replace(/^Bearer\s+/i, '')).trim();
+    const userToken = String(authHeader.replace(/^Bearer\s+/i, '')).trim();
 
     if (!userToken) {
       return jsonResponse({ success: false, error: 'Nao autenticado' }, 401);

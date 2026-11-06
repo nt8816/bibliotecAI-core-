@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { checkAiRateLimit } from '../_shared/ai-rate-limit.js';
 
 const isDev = !['production', 'prod'].includes(String(Deno.env.get('SUPABASE_ENV') || '').trim().toLowerCase());
 const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", ...(isDev ? ['http://localhost:5173', 'http://localhost:3000'] : [])];
@@ -8,7 +9,7 @@ function getCorsHeaders(request: Request): Record<string, string> {
   const safeOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     "Access-Control-Allow-Origin": safeOrigin,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-user-access-token",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Max-Age": "86400",
   };
@@ -28,7 +29,6 @@ const MAX_IMAGE_PROMPT = 2000;
 const MAX_AUDIO_PROMPT = 4000;
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 const RATE_LIMIT_AUTH = 60;
-const RATE_LIMIT_ANON = 20;
 
 const SECRET_PATTERNS: RegExp[] = [
   /api[_-]?key/i,
@@ -184,13 +184,25 @@ Deno.serve(async (req) => {
     });
 
     const token = getAuthToken(req);
-    const userResult = token ? await supabaseAdmin.auth.getUser(token) : { data: { user: null } };
-    const userId = userResult?.data?.user?.id || null;
+    if (!token) {
+      return jsonResponse({ error: 'Autenticacao necessaria.' }, 401);
+    }
+
+    const userResult = await supabaseAdmin.auth.getUser(token);
+    const user = userResult?.data?.user;
+    if (!user) {
+      return jsonResponse({ error: 'Sessao invalida.' }, 401);
+    }
+    const userId = user.id;
 
     let escolaId: string | null = null;
     if (userId) {
-      const { data: escolaData } = await supabaseAdmin.rpc('get_user_escola_id', { _user_id: userId }).single();
-      escolaId = escolaData ?? null;
+      try {
+        const { data: escolaData } = await supabaseAdmin.rpc('get_user_escola_id', { _user_id: userId }).single();
+        escolaId = escolaData ?? null;
+      } catch {
+        escolaId = null;
+      }
     }
 
     const ip = getClientIp(req);
@@ -221,34 +233,35 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Conteúdo sensível detectado. Pedido bloqueado.' }, 400);
     }
 
-    const rateKey = `${userId || 'anon'}:${ip || 'noip'}:${path}`;
-    const rateLimit = userId ? RATE_LIMIT_AUTH : RATE_LIMIT_ANON;
-    const { data: allowed } = await supabaseAdmin.rpc('check_ai_rate_limit', {
-      _key: rateKey,
-      _limit: rateLimit,
-      _window_seconds: RATE_LIMIT_WINDOW_SECONDS,
-    }).single();
+    const rateKey = `ai:${userId}:${path}`;
+    const rateLimit = RATE_LIMIT_AUTH;
+    try {
+      const allowed = await checkAiRateLimit(supabaseAdmin, rateKey, rateLimit, RATE_LIMIT_WINDOW_SECONDS);
 
-    if (!allowed) {
-      await logSecurityEvent(supabaseAdmin, {
-        level: 'warn',
-        event: 'ai_rate_limited',
-        message: 'Limite de requisicoes de IA excedido.',
-        escolaId,
-        userId,
-        context: {
-          path,
-          ip,
-          user_agent: userAgent,
-          window_seconds: RATE_LIMIT_WINDOW_SECONDS,
-          limit: rateLimit,
-        },
-      });
-      return jsonResponse({ error: 'Limite de requisicoes atingido. Tente novamente.' }, 429);
+      if (allowed === false) {
+        await logSecurityEvent(supabaseAdmin, {
+          level: 'warn',
+          event: 'ai_rate_limited',
+          message: 'Limite de requisicoes de IA excedido.',
+          escolaId,
+          userId,
+          context: {
+            path,
+            ip,
+            user_agent: userAgent,
+            window_seconds: RATE_LIMIT_WINDOW_SECONDS,
+            limit: rateLimit,
+          },
+        });
+        return jsonResponse({ error: 'Limite de requisicoes atingido. Tente novamente.' }, 429);
+      }
+    } catch {
+      // Fail closed if rate-limit RPC is unavailable.
+      return jsonResponse({ error: 'Limite de requisicoes indisponivel. Tente novamente.' }, 429);
     }
 
     const baseUrl = String(
-      Deno.env.get('CLOUDFLARE_AI_BASE_URL') || 'https://api-bibliotecai.ntn3223.workers.dev',
+      Deno.env.get('CLOUDFLARE_AI_BASE_URL') || 'https://api-bibliotecai.plataforma-bibliotecai.workers.dev',
     ).replace(/\/+$/, '');
 
     const upstream = await fetch(`${baseUrl}${path}`, {
@@ -260,6 +273,7 @@ Deno.serve(async (req) => {
     const contentType = String(upstream.headers.get('content-type') || '').toLowerCase();
 
     if (!upstream.ok) {
+      const upstreamBody = await upstream.text();
       await logSecurityEvent(supabaseAdmin, {
         level: 'error',
         event: 'ai_upstream_error',
@@ -271,10 +285,16 @@ Deno.serve(async (req) => {
           ip,
           user_agent: userAgent,
           status: upstream.status,
+          detail: upstreamBody.slice(0, 500),
         },
       });
 
-      return jsonResponse({ error: 'Servico de IA temporariamente indisponivel.' }, upstream.status);
+      const deprecated = upstreamBody.includes('deprecated') || upstreamBody.includes('5028');
+      return jsonResponse({
+        error: deprecated
+          ? 'Modelo de IA descontinuado no provedor. Contate o administrador.'
+          : 'Servico de IA temporariamente indisponivel.',
+      }, upstream.status >= 500 ? 502 : upstream.status);
     }
 
     if (contentType.includes('application/json')) {

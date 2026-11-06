@@ -5,6 +5,7 @@ import { AudioLines, BellRing, CheckCircle2, Download, Eye, FileQuestion, FileSt
 import { Navigate } from 'react-router-dom';
 
 import { MainLayout } from '@/components/layout/MainLayout';
+import { ChannelFab, CompactChannelHeader, FeedSkeleton, ImageGrid, AttachmentList, ComposerSheet, WhatsAppIncomingMessage, formatRelativeTime } from '@/components/community/ChannelUI';
 import { AudioMessagePlayer } from '@/components/community/AudioMessagePlayer';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -365,6 +366,83 @@ function getAtividadeTargetSummary(atividade) {
   return aluno ? `${aluno}${turma ? ` - ${turma}` : ''}` : (turma || 'Destino individual');
 }
 
+function ComunicadosBackdrop() {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 z-10 overflow-hidden opacity-[0.22] dark:opacity-[0.16]"
+    >
+      <svg
+        className="block h-full w-full"
+        xmlns="http://www.w3.org/2000/svg"
+        width="100%"
+        height="100%"
+      >
+        <defs>
+          <pattern
+            id="comunicados-bg-pattern"
+            width="280"
+            height="240"
+            patternUnits="userSpaceOnUse"
+          >
+            <g fill="none" stroke="#047857" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <g transform="translate(12 18) rotate(-12)">
+                <rect x="0" y="0" width="52" height="66" rx="4" />
+                <line x1="10" y1="16" x2="42" y2="16" />
+                <line x1="10" y1="28" x2="36" y2="28" />
+                <line x1="10" y1="40" x2="40" y2="40" />
+              </g>
+              <g transform="translate(100 14) rotate(8)">
+                <path d="M0 10 Q24 0 48 10 L48 54 Q24 44 0 54 Z" />
+                <path d="M48 10 Q72 0 96 10 L96 54 Q72 44 48 54 Z" />
+                <line x1="48" y1="10" x2="48" y2="54" />
+              </g>
+              <g transform="translate(210 20) rotate(-4)">
+                <rect x="0" y="24" width="50" height="12" rx="2" />
+                <rect x="4" y="12" width="50" height="12" rx="2" />
+                <rect x="1" y="0" width="44" height="12" rx="2" />
+              </g>
+              <g transform="translate(16 110) rotate(-6)">
+                <rect x="0" y="0" width="56" height="38" rx="4" />
+                <path d="M0 5 L28 24 L56 5" />
+              </g>
+              <g transform="translate(110 100) rotate(25)">
+                <path d="M4 50 L38 5 L46 13 L12 58 Z" />
+                <line x1="10" y1="42" x2="18" y2="50" />
+              </g>
+              <g transform="translate(200 105) rotate(4)">
+                <rect x="0" y="0" width="46" height="60" rx="3" />
+                <line x1="12" y1="0" x2="12" y2="60" />
+                <line x1="18" y1="16" x2="38" y2="16" />
+                <line x1="18" y1="28" x2="38" y2="28" />
+                <line x1="18" y1="40" x2="32" y2="40" />
+              </g>
+              <g transform="translate(30 185) rotate(-8)">
+                <circle cx="14" cy="14" r="12" />
+                <circle cx="48" cy="14" r="12" />
+                <line x1="26" y1="14" x2="36" y2="14" />
+              </g>
+              <g transform="translate(140 185) rotate(10)">
+                <rect x="0" y="0" width="50" height="34" rx="4" />
+                <path d="M0 5 L25 22 L50 5" />
+              </g>
+              <g transform="translate(220 190) rotate(-3)">
+                <path d="M0 0 L16 0 L16 32 L8 24 L0 32 Z" />
+              </g>
+            </g>
+            <g fill="#047857" fontFamily="Georgia, serif">
+              <text x="220" y="90" fontSize="56">A</text>
+              <text x="16" y="100" fontSize="46">B</text>
+              <text x="130" y="235" fontSize="36">abc</text>
+            </g>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#comunicados-bg-pattern)" />
+      </svg>
+    </div>
+  );
+}
+
 export default function Comunicados() {
   const { userRole, isAluno, isProfessor, isGestor, isBibliotecaria, isSuperAdmin } = useAuth();
   const { toast } = useToast();
@@ -402,6 +480,7 @@ export default function Comunicados() {
   const [filePreviewOpen, setFilePreviewOpen] = useState(false);
   const [selectedFilePreview, setSelectedFilePreview] = useState({ src: '', title: 'Visualizacao do arquivo', mimeType: '', extension: '' });
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [composerOpen, setComposerOpen] = useState(false);
   const [isFormularioDialogOpen, setIsFormularioDialogOpen] = useState(false);
   const [formularioSaving, setFormularioSaving] = useState(false);
   const [selectedFormulario, setSelectedFormulario] = useState(null);
@@ -478,15 +557,24 @@ export default function Comunicados() {
 
   const loadComunicados = useCallback(async () => {
     try {
-      const [response, professorData] = await Promise.all([
+      const [responseResult, professorResult] = await Promise.allSettled([
         fetchComunidadeAlunoData({ roleHint: profileRoleHint }),
         isProfessor ? fetchProfessorPainelData() : Promise.resolve(null),
       ]);
 
+      if (responseResult.status === 'rejected') {
+        throw responseResult.reason;
+      }
+
+      const response = responseResult.value;
+      const professorData = professorResult.status === 'fulfilled' ? professorResult.value : null;
+
       const perfilAtual = response?.perfil || null;
       const comunicados = ensureArray(response?.posts)
         .filter((item) => item?.tipo === 'comunicado' && !isExpiredComunicado(item));
-      const resolvedPosts = await Promise.all(comunicados.map(resolveComunicadoMedia));
+      const resolvedPosts = (await Promise.allSettled(comunicados.map(resolveComunicadoMedia)))
+        .filter((r) => r.status === 'fulfilled')
+        .map((r) => r.value);
 
       setPerfil(perfilAtual);
       setPosts(resolvedPosts);
@@ -1263,37 +1351,129 @@ export default function Comunicados() {
 
   return (
     <MainLayout title="Comunicados">
-      <div className="space-y-6">
-        <Card className="overflow-hidden border-emerald-200/70 bg-[linear-gradient(135deg,rgba(236,253,245,0.95),rgba(255,255,255,0.98),rgba(240,253,250,0.95))] dark:border-emerald-900/60 dark:bg-[linear-gradient(135deg,rgba(6,78,59,0.28),rgba(15,23,42,0.92),rgba(5,46,22,0.34))]">
-          <CardContent className="grid gap-5 p-6 lg:grid-cols-[1.15fr_0.85fr]">
-            <div className="space-y-4">
-              <Badge className="w-fit rounded-full bg-emerald-600 px-3 py-1 text-white">
-                <Megaphone className="mr-1.5 h-3.5 w-3.5" /> Canal oficial da escola
-              </Badge>
-              <div className="space-y-2">
-                <h2 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Comunicados em destaque</h2>
-                <p className="max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-                  Um espaco proprio para avisos da escola, da biblioteca e dos professores. Os alunos acompanham tudo daqui,
-                  mas somente a equipe pode publicar novos comunicados.
-                </p>
-              </div>
+      <div className="relative min-h-[calc(100vh-7rem)] pb-24">
+        <ComunicadosBackdrop />
+        <div className="relative space-y-4">
+        <CompactChannelHeader
+          title="Comunicados"
+          meta={`${comunicadosVisiveis.length} aviso${comunicadosVisiveis.length === 1 ? '' : 's'}`}
+          search={
+            <div className="w-40 sm:w-56">
+              <Input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar..."
+                className="h-9 rounded-full bg-muted/50 text-sm"
+              />
             </div>
+          }
+          action={
+            canPublish ? (
+              <Button
+                type="button"
+                size="sm"
+                className="hidden h-9 rounded-full bg-emerald-600 px-4 text-white hover:bg-emerald-700 sm:inline-flex"
+                onClick={() => setComposerOpen(true)}
+              >
+                <Plus className="mr-1.5 h-4 w-4" />
+                Novo
+              </Button>
+            ) : null
+          }
+        />
 
-            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-              <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
-                <p className="text-xs uppercase tracking-[0.22em] text-emerald-700/80 dark:text-emerald-300/80">Ativos agora</p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{comunicadosVisiveis.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {loading ? (
+          <div className="relative">
+            <FeedSkeleton count={3} />
+          </div>
+        ) : comunicadosVisiveis.length === 0 ? (
+          <div className="relative rounded-2xl border border-dashed p-8 text-center">
+            <BellRing className="mx-auto mb-2 h-6 w-6 text-emerald-600" />
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Nenhum comunicado</p>
+            <p className="mt-1 text-xs text-muted-foreground">Avisos da equipe aparecem aqui.</p>
+          </div>
+        ) : (
+          <div className="relative space-y-3">
+            {comunicadosVisiveis.map((post) => (
+              <WhatsAppIncomingMessage
+                key={post.id}
+                author={safeText(post?.usuarios_biblioteca?.nome || post?.autor_nome, 'Equipe')}
+                timeLabel={formatRelativeTime(post.created_at) || formatDateTimeBR(post.created_at)}
+                turmaLabel={post.turma_publico || 'Todas'}
+                title={post.titulo}
+                actions={
+                  canDeleteComunicado(post) ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 rounded-full px-2 text-xs text-destructive hover:text-destructive"
+                      onClick={() => setDeleteTarget(post)}
+                      disabled={saving}
+                    >
+                      <Trash2 className="mr-1 h-3.5 w-3.5" />
+                      Apagar
+                    </Button>
+                  ) : null
+                }
+              >
+                <p className="whitespace-pre-wrap">{post.conteudo || 'Sem mensagem adicional.'}</p>
 
-        {canPublish && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Novo comunicado</CardTitle>
-            </CardHeader>
-            <CardContent className="max-h-[calc(94vh-92px)] overflow-y-auto px-8 py-7">
+                {post.audio_url ? (
+                  <AudioMessagePlayer
+                    src={post.audio_url}
+                    title="Áudio"
+                    durationSeconds={post.audio_duration_seconds}
+                    compact
+                  />
+                ) : null}
+
+                {ensureArray(post.imagem_urls).length > 0 ? (
+                  <div className="space-y-2">
+                    <ImageGrid
+                      images={ensureArray(post.imagem_urls)}
+                      onPreview={(src) => openImagePreview(src, post?.titulo || 'Imagem')}
+                      onDownload={(_, index) => handleDownloadPublishedImage(post, index)}
+                    />
+                  </div>
+                ) : null}
+
+                {ensureArray(post.arquivos).length > 0 ? (
+                  <AttachmentList
+                    items={ensureArray(post.arquivos)}
+                    title="Anexos"
+                    onPreview={(arquivo) => isPreviewableFile(arquivo) && openFilePreview(arquivo)}
+                    onDownload={(arquivo) => handleDownloadPublishedFile(arquivo)}
+                  />
+                ) : null}
+
+                {post.expires_at ? (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Visível até {formatDateTimeBR(post.expires_at)}
+                  </p>
+                ) : null}
+              </WhatsAppIncomingMessage>
+            ))}
+          </div>
+        )}
+
+      <ChannelFab
+        visible={canPublish}
+        label="Novo comunicado"
+        icon={<Plus className="h-5 w-5" />}
+        onClick={() => setComposerOpen(true)}
+      />
+
+      {canPublish ? (
+        <ComposerSheet
+          open={composerOpen}
+          onOpenChange={setComposerOpen}
+          title="Novo comunicado"
+          description="Envie um aviso com texto, imagens, áudio e anexos para a turma certa."
+          submitLabel={saving ? 'Publicando...' : 'Publicar comunicado'}
+          submitting={saving}
+          onSubmit={handlePublish}
+        >
               <div className="space-y-8">
                 <div className="grid gap-6 rounded-[26px] border border-primary/10 bg-card/80 p-6 shadow-sm xl:grid-cols-[minmax(0,1.15fr)_380px]">
                 <div className="space-y-2">
@@ -1562,17 +1742,9 @@ export default function Comunicados() {
                   </div>
                   ) : null}
                 </div>
-
-                <div className="flex justify-end pt-2">
-                  <Button className="h-14 rounded-2xl px-7 shadow-[0_16px_34px_rgba(22,163,74,0.24)]" onClick={handlePublish} disabled={saving}>
-                    <Send className="mr-2 h-4 w-4" />
-                    {saving ? 'Publicando...' : 'Publicar comunicado'}
-                  </Button>
-                </div>
               </div>
-            </CardContent>
-          </Card>
-        )}
+        </ComposerSheet>
+      ) : null}
 
         {isProfessor && (
           <Card>
@@ -1658,143 +1830,10 @@ export default function Comunicados() {
             </CardContent>
           </Card>
         )}
+        </div>
 
-        <Card>
-          <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="text-base">Mural de comunicados</CardTitle>
-              <p className="text-sm text-muted-foreground">Avisos organizados em um espaco proprio, sem misturar com a comunidade.</p>
-            </div>
-            <div className="w-full sm:max-w-xs">
-              <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar comunicado..." />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">Carregando comunicados...</p>
-            ) : comunicadosVisiveis.length === 0 ? (
-              <div className="rounded-[28px] border border-dashed p-8 text-center">
-                <BellRing className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Nenhum comunicado disponivel agora.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {comunicadosVisiveis.map((post) => (
-                  <div key={post.id} className="rounded-[30px] border border-border/70 bg-card/95 p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(15,23,42,0.06)]">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">{post.titulo || 'Novo comunicado'}</p>
-                          <Badge variant="destructive">Comunicado</Badge>
-                          <Badge variant="outline">
-                            <Users className="mr-1 h-3.5 w-3.5" />
-                            {post.turma_publico || 'Todas as turmas'}
-                          </Badge>
-                        </div>
-                        <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">{post.conteudo || 'Sem mensagem adicional.'}</p>
-                      </div>
-                      <div className="shrink-0 rounded-2xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          {formatDateTimeBR(post.created_at)}
-                        </div>
-                        {post.expires_at ? <p className="mt-1">Sai em {formatDateTimeBR(post.expires_at)}</p> : null}
-                        {canDeleteComunicado(post) ? (
-                          <div className="mt-3 flex justify-end">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="rounded-xl text-destructive hover:text-destructive"
-                              onClick={() => setDeleteTarget(post)}
-                              disabled={saving}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Apagar
-                            </Button>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {post.audio_url ? (
-                      <div className="mt-4">
-                        <AudioMessagePlayer
-                          src={post.audio_url}
-                          title="Audio do comunicado"
-                          durationSeconds={post.audio_duration_seconds}
-                        />
-                      </div>
-                    ) : null}
-
-                    {ensureArray(post.imagem_urls).length > 0 ? (
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        {ensureArray(post.imagem_urls).slice(0, 4).map((img, index) => (
-                          <div key={`${post.id}-${index}`} className="group relative overflow-hidden rounded-[24px] border">
-                            <img
-                              src={img}
-                              alt={`Imagem ${index + 1}`}
-                              className="h-44 w-full cursor-zoom-in object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                              onClick={() => openImagePreview(img, post?.titulo || `Imagem ${index + 1}`)}
-                            />
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              className="absolute right-2 top-2 h-9 w-9 rounded-full bg-white/92 shadow-sm backdrop-blur"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleDownloadPublishedImage(post, index);
-                              }}
-                              aria-label={`Baixar imagem ${index + 1}`}
-                            >
-                              <Download className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    {ensureArray(post.arquivos).length > 0 ? (
-                      <div className="mt-4 rounded-[24px] border border-emerald-100 bg-emerald-50/45 p-4 dark:border-white/10 dark:bg-emerald-950/15">
-                        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                          <FileStack className="h-4 w-4 text-emerald-700 dark:text-emerald-300" />
-                          Arquivos do comunicado
-                        </div>
-                        <div className="grid gap-3 lg:grid-cols-2">
-                          {ensureArray(post.arquivos).map((arquivo, index) => (
-                            <div key={`${post.id}-arquivo-${index}`} className="rounded-2xl border bg-white/90 p-3 shadow-sm dark:bg-slate-950/45">
-                              <div className="flex items-center gap-3">
-                                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">
-                                  <FileText className="h-4 w-4" />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{safeText(arquivo?.nome, 'Arquivo')}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {safeText(arquivo?.extensao || getFileExtension(arquivo?.nome), '').toUpperCase() || 'ARQ'} • {formatBytes(arquivo?.tamanho)}
-                                  </p>
-                                </div>
-                                <div className="flex shrink-0 gap-1">
-                                  {isPreviewableFile(arquivo) ? (
-                                    <Button type="button" size="icon" variant="ghost" onClick={() => openFilePreview(arquivo)} aria-label={`Pre visualizar ${safeText(arquivo?.nome, 'arquivo')}`}>
-                                      <Eye className="h-4 w-4" />
-                                    </Button>
-                                  ) : null}
-                                  <Button type="button" size="icon" variant="ghost" onClick={() => handleDownloadPublishedFile(arquivo)} aria-label={`Baixar ${safeText(arquivo?.nome, 'arquivo')}`}>
-                                    <Download className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
+
 
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && !saving && setDeleteTarget(null)}>
         <AlertDialogContent>

@@ -12,6 +12,7 @@ import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from './superAdminSecurity';
+import { mayModifyR2Object } from '../../../supabase/functions/_shared/r2-access.js';
 
 export interface Env {
   APP_ENV?: string;
@@ -37,8 +38,12 @@ export interface Env {
 
 type RouteHandler = (request: Request, env: Env) => Promise<Response> | Response;
 
-const DEFAULT_CORS_ALLOW_HEADERS = 'authorization, content-type, x-profile-role-hint, x-user-access-token';
+const DEFAULT_CORS_ALLOW_HEADERS = 'authorization, content-type, x-user-access-token';
 const DEFAULT_CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
+// Capacitor serves the bundled Android app from this local, HTTPS origin.
+// It is an application origin, not a development server, so it must remain
+// available when the API gateway is running in production.
+const NATIVE_APP_CORS_ORIGINS = new Set(['https://localhost', 'capacitor://localhost']);
 
 let firebaseAccessTokenCache: { token: string; expiresAt: number } | null = null;
 let supabaseServiceRoleJwtCache: { token: string; expiresAt: number } | null = null;
@@ -46,6 +51,8 @@ let supabaseServiceRoleJwtCache: { token: string; expiresAt: number } | null = n
 function isAllowedCorsOrigin(origin: string, env: Env) {
   const normalizedOrigin = String(origin || '').trim();
   if (!normalizedOrigin) return false;
+
+  if (NATIVE_APP_CORS_ORIGINS.has(normalizedOrigin)) return true;
 
   try {
     const url = new URL(normalizedOrigin);
@@ -3244,17 +3251,6 @@ function assertR2ObjectAccess(context: { isSuperAdmin: boolean; profile: Record<
   }
 }
 
-function buildPlatformMediaDownloadUrl(request: Request, env: Env, objectKey: string, fileName: string) {
-  const token = getUserToken(request);
-  const baseUrl = String(env.API_BASE_URL || new URL(request.url).origin).trim().replace(/\/+$/, '');
-  const params = new URLSearchParams({
-    objectKey,
-    fileName: fileName || 'arquivo',
-    accessToken: token,
-  });
-  return `${baseUrl}/v1/media/r2-download?${params.toString()}`;
-}
-
 async function handleDirectR2Storage(request: Request, env: Env, body: Record<string, unknown>) {
   if (!env.R2_BUCKET) return null;
 
@@ -3266,6 +3262,13 @@ async function handleDirectR2Storage(request: Request, env: Env, body: Record<st
 
   const context = await getR2AccessContext(request, env);
   assertR2ObjectAccess(context, objectKey);
+  if (['create_upload_url', 'upload_object', 'delete_object'].includes(operation) && !mayModifyR2Object({
+    isSuperAdmin: context.isSuperAdmin,
+    userId: String(context.caller.id),
+    profileId: String(context.profile?.id || ''),
+  }, objectKey)) {
+    throw new Error('Sem permissao para alterar arquivo de outro usuario.');
+  }
 
   if (operation === 'create_upload_url') {
     return {
@@ -3301,7 +3304,7 @@ async function handleDirectR2Storage(request: Request, env: Env, body: Record<st
     return {
       success: true,
       objectKey,
-      downloadUrl: buildPlatformMediaDownloadUrl(request, env, objectKey, String(body?.fileName || 'arquivo')),
+      downloadViaApi: true,
     };
   }
 
@@ -3325,6 +3328,10 @@ async function callSupabaseFunction(
   }
 
   const { supabaseUrl, publishableKey } = getSupabaseConfig(env);
+  const clientIp = request.headers.get('cf-connecting-ip')
+    || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || request.headers.get('x-real-ip')
+    || '';
   const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
     method: 'POST',
     headers: {
@@ -3333,6 +3340,7 @@ async function callSupabaseFunction(
       'x-user-access-token': userToken,
       'x-supabase-auth': userToken,
       'Content-Type': 'application/json',
+      ...(clientIp ? { 'cf-connecting-ip': clientIp, 'x-forwarded-for': clientIp } : {}),
     },
     body: JSON.stringify(body),
   });
@@ -3348,6 +3356,83 @@ async function callSupabaseFunction(
   }
 
   return payload;
+}
+
+const AI_WORKER_BASE_URL = 'https://api-bibliotecai.plataforma-bibliotecai.workers.dev';
+
+async function callBibliotecAiWorker(path: string, body: unknown) {
+  const response = await fetch(`${AI_WORKER_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  const payload = await parseResponse(response);
+  if (!response.ok) {
+    throw new Error(
+      (typeof payload === 'string' && payload.trim()) ||
+      payload?.error ||
+      payload?.message ||
+      `Falha no servico de IA (HTTP ${response.status}).`,
+    );
+  }
+  return payload;
+}
+
+async function requirePlatformUser(request: Request, env: Env) {
+  const user = await fetchSupabaseUser(request, env);
+  if (!user?.id) {
+    throw new Error('Nao autenticado.');
+  }
+  return user;
+}
+
+const ACTIVITY_FORM_MARKER = '[FORM_CONFIG_V1]';
+const ACTIVITY_SUBMISSION_MARKER = '[ENTREGA_PAYLOAD_V1]';
+
+function decodeActivityJson(value: string): Record<string, unknown> | null {
+  try {
+    const binary = atob(String(value || '').trim());
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function getAutomaticActivityScore(descricao: unknown, textoEntrega: unknown, pontosPossiveis: unknown) {
+  const description = String(descricao || '');
+  const configIndex = description.indexOf(ACTIVITY_FORM_MARKER);
+  if (configIndex < 0) return null;
+
+  const config = decodeActivityJson(description.slice(configIndex + ACTIVITY_FORM_MARKER.length));
+  const questions = Array.isArray(config?.perguntas) ? config.perguntas : [];
+  const objectiveQuestions = questions.filter((question: any) => (
+    question?.tipo === 'multipla_escolha'
+    && Array.isArray(question?.opcoes)
+    && Number.isInteger(question?.correta)
+    && question.correta >= 0
+    && question.correta < question.opcoes.length
+  ));
+  if (objectiveQuestions.length === 0) return null;
+
+  const rawSubmission = String(textoEntrega || '');
+  const submission = rawSubmission.startsWith(ACTIVITY_SUBMISSION_MARKER)
+    ? decodeActivityJson(rawSubmission.slice(ACTIVITY_SUBMISSION_MARKER.length))
+    : null;
+  const answers = submission?.respostas && typeof submission.respostas === 'object'
+    ? submission.respostas as Record<string, unknown>
+    : {};
+  const correct = objectiveQuestions.filter((question: any, index: number) => {
+    const questionId = String(question?.id || `q_${index + 1}`);
+    return String(answers[questionId] || '').trim() === String(question.opcoes[question.correta] || '').trim();
+  }).length;
+  const totalPoints = Math.max(0, Number(pontosPossiveis || 0));
+  return {
+    correct,
+    total: objectiveQuestions.length,
+    points: Number(((totalPoints / objectiveQuestions.length) * correct).toFixed(2)),
+    onlyObjective: questions.length === objectiveQuestions.length,
+  };
 }
 
 const routes: Record<string, RouteHandler> = {
@@ -3393,6 +3478,26 @@ const routes: Record<string, RouteHandler> = {
     });
     return jsonResponse({ success: true });
   },
+
+  // Same-origin AI proxy for the SPA (avoids browser CORS "failed to fetch").
+  'POST /v1/ai/text': async (request, env) => {
+    await requirePlatformUser(request, env);
+    const body = await request.json().catch(() => ({}));
+    const payload = await callBibliotecAiWorker('/text', body);
+    return jsonResponse({ success: true, ...(payload && typeof payload === 'object' ? payload : { payload }) });
+  },
+  'POST /v1/ai/image': async (request, env) => {
+    await requirePlatformUser(request, env);
+    const body = await request.json().catch(() => ({}));
+    const payload = await callBibliotecAiWorker('/image', body);
+    return jsonResponse({ success: true, ...(payload && typeof payload === 'object' ? payload : { payload }) });
+  },
+  'POST /v1/ai/audio': async (request, env) => {
+    await requirePlatformUser(request, env);
+    const body = await request.json().catch(() => ({}));
+    const payload = await callBibliotecAiWorker('/audio', body);
+    return jsonResponse({ success: true, ...(payload && typeof payload === 'object' ? payload : { payload }) });
+  },
   'POST /v1/media/r2-storage': async (request, env) => {
     try {
       const body = await request.json().catch(() => ({}));
@@ -3431,7 +3536,9 @@ const routes: Record<string, RouteHandler> = {
         headers: {
           ...buildCorsHeaders(request, env),
           'Content-Type': object.httpMetadata?.contentType || 'application/octet-stream',
-          'Content-Disposition': `attachment; filename="${fileName.replace(/"/g, '')}"`,
+          'Content-Disposition': `attachment; filename="${fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100)}"`,
+          'Cache-Control': 'private, no-store',
+          'X-Content-Type-Options': 'nosniff',
         },
       });
     } catch (error) {
@@ -3919,10 +4026,6 @@ const routes: Record<string, RouteHandler> = {
       const entrega = ensureArray<Record<string, unknown>>(entregaPayload)[0] || null;
       if (!entrega?.id) {
         return jsonResponse({ success: false, error: 'Entrega nao encontrada.' }, 404);
-      }
-      const currentStatus = String(entrega?.status || '').trim().toLowerCase();
-      if (['aprovada', 'entregue', 'concluida', 'concluido'].includes(currentStatus)) {
-        return jsonResponse({ success: false, error: 'Esta entrega ja foi finalizada e nao pode ser alterada.' }, 409);
       }
       const atividadePayload = await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: 'id,professor_id', id: `eq.${String(entrega?.atividade_id || '')}`, limit: '1' }).toString()}`);
       const atividade = ensureArray<Record<string, unknown>>(atividadePayload)[0] || null;
@@ -6084,7 +6187,7 @@ const routes: Record<string, RouteHandler> = {
             escola_id: `eq.${escolaId}`,
           }).toString()}`
           : '/rest/v1/livros?select=id,disponivel,escola_id',
-      ),
+      ).catch(() => []),
       supabaseAdminRequest(
         env,
         isSchoolScopedDashboard
@@ -6093,7 +6196,7 @@ const routes: Record<string, RouteHandler> = {
             escola_id: `eq.${escolaId}`,
           }).toString()}`
           : '/rest/v1/usuarios_biblioteca?select=id,escola_id',
-      ),
+      ).catch(() => []),
       supabaseAdminRequest(
         env,
         isSchoolScopedDashboard
@@ -6102,9 +6205,9 @@ const routes: Record<string, RouteHandler> = {
             'livros.escola_id': `eq.${escolaId}`,
           }).toString()}`
           : '/rest/v1/emprestimos?select=id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livro_id,livros(titulo,escola_id),usuarios_biblioteca(nome,escola_id)',
-      ),
-      supabaseAdminRequest(env, '/rest/v1/tenants?select=id,nome,subdominio,ativo,escola_id'),
-      supabaseAdminRequest(env, '/rest/v1/escolas?select=id,nome,gestor_id'),
+      ).catch(() => []),
+      supabaseAdminRequest(env, '/rest/v1/tenants?select=id,nome,subdominio,ativo,escola_id').catch(() => []),
+      supabaseAdminRequest(env, '/rest/v1/escolas?select=id,nome,gestor_id').catch(() => []),
     ]);
 
     const [livros, usuarios, emprestimos, tenants, escolas] = baseQueries.map((item) => (Array.isArray(item) ? item : []));
@@ -7758,7 +7861,7 @@ const routes: Record<string, RouteHandler> = {
           select: 'id,livro_id,usuario_id,data_emprestimo,data_devolucao_prevista,data_devolucao_real,status,created_at,livros(titulo,autor,escola_id),usuarios_biblioteca(nome,email,turma,tipo,escola_id)',
           order: 'data_emprestimo.desc',
         }).toString()}`,
-      ),
+      ).catch(() => []),
       supabaseAdminRequest(
         env,
         `/rest/v1/livros?${new URLSearchParams({
@@ -7766,7 +7869,7 @@ const routes: Record<string, RouteHandler> = {
           escola_id: `eq.${profile.escola_id}`,
           order: 'titulo.asc',
         }).toString()}`,
-      ),
+      ).catch(() => []),
       supabaseAdminRequest(
         env,
         `/rest/v1/usuarios_biblioteca?${new URLSearchParams({
@@ -7774,7 +7877,7 @@ const routes: Record<string, RouteHandler> = {
           escola_id: `eq.${profile.escola_id}`,
           order: 'nome.asc',
         }).toString()}`,
-      ),
+      ).catch(() => []),
       canManageLoans
         ? supabaseAdminRequest(
             env,
@@ -7782,7 +7885,7 @@ const routes: Record<string, RouteHandler> = {
               select: 'id,livro_id,usuario_id,mensagem,resposta,status,created_at,livros(id,titulo,autor,disponivel,escola_id),usuarios_biblioteca(nome,email,turma,tipo,escola_id),solicitacoes_emprestimo_mensagens(id,mensagem,autor_tipo,created_at)',
               order: 'created_at.desc',
             }).toString()}`,
-          )
+          ).catch(() => [])
         : Promise.resolve([]),
     ]);
 
@@ -8314,7 +8417,7 @@ const routes: Record<string, RouteHandler> = {
               escola_id: `eq.${escolaId}`,
               order: 'titulo.asc',
             }).toString()}`,
-          )
+          ).catch(() => [])
         : Promise.resolve([]),
       supabaseAdminRequest(
         env,
@@ -8323,7 +8426,7 @@ const routes: Record<string, RouteHandler> = {
           escola_id: 'is.null',
           order: 'titulo.asc',
         }).toString()}`,
-      ),
+      ).catch(() => []),
       escolaId
         ? supabaseAdminRequest(
             env,
@@ -8332,7 +8435,7 @@ const routes: Record<string, RouteHandler> = {
               escola_id: `eq.${escolaId}`,
               order: 'nome.asc',
             }).toString()}`,
-          )
+          ).catch(() => [])
         : Promise.resolve([]),
       escolaId
         ? supabaseAdminRequest(
@@ -9087,13 +9190,9 @@ const routes: Record<string, RouteHandler> = {
     }
 
     const [usuarios, turmas, professorTurmas] = await Promise.all([
-      supabaseAdminRequest(env, usuariosPath),
-      supabaseAdminRequest(env, turmasPath),
-      supabaseAdminRequest(env, professorTurmasPath).catch((error) => {
-        const message = String(error instanceof Error ? error.message : error || '').toLowerCase();
-        if (message.includes('does not exist') || message.includes('could not find the table')) return [];
-        throw error;
-      }),
+      supabaseAdminRequest(env, usuariosPath).catch(() => []),
+      supabaseAdminRequest(env, turmasPath).catch(() => []),
+      supabaseAdminRequest(env, professorTurmasPath).catch(() => []),
     ]);
 
     const professorTurmasMap: Record<string, string[]> = {};
@@ -9536,6 +9635,11 @@ const routes: Record<string, RouteHandler> = {
   'GET /v1/aluno/comunidade': async (request, env) => {
     const { profile, escolaId, alunoId, isProfessor, canPublicarComunicado } = await getCommunityModuleContext(request, env);
 
+    await supabaseAdminRequest(env, '/rest/v1/rpc/cleanup_expired_comunicados', {
+      method: 'POST',
+      body: {},
+    }).catch(() => null);
+
     const [
       livros,
       likes,
@@ -9546,8 +9650,8 @@ const routes: Record<string, RouteHandler> = {
       usuariosSala,
       professorTurmasEscola,
     ] = await Promise.all([
-      supabaseAdminRequest(env, '/rest/v1/livros?select=id,titulo&order=titulo.asc'),
-      supabaseAdminRequest(env, '/rest/v1/comunidade_curtidas?select=post_id,usuario_id'),
+      supabaseAdminRequest(env, '/rest/v1/livros?select=id,titulo&order=titulo.asc').catch(() => []),
+      supabaseAdminRequest(env, '/rest/v1/comunidade_curtidas?select=post_id,usuario_id').catch(() => []),
       supabaseAdminRequest(env, '/rest/v1/audiobooks_biblioteca?select=id,titulo,autor&order=titulo.asc').catch(() => []),
       escolaId
         ? fetchCommunityPosts(env, new URLSearchParams({
@@ -9580,13 +9684,15 @@ const routes: Record<string, RouteHandler> = {
       extras.set(key, nome);
     });
 
+    const postsVisiveis = (Array.isArray(posts) ? posts : []).filter((item) => !isExpiredComunicado(item));
+
     return jsonResponse({
       success: true,
       perfil: profile,
       livros: Array.isArray(livros) ? livros : [],
       likes: Array.isArray(likes) ? likes : [],
       audiobooks: Array.isArray(audiobooks) ? audiobooks : [],
-      posts: Array.isArray(posts) ? posts : [],
+      posts: postsVisiveis,
       professorTurmas: [...new Set((Array.isArray(professorTurmas) ? professorTurmas : []).map((item) => String(item?.turma || '').trim()).filter(Boolean))].sort(),
       turmasPublicacao: [...oficiais, ...Array.from(extras.values())].sort((a, b) => a.localeCompare(b, 'pt-BR')),
     });
@@ -9626,12 +9732,12 @@ const routes: Record<string, RouteHandler> = {
       notificacoesLidas,
       preferenciasAluno,
     ] = await Promise.all([
-      supabaseAdminRequest(env, `/rest/v1/emprestimos?${new URLSearchParams({ select: '*,livros(titulo,autor)', usuario_id: `eq.${profile.id}`, order: 'data_emprestimo.desc' }).toString()}`),
-      supabaseAdminRequest(env, `/rest/v1/avaliacoes_livros?${new URLSearchParams({ select: '*,livros(titulo,autor)', usuario_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
-      supabaseAdminRequest(env, `/rest/v1/lista_desejos?${new URLSearchParams({ select: 'livro_id', usuario_id: `eq.${profile.id}` }).toString()}`),
-      supabaseAdminRequest(env, `/rest/v1/sugestoes_livros?${new URLSearchParams({ select: '*,livros(titulo,autor)', aluno_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
-        supabaseAdminRequest(env, `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({ select: '*,livros(titulo,autor),solicitacoes_emprestimo_mensagens(id,mensagem,autor_tipo,created_at)', usuario_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
-      supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: '*,livros(titulo,autor),professor:usuarios_biblioteca!atividades_leitura_professor_id_fkey(nome)', aluno_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`),
+      supabaseAdminRequest(env, `/rest/v1/emprestimos?${new URLSearchParams({ select: '*,livros(titulo,autor)', usuario_id: `eq.${profile.id}`, order: 'data_emprestimo.desc' }).toString()}`).catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/avaliacoes_livros?${new URLSearchParams({ select: '*,livros(titulo,autor)', usuario_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`).catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/lista_desejos?${new URLSearchParams({ select: 'livro_id', usuario_id: `eq.${profile.id}` }).toString()}`).catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/sugestoes_livros?${new URLSearchParams({ select: '*,livros(titulo,autor)', aluno_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`).catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/solicitacoes_emprestimo?${new URLSearchParams({ select: '*,livros(titulo,autor),solicitacoes_emprestimo_mensagens(id,mensagem,autor_tipo,created_at)', usuario_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`).catch(() => []),
+      supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({ select: '*,livros(titulo,autor),professor:usuarios_biblioteca!atividades_leitura_professor_id_fkey(nome)', aluno_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`).catch(() => []),
       supabaseAdminRequest(env, `/rest/v1/atividades_entregas?${new URLSearchParams({ select: '*', aluno_id: `eq.${profile.id}`, order: 'updated_at.desc' }).toString()}`).catch(() => []),
       supabaseAdminRequest(env, '/rest/v1/audiobooks_biblioteca?select=*,livros(titulo,autor)&order=created_at.desc').catch(() => []),
       supabaseAdminRequest(env, `/rest/v1/aluno_audiobooks?${new URLSearchParams({ select: '*,audiobooks_biblioteca(*,livros(titulo,autor))', aluno_id: `eq.${profile.id}`, order: 'created_at.desc' }).toString()}`).catch(() => []),
@@ -9944,7 +10050,7 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Atividade invalida.' }, 400);
     }
     const atividadePayload = await supabaseAdminRequest(env, `/rest/v1/atividades_leitura?${new URLSearchParams({
-      select: 'id,data_entrega',
+      select: 'id,data_entrega,descricao,pontos_extras',
       id: `eq.${atividadeId}`,
       limit: '1',
     }).toString()}`);
@@ -9967,13 +10073,26 @@ const routes: Record<string, RouteHandler> = {
       return jsonResponse({ success: false, error: 'Esta atividade ja foi enviada e nao pode mais ser modificada.' }, 409);
     }
 
+    const textoEntrega = String(body?.textoEntrega || '');
+    const automaticScore = getAutomaticActivityScore(
+      atividade.descricao,
+      textoEntrega,
+      atividade.pontos_extras,
+    );
+    const status = automaticScore ? 'em_revisao' : String(body?.status || 'enviada');
+    const feedbackAutomatico = automaticScore
+      ? `Correção automática: ${automaticScore.correct}/${automaticScore.total} questão(ões) objetiva(s) correta(s). ${automaticScore.onlyObjective ? 'Aguardando aprovação do professor.' : 'Questões abertas ainda aguardam revisão do professor.'}`
+      : null;
+
     await supabaseAdminRequest(env, '/rest/v1/atividades_entregas', {
       method: 'POST',
       body: [{
         atividade_id: atividadeId,
         aluno_id: profile.id,
-        texto_entrega: String(body?.textoEntrega || ''),
-        status: String(body?.status || 'enviada'),
+        texto_entrega: textoEntrega,
+        status,
+        pontos_ganhos: automaticScore?.points || 0,
+        feedback_professor: feedbackAutomatico,
         enviado_em: body?.enviadoEm || new Date().toISOString(),
       }],
       headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
@@ -10099,7 +10218,7 @@ const routes: Record<string, RouteHandler> = {
   },
 
   'GET /v1/aluno/comunidade/feed': async (request, env) => {
-    await getCommunityModuleContext(request, env);
+    const { profile, escolaId } = await getCommunityModuleContext(request, env);
     const url = new URL(request.url);
     const offset = Math.max(0, Number.parseInt(url.searchParams.get('offset') || '0', 10) || 0);
     const limit = Math.min(50, Math.max(1, Number.parseInt(url.searchParams.get('limit') || '20', 10) || 20));
@@ -10107,19 +10226,37 @@ const routes: Record<string, RouteHandler> = {
       order: 'created_at.desc',
       offset: String(offset),
       limit: String(limit),
+      ...(escolaId ? { escola_id: `eq.${escolaId}` } : {}),
     })).catch(() => []);
 
-    return jsonResponse({ success: true, posts: Array.isArray(posts) ? posts : [] });
+    const postsVisiveis = (Array.isArray(posts) ? posts : []).filter((item) => !isExpiredComunicado(item));
+    return jsonResponse({ success: true, posts: postsVisiveis, profileId: profile?.id || null });
   },
 
   'GET /v1/aluno/comunidade/posts/:id': async (request, env) => {
-    await getCommunityModuleContext(request, env);
+    const { escolaId, isSuperAdmin, isGestor, isBibliotecaria } = await getCommunityModuleContext(request, env);
     const postId = getPathParam(request, /^\/v1\/aluno\/comunidade\/posts\/([^/]+)$/i);
-    const [post] = await fetchCommunityPosts(env, new URLSearchParams({
+    const canCrossEscola = Boolean(isSuperAdmin || isGestor || isBibliotecaria);
+
+    const params = new URLSearchParams({
       id: `eq.${postId}`,
       limit: '1',
-    })) as Array<Record<string, unknown>>;
-    return jsonResponse({ success: true, post: post || null });
+      ...(escolaId && !canCrossEscola ? { escola_id: `eq.${escolaId}` } : {}),
+    });
+
+    let post: Record<string, unknown> | null = null;
+    try {
+      const [row] = await fetchCommunityPosts(env, params) as Array<Record<string, unknown>>;
+      post = row || null;
+    } catch {
+      post = null;
+    }
+
+    if (!post || isExpiredComunicado(post)) {
+      return jsonResponse({ success: true, post: null });
+    }
+
+    return jsonResponse({ success: true, post });
   },
 
   'POST /v1/aluno/comunidade/posts': async (request, env) => {
@@ -10130,7 +10267,29 @@ const routes: Record<string, RouteHandler> = {
 
     const body = await request.json().catch(() => ({}));
     const tipoPost = String(body?.tipo || '').trim().toLowerCase();
+    const allowedTipos = new Set(['resenha', 'sugestao', 'dica', 'quiz', 'comunicado']);
+    if (!allowedTipos.has(tipoPost)) {
+      return jsonResponse({ success: false, error: 'Tipo de publicacao invalido.' }, 400);
+    }
+
     const turmaPublico = body?.turma_publico ? String(body.turma_publico).trim() : null;
+    const insertFields = [
+      'tipo',
+      'titulo',
+      'conteudo',
+      'livro_id',
+      'audiobook_id',
+      'tags',
+      'imagem_urls',
+      'arquivos',
+      'audio_url',
+      'audio_duration_seconds',
+      'expires_at',
+    ] as const;
+    const sanitizedBody: Record<string, unknown> = {};
+    for (const field of insertFields) {
+      if (body?.[field] !== undefined) sanitizedBody[field] = body[field];
+    }
 
     if (tipoPost === 'comunicado') {
       if (!canPublicarComunicado) {
@@ -10176,12 +10335,19 @@ const routes: Record<string, RouteHandler> = {
       }
     }
 
-    const created = await insertCommunityPost(env, {
-      ...body,
-      autor_id: alunoId,
-      escola_id: escolaId,
-      turma_publico: turmaPublico,
-    }) as Array<Record<string, unknown>>;
+    let created: Array<Record<string, unknown>> = [];
+    try {
+      created = await insertCommunityPost(env, {
+        ...sanitizedBody,
+        tipo: tipoPost,
+        autor_id: alunoId,
+        escola_id: escolaId,
+        turma_publico: turmaPublico,
+      }) as Array<Record<string, unknown>>;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Falha ao salvar a publicacao.';
+      return jsonResponse({ success: false, error: message }, 400);
+    }
 
     if (tipoPost === 'comunicado') {
       await notifyComunicadoAudience(env, {
@@ -10284,14 +10450,72 @@ const routes: Record<string, RouteHandler> = {
   },
 
   'POST /v1/aluno/comunidade/quiz-tentativas': async (request, env) => {
-    await getCommunityModuleContext(request, env);
+    const { alunoId, escolaId } = await getCommunityModuleContext(request, env);
     const body = await request.json().catch(() => ({}));
-    await supabaseAdminRequest(env, '/rest/v1/comunidade_quiz_tentativas', {
+    const postId = String(body?.post_id || '').trim();
+    const acertos = Number(body?.acertos);
+    const total = Number(body?.total);
+
+    if (!postId || !alunoId) {
+      return jsonResponse({ success: false, error: 'Dados invalidos para registrar a tentativa.' }, 400);
+    }
+    if (!Number.isFinite(acertos) || !Number.isFinite(total) || total <= 0 || acertos < 0) {
+      return jsonResponse({ success: false, error: 'Resultado de quiz invalido.' }, 400);
+    }
+
+    const insertedPayload = await supabaseAdminRequest(env, '/rest/v1/comunidade_quiz_tentativas', {
       method: 'POST',
-      body,
-      headers: { Prefer: 'return=minimal' },
+      body: {
+        post_id: postId,
+        aluno_id: alunoId,
+        escola_id: escolaId,
+        acertos: Math.floor(acertos),
+        total: Math.floor(total),
+      },
+      headers: { Prefer: 'return=representation' },
     });
-    return jsonResponse({ success: true });
+    const inserted = Array.isArray(insertedPayload) ? insertedPayload[0] : insertedPayload;
+
+    if (!inserted?.id) {
+      return jsonResponse({ success: false, error: 'Nao foi possivel registrar a tentativa do quiz.' }, 500);
+    }
+
+    return jsonResponse({ success: true, tentativa: inserted });
+  },
+  'POST /v1/aluno/quiz-livro-tentativas': async (request, env) => {
+    const { alunoId, escolaId } = await getCommunityModuleContext(request, env);
+    const body = await request.json().catch(() => ({}));
+    const livroId = String(body?.livro_id || '').trim();
+    const tema = String(body?.tema || 'geral').trim().slice(0, 120) || 'geral';
+    const acertos = Number(body?.acertos);
+    const total = Number(body?.total);
+
+    if (!alunoId) {
+      return jsonResponse({ success: false, error: 'Perfil do aluno nao encontrado.' }, 400);
+    }
+    if (!Number.isFinite(acertos) || !Number.isFinite(total) || total <= 0 || acertos < 0) {
+      return jsonResponse({ success: false, error: 'Resultado de quiz invalido.' }, 400);
+    }
+
+    const insertedPayload = await supabaseAdminRequest(env, '/rest/v1/aluno_quiz_livro_tentativas', {
+      method: 'POST',
+      body: {
+        aluno_id: alunoId,
+        escola_id: escolaId,
+        livro_id: livroId || null,
+        tema,
+        acertos: Math.floor(acertos),
+        total: Math.floor(total),
+      },
+      headers: { Prefer: 'return=representation' },
+    });
+    const inserted = Array.isArray(insertedPayload) ? insertedPayload[0] : insertedPayload;
+
+    if (!inserted?.id) {
+      return jsonResponse({ success: false, error: 'Nao foi possivel registrar a tentativa do quiz do livro.' }, 500);
+    }
+
+    return jsonResponse({ success: true, tentativa: inserted });
   },
   'POST /v1/aluno/comunidade/quiz-ranking': async (request, env) => {
     const { alunoId, escolaId } = await getCommunityModuleContext(request, env);
@@ -10655,12 +10879,29 @@ export default {
     try {
       return withCorsHeaders(await handler(request, env), request, env);
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Falha inesperada no worker.';
+      const normalized = message.toLowerCase();
+      const status = (
+        normalized.includes('nao autenticado')
+        || normalized.includes('não autenticado')
+        || normalized.includes('sessao invalida')
+        || normalized.includes('sessão inválida')
+        || normalized.includes('token do usuario ausente')
+        || normalized.includes('token do usuário ausente')
+      ) ? 401 : (
+        normalized.includes('perfil do usuario nao encontrado')
+        || normalized.includes('perfil do usuário não encontrado')
+        || normalized.includes('nao foi possivel identificar a escola')
+        || normalized.includes('não foi possível identificar a escola')
+        || normalized.includes('sem permissao')
+        || normalized.includes('sem permissão')
+      ) ? 400 : 500;
       return withCorsHeaders(jsonResponse(
         {
           success: false,
-          error: error instanceof Error ? error.message : 'Falha inesperada no worker.',
+          error: message,
         },
-        500,
+        status,
       ), request, env);
     }
   },

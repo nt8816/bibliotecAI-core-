@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Trophy,
   Medal,
@@ -136,14 +136,20 @@ export default function RankingAluno() {
       setLoading(true);
       try {
         const payload = await fetchRankingData();
-        const rankingCalculado = (payload?.ranking || []).map((aluno) => ({
-          ...aluno,
-          nome: repairMojibakeText(aluno.nome),
-          turma: repairMojibakeText(aluno.turma),
-          xpTotal: Number(aluno.xp_total || aluno.xpTotal || 0),
-          nivel: Number(aluno.nivel || getNivelFromXp(aluno.xp_total || aluno.xpTotal || 0)),
-          livrosLidos: Number(aluno.livros_lidos || aluno.livrosLidos || 0),
-        }));
+        const rankingCalculado = (payload?.ranking || [])
+          .map((aluno) => ({
+            ...aluno,
+            nome: repairMojibakeText(aluno.nome),
+            turma: repairMojibakeText(aluno.turma),
+            xpTotal: Number(aluno.xp_total || aluno.xpTotal || 0),
+            nivel: Number(aluno.nivel || getNivelFromXp(aluno.xp_total || aluno.xpTotal || 0)),
+            livrosLidos: Number(aluno.livros_lidos || aluno.livrosLidos || 0),
+          }))
+          .sort((a, b) => {
+            if (b.livrosLidos !== a.livrosLidos) return b.livrosLidos - a.livrosLidos;
+            if (b.xpTotal !== a.xpTotal) return b.xpTotal - a.xpTotal;
+            return String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR');
+          });
 
         if (!active) return;
         setCurrentStudentId(isAluno ? payload?.currentStudentId || null : null);
