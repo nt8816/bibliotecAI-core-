@@ -30,3 +30,5 @@ android/app/google-services.json
 *.sln
 *.sw?
 .vercel
+supabase/.temp/
+supabase/.branches/
