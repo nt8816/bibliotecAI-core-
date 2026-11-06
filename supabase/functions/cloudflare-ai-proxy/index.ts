@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { checkAiRateLimit } from '../_shared/ai-rate-limit.js';
 
 const isDev = !['production', 'prod'].includes(String(Deno.env.get('SUPABASE_ENV') || '').trim().toLowerCase());
 const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", ...(isDev ? ['http://localhost:5173', 'http://localhost:3000'] : [])];
@@ -28,7 +29,6 @@ const MAX_IMAGE_PROMPT = 2000;
 const MAX_AUDIO_PROMPT = 4000;
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 const RATE_LIMIT_AUTH = 60;
-const RATE_LIMIT_ANON = 20;
 
 const SECRET_PATTERNS: RegExp[] = [
   /api[_-]?key/i,
@@ -233,14 +233,10 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Conteúdo sensível detectado. Pedido bloqueado.' }, 400);
     }
 
-    const rateKey = `${userId || 'anon'}:${ip || 'noip'}:${path}`;
-    const rateLimit = userId ? RATE_LIMIT_AUTH : RATE_LIMIT_ANON;
+    const rateKey = `ai:${userId}:${path}`;
+    const rateLimit = RATE_LIMIT_AUTH;
     try {
-      const { data: allowed } = await supabaseAdmin.rpc('check_ai_rate_limit', {
-        _key: rateKey,
-        _limit: rateLimit,
-        _window_seconds: RATE_LIMIT_WINDOW_SECONDS,
-      }).single();
+      const allowed = await checkAiRateLimit(supabaseAdmin, rateKey, rateLimit, RATE_LIMIT_WINDOW_SECONDS);
 
       if (allowed === false) {
         await logSecurityEvent(supabaseAdmin, {

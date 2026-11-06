@@ -56,6 +56,7 @@ export async function requestPlatformApi(routePath, {
   auth = true,
   retryOnUnauthorized = true,
   retryOnNetworkError = true,
+  responseType = 'json',
 } = {}) {
   if (!isPlatformApiConfigured()) {
     const error = new Error('Platform API nao configurada.');
@@ -106,7 +107,7 @@ export async function requestPlatformApi(routePath, {
     }
   }
 
-  const payload = await parseResponse(response);
+  const payload = response.ok && responseType === 'blob' ? await response.blob() : await parseResponse(response);
 
   if (!response.ok) {
     const message =

@@ -26,14 +26,6 @@ function generateSecurePassword(length = 16): string {
 }
 
 const MATRICULA_REGEX = /^[A-Za-z0-9._-]{6,32}$/;
-const DUPLICATE_EMAIL_MARKERS = ['already been registered', 'already exists', 'already registered'];
-
-async function findAuthUserByEmail(adminClient: ReturnType<typeof createClient>, email: string) {
-  const { data, error } = await adminClient.auth.admin.listUsers({ filter: `email=eq.${email}` });
-  if (error) throw error;
-  return data?.users?.[0] || null;
-}
-
 async function checkRateLimit(supabaseAdmin: any, key: string, limit = 60, windowSeconds = 60): Promise<boolean> {
   try {
     const { data, error } = await supabaseAdmin.rpc('check_ai_rate_limit', {
@@ -104,6 +96,7 @@ Deno.serve(async (req) => {
     if (callerProfile.tipo !== 'gestor' && callerProfile.tipo !== 'bibliotecaria') {
       return jsonResponse({ success: false, error: 'Sem permissão para criar aluno' }, 403);
     }
+    if (!callerProfile.escola_id) return jsonResponse({ success: false, error: 'Escola do solicitante não identificada' }, 403);
 
     // Key by the authenticated manager, not by IP: Worker-proxied calls share one egress IP.
     const rateKey = `user:${callerId}:provisionar-aluno`;
@@ -147,6 +140,9 @@ Deno.serve(async (req) => {
     if (existingError) {
       return jsonResponse({ success: false, error: 'Não foi possível verificar matrícula' }, 500);
     }
+    if (existingByMatricula && existingByMatricula.escola_id !== callerProfile.escola_id) {
+      return jsonResponse({ success: false, error: 'Matrícula indisponível' }, 409);
+    }
 
     if (existingByMatricula?.user_id) {
       return jsonResponse({ success: false, error: 'Esta matrícula já está vinculada a uma conta ativa' }, 409);
@@ -163,27 +159,7 @@ Deno.serve(async (req) => {
     });
 
     if (createAuthError) {
-      const createAuthMessage = String(createAuthError.message || '').toLowerCase();
-      if (!DUPLICATE_EMAIL_MARKERS.some((marker) => createAuthMessage.includes(marker))) {
-        return jsonResponse({ success: false, error: 'Não foi possível criar credenciais do aluno' }, 400);
-      }
-
-      const existingAuthUser = await findAuthUserByEmail(adminClient, authEmail);
-      if (!existingAuthUser?.id) {
-        return jsonResponse({ success: false, error: 'A conta de autenticação já existe, mas não foi possível reutilizá-la.' }, 409);
-      }
-
-      const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(existingAuthUser.id, {
-        password: authPassword,
-        email_confirm: true,
-        user_metadata: { ...(existingAuthUser.user_metadata || {}), nome },
-      });
-
-      if (updateAuthError) {
-        return jsonResponse({ success: false, error: 'Não foi possível atualizar a conta existente do aluno' }, 400);
-      }
-
-      userId = existingAuthUser.id;
+      return jsonResponse({ success: false, error: 'Não foi possível criar credenciais; verifique possível conflito de matrícula' }, 409);
     } else if (authData?.user?.id) {
       userId = authData.user.id;
       createdNewUser = true;

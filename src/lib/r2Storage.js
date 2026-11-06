@@ -171,6 +171,14 @@ export async function getR2DownloadUrl(objectKey, fileName) {
     throw new Error(buildR2NetworkErrorMessage(error, 'preparar o download'));
   }
 
+  if (payload.downloadViaApi) {
+    const params = new URLSearchParams({ objectKey, fileName: fileName || 'arquivo' });
+    const blob = await requestPlatformApi(`/v1/media/r2-download?${params}`, { responseType: 'blob' });
+    // A blob URL inherits the application's origin: never allow active HTML, SVG or XML.
+    const safeType = /^(image\/(png|jpeg|gif|webp|avif)|audio\/(mpeg|mp4|ogg|wav|webm)|video\/(mp4|webm)|application\/pdf)$/i.test(blob.type)
+      ? blob.type : 'application/octet-stream';
+    return URL.createObjectURL(new Blob([blob], { type: safeType }));
+  }
   return payload.downloadUrl;
 }
 
@@ -192,4 +200,3 @@ export async function deleteR2Object(objectKey) {
     throw new Error(buildR2NetworkErrorMessage(error, 'excluir o arquivo'));
   }
 }
-

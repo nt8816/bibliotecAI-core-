@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { mayModifyR2Object } from '../_shared/r2-access.js';
 
 const isDev = !['production', 'prod'].includes(String(Deno.env.get('SUPABASE_ENV') || '').trim().toLowerCase());
 const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", ...(isDev ? ['http://localhost:5173', 'http://localhost:3000'] : [])];
@@ -224,6 +225,11 @@ Deno.serve(async (req) => {
     }
     if (isSuperAdmin && !objectSchoolId) {
       return jsonResponse({ success: false, error: 'Chave do objeto invalida para o R2.' }, 400);
+    }
+    if (['create_upload_url', 'upload_object', 'delete_object'].includes(operation) && !mayModifyR2Object({
+      isSuperAdmin, userId: caller.id, profileId: String(profile?.id || ''),
+    }, objectKey)) {
+      return jsonResponse({ success: false, error: 'Sem permissao para alterar arquivo de outro usuario.' }, 403);
     }
 
     const s3 = new S3Client({

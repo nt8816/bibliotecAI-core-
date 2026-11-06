@@ -29,8 +29,9 @@ describe('Workers AI models are not deprecated', () => {
     expect(proxy).not.toContain('api-bibliotecai.ntn3223.workers.dev');
   });
 
-  it('edge proxy fails open on rate-limit RPC errors', () => {
-    expect(proxy.toLowerCase()).toContain('fail open');
+  it('edge proxy fails closed on rate-limit RPC errors', () => {
+    expect(proxy).toContain('checkAiRateLimit');
+    expect(proxy.toLowerCase()).toContain('fail closed');
   });
 
   it('frontend uses same-origin Platform AI routes first', () => {

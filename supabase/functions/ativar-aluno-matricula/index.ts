@@ -2,14 +2,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getCorsHeaders, jsonResponse } from '../_shared/cors.ts';
 
 const MATRICULA_REGEX = /^[A-Za-z0-9._-]{6,32}$/;
-const DUPLICATE_EMAIL_MARKERS = ['already been registered', 'already exists', 'already registered'];
-
-async function findAuthUserByEmail(adminClient: ReturnType<typeof createClient>, email: string) {
-  const { data, error } = await adminClient.auth.admin.listUsers({ filter: `email=eq.${email}` });
-  if (error) throw error;
-  return data?.users?.[0] || null;
-}
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: getCorsHeaders(req) });
@@ -39,6 +31,13 @@ Deno.serve(async (req) => {
     if (!hasAccess) {
       return jsonResponse(req, { success: false, error: 'Sem permissao para ativar contas' }, 403);
     }
+    const isSuperAdmin = (callerRoles || []).some((r) => r.role === 'super_admin');
+    const { data: callerProfile, error: callerProfileError } = await authClient
+      .from('usuarios_biblioteca').select('escola_id').eq('user_id', user.id)
+      .order('updated_at', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+    if (!isSuperAdmin && (callerProfileError || !callerProfile?.escola_id)) {
+      return jsonResponse(req, { success: false, error: 'Escola do solicitante nao identificada' }, 403);
+    }
 
     let payload: Record<string, unknown>;
     try {
@@ -64,11 +63,13 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const { data: aluno, error: alunoError } = await adminClient
+    let alunoQuery = adminClient
       .from('usuarios_biblioteca')
       .select('id, nome, matricula, email, user_id, tipo, escola_id')
       .or(`matricula.eq.${matriculaCompacta},matricula.eq.${matriculaNormalizada}`)
-      .eq('tipo', 'aluno')
+      .eq('tipo', 'aluno');
+    if (!isSuperAdmin) alunoQuery = alunoQuery.eq('escola_id', callerProfile.escola_id);
+    const { data: aluno, error: alunoError } = await alunoQuery
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -111,30 +112,7 @@ Deno.serve(async (req) => {
     });
 
     if (createAuthError) {
-      const authErrorMessage = String(createAuthError.message || '').toLowerCase();
-      if (!DUPLICATE_EMAIL_MARKERS.some((marker) => authErrorMessage.includes(marker))) {
-        return jsonResponse(req, {
-          success: false,
-          error: 'Nao foi possivel ativar a conta',
-        }, 400);
-      }
-
-      const existingAuthUser = await findAuthUserByEmail(adminClient, authEmail);
-      if (!existingAuthUser?.id) {
-        return jsonResponse(req, { success: false, error: 'A conta ja existe, mas nao foi possivel reutiliza-la.' }, 409);
-      }
-
-      const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(existingAuthUser.id, {
-        password: senhaInput,
-        email_confirm: true,
-        user_metadata: { ...(existingAuthUser.user_metadata || {}), nome: aluno.nome || 'Aluno' },
-      });
-
-      if (updateAuthError) {
-        return jsonResponse(req, { success: false, error: 'Nao foi possivel atualizar a conta existente' }, 400);
-      }
-
-      userId = existingAuthUser.id;
+      return jsonResponse(req, { success: false, error: 'Nao foi possivel criar a conta; verifique possivel conflito de matricula.' }, 409);
     } else if (authData?.user?.id) {
       userId = authData.user.id;
       createdNewUser = true;

@@ -153,6 +153,9 @@ Deno.serve(async (req) => {
     if (existingError) {
       return jsonResponse({ success: false, error: 'Não foi possível verificar matrícula' }, 500);
     }
+    if (!callerProfile.escola_id || (existingByMatricula && existingByMatricula.escola_id !== callerProfile.escola_id)) {
+      return jsonResponse({ success: false, error: 'Matrícula indisponível ou escola não identificada' }, 409);
+    }
 
     if (existingByMatricula?.user_id) {
       return jsonResponse({ success: false, error: 'Esta matrícula já está vinculada a uma conta ativa' }, 409);

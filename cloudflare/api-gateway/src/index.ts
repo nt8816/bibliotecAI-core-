@@ -12,6 +12,7 @@ import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from './superAdminSecurity';
+import { mayModifyR2Object } from '../../../supabase/functions/_shared/r2-access.js';
 
 export interface Env {
   APP_ENV?: string;
@@ -3250,17 +3251,6 @@ function assertR2ObjectAccess(context: { isSuperAdmin: boolean; profile: Record<
   }
 }
 
-function buildPlatformMediaDownloadUrl(request: Request, env: Env, objectKey: string, fileName: string) {
-  const token = getUserToken(request);
-  const baseUrl = String(env.API_BASE_URL || new URL(request.url).origin).trim().replace(/\/+$/, '');
-  const params = new URLSearchParams({
-    objectKey,
-    fileName: fileName || 'arquivo',
-    accessToken: token,
-  });
-  return `${baseUrl}/v1/media/r2-download?${params.toString()}`;
-}
-
 async function handleDirectR2Storage(request: Request, env: Env, body: Record<string, unknown>) {
   if (!env.R2_BUCKET) return null;
 
@@ -3272,6 +3262,13 @@ async function handleDirectR2Storage(request: Request, env: Env, body: Record<st
 
   const context = await getR2AccessContext(request, env);
   assertR2ObjectAccess(context, objectKey);
+  if (['create_upload_url', 'upload_object', 'delete_object'].includes(operation) && !mayModifyR2Object({
+    isSuperAdmin: context.isSuperAdmin,
+    userId: String(context.caller.id),
+    profileId: String(context.profile?.id || ''),
+  }, objectKey)) {
+    throw new Error('Sem permissao para alterar arquivo de outro usuario.');
+  }
 
   if (operation === 'create_upload_url') {
     return {
@@ -3307,7 +3304,7 @@ async function handleDirectR2Storage(request: Request, env: Env, body: Record<st
     return {
       success: true,
       objectKey,
-      downloadUrl: buildPlatformMediaDownloadUrl(request, env, objectKey, String(body?.fileName || 'arquivo')),
+      downloadViaApi: true,
     };
   }
 
@@ -3539,7 +3536,9 @@ const routes: Record<string, RouteHandler> = {
         headers: {
           ...buildCorsHeaders(request, env),
           'Content-Type': object.httpMetadata?.contentType || 'application/octet-stream',
-          'Content-Disposition': `attachment; filename="${fileName.replace(/"/g, '')}"`,
+          'Content-Disposition': `attachment; filename="${fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100)}"`,
+          'Cache-Control': 'private, no-store',
+          'X-Content-Type-Options': 'nosniff',
         },
       });
     } catch (error) {
