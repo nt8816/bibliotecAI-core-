@@ -19,6 +19,44 @@ pela CLI, e seu registro foi confirmado no histórico do banco.
 Essas verificações conferem a configuração do banco; os fluxos completos da
 interface com contas reais ainda precisam de validação funcional.
 
+## Avisos de inicialização das políticas
+
+A migração `20261107000300_optimize_rls_auth_initplans.sql` foi aplicada em
+06/11/2026. Ela usa `ALTER POLICY` para envolver chamadas de autenticação e
+configuração da requisição em subconsultas `SELECT`, permitindo que o PostgreSQL
+as avalie uma vez por consulta. Papéis, operações, caráter permissivo/restritivo
+e condições de acesso são preservados. Textos e identificadores entre aspas
+não são modificados; chamadas já otimizadas permanecem iguais.
+
+O Performance Advisor foi consultado antes e depois da aplicação: os 70 avisos
+`auth_rls_initplan` passaram a zero. Os avisos de políticas permissivas
+sobrepostas são uma categoria distinta e não foram eliminados por esta mudança.
+Os 11 testes de RLS passaram, incluindo verificação de `InitPlan`, preservação
+de acesso, textos literais e reaplicação da migração.
+
+A migração de leitura autorizada de objetos de aulas `20261107000200`, que já
+estava no repositório, também estava pendente e foi aplicada antes da otimização.
+
+### Restrições e carência da conta
+
+`Service restrictions are active` e `Grace period started` são avisos da
+organização, separados do RLS. A API administrativa confirmou plano Pro e
+projeto `ACTIVE_HEALTHY`; Auth, REST, Realtime e Storage responderam saudáveis.
+Isso não confirma que todos os limites de faturamento estão regularizados.
+
+A credencial da CLI não autoriza consultar os detalhes internos de restrição
+do Dashboard. O motivo específico desses avisos e seu estado atual precisam
+ser conferidos em [faturamento](https://supabase.com/dashboard/org/fqmtzzixbprjryyunlyx/billing)
+e [uso](https://supabase.com/dashboard/org/fqmtzzixbprjryyunlyx/usage).
+Conforme a [FAQ do Supabase](https://supabase.com/docs/guides/platform/billing-faq#fair-use-policy),
+avisos de carência podem permanecer após a normalização do uso.
+
+A inspeção encontrou aproximadamente 5,1 milhões de logs ocupando 2,46 GB em
+`public.system_logs`, principalmente `http_request` e `http_response`. Esse
+volume merece uma política de retenção, mas não comprova a origem da restrição
+no plano atual. Nenhum log foi apagado, e nenhuma configuração de cobrança ou
+limite de gastos foi alterada.
+
 A migração `supabase/migrations/20261106120000_harden_rls_school_boundaries.sql`
 ativa RLS nas tabelas da aplicação em `public` e nos schemas `tenant_*`,
 preservando as políticas existentes de cada módulo. Objetos pertencentes a

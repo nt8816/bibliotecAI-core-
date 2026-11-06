@@ -5,6 +5,7 @@ import { after, before, test } from 'node:test';
 const { PGlite } = await import(process.env.PGLITE_MODULE || '@electric-sql/pglite');
 const database = new PGlite();
 const migration = await readFile(new URL('../migrations/20261106120000_harden_rls_school_boundaries.sql', import.meta.url), 'utf8');
+const optimization = await readFile(new URL('../migrations/20261107000300_optimize_rls_auth_initplans.sql', import.meta.url), 'utf8');
 const schoolA = '00000000-0000-0000-0000-000000000001';
 const schoolB = '00000000-0000-0000-0000-000000000002';
 const student = '00000000-0000-0000-0000-000000000011';
@@ -46,6 +47,7 @@ before(async () => {
     CREATE TABLE public.auth_session_handoffs (id integer);
     CREATE TABLE public.analytics_events (id integer);
     CREATE TABLE public.analytics_sessions (id integer);
+    CREATE TABLE public.expression_probe (id uuid, label text);
     CREATE TABLE tenant_existing.livros (id integer);
     CREATE FUNCTION public.check_ai_rate_limit(text, integer, integer) RETURNS boolean
       LANGUAGE sql SECURITY DEFINER AS $$ SELECT true $$;
@@ -77,6 +79,8 @@ before(async () => {
       USING (public.is_gestor() OR public.is_bibliotecaria() OR public.is_super_admin())
       WITH CHECK (public.is_gestor() OR public.is_bibliotecaria() OR public.is_super_admin());
     CREATE POLICY "Anyone can view valid token by token value" ON public.tokens_convite FOR SELECT USING (true);
+    CREATE POLICY expression_probe ON public.expression_probe FOR SELECT TO authenticated
+      USING (id = auth.uid() AND label <> 'auth.uid()' AND current_setting('request.jwt.claim.sub', true) IS NOT NULL);
     INSERT INTO public.usuarios_biblioteca VALUES
       ('${student}', '${schoolA}', 'aluno', 'Aluno'),
       ('${librarian}', '${schoolA}', 'bibliotecaria', 'Bibliotecária'),
@@ -86,11 +90,36 @@ before(async () => {
     INSERT INTO public.livros VALUES (1, '${schoolA}', 'A'), (2, '${schoolB}', 'B');
     INSERT INTO public.tokens_convite VALUES (1, '${schoolA}', 'professor'), (2, '${schoolB}', 'professor');
     INSERT INTO tenant_existing.livros VALUES (1);
+    INSERT INTO public.expression_probe VALUES ('${student}', 'visible'), ('${manager}', 'hidden');
   `);
   await database.exec(migration);
+  await database.exec(optimization);
 });
 
 after(async () => database.close());
+
+test('request calls use initplans while quoted text and policy attributes stay intact', async () => {
+  const result = await database.query("SELECT qual, roles, cmd, permissive FROM pg_policies WHERE tablename = 'expression_probe'");
+  const policy = result.rows[0];
+  assert.match(policy.qual, /SELECT auth\.uid\(\)/);
+  assert.match(policy.qual, /SELECT current_setting\(/);
+  assert.match(policy.qual, /label <> 'auth\.uid\(\)'::text/);
+  assert.deepEqual(policy.roles, ['authenticated']);
+  assert.equal(policy.cmd, 'SELECT');
+  assert.equal(policy.permissive, 'PERMISSIVE');
+  await asUser(student, async () => {
+    assert.deepEqual((await database.query('SELECT label FROM public.expression_probe')).rows, [{ label: 'visible' }]);
+    const plan = await database.query('EXPLAIN SELECT * FROM public.expression_probe');
+    assert.match(JSON.stringify(plan.rows), /InitPlan/);
+  });
+});
+
+test('auth optimization is idempotent and preserves all policy identities and expressions', async () => {
+  const snapshot = () => database.query('SELECT schemaname, tablename, policyname, roles, cmd, permissive, qual, with_check FROM pg_policies ORDER BY schemaname, tablename, policyname');
+  const beforeOptimization = (await snapshot()).rows;
+  await database.exec(optimization);
+  assert.deepEqual((await snapshot()).rows, beforeOptimization);
+});
 
 test('migration can be reapplied and enables RLS on existing application tables', async () => {
   await database.exec(migration);
