@@ -1,0 +1,197 @@
+@keyframes app-page-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes app-card-enter {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes app-book-float {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  50% { transform: translateY(-5px) rotate(3deg); }
+}
+
+@keyframes app-page-turn {
+  0%, 15%, 85%, 100% { transform: perspective(80px) rotateY(0); opacity: 0; }
+  30% { opacity: 0.8; }
+  70% { transform: perspective(80px) rotateY(-160deg); opacity: 0.2; }
+}
+
+@keyframes app-orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes app-sparkle {
+  0%, 100% { opacity: 0.45; transform: scale(0.8) rotate(-8deg); }
+  50% { opacity: 1; transform: scale(1.1) rotate(8deg); }
+}
+
+@keyframes app-dot-hop {
+  0%, 65%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+@keyframes app-loading-sweep {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(320%); }
+}
+
+@keyframes app-skeleton-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+@keyframes app-nav-pop {
+  0% { transform: scale(0.85) rotate(-10deg); }
+  60% { transform: scale(1.15) rotate(4deg); }
+  100% { transform: none; }
+}
+
+.app-page-enter,
+.app-loading-panel {
+  animation: app-page-enter 300ms ease-out backwards;
+}
+
+.app-page-enter .app-motion-card {
+  animation: app-card-enter 380ms ease-out backwards;
+}
+
+.app-page-enter .app-motion-card:nth-child(2) { animation-delay: 45ms; }
+.app-page-enter .app-motion-card:nth-child(3) { animation-delay: 90ms; }
+.app-page-enter .app-motion-card:nth-child(n + 4) { animation-delay: 135ms; }
+
+.app-motion-button:not(:disabled):not([aria-disabled="true"]):active { scale: 0.96; }
+
+.app-shell [data-sidebar="menu-button"] > span > svg { transition: transform 180ms ease-out; }
+.app-shell [data-sidebar="menu-button"][aria-current="page"] > span > svg { animation: app-nav-pop 380ms ease-out; }
+
+@media (hover: hover) and (pointer: fine) {
+  .app-shell [data-sidebar="menu-button"]:hover > span > svg { transform: rotate(-8deg) scale(1.1); }
+}
+
+.app-book-loader {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 6rem;
+  height: 7rem;
+  color: hsl(var(--primary));
+}
+
+.app-book-loader-orbit {
+  position: absolute;
+  top: 0;
+  width: 6rem;
+  height: 6rem;
+  border: 1px dashed hsl(var(--primary) / 0.28);
+  border-radius: 50%;
+  animation: app-orbit 12s linear infinite;
+}
+
+.app-book-loader-orbit::after {
+  content: '';
+  position: absolute;
+  top: -0.25rem;
+  left: calc(50% - 0.25rem);
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+}
+
+.app-book-loader-book {
+  position: absolute;
+  top: 1rem;
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 1.25rem;
+  background: hsl(var(--primary) / 0.1);
+  animation: app-book-float 2.4s ease-in-out infinite;
+}
+
+.app-book-loader-page {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  width: 1rem;
+  height: 1.7rem;
+  border-radius: 0.1rem 0.3rem 0.2rem 0.1rem;
+  background: hsl(var(--primary) / 0.25);
+  transform-origin: left center;
+  animation: app-page-turn 2.4s ease-in-out infinite;
+}
+
+.app-book-loader-sparkle {
+  position: absolute;
+  top: 0.15rem;
+  right: -0.2rem;
+  color: hsl(var(--warning));
+  animation: app-sparkle 1.8s ease-in-out infinite;
+}
+
+.app-loading-dots {
+  position: absolute;
+  bottom: 0;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.app-loading-dots span {
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 50%;
+  background: currentColor;
+  animation: app-dot-hop 1.2s ease-in-out infinite;
+}
+
+.app-loading-dots span:nth-child(2) { animation-delay: 120ms; }
+.app-loading-dots span:nth-child(3) { animation-delay: 240ms; }
+
+.app-loading-track {
+  height: 0.25rem;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: hsl(var(--primary) / 0.1);
+}
+
+.app-loading-track span {
+  display: block;
+  width: 35%;
+  height: 100%;
+  border-radius: inherit;
+  background: hsl(var(--primary) / 0.65);
+  animation: app-loading-sweep 1.7s ease-in-out infinite;
+}
+
+.app-loading-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 20%, hsl(var(--background) / 0.65) 50%, transparent 80%);
+  animation: app-skeleton-sweep 1.8s ease-in-out infinite;
+}
+
+html.a11y-reduce-motion :is(.app-page-enter, .app-loading-panel, .app-motion-card, .app-book-loader *, .app-loading-track span, .app-motion-button),
+html.a11y-reduce-motion .app-shell [data-sidebar="menu-button"] > span > svg,
+html.a11y-reduce-motion .app-loading-skeleton::after {
+  animation: none !important;
+  transition: none !important;
+  scale: none !important;
+  transform: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.app-page-enter, .app-loading-panel, .app-motion-card, .app-book-loader *, .app-loading-track span, .app-motion-button),
+  .app-shell [data-sidebar="menu-button"] > span > svg,
+  .app-loading-skeleton::after {
+    animation: none !important;
+    transition: none !important;
+    scale: none !important;
+    transform: none !important;
+  }
+}

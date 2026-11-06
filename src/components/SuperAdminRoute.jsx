@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { AppShellState } from '@/components/AppShellState';
 
 export function SuperAdminRoute({ children }) {
   const { loading, user, isSuperAdmin } = useAuth();
@@ -7,9 +8,7 @@ export function SuperAdminRoute({ children }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
+      <AppShellState title="Preparando seu painel" description="Conferindo o acesso à administração da plataforma." />
     );
   }
 

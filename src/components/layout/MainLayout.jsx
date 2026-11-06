@@ -62,7 +62,7 @@ export function MainLayout({ children, title }) {
             id="main-content"
             className="main-shell-content flex-1 overflow-auto px-3 py-3 sm:px-5 sm:py-5 lg:px-6 lg:py-6"
           >
-            <div className="mx-auto w-full max-w-screen-2xl">
+            <div key={location.pathname} className="app-page-enter mx-auto w-full max-w-screen-2xl">
               {children}
             </div>
           </div>

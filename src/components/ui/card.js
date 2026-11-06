@@ -1,7 +1,7 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import * as React from "react";
 import { cn } from "@/lib/utils";
-const Card = React.forwardRef(({ className, ...props }, ref) => (_jsx("div", { ref: ref, className: cn("rounded-3xl border border-border/70 bg-card/92 text-card-foreground shadow-[0_10px_30px_hsl(var(--primary)/0.08)] backdrop-blur-sm transition-all duration-300 hover:shadow-[0_18px_44px_hsl(var(--primary)/0.14)]", className), ...props })));
+const Card = React.forwardRef(({ className, ...props }, ref) => (_jsx("div", { ref: ref, className: cn("app-motion-card rounded-3xl border border-border/70 bg-card/92 text-card-foreground shadow-[0_10px_30px_hsl(var(--primary)/0.08)] backdrop-blur-sm transition-all duration-300 hover:shadow-[0_18px_44px_hsl(var(--primary)/0.14)]", className), ...props })));
 Card.displayName = "Card";
 const CardHeader = React.forwardRef(({ className, ...props }, ref) => (_jsx("div", { ref: ref, className: cn("flex flex-col space-y-1.5 p-6", className), ...props })));
 CardHeader.displayName = "CardHeader";
