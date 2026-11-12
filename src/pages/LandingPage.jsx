@@ -84,15 +84,30 @@ const faqs = [
 ];
 
 function Brand() {
-  return <a className="lp-brand" href="#inicio" aria-label="BibliotecAI — início"><span className="lp-brand-icon"><img src={photo('logo')} alt="" /></span><span>Bibliotec<span>AI</span></span></a>;
+  return <a className="lp-brand" href="#inicio" aria-label="BibliotecAI — início"><span className="lp-brand-icon"><img src="/app-logo.png" alt="" width={43} height={43} /></span><span>Bibliotec<span>AI</span></span></a>;
 }
 
 export default function LandingPage() {
-  const theme = useSystemColorScheme();
+  const systemTheme = useSystemColorScheme();
+  const [themePreference, setThemePreference] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bibliotecai-landing-theme');
+      return saved === 'dark' || saved === 'light' ? saved : null;
+    } catch {
+      return null;
+    }
+  });
+  const theme = themePreference || systemTheme;
   const [motionPaused, setMotionPaused] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [audience, setAudience] = useState('gestao');
   const current = experiences[audience];
+
+  function toggleTheme() {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    setThemePreference(nextTheme);
+    try { localStorage.setItem('bibliotecai-landing-theme', nextTheme); } catch { /* Keep the choice for this visit when storage is unavailable. */ }
+  }
 
   useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
@@ -115,7 +130,7 @@ export default function LandingPage() {
         <a className="lp-mobile-login" href="/auth">Entrar na plataforma <ArrowUpRight size={16} /></a>
       </nav>
       <a className="lp-login" href="/auth" onClick={() => trackClick('nav_entrar')}>Entrar na plataforma <ArrowUpRight size={16} /></a>
-      <div className="lp-appearance-controls"><span className="lp-system-theme" role="img" aria-label={`Tema ${theme === 'dark' ? 'escuro' : 'claro'} automático, seguindo o sistema`} title={`Tema ${theme === 'dark' ? 'escuro' : 'claro'} · automático pelo sistema`}>{theme === 'dark' ? <Moon size={17} /> : <Sun size={17} />}</span><button type="button" className="lp-motion-toggle" aria-label={motionPaused ? 'Retomar animações de fundo' : 'Pausar animações de fundo'} aria-pressed={motionPaused} title={motionPaused ? 'Retomar animações' : 'Pausar animações'} onClick={() => setMotionPaused(!motionPaused)}>{motionPaused ? <Play size={15} /> : <Pause size={15} />}</button></div>
+      <div className="lp-appearance-controls"><button type="button" className="lp-system-theme lp-theme-toggle" aria-label={`Ativar modo ${theme === 'dark' ? 'claro' : 'escuro'}`} aria-pressed={theme === 'dark'} title={`Ativar modo ${theme === 'dark' ? 'claro' : 'escuro'}`} onClick={toggleTheme}><span key={theme} className="lp-theme-toggle-icon">{theme === 'dark' ? <Moon size={17} /> : <Sun size={17} />}</span></button><button type="button" className="lp-motion-toggle" aria-label={motionPaused ? 'Retomar animações de fundo' : 'Pausar animações de fundo'} aria-pressed={motionPaused} title={motionPaused ? 'Retomar animações' : 'Pausar animações'} onClick={() => setMotionPaused(!motionPaused)}>{motionPaused ? <Play size={15} /> : <Pause size={15} />}</button></div>
       <button className="lp-menu" aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'} aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X /> : <Menu />}</button>
     </div></header>
 

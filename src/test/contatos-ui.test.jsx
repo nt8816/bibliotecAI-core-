@@ -16,13 +16,12 @@ it('envia os campos sem dados pessoais em analytics e confirma somente após suc
   let resolve;
   requestPlatformApi.mockReturnValue(new Promise((r) => { resolve = r; }));
   render(<ContactForm />);
-  fireEvent.click(screen.getByText('Escrever na folha'));
-  fireEvent.change(screen.getByPlaceholderText('como se chama?'), { target: { value: 'Ana' } });
-  fireEvent.change(screen.getByPlaceholderText('para onde responder?'), { target: { value: 'ana@example.com' } });
-  fireEvent.change(screen.getByPlaceholderText('qual escola? (opcional)'), { target: { value: 'Escola' } });
+  fireEvent.change(screen.getByLabelText('Seu nome'), { target: { value: 'Ana' } });
+  fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'ana@example.com' } });
+  fireEvent.change(screen.getByLabelText(/Escola ou instituição/), { target: { value: 'Escola' } });
   fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Duvidas' } });
-  fireEvent.change(screen.getByPlaceholderText('escreva aqui...'), { target: { value: 'Olá' } });
-  fireEvent.click(screen.getByRole('button', { name: /Pregar no mural/ }));
+  fireEvent.change(screen.getByLabelText('Mensagem'), { target: { value: 'Olá' } });
+  fireEvent.click(screen.getByRole('button', { name: /Enviar mensagem/ }));
   expect(requestPlatformApi).toHaveBeenCalledWith('/v1/contato', { method: 'POST', auth: false, body: { nome: 'Ana', email: 'ana@example.com', escola: 'Escola', assunto: 'Duvidas', mensagem: 'Olá' } });
   expect(screen.queryByText('Mensagem enviada!')).not.toBeInTheDocument();
   resolve({});
@@ -33,15 +32,14 @@ it('envia os campos sem dados pessoais em analytics e confirma somente após suc
 it('exibe erro e mantém os campos ao falhar', async () => {
   requestPlatformApi.mockRejectedValue(new Error('Falha no envio'));
   render(<ContactForm />);
-  fireEvent.click(screen.getByText('Escrever na folha'));
-  fireEvent.change(screen.getByPlaceholderText('como se chama?'), { target: { value: 'Ana' } });
-  fireEvent.change(screen.getByPlaceholderText('para onde responder?'), { target: { value: 'ana@example.com' } });
+  fireEvent.change(screen.getByLabelText('Seu nome'), { target: { value: 'Ana' } });
+  fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'ana@example.com' } });
   fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Duvidas' } });
-  fireEvent.change(screen.getByPlaceholderText('escreva aqui...'), { target: { value: 'Olá' } });
-  fireEvent.click(screen.getByRole('button', { name: /Pregar no mural/ }));
+  fireEvent.change(screen.getByLabelText('Mensagem'), { target: { value: 'Olá' } });
+  fireEvent.click(screen.getByRole('button', { name: /Enviar mensagem/ }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Falha no envio');
-  expect(screen.getByPlaceholderText('como se chama?')).toHaveValue('Ana');
-  expect(screen.getByPlaceholderText('escreva aqui...')).toHaveValue('Olá');
+  expect(screen.getByLabelText('Seu nome')).toHaveValue('Ana');
+  expect(screen.getByLabelText('Mensagem')).toHaveValue('Olá');
   expect(trackForm).not.toHaveBeenCalledWith('submit');
 });
 
