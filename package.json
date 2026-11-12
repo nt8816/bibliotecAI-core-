@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:landing": "vite --host 127.0.0.1 --port 8080 --open /landing",
     "build:web": "vite build",
     "build:web:dev": "vite build --mode development",
     "build": "vite build && npx cap sync android",
