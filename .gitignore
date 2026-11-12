@@ -32,3 +32,8 @@ android/app/google-services.json
 .vercel
 supabase/.temp/
 supabase/.branches/
+
+# Relatórios pessoais mantidos fora do repositório
+/docs/relatorio-contexto-projeto-para-ia.md
+/docs/apresentacao-tecnica-comercial.md
+/docs/apresentacao-tecnica-comercial.pdf
