@@ -33,6 +33,8 @@ import {
 } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
+import { RecomendacaoLivros } from '@/components/RecomendacaoLivros';
+import { CapaLivro } from '@/components/CapaLivro';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -5643,6 +5645,20 @@ export default function PainelAluno() {
                 {bibliotecaView === 'biblioteca' && (
                   <div className="space-y-3">
                     <p className="text-sm font-semibold">Biblioteca</p>
+                    <RecomendacaoLivros onSelecionar={async (sugestao) => {
+                      try {
+                        const resultado = await fetchPainelAlunoBooks({ escolaId, searchTerm: '' });
+                        const livro = resultado.livros.find((item) => String(item.id) === String(sugestao.livro_id));
+                        if (!livro || !livro.disponivel || resultado.activeLoanBookIds.some((id) => String(id) === String(livro.id)) || hasSolicitacaoEmAndamento(livro.id) || hasEmprestimoAtivo(livro.id)) {
+                          toast({ variant: 'destructive', title: 'Livro indisponível para solicitação' });
+                          return;
+                        }
+                        setRequestLivro(livro);
+                        setRequestDialog(true);
+                      } catch (error) {
+                        toast({ variant: 'destructive', title: 'Não foi possível abrir o livro', description: error.message });
+                      }
+                    }} />
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                       <div className="space-y-1">
                         <Label htmlFor="catalogo-area">Area</Label>
@@ -5714,7 +5730,9 @@ export default function PainelAluno() {
                             </Button>
                           </div>
                           <div className="p-3 flex flex-col gap-2 flex-1">
-                            <div className="space-y-1">
+                            <div className="flex items-start gap-3">
+                              <CapaLivro livro={livro} />
+                              <div className="min-w-0 space-y-1">
                               <p className="font-semibold text-sm leading-5 line-clamp-2 min-h-[40px]">{livro.titulo}</p>
                               <p className="text-xs text-muted-foreground line-clamp-1">{livro.autor}</p>
                               {(livro.vol || livro.ano) && (
@@ -5731,6 +5749,7 @@ export default function PainelAluno() {
                               <Badge variant={livro.disponivel ? 'default' : 'secondary'} className="text-[11px]">
                                 {livro.disponivel ? 'Disponivel' : 'Emprestado'}
                               </Badge>
+                              </div>
                             </div>
 
                             {livro.sinopse && (

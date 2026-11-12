@@ -14,6 +14,7 @@ import ScrollCarousel from '../components/ScrollCarousel';
 import PaperStack from '../components/PaperStack';
 import SolutionShowcase from '../components/SolutionShowcase';
 import { trackClick, trackSection, trackForm } from '@/hooks/useAnalytics';
+import { requestPlatformApi } from '@/lib/platformApi';
 
 /* ─── hooks ─── */
 function useScrollY() {
@@ -1081,7 +1082,7 @@ function TrackedSection({ name, children, ...props }) {
   return <div ref={ref} {...props}>{children}</div>;
 }
 
-function ContactForm() {
+export function ContactForm() {
   const [expanded, setExpanded] = useState(false);
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
@@ -1089,31 +1090,29 @@ function ContactForm() {
   const [assunto, setAssunto] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
   const [sentPhase, setSentPhase] = useState(0);
   const [focusedField, setFocusedField] = useState(null);
 
-  const handleSend = (e) => {
+  const handleSend = async (e) => {
     e.preventDefault();
+    if (sending) return;
     setSending(true);
-    trackForm('submit', { assunto, nome });
-    setTimeout(() => {
-      setSending(false);
+    setError('');
+    try {
+      await requestPlatformApi('/v1/contato', { method: 'POST', auth: false, body: { nome, email, escola, assunto, mensagem } });
+      trackForm('submit');
       setSent(true);
       setSentPhase(1);
       setTimeout(() => setSentPhase(2), 600);
       setTimeout(() => setSentPhase(3), 1400);
       setTimeout(() => setSentPhase(4), 2200);
-      const body = encodeURIComponent(
-        `Nome: ${nome}\nE-mail: ${email}\nEscola: ${escola}\nAssunto: ${assunto}\n\nMensagem:\n${mensagem}`
-      );
-      setTimeout(() => {
-        window.open(
-          `mailto:contato@bibliotecai.com.br?subject=${encodeURIComponent('Contato - ' + assunto)}&body=${body}`,
-          '_blank'
-        );
-      }, 2800);
-    }, 800);
+    } catch (err) {
+      setError(err?.message || 'Não foi possível enviar sua mensagem. Tente novamente.');
+    } finally {
+      setSending(false);
+    }
   };
 
   const paperBg = {
@@ -1166,7 +1165,7 @@ function ContactForm() {
               Mensagem enviada!
             </h2>
             <p style={{ fontSize: '1.15rem', color: '#7a5a30', lineHeight: 1.7, marginBottom: '2rem', fontFamily: "'Kalam', cursive", opacity: sentPhase >= 3 ? 1 : 0, transition: 'opacity 0.5s ease 0.3s' }}>
-              Seu cliente de e-mail foi aberto.<br/>Envie o e-mail para concluir.
+              Recebemos sua mensagem. Obrigado pelo contato!
             </p>
             <button onClick={() => { setSent(false); setSentPhase(0); setExpanded(false); setNome(''); setEmail(''); setEscola(''); setAssunto(''); setMensagem(''); }} style={{
               padding: '0.85rem 1.8rem', background: 'transparent', border: '1.5px solid rgba(90,62,27,0.25)',
@@ -1268,6 +1267,7 @@ function ContactForm() {
                 <textarea name="mensagem" placeholder="escreva aqui..." rows={4} required value={mensagem} onChange={(e) => setMensagem(e.target.value)} maxLength={2000} autoFocus style={{ ...fieldStyle('mensagem'), resize: 'vertical', minHeight: 100, borderBottom: 'none', border: '1px solid rgba(90,62,27,0.12)', borderRadius: 4, padding: '0.8rem 1rem', fontSize: '1rem' }}
                   onFocus={() => setFocusedField('mensagem')} onBlur={() => setFocusedField(null)} />
               </div>
+              {error && <p role="alert" style={{ color: '#a12626' }}>{error}</p>}
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.3rem', alignItems: 'stretch' }}>
                 <button type="button" onClick={() => setExpanded(false)} style={{
                   padding: '0.7rem 1.2rem', background: 'transparent', border: '1px solid rgba(90,62,27,0.18)',

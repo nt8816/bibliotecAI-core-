@@ -182,9 +182,8 @@ export default function Usuarios() {
       setUsuarios(data?.usuarios || []);
       setTurmasDisponiveis(data?.turmasDisponiveis || []);
       setProfessorTurmasMap(data?.professorTurmasMap || {});
-    } catch (error) {
-      console.error('Error fetching users:', error);
-      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível carregar os usuarios.' });
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Nao foi possivel carregar os usuarios.' });
     } finally {
       setLoading(false);
     }
@@ -1397,5 +1396,4 @@ export default function Usuarios() {
     </MainLayout>
   );
 }
-
 

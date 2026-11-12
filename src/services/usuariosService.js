@@ -20,7 +20,6 @@ async function invokeResetAlunoPasswordFunction(alunoId, novaSenha) {
       'Content-Type': 'application/json',
       apikey: SUPABASE_ANON_KEY,
       Authorization: `Bearer ${accessToken}`,
-      'x-supabase-auth': accessToken,
     },
     body: JSON.stringify({ aluno_id: alunoId, nova_senha: novaSenha }),
   });

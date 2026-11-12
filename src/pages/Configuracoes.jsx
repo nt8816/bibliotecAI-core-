@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useTheme } from 'next-themes';
 import { Loader2, Moon, Settings, Sun, UserRound } from 'lucide-react';
@@ -94,12 +94,11 @@ export default function Configurações() {
         turma: data?.turma || '',
         matricula: data?.matricula || '',
       });
-    } catch (error) {
-      console.error('Erro ao carregar perfil:', error);
+    } catch {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: 'Não foi possível carregar seus dados.',
+        description: 'Nao foi possivel carregar seus dados.',
       });
     } finally {
       setLoadingProfile(false);
@@ -148,11 +147,10 @@ export default function Configurações() {
         description: 'Suas informações foram salvas com sucesso.',
       });
     } catch (error) {
-      console.error('Erro ao salvar perfil:', error);
       toast({
         variant: 'destructive',
         title: 'Erro ao salvar',
-        description: error?.message || 'Não foi possível salvar suas informações.',
+        description: error?.message || 'Nao foi possivel salvar suas informacoes.',
       });
     } finally {
       setSavingProfile(false);
@@ -411,4 +409,3 @@ export default function Configurações() {
     </MainLayout>
   );
 }
-

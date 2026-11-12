@@ -78,6 +78,7 @@ export function AppSidebar() {
         ...commonItems,
         { title: 'Tenants', url: '/admin/tenants', icon: Building2 },
         { title: 'Super Admins', url: '/admin/super-admins', icon: ShieldCheck },
+        { title: 'Contatos', url: '/admin/contatos', icon: MessageSquare },
         { title: 'Reclamacoes', url: '/reclamacoes', icon: Bell },
         { title: 'Analytics', url: '/analytics', icon: BarChart2 },
       ];
@@ -294,5 +295,3 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
-
-

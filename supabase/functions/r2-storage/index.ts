@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { mayModifyR2Object } from '../_shared/r2-access.js';
+import { mayModifyR2Object, mayReadR2Object } from '../_shared/r2-access.js';
 
 const isDev = !['production', 'prod'].includes(String(Deno.env.get('SUPABASE_ENV') || '').trim().toLowerCase());
 const ALLOWED_ORIGINS = ["https://bibliotecai.com.br", "https://app.bibliotecai.com.br", ...(isDev ? ['http://localhost:5173', 'http://localhost:3000'] : [])];
@@ -225,6 +225,19 @@ Deno.serve(async (req) => {
     }
     if (isSuperAdmin && !objectSchoolId) {
       return jsonResponse({ success: false, error: 'Chave do objeto invalida para o R2.' }, 400);
+    }
+    if (operation === 'create_download_url') {
+      const userClient = createClient(supabaseUrl, anonKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+        global: { headers: { Authorization: `Bearer ${userToken}` } },
+      });
+      const allowed = await mayReadR2Object({
+        isSuperAdmin, userId: caller.id, profileId: String(profile?.id || ''),
+      }, objectKey, async (key: string) => {
+        const { data, error } = await userClient.rpc('can_read_r2_arquivo_aula', { _object_key: key });
+        return !error && data === true;
+      });
+      if (!allowed) return jsonResponse({ success: false, error: 'Sem permissao para ler este arquivo.' }, 403);
     }
     if (['create_upload_url', 'upload_object', 'delete_object'].includes(operation) && !mayModifyR2Object({
       isSuperAdmin, userId: caller.id, profileId: String(profile?.id || ''),

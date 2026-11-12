@@ -133,8 +133,7 @@ export default function Dashboard() {
         if (isSuperAdmin && payload?.superAdminStats) {
           setSuperAdminStats(payload.superAdminStats);
         }
-      } catch (error) {
-        console.error('Erro ao carregar dados do dashboard:', error);
+      } catch {
       } finally {
         setLoading(false);
       }
@@ -615,4 +614,3 @@ export default function Dashboard() {
     </MainLayout>
   );
 }
-

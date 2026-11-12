@@ -370,7 +370,7 @@ function ComunicadosBackdrop() {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-0 z-10 overflow-hidden opacity-[0.22] dark:opacity-[0.16]"
+      className="pointer-events-none absolute inset-0 z-0 overflow-hidden opacity-[0.22] dark:opacity-[0.16]"
     >
       <svg
         className="block h-full w-full"
@@ -1353,7 +1353,7 @@ export default function Comunicados() {
     <MainLayout title="Comunicados">
       <div className="relative min-h-[calc(100vh-7rem)] pb-24">
         <ComunicadosBackdrop />
-        <div className="relative space-y-4">
+        <div className="relative z-10 space-y-4">
         <CompactChannelHeader
           title="Comunicados"
           meta={`${comunicadosVisiveis.length} aviso${comunicadosVisiveis.length === 1 ? '' : 's'}`}

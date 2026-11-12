@@ -41,6 +41,7 @@ export async function fetchPainelAlunoBooks({ escolaId, searchTerm }) {
   return {
     success: true,
     livros: items,
+    activeLoanBookIds: Array.isArray(payload?.activeLoanBookIds) ? payload.activeLoanBookIds : [],
   };
 }
 

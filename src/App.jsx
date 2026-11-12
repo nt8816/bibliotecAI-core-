@@ -36,6 +36,7 @@ const Convite = lazy(() => import('./pages/Convite'));
 const ConfiguracaoEscola = lazy(() => import('./pages/ConfiguracaoEscola.jsx'));
 const AdminTenants = lazy(() => import('./pages/AdminTenants'));
 const SuperAdmins = lazy(() => import('./pages/SuperAdmins'));
+const AdminContatos = lazy(() => import('./pages/AdminContatos'));
 const AnalyticsAdmin = lazy(() => import('./pages/AnalyticsAdmin'));
 const AdminAcesso = lazy(() => import('./pages/AdminAcesso'));
 const OnboardingGestor = lazy(() => import('./pages/OnboardingGestor'));
@@ -230,6 +231,10 @@ function AppRoutes() {
             </SuperAdminRoute>
           </ProtectedRoute>
         }
+      />
+      <Route
+        path="/admin/contatos"
+        element={<ProtectedRoute><SuperAdminRoute><AdminContatos /></SuperAdminRoute></ProtectedRoute>}
       />
       <Route
         path="/analytics"

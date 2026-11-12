@@ -80,8 +80,7 @@ export default function Relatorios() {
       setEmprestimosDetalhados(Array.isArray(data?.emprestimosDetalhados) ? data.emprestimosDetalhados : []);
       setEmprestimosPorMes(Array.isArray(data?.emprestimosPorMes) ? data.emprestimosPorMes : []);
       setLivrosMaisEmprestados(Array.isArray(data?.livrosMaisEmprestados) ? data.livrosMaisEmprestados : []);
-    } catch (error) {
-      console.error('Erro ao carregar relatorios:', error);
+    } catch {
       toast({
         variant: 'destructive',
         title: 'Erro',
@@ -269,12 +268,11 @@ export default function Relatorios() {
       }
       setExportDialogOpen(false);
       toast({ title: 'Exportado!', description: `Arquivo gerado com sucesso. ${periodLabel}` });
-    } catch (error) {
-      console.error('Erro ao exportar relatorios:', error);
+    } catch {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: 'Não foi possível exportar os relatorios.',
+        description: 'Nao foi possivel exportar os relatorios.',
       });
     } finally {
       setExporting(false);
@@ -572,4 +570,3 @@ export default function Relatorios() {
     </MainLayout>
   );
 }
-

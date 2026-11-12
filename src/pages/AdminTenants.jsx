@@ -117,11 +117,10 @@ export default function AdminTenants() {
       setTenants(payload.tenants || []);
       setEscolasSemTenant(payload.schoolsWithoutTenant || []);
       setGhostAccounts(payload.ghostAccounts || []);
-    } catch (error) {
-      console.error(error);
+    } catch {
       toast({
         title: 'Erro',
-        description: 'Não foi possível carregar os dados administrativos.',
+        description: 'Nao foi possivel carregar os dados administrativos.',
         variant: 'destructive',
       });
     } finally {
@@ -170,11 +169,10 @@ export default function AdminTenants() {
       toast({ title: 'Tenant criado', description: `Escola ${data.escola_nome} provisionada com sucesso.` });
       fetchTenants();
     } catch (error) {
-      console.error(error);
       toast({
         title: 'Falha ao provisionar tenant',
         description: isMissingProvisionTenantSignature(error)
-          ? 'A função provision_tenant no Supabase está desatualizada. Aplique as migrations mais recentes e tente novamente.'
+          ? 'A funcao provision_tenant no Supabase esta desatualizada. Aplique as migrations mais recentes e tente novamente.'
           : (error.message || 'Erro inesperado'),
         variant: 'destructive',
       });
@@ -197,7 +195,6 @@ export default function AdminTenants() {
       setLatestInvite(data);
       toast({ title: 'Novo link gerado', description: `Link temporário da escola ${tenant.nome} atualizado.` });
     } catch (error) {
-      console.error(error);
       toast({
         title: 'Falha ao gerar novo link',
         description: error?.message || 'Erro inesperado',
@@ -382,7 +379,6 @@ export default function AdminTenants() {
         description: `${tenant.nome} agora está ${nextStatus ? 'ativo' : 'inativo'}.`,
       });
     } catch (error) {
-      console.error(error);
       toast({
         title: 'Falha ao atualizar status',
         description: error?.message || 'Erro inesperado',
@@ -1293,4 +1289,3 @@ export default function AdminTenants() {
     </MainLayout>
   );
 }
-

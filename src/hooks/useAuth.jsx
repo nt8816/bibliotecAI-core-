@@ -52,6 +52,7 @@ export function AuthProvider({ children }) {
   const [userRole, setUserRole] = useState(null);
   const [roles, setRoles] = useState([]);
   const [tenantContext, setTenantContext] = useState(null);
+  const superAdminOverrideRef = useRef(false);
 
   const applyAuthPayload = useCallback((payload, fallbackSession = null) => {
     const resolvedSession = payload?.session || fallbackSession || getPlatformSession() || null;
@@ -81,8 +82,7 @@ export function AuthProvider({ children }) {
     try {
       const payload = await fetchPlatformSessionProfile();
       applyAuthPayload(payload, localSession);
-    } catch (error) {
-      console.error('Error syncing auth state:', error);
+    } catch {
       clearPlatformSession();
       setSession(null);
       setUser(null);
@@ -96,10 +96,7 @@ export function AuthProvider({ children }) {
     let mounted = true;
 
     const bootstrapAuthState = async () => {
-      const handoffPayload = await consumeTenantSessionHandoff().catch((error) => {
-        console.error('Falha ao consumir handoff de sessao:', error);
-        return null;
-      });
+      const handoffPayload = await consumeTenantSessionHandoff().catch(() => null);
       if (handoffPayload) {
         applyAuthPayload(handoffPayload, handoffPayload.session || getPlatformSession());
         return;
@@ -142,15 +139,16 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     superAdminOverrideRef.current = false;
-    await signOutWithPlatform();
+    try {
+      await signOutWithPlatform();
+    } finally {
       setSession(null);
       setUser(null);
       setRoles([]);
       setUserRole(null);
       setTenantContext(null);
+    }
   }, []);
-
-  const superAdminOverrideRef = useRef(false);
 
   const applySuperAdminSession = useCallback((sessionData) => {
     const resolvedSession = sessionData?.session || getPlatformSession() || null;

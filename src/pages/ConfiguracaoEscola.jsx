@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -41,11 +41,10 @@ export default function ConfiguracaoEscola() {
       setNomeEscola(payload.escola?.nome || '');
       setSalas(payload.salas);
       setEditingNome(false);
-    } catch (error) {
-      console.error('Error fetching escola:', error);
+    } catch {
       toast({
         title: 'Erro',
-        description: 'Não foi possível carregar os dados da escola.',
+        description: 'Nao foi possivel carregar os dados da escola.',
         variant: 'destructive',
       });
     } finally {
@@ -70,11 +69,10 @@ export default function ConfiguracaoEscola() {
         title: 'Salvo',
         description: 'As informacoes da escola foram atualizadas.',
       });
-    } catch (error) {
-      console.error('Error saving escola:', error);
+    } catch {
       toast({
         title: 'Erro',
-        description: 'Não foi possível salvar as informacoes da escola.',
+        description: 'Nao foi possivel salvar as informacoes da escola.',
         variant: 'destructive',
       });
     } finally {
@@ -100,11 +98,10 @@ export default function ConfiguracaoEscola() {
         title: 'Adicionado',
         description: `${tipoNovaSala === 'sala' ? 'Sala' : 'Curso'} adicionado com sucesso.`,
       });
-    } catch (error) {
-      console.error('Error adding sala:', error);
+    } catch {
       toast({
         title: 'Erro',
-        description: 'Não foi possível adicionar a sala ou curso.',
+        description: 'Nao foi possivel adicionar a sala ou curso.',
         variant: 'destructive',
       });
     }
@@ -122,11 +119,10 @@ export default function ConfiguracaoEscola() {
         title: 'Removido',
         description: 'Sala removida com os usuarios e vinculos associados.',
       });
-    } catch (error) {
-      console.error('Error removing sala:', error);
+    } catch {
       toast({
         title: 'Erro',
-        description: 'Não foi possível remover o item.',
+        description: 'Nao foi possivel remover o item.',
         variant: 'destructive',
       });
     }
@@ -152,11 +148,10 @@ export default function ConfiguracaoEscola() {
         title: 'Turma atualizada',
         description: 'O novo nome foi aplicado na sala e nos usuarios vinculados.',
       });
-    } catch (error) {
-      console.error('Error renaming sala:', error);
+    } catch {
       toast({
         title: 'Erro',
-        description: 'Não foi possível editar a turma.',
+        description: 'Nao foi possivel editar a turma.',
         variant: 'destructive',
       });
     } finally {
@@ -388,4 +383,3 @@ export default function ConfiguracaoEscola() {
     </MainLayout>
   );
 }
-

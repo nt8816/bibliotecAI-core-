@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Plus, Copy, Link as LinkIcon, Trash2 } from 'lucide-react';
@@ -34,11 +34,10 @@ export default function GerenciarTokens() {
       setTokens(payload.tokens);
       setCriadoresInfo(payload.criadoresInfo || {});
       setUtilizadoresInfo(payload.utilizadoresInfo || {});
-    } catch (error) {
-      console.error('Error fetching tokens:', error);
+    } catch {
       toast({
         title: 'Erro',
-        description: 'Não foi possível carregar os tokens.',
+        description: 'Nao foi possivel carregar os tokens.',
         variant: 'destructive',
       });
     } finally {
@@ -62,10 +61,9 @@ export default function GerenciarTokens() {
         description: 'O link de convite foi gerado com sucesso.',
       });
     } catch (error) {
-      console.error('Error creating token:', error);
       toast({
         title: 'Erro',
-        description: error?.message || 'Não foi possível criar o token.',
+        description: error?.message || 'Nao foi possivel criar o token.',
         variant: 'destructive',
       });
     } finally {
@@ -95,10 +93,9 @@ export default function GerenciarTokens() {
         title: 'Link copiado!',
         description: 'O link de convite foi copiado para a area de transferencia.',
       });
-    } catch (error) {
-      console.error('Error copying invite link:', error);
+    } catch {
       toast({
-        title: 'Não foi possível copiar automaticamente',
+        title: 'Nao foi possivel copiar automaticamente',
         description: link,
         variant: 'destructive',
       });
@@ -114,11 +111,10 @@ export default function GerenciarTokens() {
         title: 'Token apagado',
         description: 'O token de convite foi removido com sucesso.',
       });
-    } catch (error) {
-      console.error('Error deleting token:', error);
+    } catch {
       toast({
         title: 'Erro',
-        description: 'Não foi possível apagar o token.',
+        description: 'Nao foi possivel apagar o token.',
         variant: 'destructive',
       });
     }
@@ -285,4 +281,3 @@ export default function GerenciarTokens() {
     </MainLayout>
   );
 }
-

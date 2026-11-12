@@ -2,6 +2,8 @@ import { useDeferredValue, useEffect, useState, useCallback, useRef, useMemo } f
 import { Plus, Pencil, Trash2, Search, BookOpen, Sparkles, Loader2, Info, Download, Upload, FileSpreadsheet, FileText, AlertCircle, CheckCircle, SlidersHorizontal, X, ChevronsUpDown, Check } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout/MainLayout';
+import { RecomendacaoLivros } from '@/components/RecomendacaoLivros';
+import { CapaLivro } from '@/components/CapaLivro';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -254,7 +256,6 @@ export default function Livros() {
       setLivros(data?.livros || []);
       hasLoadedLivrosRef.current = true;
     } catch (error) {
-      console.error('Error fetching books:', error);
       const message = String(error?.message || '').toLowerCase();
       const isTransientFetchError = message.includes('failed to fetch')
         || message.includes('networkerror')
@@ -1385,6 +1386,21 @@ export default function Livros() {
             </TabsList>
 
             <TabsContent value="acervo" className="space-y-6">
+          <RecomendacaoLivros titulo="Sugestão do sistema" onSelecionar={canViewCatalogOnly ? async (sugestao) => {
+            try {
+              const data = await fetchLivrosCatalogo({ preCategorias, canonicalizeBookArea, defaultPreCategories: DEFAULT_PRE_CATEGORIES });
+              const livro = data.livros.find((item) => String(item.id) === String(sugestao.livro_id));
+              if (!livro || !livro.disponivel || livro.isEmprestado) {
+                toast({ variant: 'destructive', title: 'Livro indisponível para solicitação' });
+                return;
+              }
+              setRequestLivro(livro);
+              setRequestMsg('');
+              setRequestDialogOpen(true);
+            } catch (error) {
+              toast({ variant: 'destructive', title: 'Não foi possível abrir o livro', description: error.message });
+            }
+          } : undefined} />
           {canViewCatalogOnly ? (
             <>
               <div className="rounded-lg border bg-background p-4">
@@ -1483,7 +1499,9 @@ export default function Livros() {
                           </Badge>
                         </div>
 
-                        <div className="space-y-1.5">
+                        <div className="flex items-start gap-4">
+                          <CapaLivro livro={livro} />
+                          <div className="min-w-0 space-y-1.5">
                           <p className="line-clamp-2 text-[1.35rem] font-semibold leading-7 text-foreground">{livro.titulo}</p>
                           <p className="text-base text-muted-foreground">{livro.autor || 'Autor desconhecido'}</p>
                           {(livro.editora || livro.ano) && (
@@ -1491,6 +1509,7 @@ export default function Livros() {
                               {[livro.editora || null, livro.ano || null].filter(Boolean).join(' - ')}
                             </p>
                           )}
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
@@ -2063,4 +2082,3 @@ export default function Livros() {
     </MainLayout>
   );
 }
-

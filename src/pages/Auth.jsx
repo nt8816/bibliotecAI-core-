@@ -206,8 +206,7 @@ export default function Auth() {
 
             window.location.assign(redirectUrl);
           })
-          .catch((error) => {
-            console.error('Falha ao preparar handoff seguro para o tenant:', error);
+          .catch(() => {
             window.location.assign(buildTenantAccessUrl(tenantContext, defaultRoute));
           });
         return;
@@ -292,7 +291,7 @@ export default function Auth() {
     return () => {
       active = false;
     };
-  }, [finalizingDesktop, navigate, pendingSecurity, securityStep, toast]);
+  }, [finalizingDesktop, pendingSecurity, securityStep]);
 
   useEffect(() => {
     if (!pendingSecurity?.desktopToken || securityStep !== 'desktop_waiting') return undefined;
@@ -322,7 +321,7 @@ export default function Auth() {
             ...pendingSecurity,
             approved: true,
           });
-          window.location.reload();
+          setSecurityStep('desktop_resuming');
           return;
         }
       } catch (error) {
@@ -750,11 +749,6 @@ export default function Auth() {
         await runPasskeyAuthentication(pendingSecurity);
       }
     } catch (error) {
-      console.error('Falha bruta na passkey do Super Admin:', {
-        message: error?.message || null,
-        rawMessage: error?.rawMessage || null,
-        name: error?.name || null,
-      });
       setPasskeyDebugError({
         message: String(error?.message || '').trim() || null,
         rawMessage: String(error?.rawMessage || '').trim() || null,
