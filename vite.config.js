@@ -11,7 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig(() => ({
   base: "/",
   build: {
-    chunkSizeWarningLimit: 1024,
+    chunkSizeWarningLimit: 500,
     rollupOptions: {
       output: {
         manualChunks(id) {

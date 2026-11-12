@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Loader2, XCircle } from 'lucide-react';
 
@@ -56,8 +56,7 @@ export default function Convite() {
       } else {
         setTokenInfo(payload.tokenInfo);
       }
-    } catch (error) {
-      console.error('Error verifying token:', error);
+    } catch {
       setInvalidToken(true);
     } finally {
       setLoading(false);
@@ -151,7 +150,6 @@ export default function Convite() {
 
       navigate(getRedirectPathByRole(data.role), { replace: true });
     } catch (error) {
-      console.error('Error during signup:', error);
       toast({
         title: 'Erro no cadastro',
         description: mapSignupError(error?.message || ''),
@@ -326,4 +324,3 @@ export default function Convite() {
     </div>
   );
 }
-

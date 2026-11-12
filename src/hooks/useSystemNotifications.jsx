@@ -111,8 +111,7 @@ export function useSystemNotifications() {
       });
       setNotifications(nextNotifications);
       setProfileId(payload?.profileId || null);
-    } catch (error) {
-      console.error('Falha ao carregar notificacoes do sistema:', error);
+    } catch {
       setCounts(EMPTY_COUNTS);
       setNotifications([]);
       setProfileId(null);
@@ -271,8 +270,7 @@ export function useSystemNotifications() {
         notificationId,
         profileId,
       });
-    } catch (error) {
-      console.error('Falha ao marcar notificacao como lida:', error);
+    } catch {
       fetchCounts();
     }
   }, [fetchCounts, isSuperAdmin, notifications, profileId, user]);

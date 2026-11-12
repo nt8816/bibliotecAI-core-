@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Library, Users, Trophy, 
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import LandingAtmosphere, { useSystemColorScheme } from '@/components/LandingAtmosphere';
 import { trackClick, trackSection, trackForm } from '@/hooks/useAnalytics';
+import { requestPlatformApi } from '@/lib/platformApi';
 import './LandingPage.css';
 
 const photo = (name) => `/landing-photos/${name}.webp`;
@@ -91,7 +92,6 @@ export default function LandingPage() {
   const [motionPaused, setMotionPaused] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [audience, setAudience] = useState('gestao');
-  const [emailReady, setEmailReady] = useState(false);
   const current = experiences[audience];
 
   useEffect(() => {
@@ -104,14 +104,6 @@ export default function LandingPage() {
     return () => observer.disconnect();
   }, []);
 
-  function prepareEmail(event) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const body = `Olá! Quero conhecer a BibliotecAI.\n\nNome: ${data.get('nome')}\nE-mail: ${data.get('email')}\nEscola: ${data.get('escola')}\n\n${data.get('mensagem') || ''}`;
-    trackForm('submit', { assunto: 'demonstracao' });
-    window.location.href = `mailto:contato@bibliotecai.com.br?subject=${encodeURIComponent('Demonstração da BibliotecAI')}&body=${encodeURIComponent(body)}`;
-    setEmailReady(true);
-  }
 
   return <div className="bibliotecai-landing" id="inicio" data-lp-theme={theme} data-motion-paused={motionPaused}>
     <a className="lp-skip" href="#conteudo">Ir para o conteúdo</a>
@@ -166,10 +158,48 @@ export default function LandingPage() {
 
       <section className="lp-faq lp-container lp-section"><div><span className="lp-eyebrow">PARA CONTINUAR A CONVERSA</span><h2>Algumas dúvidas.<br />Um bom começo.</h2></div><div>{faqs.map(([question, answer]) => <details key={question}><summary>{question}<ChevronDown size={18} /></summary><p>{answer}</p></details>)}</div></section>
 
-      <section id="contato" className="lp-contact lp-container"><div><span className="lp-eyebrow">VAMOS ESCREVER ESSE CAPÍTULO?</span><h2>A próxima descoberta<br />pode começar<br /><em>na sua escola.</em></h2><p>Conte um pouco sobre a sua instituição. Vamos conversar sobre como a BibliotecAI pode fazer parte dela.</p><a href="mailto:contato@bibliotecai.com.br"><Mail size={18} />contato@bibliotecai.com.br</a></div><form onSubmit={prepareEmail}><h3>Conheça a BibliotecAI</h3><p>Prepare seu pedido de demonstração.</p><label htmlFor="lp-nome">Seu nome<input id="lp-nome" name="nome" autoComplete="name" required placeholder="Como podemos chamar você?" maxLength={120} /></label><label htmlFor="lp-email">E-mail<input id="lp-email" name="email" type="email" autoComplete="email" required placeholder="voce@escola.com.br" maxLength={200} /></label><label htmlFor="lp-escola">Escola ou instituição<input id="lp-escola" name="escola" autoComplete="organization" required placeholder="Nome da sua instituição" maxLength={200} /></label><label htmlFor="lp-mensagem">O que sua biblioteca precisa? <span>(opcional)</span><textarea id="lp-mensagem" name="mensagem" rows={3} placeholder="Conte um pouco sobre sua biblioteca…" maxLength={2000} /></label><button className="lp-button" type="submit">Preparar e-mail de contato <ArrowUpRight size={18} /></button><small>Seu aplicativo de e-mail será aberto com a mensagem pronta para você enviar.</small>{emailReady && <p className="lp-form-status" role="status">Mensagem preparada. Conclua o envio no seu aplicativo de e-mail. Se ele não abriu, escreva para contato@bibliotecai.com.br.</p>}</form></section>
+      <section id="contato" className="lp-contact lp-container"><div><span className="lp-eyebrow">VAMOS ESCREVER ESSE CAPÍTULO?</span><h2>A próxima descoberta<br />pode começar<br /><em>na sua escola.</em></h2><p>Conte um pouco sobre a sua instituição. Vamos conversar sobre como a BibliotecAI pode fazer parte dela.</p><a href="mailto:contato@bibliotecai.com.br"><Mail size={18} />contato@bibliotecai.com.br</a></div><ContactForm /></section>
     </main>
     <footer className="lp-footer"><div className="lp-container"><div><Brand /><p>Conectando livros, pessoas e aprendizagem.</p></div><div><a href="/auth">Acessar plataforma <ArrowUpRight size={14} /></a><a href="/privacidade">Política de privacidade</a><span>© {new Date().getFullYear()} BibliotecAI</span></div></div></footer>
   </div>;
 }
 
 function ArrowDownIcon() { return <ArrowRight size={17} style={{ transform: 'rotate(90deg)' }} />; }
+
+
+export function ContactForm() {
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSend(event) {
+    event.preventDefault();
+    if (sending) return;
+    const fields = new FormData(event.currentTarget);
+    const body = Object.fromEntries(['nome', 'email', 'escola', 'assunto', 'mensagem'].map((key) => [key, String(fields.get(key) || '')]));
+    setSending(true);
+    setError('');
+    try {
+      await requestPlatformApi('/v1/contato', { method: 'POST', auth: false, body });
+      trackForm('submit');
+      setSent(true);
+    } catch (err) {
+      setError(err?.message || 'Não foi possível enviar sua mensagem. Tente novamente.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return <form onSubmit={handleSend} aria-busy={sending}>
+    <h3>Conheça a BibliotecAI</h3><p>Envie seu pedido de demonstração ou tire suas dúvidas.</p>
+    <label htmlFor="lp-nome">Seu nome<input id="lp-nome" name="nome" autoComplete="name" required placeholder="Como podemos chamar você?" maxLength={100} /></label>
+    <label htmlFor="lp-email">E-mail<input id="lp-email" name="email" type="email" autoComplete="email" required placeholder="voce@escola.com.br" maxLength={200} /></label>
+    <label htmlFor="lp-escola">Escola ou instituição <span>(opcional)</span><input id="lp-escola" name="escola" autoComplete="organization" placeholder="Nome da sua instituição" maxLength={200} /></label>
+    <label htmlFor="lp-assunto">Assunto<select id="lp-assunto" name="assunto" defaultValue="Demonstracao" required><option value="Demonstracao">Demonstração da plataforma</option><option value="Duvidas">Dúvidas</option><option value="Parceria">Parceria</option><option value="Suporte">Suporte</option><option value="Outro">Outros assuntos</option></select></label>
+    <label htmlFor="lp-mensagem">Mensagem<textarea id="lp-mensagem" name="mensagem" rows={3} required placeholder="Conte um pouco sobre sua biblioteca…" maxLength={2000} /></label>
+    <button className="lp-button" type="submit" disabled={sending || sent}>{sending ? 'Enviando…' : sent ? 'Mensagem enviada' : 'Enviar mensagem'}<ArrowUpRight size={18} /></button>
+    <small>A mensagem será registrada para que a equipe possa responder ao seu contato.</small>
+    {error && <p className="lp-form-status" role="alert">{error}</p>}
+    {sent && <p className="lp-form-status" role="status">Mensagem enviada!</p>}
+  </form>;
+}

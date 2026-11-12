@@ -1,4 +1,4 @@
-﻿﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Check,
   CheckCircle,
@@ -2375,15 +2375,12 @@ export default function PainelProfessor() {
                           </div>
                         </div>
 
-                        {entregaFinalizada ? (
-                          <p className="rounded-2xl border border-success/20 bg-success/10 px-4 py-3 text-sm text-success">
-                            Avaliacao finalizada. Status, pontos e feedback nao podem mais ser alterados.
-                          </p>
-                        ) : (
-                          <Button onClick={() => handleAvaliarEntrega(entrega)} disabled={saving} className="h-11 w-full rounded-2xl sm:w-auto">
-                            Salvar avaliação
-                          </Button>
-                        )}
+                        <p className="text-xs text-muted-foreground">
+                          A nota sugerida pela correção automática pode ser alterada antes ou depois da aprovação.
+                        </p>
+                        <Button onClick={() => handleAvaliarEntrega(entrega)} disabled={saving} className="h-11 w-full rounded-2xl sm:w-auto">
+                          Salvar avaliação
+                        </Button>
                       </div>
                     );
                   })
@@ -2725,33 +2722,43 @@ export default function PainelProfessor() {
                                     <p className="text-xs text-muted-foreground">Marque a correta para facilitar a correcao.</p>
                                   </div>
                                   {question.opcoes.map((option, optionIndex) => (
-                                    <div key={`${question.id}-${optionIndex}`} className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                                      <Button
-                                        type="button"
-                                        variant={question.correta === optionIndex ? 'default' : 'outline'}
-                                        size="icon"
-                                        className="h-11 w-full shrink-0 rounded-xl sm:h-10 sm:w-10"
-                                        onClick={() => handleCorrectOptionChange(question.id, optionIndex)}
-                                        title={question.correta === optionIndex ? 'Alternativa correta' : 'Marcar como correta'}
-                                      >
-                                        <CheckCircle className="h-4 w-4" />
-                                      </Button>
-                                      <Input
-                                        value={option}
-                                        placeholder={`Opcao ${optionIndex + 1}`}
-                                        onChange={(e) => handleQuestionOptionChange(question.id, optionIndex, e.target.value)}
-                                      />
-                                      {question.opcoes.length > 2 && (
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-11 w-full rounded-xl sm:h-10 sm:w-10"
-                                          onClick={() => handleRemoveQuestionOption(question.id, optionIndex)}
-                                        >
-                                          <Trash2 className="h-4 w-4 text-destructive" />
-                                        </Button>
-                                      )}
+                                    <div
+                                      key={`${question.id}-${optionIndex}`}
+                                      className="rounded-2xl border bg-background p-3 shadow-sm"
+                                    >
+                                      <div className="flex flex-col gap-2">
+                                        <Input
+                                          value={option}
+                                          placeholder={`Opcao ${optionIndex + 1}`}
+                                          onChange={(e) => handleQuestionOptionChange(question.id, optionIndex, e.target.value)}
+                                        />
+                                        <div className="flex flex-row items-center gap-2">
+                                          <Button
+                                            type="button"
+                                            variant={question.correta === optionIndex ? 'default' : 'outline'}
+                                            size="sm"
+                                            className="h-9 flex-1 rounded-xl sm:flex-none"
+                                            onClick={() => handleCorrectOptionChange(question.id, optionIndex)}
+                                            title={question.correta === optionIndex ? 'Alternativa correta' : 'Marcar como correta'}
+                                          >
+                                            <CheckCircle className="mr-1.5 h-4 w-4" />
+                                            {question.correta === optionIndex ? 'Correta' : 'Marcar correta'}
+                                          </Button>
+                                          {question.opcoes.length > 2 && (
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="sm"
+                                              className="h-9 flex-1 rounded-xl text-destructive hover:bg-destructive/10 sm:flex-none"
+                                              onClick={() => handleRemoveQuestionOption(question.id, optionIndex)}
+                                              title="Apagar opcao"
+                                            >
+                                              <Trash2 className="mr-1.5 h-4 w-4" />
+                                              Apagar
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </div>
                                     </div>
                                   ))}
 

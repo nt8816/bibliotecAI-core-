@@ -5,7 +5,7 @@ import { getDefaultRouteForRole } from '@/lib/defaultRoute';
 import { AppShellState } from '@/components/AppShellState';
 
 export function RoleProtectedRoute({ children, allowedRoles = [] }) {
-  const { user, loading, userRole } = useAuth();
+  const { user, loading, userRole, roles } = useAuth();
   const location = useLocation();
   const normalizedAllowedRoles = Array.isArray(allowedRoles)
     ? allowedRoles.map((role) => String(role || '').trim().toLowerCase()).filter(Boolean)
@@ -14,7 +14,7 @@ export function RoleProtectedRoute({ children, allowedRoles = [] }) {
   if (loading) {
     return (
       <AppShellState
-        title="Validando acesso"
+        title="Validizando acesso"
         description="Conferindo permissões da sua conta."
       />
     );
@@ -33,7 +33,8 @@ export function RoleProtectedRoute({ children, allowedRoles = [] }) {
     );
   }
 
-  if (!normalizedAllowedRoles.includes(userRole)) {
+  const hasAllowedRole = roles.some((role) => normalizedAllowedRoles.includes(role));
+  if (!hasAllowedRole) {
     return <Navigate to={getDefaultRouteForRole(userRole)} replace />;
   }
 

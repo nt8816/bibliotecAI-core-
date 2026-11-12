@@ -125,13 +125,13 @@ export function NativePushBridge() {
               channels: PUSH_CHANNELS.map((channel) => channel.legacyId || channel.id),
             });
             registeredTokenRef.current = token;
-          } catch (error) {
-            console.error('Falha ao registrar token push do dispositivo:', error);
+          } catch {
+            // Push registration failure is non-critical
           }
         });
 
-        registrationErrorListener = await PushNotifications.addListener('registrationError', (error) => {
-          console.error('Falha ao registrar push nativo no Android:', error);
+        registrationErrorListener = await PushNotifications.addListener('registrationError', () => {
+          // Push registration error is non-critical
         });
 
         receivedListener = await PushNotifications.addListener('pushNotificationReceived', (notification) => {
@@ -143,11 +143,8 @@ export function NativePushBridge() {
         });
 
         await PushNotifications.register();
-      } catch (error) {
-        console.error(
-          'Push nativo ainda nao ativado. Coloque o google-services.json e as credenciais do Firebase para concluir.',
-          error,
-        );
+      } catch {
+        // Push not available in this environment
       }
     };
 
@@ -172,8 +169,8 @@ export function NativePushBridge() {
     unregisteringTokenRef.current = lastToken;
 
     unregisterPushDeviceToken({ token: lastToken })
-      .catch((error) => {
-        console.error('Falha ao remover token push do dispositivo:', error);
+      .catch(() => {
+        // Token unregister failure is non-critical
       })
       .finally(() => {
         if (registeredTokenRef.current === lastToken) {

@@ -1,4 +1,5 @@
 import { requestPlatformApi } from '@/lib/platformApi';
+import { getPlatformAccessToken } from '@/lib/platformSession';
 
 const MAX_QUEUE = 200;
 const MAX_FIELD_SIZE = 2000;
@@ -80,9 +81,10 @@ async function flushQueue() {
   while (queue.length > 0) {
     const entry = queue.shift();
     try {
+      const accessToken = getPlatformAccessToken();
+      if (!accessToken) continue;
       await requestPlatformApi('/v1/system-logs', {
         method: 'POST',
-        auth: false,
         body: {
           event: entry.event,
           level: entry.level,
@@ -198,30 +200,11 @@ export function installGlobalErrorLogging() {
     });
   };
 
-  const originalConsoleError = console.error;
-  console.error = (...args) => {
-    try {
-      const error = args.find((item) => item instanceof Error);
-      logSystemEvent({
-        level: 'error',
-        event: 'console_error',
-        message: error?.message || args.map((item) => String(item)).join(' '),
-        context: {
-          stack: error?.stack,
-        },
-      });
-    } catch {
-      // ignore
-    }
-    originalConsoleError(...args);
-  };
-
   window.addEventListener('error', handleError);
   window.addEventListener('unhandledrejection', handleRejection);
 
   return () => {
     window.removeEventListener('error', handleError);
     window.removeEventListener('unhandledrejection', handleRejection);
-    console.error = originalConsoleError;
   };
 }

@@ -12,7 +12,8 @@ import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from './superAdminSecurity';
-import { mayModifyR2Object } from '../../../supabase/functions/_shared/r2-access.js';
+import { mayModifyR2Object, mayReadR2Object } from '../../../supabase/functions/_shared/r2-access.js';
+import { contactNotification } from './contactEmail';
 
 export interface Env {
   APP_ENV?: string;
@@ -34,6 +35,7 @@ export interface Env {
   SECURITY_EMAIL_FROM_NAME?: string;
   SECURITY_EMAIL_REPLY_TO?: string;
   MAILCHANNELS_ENDPOINT?: string;
+  CONTACT_EMAIL?: { send(message: { to: string; from: string; replyTo: string; subject: string; text: string; html: string }): Promise<unknown> };
 }
 
 type RouteHandler = (request: Request, env: Env) => Promise<Response> | Response;
@@ -3251,6 +3253,15 @@ function assertR2ObjectAccess(context: { isSuperAdmin: boolean; profile: Record<
   }
 }
 
+async function assertR2ReadAccess(request: Request, env: Env, context: Awaited<ReturnType<typeof getR2AccessContext>>, objectKey: string) {
+  const allowed = await mayReadR2Object({
+    isSuperAdmin: context.isSuperAdmin,
+    userId: String(context.caller.id),
+    profileId: String(context.profile?.id || ''),
+  }, objectKey, (key: string) => supabaseUserRpc(request, env, 'can_read_r2_arquivo_aula', { _object_key: key }));
+  if (!allowed) throw new Error('Sem permissao para ler este arquivo.');
+}
+
 async function handleDirectR2Storage(request: Request, env: Env, body: Record<string, unknown>) {
   if (!env.R2_BUCKET) return null;
 
@@ -3262,6 +3273,7 @@ async function handleDirectR2Storage(request: Request, env: Env, body: Record<st
 
   const context = await getR2AccessContext(request, env);
   assertR2ObjectAccess(context, objectKey);
+  if (operation === 'create_download_url') await assertR2ReadAccess(request, env, context, objectKey);
   if (['create_upload_url', 'upload_object', 'delete_object'].includes(operation) && !mayModifyR2Object({
     isSuperAdmin: context.isSuperAdmin,
     userId: String(context.caller.id),
@@ -3435,7 +3447,157 @@ function getAutomaticActivityScore(descricao: unknown, textoEntrega: unknown, po
   };
 }
 
+const RECOMMENDATION_GENRES = ['Ficção', 'Fantasia', 'Terror', 'Romance', 'História', 'Ciência', 'Aventura', 'Biografia'];
+
+async function handleBookRecommendation(request: Request, env: Env, next = false) {
+  const { profile } = await getLoanModuleContext(request, env);
+  const aluno = String(profile.id);
+  const escola = String(profile.escola_id);
+  const dia = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const query = (table: string, params: Record<string, string>) =>
+    supabaseAdminRequest(env, `/rest/v1/` + table + '?' + new URLSearchParams(params));
+  const [booksResult, loansResult, preferenceResult, stateResult, popularityResult, activeSchoolResult] = await Promise.all([
+    query('livros', { select: 'id,titulo,autor,area,sinopse,disponivel', escola_id: `eq.` + escola }),
+    query('emprestimos', { select: 'livro_id,status,data_devolucao_real,data_emprestimo,livros(id,titulo,area)', usuario_id: `eq.` + aluno, order: 'data_emprestimo.desc' }),
+    query('aluno_livro_preferencias', { select: '*', aluno_id: `eq.` + aluno }),
+    query('aluno_livro_sugestoes_dia', { select: '*', aluno_id: `eq.` + aluno, dia: `eq.` + dia }),
+    query('emprestimos', { select: 'livro_id,usuarios_biblioteca!inner(escola_id)', 'usuarios_biblioteca.escola_id': `eq.` + escola }),
+    query('emprestimos', { select: 'livro_id,livros!inner(escola_id)', 'livros.escola_id': 'eq.' + escola, status: 'in.(ativo,atrasado)', data_devolucao_real: 'is.null' }),
+  ]);
+  const books = ensureArray<Record<string, any>>(booksResult);
+  const loans = ensureArray<Record<string, any>>(loansResult);
+  const prefs = ensureArray<Record<string, any>>(preferenceResult)[0] || {};
+  const state = ensureArray<Record<string, any>>(stateResult)[0] || {};
+  const popular = new Map<string, number>();
+  for (const loan of ensureArray<Record<string, any>>(popularityResult)) {
+    const id = String(loan.livro_id); popular.set(id, (popular.get(id) || 0) + 1);
+  }
+  const norm = (value: unknown) => normalizeBookCategoryKey(value);
+  const genres = Array.isArray(prefs.generos) ? prefs.generos : [];
+  if (String(profile.tipo).toLowerCase() === 'aluno' && !genres.length && !loans.length) {
+    return jsonResponse({ principal: null, alternativas: [], restantes_hoje: 3 - Number(state.contador || 0), precisa_preferencias: true, generos_catalogo: RECOMMENDATION_GENRES });
+  }
+  const areas = new Map<string, number>();
+  const borrowed = new Set<string>();
+  const active = new Set<string>(ensureArray<Record<string, any>>(activeSchoolResult).map(loan => String(loan.livro_id)));
+  for (const loan of loans) {
+    borrowed.add(String(loan.livro_id));
+    if (!loan.data_devolucao_real && ['ativo', 'atrasado'].includes(String(loan.status))) active.add(String(loan.livro_id));
+    const area = norm(loan.livros?.area);
+    if (area) areas.set(area, (areas.get(area) || 0) + 1);
+  }
+  const profileText = norm(JSON.stringify(prefs.perfil_ia || {}));
+  const genreAreas: Record<string, string[]> = { ficcao: ['literatura'], fantasia: ['literatura'], terror: ['literatura'], romance: ['literatura'], historia: ['historia'], ciencia: ['ciencias', 'ciencia'], aventura: ['literatura', 'infantil'], biografia: ['historia', 'literatura'] };
+  const ranked = books.filter(book => book.id && book.disponivel && !active.has(String(book.id))).map(book => {
+    const area = norm(book.area);
+    const recentIndex = loans.findIndex(loan => area && norm(loan.livros?.area) === area);
+    const words = norm(`` + (book.titulo || '') + ' ' + (book.sinopse || '')).split(' ').filter(word => word.length > 3);
+    const similarity = words.length ? words.filter(word => profileText.includes(word)).length / words.length : 0;
+    const score = (area && genres.some((genre: string) => norm(genre) === area || genreAreas[norm(genre)]?.includes(area)) ? 3 : 0)
+      + 2 * (areas.get(area) || 0) + (recentIndex < 0 ? 0 : 1.5 / (recentIndex + 1))
+      + (book.disponivel ? 1 : 0) + (borrowed.has(String(book.id)) ? 0 : 1) + 0.5 * similarity;
+    return { book, score };
+  }).sort((a, b) => b.score - a.score || (popular.get(String(b.book.id)) || 0) - (popular.get(String(a.book.id)) || 0) || String(a.book.titulo).localeCompare(String(b.book.titulo), 'pt-BR'));
+  const toSuggestion = (book: Record<string, any>, motivo = 'Uma sugestão baseada no seu histórico e interesses.', origem = 'local') => ({
+    livro_id: book.id, titulo: book.titulo, autor: book.autor, area: book.area, sinopse: book.sinopse, motivo, origem,
+  });
+  let candidates = ranked.map(({ book }) => toSuggestion(book));
+  if (!next && !state.principal && candidates.length) {
+    try {
+      const prompt = JSON.stringify({ instrucoes: 'Escolha um livro da lista. Responda apenas JSON com livro_id, motivo e perfil_ia (interesses, nivel, evitar).', generos: genres, perfil_ia: prefs.perfil_ia || null, historico: loans.slice(0, 20).map(loan => ({ titulo: loan.livros?.titulo, area: loan.livros?.area })), candidatos: candidates.slice(0, 30).map(item => ({ livro_id: item.livro_id, titulo: item.titulo, area: item.area, sinopse: String(item.sinopse || '').slice(0, 300) })) });
+      const response = await fetch(`https://api-bibliotecai.plataforma-bibliotecai.workers.dev/text`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast' }), signal: AbortSignal.timeout(8000) });
+      if (!response.ok) throw new Error('IA indisponível');
+      const payload = await response.json() as { text?: string };
+      const parsed = JSON.parse(String(payload.text || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
+      const chosen = ranked.slice(0, 30).find(({ book }) => String(book.id) === String(parsed.livro_id));
+      if (chosen && typeof parsed.motivo === 'string' && parsed.motivo.trim()) {
+        candidates = [toSuggestion(chosen.book, parsed.motivo.trim().slice(0, 500), 'ia'), ...candidates.filter(item => item.livro_id !== chosen.book.id)];
+        if (parsed.perfil_ia && typeof parsed.perfil_ia === 'object' && !Array.isArray(parsed.perfil_ia)) {
+          if (prefs.updated_at) {
+            await supabaseAdminRequest(env, '/rest/v1/aluno_livro_preferencias?' + new URLSearchParams({ aluno_id: 'eq.' + aluno, updated_at: 'eq.' + prefs.updated_at }), { method: 'PATCH', body: { perfil_ia: parsed.perfil_ia, updated_at: new Date().toISOString() } });
+          } else {
+            await supabaseAdminRequest(env, '/rest/v1/aluno_livro_preferencias?on_conflict=aluno_id', { method: 'POST', headers: { Prefer: 'resolution=ignore-duplicates' }, body: { aluno_id: aluno, generos: [], perfil_ia: parsed.perfil_ia } });
+          }
+        }
+      }
+    } catch { /* A recomendação local permanece disponível se a IA falhar. */ }
+  }
+  const result = await supabaseAdminRequest(env, '/rest/v1/rpc/registrar_recomendacao_livro', { method: 'POST', body: { p_aluno: aluno, p_candidatos: candidates, p_proximo: next } });
+  if (result.estado === 'limite') return jsonResponse({ error: 'Limite diário atingido.', restantes_hoje: 0 }, 429);
+  const shown = new Set((state.exibidos || []).map(String));
+  if (result.principal?.livro_id) shown.add(String(result.principal.livro_id));
+  return jsonResponse({ principal: result.principal || null, alternativas: candidates.filter(item => !shown.has(String(item.livro_id))), restantes_hoje: 3 - Number(result.contador || 0), precisa_preferencias: false, generos_catalogo: RECOMMENDATION_GENRES, sem_alternativas: result.estado === 'sem_candidato' });
+}
+
 const routes: Record<string, RouteHandler> = {
+  'POST /v1/contato': async (request, env) => {
+    if (!String(request.headers.get('content-type') || '').toLowerCase().startsWith('application/json')) {
+      return jsonResponse({ success: false, error: 'Formato inválido.' }, 415);
+    }
+    const reader = request.body?.getReader();
+    if (!reader) return jsonResponse({ success: false, error: 'Mensagem inválida.' }, 400);
+    let size = 0;
+    const chunks: Uint8Array[] = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 16384) { await reader.cancel(); return jsonResponse({ success: false, error: 'Mensagem muito grande.' }, 413); }
+      chunks.push(value);
+    }
+    let body: Record<string, unknown>;
+    try {
+      const bytes = new Uint8Array(size);
+      let offset = 0;
+      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+      body = JSON.parse(new TextDecoder().decode(bytes));
+      if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('invalid');
+    } catch { return jsonResponse({ success: false, error: 'Mensagem inválida.' }, 400); }
+    const field = (key: string) => typeof body[key] === 'string' ? (body[key] as string).trim() : '';
+    const nome = field('nome'), email = field('email'), escola = field('escola'), assunto = field('assunto'), mensagem = field('mensagem');
+    if (!nome || nome.length > 100 || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || escola.length > 200 || !['Demonstracao', 'Duvidas', 'Parceria', 'Suporte', 'Outro'].includes(assunto) || !mensagem || mensagem.length > 2000 || /[\r\n]/.test(email)) {
+      return jsonResponse({ success: false, error: 'Confira os campos e tente novamente.' }, 400);
+    }
+    const ip = request.headers.get('CF-Connecting-IP');
+    if (!ip) return jsonResponse({ success: false, error: 'Não foi possível processar a solicitação.' }, 400);
+    const ipHash = await sha256Base64Url(ip);
+    const id = await supabaseAdminRequest(env, '/rest/v1/rpc/registrar_contato_publico', {
+      method: 'POST', body: { p_nome: nome, p_email: email, p_escola: escola, p_assunto: assunto, p_mensagem: mensagem, p_ip_hash: ipHash },
+    });
+    if (!id) return jsonResponse({ success: false, error: 'Muitas tentativas. Aguarde e tente novamente.' }, 429);
+    let status = 'falhou';
+    try {
+      if (!env.CONTACT_EMAIL) throw new Error('Email binding unavailable');
+      await env.CONTACT_EMAIL.send({
+        to: 'plataforma.bibliotecai@gmail.com', from: 'contato@bibliotecai.com.br', replyTo: email,
+        ...contactNotification({ nome, email, escola, assunto, mensagem }),
+      });
+      status = 'enviado';
+    } catch (error) { console.error('Falha ao enviar notificação de contato', error instanceof Error ? error.message : 'erro desconhecido'); }
+    try {
+      await supabaseAdminRequest(env, `/rest/v1/contatos_site?id=eq.${encodeURIComponent(String(id))}`, { method: 'PATCH', body: { email_status: status }, headers: { Prefer: 'return=minimal' } });
+    } catch { console.error('Falha ao atualizar status da notificação de contato'); }
+    return jsonResponse({ success: true });
+  },
+  'GET /v1/admin/contatos': async (request, env) => {
+    if (!(await isAuthorizedSuperAdminRequest(request, env))) return jsonResponse({ success: false, error: 'Sem permissão.' }, 403);
+    const data = await supabaseAdminRequest(env, '/rest/v1/contatos_site?select=id,nome,email,escola,assunto,mensagem,email_status,created_at&order=created_at.desc&limit=200');
+    return jsonResponse({ success: true, data: Array.isArray(data) ? data : [] });
+  },
+  'GET /v1/livros/recomendacao': (request, env) => handleBookRecommendation(request, env),
+  'POST /v1/livros/recomendacao/proximo': (request, env) => handleBookRecommendation(request, env, true),
+  'POST /v1/livros/preferencias': async (request, env) => {
+    const { profile } = await getLoanModuleContext(request, env);
+    const body = await request.json().catch(() => ({}));
+    const generos = body?.generos;
+    if (!Array.isArray(generos) || generos.length < 1 || generos.length > 3 || new Set(generos).size !== generos.length || !generos.every((item: unknown) => typeof item === 'string' && RECOMMENDATION_GENRES.includes(item))) {
+      return jsonResponse({ error: 'Selecione de 1 a 3 gêneros válidos e distintos.' }, 400);
+    }
+    await supabaseAdminRequest(env, '/rest/v1/aluno_livro_preferencias?on_conflict=aluno_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' }, body: { aluno_id: profile.id, generos, perfil_ia: null, updated_at: new Date().toISOString() } });
+    const dia = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    await supabaseAdminRequest(env, '/rest/v1/aluno_livro_sugestoes_dia?' + new URLSearchParams({ aluno_id: 'eq.' + profile.id, dia: 'eq.' + dia }), { method: 'PATCH', body: { principal: null } });
+    return jsonResponse({ success: true, generos });
+  },
   'GET /health': async (_request, env) =>
     jsonResponse({
       success: true,
@@ -3526,6 +3688,7 @@ const routes: Record<string, RouteHandler> = {
 
       const context = await getR2AccessContext(request, env);
       assertR2ObjectAccess(context, objectKey);
+      await assertR2ReadAccess(request, env, context, objectKey);
 
       const object = await env.R2_BUCKET.get(objectKey);
       if (!object) {
@@ -10781,7 +10944,7 @@ function normalizeDynamicRoute(routeKey: string) {
     .replace(/\/v1\/livros\/categorias$/, '/v1/livros/categorias')
     .replace(/\/v1\/livros\/(?!categorias(?:\/|$))[^/]+\/delete$/, '/v1/livros/:id/delete')
     .replace(/\/v1\/usuarios\/[^/]+\/delete$/, '/v1/usuarios/:id/delete')
-    .replace(/\/v1\/livros\/(?!categorias(?:\/|$))[^/]+$/, '/v1/livros/:id')
+    .replace(/\/v1\/livros\/(?!categorias(?:\/|$)|recomendacao$|preferencias$)[^/]+$/, '/v1/livros/:id')
     .replace(/\/v1\/usuarios\/(?!professor-turmas$|provisionar-aluno$|delete-batch$|import$|reset-aluno-password$)[^/]+$/, '/v1/usuarios/:id');
 }
 

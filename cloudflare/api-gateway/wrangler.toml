@@ -6,6 +6,10 @@ routes = [
   { pattern = "api.bibliotecai.com.br/*", zone_name = "bibliotecai.com.br" }
 ]
 
+[[send_email]]
+name = "CONTACT_EMAIL"
+destination_address = "plataforma.bibliotecai@gmail.com"
+
 [vars]
 APP_ENV = "production"
 APP_BASE_DOMAIN = "bibliotecai.com.br"
