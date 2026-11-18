@@ -79,6 +79,7 @@ export function AppSidebar() {
         { title: 'Tenants', url: '/admin/tenants', icon: Building2 },
         { title: 'Super Admins', url: '/admin/super-admins', icon: ShieldCheck },
         { title: 'Contatos', url: '/admin/contatos', icon: MessageSquare },
+        { title: 'Quiz', url: '/admin/quiz', icon: Trophy },
         { title: 'Reclamacoes', url: '/reclamacoes', icon: Bell },
         { title: 'Analytics', url: '/analytics', icon: BarChart2 },
       ];

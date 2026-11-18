@@ -395,8 +395,9 @@ export async function verifyAuthenticationResponse(input: {
   storedCredentialId: string;
   publicKeyJwk: JsonWebKey;
   previousCounter: number;
+  requireUserVerification?: boolean;
 }) {
-  const { credential, expectedChallenge, expectedOrigin, rpId, storedCredentialId, publicKeyJwk, previousCounter } = input;
+  const { credential, expectedChallenge, expectedOrigin, rpId, storedCredentialId, publicKeyJwk, previousCounter, requireUserVerification = false } = input;
   const response = credential?.response || {};
   const receivedCredentialId = String(credential?.id || '');
   if (receivedCredentialId !== storedCredentialId) {
@@ -422,6 +423,10 @@ export async function verifyAuthenticationResponse(input: {
   const parsed = parseAuthData(authenticatorData);
   if (!(parsed.flags & 0x01)) {
     throw new Error('A autenticação da passkey não confirmou a presença do usuário.');
+  }
+
+  if (requireUserVerification && !(parsed.flags & 0x04)) {
+    throw new Error('A autenticação da passkey não confirmou a verificação do usuário.');
   }
 
   const rpIdValid = await verifyRpIdHash(rpId, parsed.rpIdHash);

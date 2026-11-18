@@ -22,6 +22,11 @@ export interface Env {
   HANDOFF_ENCRYPTION_SECRET?: string;
   SUPABASE_URL?: string;
   SUPABASE_PUBLISHABLE_KEY?: string;
+  QUIZ_ADMIN_ENABLED?: string;
+  QUIZ_SUPABASE_URL?: string;
+  QUIZ_SUPABASE_SERVICE_ROLE_KEY?: string;
+  QUIZ_PASSKEY_ORIGIN?: string;
+  QUIZ_PASSKEY_RP_ID?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
   SUPABASE_SECRET_KEY?: string;
   SUPABASE_SECRET_KEYS?: string;
@@ -3529,7 +3534,241 @@ async function handleBookRecommendation(request: Request, env: Env, next = false
   return jsonResponse({ principal: result.principal || null, alternativas: candidates.filter(item => !shown.has(String(item.livro_id))), restantes_hoje: 3 - Number(result.contador || 0), precisa_preferencias: false, generos_catalogo: RECOMMENDATION_GENRES, sem_alternativas: result.estado === 'sem_candidato' });
 }
 
-const routes: Record<string, RouteHandler> = {
+async function handleQuizPasskey(request: Request, env: Env) {
+  const reply = (status: number, error: string) => {
+    const response = jsonResponse({ success: false, error }, status);
+    response.headers.set('Cache-Control', 'no-store');
+    return response;
+  };
+  try {
+    const bearer = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '');
+    if (!bearer || getUserToken(request) !== bearer[1]) return reply(401, 'Nao autenticado.');
+    const caller = await fetchSupabaseUser(request, env);
+    if (!caller?.id) return reply(401, 'Nao autenticado.');
+    const claims = await parseJwtPayload(bearer[1], env);
+    if (!claims || claims.sub !== caller.id || typeof claims.session_id !== 'string'
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(claims.session_id)) {
+      return reply(401, 'Nao autenticado.');
+    }
+    if (claims.role !== 'authenticated' || typeof claims.exp !== 'number' || claims.exp <= Date.now() / 1000) return reply(401, 'Nao autenticado.');
+    if (!(await isSuperAdmin(String(caller.id), env))) return reply(403, 'Sem permissao.');
+    const account = await getSuperAdminAccountByAuthUserId(String(caller.id), env);
+    if (!account?.id || account.ativo !== true || account.bloqueado !== false) return reply(403, 'Sem permissao.');
+    const origin = String(env.QUIZ_PASSKEY_ORIGIN || '');
+    const rpId = String(env.QUIZ_PASSKEY_RP_ID || '');
+    const parsedOrigin = new URL(origin);
+    if (parsedOrigin.protocol !== 'https:' || parsedOrigin.origin !== origin || parsedOrigin.hostname !== rpId
+      || parsedOrigin.username || parsedOrigin.password || request.headers.get('origin') !== origin) return reply(503, 'Autenticacao reforcada indisponivel.');
+    const identity = { p_account_id: account.id, p_auth_user_id: caller.id, p_auth_session_id: claims.session_id };
+    const active = await supabaseAdminRequest(env, '/rest/v1/rpc/is_active_quiz_super_admin_session', { method: 'POST', body: identity });
+    if (active !== true) return reply(403, 'Sem permissao.');
+    if (new URL(request.url).pathname.endsWith('/options')) {
+      const passkeys = filterPasskeysByRpId(await listActivePasskeys(String(account.id), env), rpId);
+      if (!passkeys.length) return reply(409, 'Nenhuma passkey disponivel.');
+      const challenge = randomToken(32);
+      const issued = await supabaseAdminRequest(env, '/rest/v1/rpc/issue_quiz_passkey_challenge', {
+        method: 'POST', headers: { Accept: 'application/vnd.pgrst.object+json' },
+        body: { ...identity, p_challenge_hash: await sha256Base64Url(challenge) },
+      });
+      if (!issued || Array.isArray(issued) || typeof issued.id !== 'string'
+        || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(issued.id)) throw new Error('challenge unavailable');
+      const response = jsonResponse({ success: true, challengeId: issued.id, publicKey: { challenge, rpId, timeout: 60000,
+        userVerification: 'required', allowCredentials: passkeys.map(item => ({ type: 'public-key', id: item.credential_id })) } });
+      response.headers.set('Cache-Control', 'no-store');
+      return response;
+    }
+    if (!request.body) return reply(400, 'Solicitacao invalida.');
+    const reader = request.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > 16384) { await reader.cancel(); return reply(413, 'Solicitacao invalida.'); }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+    let body: any;
+    try { body = JSON.parse(new TextDecoder().decode(bytes)); } catch { return reply(400, 'Solicitacao invalida.'); }
+    if (typeof body?.challenge !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(body.challenge)
+      || typeof body?.challengeId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.challengeId)
+      || typeof body?.credential?.id !== 'string' || !/^[A-Za-z0-9_-]{1,1400}$/.test(body.credential.id)) return reply(400, 'Solicitacao invalida.');
+    const passkey = await getActivePasskeyByCredential(String(account.id), body.credential.id, env);
+    if (!passkey || !filterPasskeysByRpId([passkey], rpId).length) return reply(403, 'Credencial invalida.');
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({ credential: body.credential, expectedChallenge: body.challenge,
+        expectedOrigin: origin, rpId, storedCredentialId: String(passkey.credential_id), publicKeyJwk: passkey.credential_public_key_jwk,
+        previousCounter: Number(passkey.counter), requireUserVerification: true });
+    } catch { return reply(403, 'Credencial invalida.'); }
+    await supabaseAdminRequest(env, '/rest/v1/rpc/consume_quiz_passkey_challenge', { method: 'POST', body: {
+      ...identity, p_challenge_id: body.challengeId, p_challenge_hash: await sha256Base64Url(body.challenge),
+      p_credential_id: passkey.credential_id, p_counter: verification.counter,
+    } });
+    const response = jsonResponse({ success: true });
+    response.headers.set('Cache-Control', 'no-store');
+    return response;
+  } catch {
+    return reply(503, 'Autenticacao reforcada indisponivel.');
+  }
+}
+
+export async function hasQuizPasskeyGrant(request: Request, env: Env, caller: Record<string, unknown>) {
+  try {
+    const bearer = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '');
+    if (!bearer || getUserToken(request) !== bearer[1] || !caller.id) return false;
+    const claims = await parseJwtPayload(bearer[1], env);
+    if (!claims || claims.sub !== caller.id || claims.role !== 'authenticated'
+      || typeof claims.exp !== 'number' || claims.exp <= Date.now() / 1000
+      || typeof claims.session_id !== 'string'
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(claims.session_id)) return false;
+    const verifiedCaller = await fetchSupabaseUser(request, env);
+    if (!verifiedCaller?.id || verifiedCaller.id !== caller.id) return false;
+    if (!(await isSuperAdmin(String(verifiedCaller.id), env))) return false;
+    const account = await getSuperAdminAccountByAuthUserId(String(caller.id), env);
+    if (!account?.id || account.ativo !== true || account.bloqueado !== false) return false;
+    const identity = { p_account_id: account.id, p_auth_user_id: caller.id, p_auth_session_id: claims.session_id };
+    if (await supabaseAdminRequest(env, '/rest/v1/rpc/is_active_quiz_super_admin_session', { method: 'POST', body: identity }) !== true) return false;
+    const params = new URLSearchParams({
+      select: 'id,account_id,auth_user_id,auth_session_id,expires_at,passkey_id,super_admin_passkeys!inner(id,account_id,revoked_at)',
+      account_id: `eq.${account.id}`, auth_user_id: `eq.${caller.id}`, auth_session_id: `eq.${claims.session_id}`,
+      expires_at: `gt.${new Date().toISOString()}`, 'super_admin_passkeys.revoked_at': 'is.null', limit: '1',
+    });
+    const grants = await supabaseAdminRequest(env, `/rest/v1/quiz_passkey_grants?${params}`);
+    if (!Array.isArray(grants) || grants.length !== 1) return false;
+    const grant = grants[0];
+    const passkey = grant?.super_admin_passkeys;
+    return grant.account_id === account.id && grant.auth_user_id === caller.id && grant.auth_session_id === claims.session_id
+      && typeof grant.expires_at === 'string' && Date.parse(grant.expires_at) > Date.now()
+      && !!grant.passkey_id && passkey?.id === grant.passkey_id && passkey.account_id === account.id && passkey.revoked_at === null;
+  } catch {
+    return false;
+  }
+}
+
+async function handleQuizDisplay(request: Request, env: Env, leaderboard: boolean) {
+  const reply = (body: unknown, status = 200) => {
+    const response = jsonResponse(body, status);
+    response.headers.set('Cache-Control', 'no-store');
+    return response;
+  };
+  try {
+    const caller = await fetchSupabaseUser(request, env);
+    if (!caller?.id) return reply({ success: false, error: 'Nao autorizado.' }, 401);
+    if (!(await hasQuizPasskeyGrant(request, env, caller))) return reply({ success: false, error: 'Nao autorizado.' }, 403);
+    const params = new URL(request.url).searchParams;
+    const allowed = leaderboard ? ['round_id', 'limit', 'offset'] : ['limit', 'offset'];
+    const round = params.get('round_id') || '';
+    const limit = params.get('limit') ?? '20';
+    const offset = params.get('offset') ?? '0';
+    if ([...params.keys()].some(key => !allowed.includes(key))
+      || allowed.some(key => params.getAll(key).length > 1)
+      || (leaderboard && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(round))
+      || !/^(?:[1-9]|[1-9][0-9]|100)$/.test(limit)
+      || !/^(?:0|[1-9][0-9]{0,3}|10000)$/.test(offset)) {
+      return reply({ success: false, error: 'Solicitacao invalida.' }, 400);
+    }
+    const quizUrl = new URL(String(env.QUIZ_SUPABASE_URL || ''));
+    const principalUrl = new URL(String(env.SUPABASE_URL || ''));
+    const key = String(env.QUIZ_SUPABASE_SERVICE_ROLE_KEY || '').trim();
+    if (quizUrl.protocol !== 'https:' || quizUrl.origin === principalUrl.origin || quizUrl.username || quizUrl.password
+      || quizUrl.pathname !== '/' || quizUrl.search || quizUrl.hash || !key) throw new Error('invalid configuration');
+    const upstream = await fetch(`${quizUrl.origin}/rest/v1/rpc/${leaderboard ? 'quiz_display_leaderboard' : 'quiz_display_rounds'}`, {
+      method: 'POST', headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...(leaderboard ? { p_round_id: round } : {}), p_limit: Number(limit), p_offset: Number(offset) }),
+    });
+    if (!upstream.ok) throw new Error('quiz unavailable');
+    const data = await upstream.json();
+    if (!Array.isArray(data) || data.length > Number(limit)) throw new Error('invalid response');
+    const safe = data.map((row: unknown) => {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error('invalid response');
+      const item = row as Record<string, unknown>;
+      if (leaderboard) {
+        if (typeof item.nickname !== 'string' || typeof item.xp !== 'number' || typeof item.correct_count !== 'number'
+          || typeof item.elapsed_ms !== 'number') throw new Error('invalid response');
+        return { nickname: item.nickname, xp: item.xp, correct_count: item.correct_count, elapsed_ms: item.elapsed_ms };
+      }
+      if (typeof item.id !== 'string' || typeof item.name !== 'string' || typeof item.active !== 'boolean') throw new Error('invalid response');
+      return { id: item.id, name: item.name, active: item.active };
+    });
+    return reply({ success: true, data: safe });
+  } catch {
+    return reply({ success: false, error: 'Servico indisponivel.' }, 503);
+  }
+}
+
+export const routes: Record<string, RouteHandler> = {
+  'GET /v1/admin/quiz/display/rounds': (request, env) => handleQuizDisplay(request, env, false),
+  'GET /v1/admin/quiz/display/leaderboard': (request, env) => handleQuizDisplay(request, env, true),
+  'POST /v1/admin/quiz/passkeys/options': handleQuizPasskey,
+  'POST /v1/admin/quiz/passkeys/verify': handleQuizPasskey,
+  'GET /v1/admin/quiz/contacts': async (request, env) => {
+    const reply = (body: unknown, status = 200) => {
+      const response = jsonResponse(body, status);
+      response.headers.set('Cache-Control', 'no-store');
+      return response;
+    };
+    try {
+      const caller = await fetchSupabaseUser(request, env);
+      if (!caller?.id) return reply({ success: false, error: 'Nao autorizado.' }, 401);
+      if (!(await hasQuizPasskeyGrant(request, env, caller))) return reply({ success: false, error: 'Nao autorizado.' }, 403);
+      const params = new URL(request.url).searchParams;
+      const round = params.get('round_id') || '';
+      const limitText = params.get('limit') ?? '20';
+      const offsetText = params.get('offset') ?? '0';
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(round)
+        || !/^(?:[1-9]|[1-4][0-9]|50)$/.test(limitText)
+        || !/^(?:0|[1-9][0-9]{0,3}|10000)$/.test(offsetText)
+        || ['round_id', 'limit', 'offset'].some(key => params.getAll(key).length > 1)) {
+        return reply({ success: false, error: 'Solicitacao invalida.' }, 400);
+      }
+      const quizUrl = new URL(String(env.QUIZ_SUPABASE_URL || ''));
+      const principalUrl = new URL(String(env.SUPABASE_URL || ''));
+      const key = String(env.QUIZ_SUPABASE_SERVICE_ROLE_KEY || '').trim();
+      if (quizUrl.protocol !== 'https:' || quizUrl.origin === principalUrl.origin || quizUrl.username || quizUrl.password
+        || quizUrl.pathname !== '/' || quizUrl.search || quizUrl.hash || !key) throw new Error('invalid configuration');
+      const upstream = await fetch(`${quizUrl.origin}/rest/v1/rpc/quiz_admin_contacts`, {
+        method: 'POST',
+        headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_actor_id: caller.id, p_round_id: round, p_limit: Number(limitText), p_offset: Number(offsetText) }),
+      });
+      if (!upstream.ok) throw new Error('quiz unavailable');
+      const data = await upstream.json();
+      if (!Array.isArray(data) || data.length > Number(limitText)) throw new Error('invalid response');
+      const safe = data.map((row: unknown) => {
+        if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error('invalid response');
+        const item = row as Record<string, unknown>;
+        if (!['game_id', 'nickname', 'xp', 'correct_count', 'elapsed_ms', 'finished_at', 'email', 'phone', 'expires_at']
+          .every(key => Object.prototype.hasOwnProperty.call(item, key))) throw new Error('invalid response');
+        const { game_id, nickname, xp, correct_count, elapsed_ms, finished_at, email, phone, expires_at } = item;
+        return { game_id, nickname, xp, correct_count, elapsed_ms, finished_at, email, phone, expires_at, selected_winner: item.selected_winner === true };
+      });
+      return reply({ success: true, data: safe });
+    } catch {
+      return reply({ success: false, error: 'Servico indisponivel.' }, 503);
+    }
+  },
+  'GET /v1/admin/quiz/session': async (request, env) => {
+    let response: Response;
+    try {
+      const caller = await fetchSupabaseUser(request, env);
+      if (!caller?.id) {
+        response = jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
+      } else if (!(await hasQuizPasskeyGrant(request, env, caller))) {
+        response = jsonResponse({ success: false, error: 'Sem permissao.' }, 403);
+      } else {
+        response = jsonResponse({ success: true, user: { id: caller.id } });
+      }
+    } catch {
+      response = jsonResponse({ success: false, error: 'Servico indisponivel.' }, 503);
+    }
+    response.headers.set('Cache-Control', 'no-store');
+    return response;
+  },
+
   'POST /v1/contato': async (request, env) => {
     if (!String(request.headers.get('content-type') || '').toLowerCase().startsWith('application/json')) {
       return jsonResponse({ success: false, error: 'Formato inválido.' }, 415);
@@ -11026,6 +11265,15 @@ export default {
     }
 
     const routeKey = resolveRoute(request);
+    if (request.method.toUpperCase() === 'GET' && (new URL(request.url).pathname === '/v1/admin/quiz' || new URL(request.url).pathname.startsWith('/v1/admin/quiz/'))) {
+      const permittedQuizGets = new Set(['GET /v1/admin/quiz/session', 'GET /v1/admin/quiz/contacts', 'GET /v1/admin/quiz/display/rounds', 'GET /v1/admin/quiz/display/leaderboard']);
+      if (env.QUIZ_ADMIN_ENABLED !== 'true' || !permittedQuizGets.has(routeKey)) {
+        const response = jsonResponse({ success: false, error: 'Autenticacao reforcada indisponivel.' }, 503);
+        response.headers.set('Cache-Control', 'no-store');
+        return withCorsHeaders(response, request, env);
+      }
+    }
+
     const handler = routes[routeKey];
 
     if (!handler) {
