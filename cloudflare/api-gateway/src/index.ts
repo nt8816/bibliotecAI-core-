@@ -155,30 +155,48 @@ function getUserToken(request: Request) {
 }
 
 async function parseJwtPayload(token: string, env: Env) {
-  const secret = String(env.SUPABASE_JWT_SECRET || '').trim();
-  if (!secret) return null;
-
   const parts = String(token || '').split('.');
-  if (parts.length !== 3) return null;
+  if (parts.length !== 3 || token.length > 16384) return null;
 
   try {
     const [headerB64, payloadB64, signatureB64] = parts;
+    const header = JSON.parse(new TextDecoder().decode(base64UrlDecode(headerB64)));
+    if (!header || typeof header !== 'object' || Array.isArray(header)) return null;
     const signingInput = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
-
-    const key = await crypto.subtle.importKey(
-      'raw',
-      new TextEncoder().encode(secret),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['verify'],
-    );
-
     const signature = base64UrlDecode(signatureB64);
-    const valid = await crypto.subtle.verify('HMAC', key, signature, signingInput);
-    if (!valid) return null;
+    let valid = false;
 
-    const decoded = base64UrlDecode(payloadB64);
-    return JSON.parse(new TextDecoder().decode(decoded));
+    if (header.alg === 'HS256') {
+      const secret = String(env.SUPABASE_JWT_SECRET || '').trim();
+      if (!secret) return null;
+      const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+        { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+      valid = await crypto.subtle.verify('HMAC', key, signature, signingInput);
+    } else if (header.alg === 'ES256') {
+      if (typeof header.kid !== 'string' || !header.kid || header.kid.length > 256 || signature.length !== 64) return null;
+      const projectUrl = new URL(String(env.SUPABASE_URL || ''));
+      if (projectUrl.protocol !== 'https:' || projectUrl.username || projectUrl.password || projectUrl.pathname !== '/' || projectUrl.search || projectUrl.hash) return null;
+      const response = await fetch(`${projectUrl.origin}/auth/v1/.well-known/jwks.json`, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) return null;
+      const jwks = await response.json() as { keys?: JsonWebKey[] };
+      if (!Array.isArray(jwks?.keys) || jwks.keys.length > 50) return null;
+      const keys = jwks.keys.filter((key) => key.kid === header.kid && key.kty === 'EC' && key.crv === 'P-256'
+        && (!key.alg || key.alg === 'ES256') && (!key.use || key.use === 'sig'));
+      if (keys.length !== 1) return null;
+      const key = await crypto.subtle.importKey('jwk', keys[0], { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+      valid = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, signature, signingInput);
+    } else return null;
+
+    if (!valid) return null;
+    const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(payloadB64)));
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    if (header.alg === 'ES256') {
+      const issuer = `${new URL(String(env.SUPABASE_URL)).origin}/auth/v1`;
+      if (payload.iss !== issuer || typeof payload.exp !== 'number' || payload.exp <= Date.now() / 1000) return null;
+    }
+    return payload;
   } catch {
     return null;
   }
