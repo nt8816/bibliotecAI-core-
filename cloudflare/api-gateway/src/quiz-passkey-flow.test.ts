@@ -37,6 +37,23 @@ describe('quiz passkey gateway', () => {
     expect(await response.json()).not.toHaveProperty('publicKey');
   });
 
+  it('lê desafio retornado com o tipo JSON específico do PostgREST', async () => {
+    vi.stubGlobal('crypto', webcrypto);
+    vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+      const path = new URL(input).pathname;
+      if (path === '/auth/v1/user') return json({ id: user });
+      if (path.endsWith('/user_roles')) return json([{ role: 'super_admin' }]);
+      if (path.endsWith('/super_admin_accounts')) return json([{ id: 'account', ativo: true, bloqueado: false }]);
+      if (path.endsWith('/is_active_quiz_super_admin_session')) return json(true);
+      if (path.endsWith('/super_admin_passkeys')) return json([{ id: 'key', credential_id: 'credential', metadata: { rp_id: 'app.test' } }]);
+      if (path.endsWith('/issue_quiz_passkey_challenge')) return new Response(JSON.stringify({ id: challengeId }), { headers: { 'content-type': 'application/vnd.pgrst.object+json; charset=utf-8' } });
+      throw new Error(`unexpected ${path}`);
+    }));
+    const response = await call('options');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(expect.objectContaining({ challengeId, publicKey: expect.objectContaining({ rpId: 'app.test' }) }));
+  });
+
   it('fails closed when issuance is rejected', async () => {
     vi.stubGlobal('crypto', webcrypto);
     vi.stubGlobal('fetch', vi.fn(async (input: string) => {

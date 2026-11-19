@@ -226,8 +226,8 @@ function getSupabaseConfig(env: Env) {
 }
 
 async function parseResponse(response: Response) {
-  const contentType = response.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) return response.json();
+  const contentType = (response.headers.get('content-type') || '').split(';', 1)[0].trim().toLowerCase();
+  if (contentType === 'application/json' || contentType.endsWith('+json')) return response.json();
   return response.text();
 }
 
