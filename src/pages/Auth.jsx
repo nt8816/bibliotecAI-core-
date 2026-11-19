@@ -157,12 +157,17 @@ export default function Auth() {
   const { toast } = useToast();
 
   useEffect(() => {
+    let securityNotice = '';
+    try {
+      securityNotice = window.sessionStorage.getItem('bibliotecai.auth.notice') || '';
+      window.sessionStorage.removeItem('bibliotecai.auth.notice');
+    } catch { /* storage indisponível */ }
     const handoffErrorMessage = consumeSessionHandoffErrorMessage();
-    if (!handoffErrorMessage) return;
+    if (!securityNotice && !handoffErrorMessage) return;
 
     setAuthAlert({
-      title: 'ACESSO AUTOMATICO NAO CONCLUIDO',
-      description: handoffErrorMessage,
+      title: securityNotice ? 'CONFIRME O ACESSO DE ADMINISTRADOR' : 'ACESSO AUTOMATICO NAO CONCLUIDO',
+      description: securityNotice || handoffErrorMessage,
     });
   }, []);
 

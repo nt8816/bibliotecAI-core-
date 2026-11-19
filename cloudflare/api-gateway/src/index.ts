@@ -6348,6 +6348,11 @@ export const routes: Record<string, RouteHandler> = {
     const superAdminAuthorized = roles.includes('super_admin')
       ? await isAuthorizedSuperAdminRequest(request, env, user)
       : false;
+    if (roles.includes('super_admin') && !superAdminAuthorized) {
+      const response = jsonResponse({ success: false, error: 'Confirme novamente o acesso de superadministrador.', requires_super_admin_security: true }, 403);
+      response.headers.set('Cache-Control', 'no-store');
+      return response;
+    }
     const profile = roles.includes('super_admin')
       ? null
       : await getLatestUserProfile(String(user.id), env).catch(() => null);

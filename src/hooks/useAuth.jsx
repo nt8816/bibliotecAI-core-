@@ -23,21 +23,15 @@ function normalizeRoleList(rawRoles) {
 }
 
 function extractRolesFromPayload(payload, fallbackSession = null) {
-  const directRoles = normalizeRoleList(payload?.roles);
-  if (directRoles.length > 0) return directRoles;
+  if (Array.isArray(payload?.roles)) return normalizeRoleList(payload.roles);
 
   const user = payload?.user || fallbackSession?.user || null;
-  const fromUserArray = normalizeRoleList(
-    user?.roles
-    || user?.app_metadata?.roles
-    || user?.user_metadata?.roles,
-  );
+  const fromUserArray = normalizeRoleList(user?.app_metadata?.roles);
   if (fromUserArray.length > 0) return fromUserArray;
 
   const singleCandidates = [
     user?.role,
     user?.app_metadata?.role,
-    user?.user_metadata?.role,
   ]
     .map((role) => String(role || '').trim().toLowerCase())
     .filter(Boolean);
@@ -53,6 +47,7 @@ export function AuthProvider({ children }) {
   const [roles, setRoles] = useState([]);
   const [tenantContext, setTenantContext] = useState(null);
   const superAdminOverrideRef = useRef(false);
+  const authSyncGenerationRef = useRef(0);
 
   const applyAuthPayload = useCallback((payload, fallbackSession = null) => {
     const resolvedSession = payload?.session || fallbackSession || getPlatformSession() || null;
@@ -67,6 +62,7 @@ export function AuthProvider({ children }) {
 
   const syncAuthState = useCallback(async () => {
     if (superAdminOverrideRef.current) return;
+    const generation = ++authSyncGenerationRef.current;
 
     const localSession = getPlatformSession();
 
@@ -81,8 +77,13 @@ export function AuthProvider({ children }) {
 
     try {
       const payload = await fetchPlatformSessionProfile();
+      if (generation !== authSyncGenerationRef.current || superAdminOverrideRef.current) return;
       applyAuthPayload(payload, localSession);
-    } catch {
+    } catch (error) {
+      if (generation !== authSyncGenerationRef.current || superAdminOverrideRef.current) return;
+      if (error?.payload?.requires_super_admin_security === true) {
+        try { window.sessionStorage.setItem('bibliotecai.auth.notice', 'Confirme novamente o acesso de superadministrador para continuar.'); } catch { /* storage indisponível */ }
+      }
       clearPlatformSession();
       setSession(null);
       setUser(null);
@@ -123,6 +124,7 @@ export function AuthProvider({ children }) {
   const signIn = useCallback(async (email, password) => {
     const result = await signInWithPlatform(email, password);
     if (!result.error) {
+      authSyncGenerationRef.current += 1;
       applyAuthPayload(result.data || {}, getPlatformSession());
       await syncAuthState().catch(() => null);
     }
@@ -139,6 +141,7 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     superAdminOverrideRef.current = false;
+    authSyncGenerationRef.current += 1;
     try {
       await signOutWithPlatform();
     } finally {
@@ -154,12 +157,13 @@ export function AuthProvider({ children }) {
     const resolvedSession = sessionData?.session || getPlatformSession() || null;
     const resolvedUser = sessionData?.user || resolvedSession?.user || null;
     const adminRoles = ['super_admin'];
+    superAdminOverrideRef.current = true;
+    authSyncGenerationRef.current += 1;
     setSession(resolvedSession);
     setUser(resolvedUser);
     setRoles(adminRoles);
     setUserRole('super_admin');
     setTenantContext(sessionData?.tenant || null);
-    superAdminOverrideRef.current = true;
   }, []);
 
   const value = useMemo(() => ({
