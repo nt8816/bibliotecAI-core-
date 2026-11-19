@@ -3552,6 +3552,17 @@ async function handleBookRecommendation(request: Request, env: Env, next = false
   return jsonResponse({ principal: result.principal || null, alternativas: candidates.filter(item => !shown.has(String(item.livro_id))), restantes_hoje: 3 - Number(result.contador || 0), precisa_preferencias: false, generos_catalogo: RECOMMENDATION_GENRES, sem_alternativas: result.estado === 'sem_candidato' });
 }
 
+// Credenciais antigas podem não ter rp_id salvo. Elas são apenas candidatas:
+// a assinatura e o hash do RP continuam obrigatórios na verificação WebAuthn.
+function filterQuizPasskeys(passkeys: Record<string, unknown>[], rpId: string) {
+  return passkeys.filter((item) => {
+    const metadata = item?.metadata && typeof item.metadata === 'object' ? item.metadata as Record<string, unknown> : {};
+    const stored = metadata.rp_id;
+    if (stored == null || stored === '') return true;
+    return typeof stored === 'string' && stored.trim().toLowerCase() === rpId.trim().toLowerCase();
+  });
+}
+
 async function handleQuizPasskey(request: Request, env: Env) {
   const reply = (status: number, error: string) => {
     const response = jsonResponse({ success: false, error }, status);
@@ -3581,7 +3592,7 @@ async function handleQuizPasskey(request: Request, env: Env) {
     const active = await supabaseAdminRequest(env, '/rest/v1/rpc/is_active_quiz_super_admin_session', { method: 'POST', body: identity });
     if (active !== true) return reply(403, 'Sem permissao.');
     if (new URL(request.url).pathname.endsWith('/options')) {
-      const passkeys = filterPasskeysByRpId(await listActivePasskeys(String(account.id), env), rpId);
+      const passkeys = filterQuizPasskeys(await listActivePasskeys(String(account.id), env), rpId);
       if (!passkeys.length) return reply(409, 'Nenhuma passkey disponivel.');
       const challenge = randomToken(32);
       const issued = await supabaseAdminRequest(env, '/rest/v1/rpc/issue_quiz_passkey_challenge', {
@@ -3615,7 +3626,7 @@ async function handleQuizPasskey(request: Request, env: Env) {
       || typeof body?.challengeId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.challengeId)
       || typeof body?.credential?.id !== 'string' || !/^[A-Za-z0-9_-]{1,1400}$/.test(body.credential.id)) return reply(400, 'Solicitacao invalida.');
     const passkey = await getActivePasskeyByCredential(String(account.id), body.credential.id, env);
-    if (!passkey || !filterPasskeysByRpId([passkey], rpId).length) return reply(403, 'Credencial invalida.');
+    if (!passkey || !filterQuizPasskeys([passkey], rpId).length) return reply(403, 'Credencial invalida.');
     let verification;
     try {
       verification = await verifyAuthenticationResponse({ credential: body.credential, expectedChallenge: body.challenge,

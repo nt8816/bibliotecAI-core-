@@ -24,7 +24,7 @@ function call(path: string, body: object = {}) {
 }
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-async function setup() {
+async function setup(legacy = false) {
   vi.stubGlobal('crypto', webcrypto);
   const keys = await webcrypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
   const publicKey = await webcrypto.subtle.exportKey('jwk', keys.publicKey);
@@ -40,7 +40,7 @@ async function setup() {
     if (url.pathname.endsWith('/user_roles')) return json([{ role: 'super_admin' }]);
     if (url.pathname.endsWith('/super_admin_accounts')) return json([{ id: account, ativo: true, bloqueado: false }]);
     if (url.pathname.endsWith('/is_active_quiz_super_admin_session')) return json(JSON.stringify(body) === JSON.stringify(identity));
-    if (url.pathname.endsWith('/super_admin_passkeys')) return json([{ id: passkeyId, account_id: account, credential_id: credentialId, credential_public_key_jwk: publicKey, counter, transports: [], revoked_at: null, metadata: { rp_id: 'app.test' } }]);
+    if (url.pathname.endsWith('/super_admin_passkeys')) return json([{ id: passkeyId, account_id: account, credential_id: credentialId, credential_public_key_jwk: publicKey, counter, transports: [], revoked_at: null, metadata: legacy ? {} : { rp_id: 'app.test' } }]);
     if (url.pathname.endsWith('/issue_quiz_passkey_challenge')) {
       expect(body).toEqual({ ...identity, p_challenge_hash: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) });
       expect(new Headers(init.headers).get('authorization')).toBe('Bearer service');
@@ -66,9 +66,9 @@ async function setup() {
   expect(data.publicKey.userVerification).toBe('required');
   expect(data.challengeId).toBe(challengeId);
   expect(hash(data.publicKey.challenge)).toBe(storedHash);
-  async function assertion(challenge: string, flags = 0x05, badSignature = false) {
+  async function assertion(challenge: string, flags = 0x05, badSignature = false, rpId = env.QUIZ_PASSKEY_RP_ID) {
     const client = Buffer.from(JSON.stringify({ type: 'webauthn.get', challenge, origin: env.QUIZ_PASSKEY_ORIGIN }));
-    const auth = Buffer.concat([createHash('sha256').update(env.QUIZ_PASSKEY_RP_ID).digest(), Buffer.from([flags, 0, 0, 0, 2])]);
+    const auth = Buffer.concat([createHash('sha256').update(rpId).digest(), Buffer.from([flags, 0, 0, 0, 2])]);
     const signed = Buffer.concat([auth, createHash('sha256').update(client).digest()]);
     const signature = Buffer.from(await webcrypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, keys.privateKey, signed));
     if (badSignature) signature[0] ^= 1;
@@ -110,4 +110,27 @@ it('rejects a valid assertion for a challenge different from the issued one', as
   const different = Buffer.alloc(32, 7).toString('base64url');
   expect((await call('verify', { challengeId, challenge: different, credential: await s.assertion(different) })).status).toBe(503);
   expect(s.state()).toEqual({ consumeCalls: 1, grants: 0, counter: 1 });
+});
+
+
+it('aceita credencial antiga sem metadado somente após verificar assinatura e RP', async () => {
+  const s = await setup(true);
+  const body = { challengeId, challenge: s.challenge, credential: await s.assertion(s.challenge) };
+  expect((await call('verify', body)).status).toBe(200);
+  expect(s.state().grants).toBe(1);
+});
+
+it('recusa assinatura inválida de credencial antiga sem conceder acesso', async () => {
+  const s = await setup(true);
+  const body = { challengeId, challenge: s.challenge, credential: await s.assertion(s.challenge, 0x05, true) };
+  expect((await call('verify', body)).status).toBe(403);
+  expect(s.state().grants).toBe(0);
+});
+
+
+it('recusa credencial antiga assinada para outro domínio', async () => {
+  const s = await setup(true);
+  const body = { challengeId, challenge: s.challenge, credential: await s.assertion(s.challenge, 0x05, false, 'outro.test') };
+  expect((await call('verify', body)).status).toBe(403);
+  expect(s.state().grants).toBe(0);
 });
