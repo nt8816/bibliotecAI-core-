@@ -4,10 +4,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import AdminQuiz from '@/pages/AdminQuiz';
 import { projectQuizRanking } from '@/lib/quizRanking';
 import { requestPlatformApi } from '@/lib/platformApi';
-import { getPlatformPasskeyAssertion } from '@/lib/webauthn';
 
 vi.mock('@/lib/platformApi', () => ({ requestPlatformApi: vi.fn() }));
-vi.mock('@/lib/webauthn', () => ({ getPlatformPasskeyAssertion: vi.fn() }));
 vi.mock('@/components/layout/MainLayout', () => ({ MainLayout: ({ children }) => <div>{children}</div> }));
 beforeEach(() => vi.resetAllMocks());
 afterEach(cleanup);
@@ -28,26 +26,42 @@ it('falha fechada quando o serviço está indisponível', async () => {
   expect(screen.queryByText('detalhes privados')).not.toBeInTheDocument();
 });
 
-it('mostra falta de permissão sem solicitar passkey', async () => {
-  requestPlatformApi.mockRejectedValue({ status: 403 });
-  show();
-  expect(await screen.findByRole('alert')).toHaveTextContent('Você não tem permissão');
-  expect(screen.queryByRole('button', { name: /passkey/i })).not.toBeInTheDocument();
-});
-
-it('a projeção armazenada no telão exclui apelidos e campos extras', () => {
+it('a projeção do telão preserva nomes e exclui campos extras', () => {
   const rows = [{ nickname: 'privado@example.com', xp: 10, correct_count: 2, elapsed_ms: 123, email: 'outro@example.com' }];
-  expect(projectQuizRanking(rows, true)).toEqual([{ xp: 10, correct_count: 2, elapsed_ms: 123 }]);
+  expect(projectQuizRanking(rows, true)).toEqual([{ nickname: 'privado@example.com', xp: 10, correct_count: 2, elapsed_ms: 123 }]);
   expect(projectQuizRanking(rows, false)).toEqual(rows);
 });
 
-it('telão anonimiza apelidos e nunca consulta contatos', async () => {
+it('telão mostra nomes e nunca consulta contatos', async () => {
   requestPlatformApi.mockImplementation(mockData);
   show(true);
   fireEvent.click(await screen.findByRole('button', { name: /Rodada A/ }));
-  expect(await screen.findByText(/Participante 1/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Iniciar apresentação' }));
+  expect(await screen.findByText('privado@example.com')).toBeInTheDocument();
+  expect(screen.queryByText('Escolha a rodada')).not.toBeInTheDocument();
+  expect(screen.queryByText('Voltar ao painel')).not.toBeInTheDocument();
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(screen.getByText('Escolha a rodada')).toBeInTheDocument();
   expect(screen.queryByText(/privado@example.com/)).not.toBeInTheDocument();
   expect(requestPlatformApi.mock.calls.some(([path]) => path.includes('/contacts'))).toBe(false);
+});
+
+it('mostra todos os participantes da página em cartões separados', async () => {
+  requestPlatformApi.mockImplementation(path => path.includes('/leaderboard')
+    ? Promise.resolve({ success: true, data: [
+      { nickname: 'Ana', xp: 50, correct_count: 5, elapsed_ms: 1000 },
+      { nickname: 'Bruno', xp: 30, correct_count: 3, elapsed_ms: 2000 },
+    ] })
+    : mockData(path));
+  show();
+  fireEvent.click(await screen.findByRole('button', { name: /Rodada A/ }));
+  const ana = (await screen.findByText('Ana')).closest('li');
+  const bruno = screen.getByText('Bruno').closest('li');
+  expect(ana).toHaveTextContent('1º');
+  expect(ana).toHaveTextContent('50 XP');
+  expect(bruno).toHaveTextContent('2º');
+  expect(bruno).toHaveTextContent('30 XP');
+  expect(ana).not.toBe(bruno);
 });
 
 it('painel consulta contatos apenas sob demanda e limpa ao expirar', async () => {
@@ -64,3 +78,11 @@ it('painel consulta contatos apenas sob demanda e limpa ao expirar', async () =>
 });
 
 
+it('mantém o painel aberto quando a sessão é renovada', async () => {
+  requestPlatformApi.mockImplementation(mockData);
+  show();
+  expect(await screen.findByText('Acesso ao quiz confirmado.')).toBeInTheDocument();
+  act(() => window.dispatchEvent(new CustomEvent('bibliotecai:platform-session-changed', { detail: { session: { access_token: 'renovado' } } })));
+  expect(screen.getByText('Acesso ao quiz confirmado.')).toBeInTheDocument();
+  expect(requestPlatformApi).toHaveBeenCalledWith('/v1/admin/quiz/session', expect.not.objectContaining({ retryOnUnauthorized: false }));
+});

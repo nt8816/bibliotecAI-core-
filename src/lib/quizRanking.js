@@ -1,3 +1,3 @@
 export function projectQuizRanking(data, telao) {
-  return telao ? data.map(({ xp, correct_count, elapsed_ms }) => ({ xp, correct_count, elapsed_ms })) : data;
+  return telao ? data.map(({ nickname, xp, correct_count, elapsed_ms }) => ({ nickname, xp, correct_count, elapsed_ms })) : data;
 }
