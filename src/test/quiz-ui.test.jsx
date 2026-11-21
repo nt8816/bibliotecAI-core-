@@ -28,13 +28,11 @@ it('falha fechada quando o serviço está indisponível', async () => {
   expect(screen.queryByText('detalhes privados')).not.toBeInTheDocument();
 });
 
-it('confirma passkey e verifica novamente a sessão', async () => {
-  requestPlatformApi.mockRejectedValueOnce({ status: 403 }).mockResolvedValueOnce({ challengeId: 'id', publicKey: { challenge: 'challenge' } }).mockResolvedValueOnce({ success: true }).mockImplementation(mockData);
-  getPlatformPasskeyAssertion.mockResolvedValue({ id: 'credential' });
+it('mostra falta de permissão sem solicitar passkey', async () => {
+  requestPlatformApi.mockRejectedValue({ status: 403 });
   show();
-  fireEvent.click(await screen.findByRole('button', { name: 'Confirmar com passkey' }));
-  expect(await screen.findByText('Acesso ao quiz confirmado.')).toBeInTheDocument();
-  expect(requestPlatformApi).toHaveBeenCalledWith('/v1/admin/quiz/passkeys/verify', expect.objectContaining({ body: { challengeId: 'id', challenge: 'challenge', credential: { id: 'credential' } } }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Você não tem permissão');
+  expect(screen.queryByRole('button', { name: /passkey/i })).not.toBeInTheDocument();
 });
 
 it('a projeção armazenada no telão exclui apelidos e campos extras', () => {
@@ -66,10 +64,3 @@ it('painel consulta contatos apenas sob demanda e limpa ao expirar', async () =>
 });
 
 
-it('orienta o cadastro quando não há passkey para o domínio', async () => {
-  requestPlatformApi.mockRejectedValueOnce({ status: 403 }).mockRejectedValueOnce({ status: 409 });
-  show();
-  fireEvent.click(await screen.findByRole('button', { name: 'Confirmar com passkey' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Nenhuma passkey cadastrada para este domínio');
-  expect(screen.getByRole('button', { name: 'Confirmar com passkey' })).toBeEnabled();
-});

@@ -4,7 +4,6 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { requestPlatformApi } from '@/lib/platformApi';
-import { getPlatformPasskeyAssertion } from '@/lib/webauthn';
 import { addPlatformSessionListener } from '@/lib/platformSession';
 
 import { projectQuizRanking } from '@/lib/quizRanking';
@@ -65,12 +64,9 @@ function QuizData({ telao, onFailure }) {
 
 export default function AdminQuiz({ telao = false }) {
   const [status, setStatus] = useState('loading');
-  const [busy, setBusy] = useState(false);
   const generation = useRef(0);
-  const unlocking = useRef(false);
 
   const checkSession = useCallback(async () => {
-    if (unlocking.current) return;
     const current = ++generation.current;
     try {
       const result = await requestPlatformApi('/v1/admin/quiz/session', { retryOnUnauthorized: false, retryOnNetworkError: false });
@@ -97,27 +93,6 @@ export default function AdminQuiz({ telao = false }) {
     setStatus(error?.status === 403 ? 'locked' : error?.status === 401 ? 'expired' : 'unavailable');
   }, []);
 
-  const unlock = async () => {
-    unlocking.current = true;
-    setBusy(true);
-    const current = ++generation.current;
-    try {
-      const options = await requestPlatformApi('/v1/admin/quiz/passkeys/options', { method: 'POST', body: {}, retryOnUnauthorized: false });
-      const credential = await getPlatformPasskeyAssertion(options.publicKey);
-      if (current !== generation.current) return;
-      await requestPlatformApi('/v1/admin/quiz/passkeys/verify', { method: 'POST', body: { challengeId: options.challengeId, challenge: options.publicKey.challenge, credential }, retryOnUnauthorized: false });
-      if (current === generation.current) {
-        unlocking.current = false;
-        await checkSession();
-      }
-    } catch (error) {
-      if (current === generation.current) setStatus(error.status === 401 ? 'expired' : error.status === 503 ? 'unavailable' : error.status === 409 ? 'enrollmentRequired' : 'verificationError');
-    } finally {
-      unlocking.current = false;
-      setBusy(false);
-    }
-  };
-
   const content = (
     <div className={telao ? 'mx-auto flex min-h-screen max-w-5xl flex-col justify-center gap-6 p-8' : 'space-y-6'}>
       <Card>
@@ -125,12 +100,9 @@ export default function AdminQuiz({ telao = false }) {
         <CardContent className="space-y-4">
           {status === 'loading' && <p>Verificando acesso ao quiz...</p>}
           {status === 'authorized' && <p>Acesso ao quiz confirmado.</p>}
-          {status === 'locked' && <p>Confirme sua identidade com uma passkey para acessar o quiz.</p>}
-          {status === 'verificationError' && <p role="alert">Não foi possível confirmar a passkey. Verifique sua credencial e tente novamente.</p>}
-          {status === 'enrollmentRequired' && <p role="alert">Nenhuma passkey cadastrada para este domínio. Cadastre uma passkey na área de segurança da sua conta e volte para confirmar.</p>}
+          {status === 'locked' && <p role="alert">Você não tem permissão para acessar o quiz.</p>}
           {status === 'expired' && <p role="alert">Sessão expirada. Entre novamente para acessar o quiz.</p>}
           {status === 'unavailable' && <p role="alert">Serviço do quiz indisponível. Tente novamente mais tarde.</p>}
-          {(status === 'locked' || status === 'verificationError' || status === 'enrollmentRequired') && <Button disabled={busy} onClick={unlock}>{busy ? 'Confirmando...' : 'Confirmar com passkey'}</Button>}
           {(status === 'unavailable' || status === 'expired') && <Button variant="outline" onClick={checkSession}>Tentar novamente</Button>}
         </CardContent>
       </Card>

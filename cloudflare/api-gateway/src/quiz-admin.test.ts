@@ -1,6 +1,6 @@
 import { createHmac, webcrypto } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import gateway, { hasQuizPasskeyGrant } from './index';
+import gateway, { hasQuizAdminAccess } from './index';
 
 const env = {
   SUPABASE_URL: 'https://principal.test', SUPABASE_PUBLISHABLE_KEY: 'anon',
@@ -76,9 +76,15 @@ describe('grant de quiz vinculado a sessao', () => {
     vi.stubGlobal('fetch', mock);
     return mock;
   };
-  it.each([undefined, 'aal1', 'aal2'])('aceita grant ativo sem depender de aal=%s ou timestamp global', async (aal) => {
+  it('nega os endpoints removidos de passkey', async () => {
+    for (const action of ['options', 'verify']) {
+      const response = await gateway.fetch(new Request(`https://gateway.test/v1/admin/quiz/passkeys/${action}`, { method: 'POST' }), env as never);
+      expect(response.status).toBe(404);
+    }
+  });
+  it.each([undefined, 'aal1', 'aal2'])('aceita sessão ativa sem depender de aal=%s ou timestamp global', async (aal) => {
     setup();
-    expect(await hasQuizPasskeyGrant(request(makeToken({ aal })), env as never, { id: user })).toBe(true);
+    expect(await hasQuizAdminAccess(request(makeToken({ aal })), env as never, { id: user })).toBe(true);
   });
   it.each([
     { auth: null }, { auth: { id: 'other' } }, { role: false }, { account: [] },
@@ -86,37 +92,28 @@ describe('grant de quiz vinculado a sessao', () => {
     { account: [{ id: account, ativo: true, bloqueado: true }] },
   ])('nega identidade, papel ou conta invalida: %j', async (options) => {
     setup([grant()], true, options);
-    expect(await hasQuizPasskeyGrant(request(), env as never, { id: user })).toBe(false);
+    expect(await hasQuizAdminAccess(request(), env as never, { id: user })).toBe(false);
   });
   it.each([
     { exp: Math.floor(Date.now() / 1000) - 1 }, { role: 'service_role' },
     { session_id: 'invalid' }, { session_id: undefined }, { sub: 'other' },
   ])('nega claims invalidos: %j', async (claims) => {
     setup();
-    expect(await hasQuizPasskeyGrant(request(makeToken(claims)), env as never, { id: user })).toBe(false);
+    expect(await hasQuizAdminAccess(request(makeToken(claims)), env as never, { id: user })).toBe(false);
   });
   it('nega assinatura invalida e falha do Auth', async () => {
     setup();
     const token = makeToken();
     const [header, payload] = token.split('.');
     const forged = `${header}.${payload}.${createHmac('sha256', 'wrong').update(`${header}.${payload}`).digest('base64url')}`;
-    expect(await hasQuizPasskeyGrant(request(forged), env as never, { id: user })).toBe(false);
+    expect(await hasQuizAdminAccess(request(forged), env as never, { id: user })).toBe(false);
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('unavailable')));
-    expect(await hasQuizPasskeyGrant(request(), env as never, { id: user })).toBe(false);
-  });
-  it.each([
-    [], [{ ...grant(), auth_session_id: 'other' }], [{ ...grant(), account_id: 'other' }],
-    [{ ...grant(), auth_user_id: 'other' }], [{ ...grant(), expires_at: '2000-01-01T00:00:00Z' }],
-    [{ ...grant(), super_admin_passkeys: { id: 'key', account_id: account, revoked_at: '2020-01-01' } }],
-    [{ ...grant(), passkey_id: 'other' }],
-  ])('rejeita grants ausentes ou inconsistentes', async (...rows) => {
-    setup(rows);
-    expect(await hasQuizPasskeyGrant(request(), env as never, { id: user })).toBe(false);
+    expect(await hasQuizAdminAccess(request(), env as never, { id: user })).toBe(false);
   });
   it('rejeita sessao revogada e JWT de outro usuario', async () => {
     setup([grant()], false);
-    expect(await hasQuizPasskeyGrant(request(), env as never, { id: user })).toBe(false);
-    expect(await hasQuizPasskeyGrant(request(makeToken({ sub: 'other' })), env as never, { id: user })).toBe(false);
+    expect(await hasQuizAdminAccess(request(), env as never, { id: user })).toBe(false);
+    expect(await hasQuizAdminAccess(request(makeToken({ sub: 'other' })), env as never, { id: user })).toBe(false);
   });
 });
 

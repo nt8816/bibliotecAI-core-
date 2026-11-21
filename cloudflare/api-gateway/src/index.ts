@@ -3645,7 +3645,7 @@ async function handleQuizPasskey(request: Request, env: Env) {
   }
 }
 
-export async function hasQuizPasskeyGrant(request: Request, env: Env, caller: Record<string, unknown>) {
+export async function hasQuizAdminAccess(request: Request, env: Env, caller: Record<string, unknown>) {
   try {
     const bearer = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '');
     if (!bearer || getUserToken(request) !== bearer[1] || !caller.id) return false;
@@ -3661,18 +3661,7 @@ export async function hasQuizPasskeyGrant(request: Request, env: Env, caller: Re
     if (!account?.id || account.ativo !== true || account.bloqueado !== false) return false;
     const identity = { p_account_id: account.id, p_auth_user_id: caller.id, p_auth_session_id: claims.session_id };
     if (await supabaseAdminRequest(env, '/rest/v1/rpc/is_active_quiz_super_admin_session', { method: 'POST', body: identity }) !== true) return false;
-    const params = new URLSearchParams({
-      select: 'id,account_id,auth_user_id,auth_session_id,expires_at,passkey_id,super_admin_passkeys!inner(id,account_id,revoked_at)',
-      account_id: `eq.${account.id}`, auth_user_id: `eq.${caller.id}`, auth_session_id: `eq.${claims.session_id}`,
-      expires_at: `gt.${new Date().toISOString()}`, 'super_admin_passkeys.revoked_at': 'is.null', limit: '1',
-    });
-    const grants = await supabaseAdminRequest(env, `/rest/v1/quiz_passkey_grants?${params}`);
-    if (!Array.isArray(grants) || grants.length !== 1) return false;
-    const grant = grants[0];
-    const passkey = grant?.super_admin_passkeys;
-    return grant.account_id === account.id && grant.auth_user_id === caller.id && grant.auth_session_id === claims.session_id
-      && typeof grant.expires_at === 'string' && Date.parse(grant.expires_at) > Date.now()
-      && !!grant.passkey_id && passkey?.id === grant.passkey_id && passkey.account_id === account.id && passkey.revoked_at === null;
+    return true;
   } catch {
     return false;
   }
@@ -3687,7 +3676,7 @@ async function handleQuizDisplay(request: Request, env: Env, leaderboard: boolea
   try {
     const caller = await fetchSupabaseUser(request, env);
     if (!caller?.id) return reply({ success: false, error: 'Nao autorizado.' }, 401);
-    if (!(await hasQuizPasskeyGrant(request, env, caller))) return reply({ success: false, error: 'Nao autorizado.' }, 403);
+    if (!(await hasQuizAdminAccess(request, env, caller))) return reply({ success: false, error: 'Nao autorizado.' }, 403);
     const params = new URL(request.url).searchParams;
     const allowed = leaderboard ? ['round_id', 'limit', 'offset'] : ['limit', 'offset'];
     const round = params.get('round_id') || '';
@@ -3732,8 +3721,6 @@ async function handleQuizDisplay(request: Request, env: Env, leaderboard: boolea
 export const routes: Record<string, RouteHandler> = {
   'GET /v1/admin/quiz/display/rounds': (request, env) => handleQuizDisplay(request, env, false),
   'GET /v1/admin/quiz/display/leaderboard': (request, env) => handleQuizDisplay(request, env, true),
-  'POST /v1/admin/quiz/passkeys/options': handleQuizPasskey,
-  'POST /v1/admin/quiz/passkeys/verify': handleQuizPasskey,
   'GET /v1/admin/quiz/contacts': async (request, env) => {
     const reply = (body: unknown, status = 200) => {
       const response = jsonResponse(body, status);
@@ -3743,7 +3730,7 @@ export const routes: Record<string, RouteHandler> = {
     try {
       const caller = await fetchSupabaseUser(request, env);
       if (!caller?.id) return reply({ success: false, error: 'Nao autorizado.' }, 401);
-      if (!(await hasQuizPasskeyGrant(request, env, caller))) return reply({ success: false, error: 'Nao autorizado.' }, 403);
+      if (!(await hasQuizAdminAccess(request, env, caller))) return reply({ success: false, error: 'Nao autorizado.' }, 403);
       const params = new URL(request.url).searchParams;
       const round = params.get('round_id') || '';
       const limitText = params.get('limit') ?? '20';
@@ -3786,7 +3773,7 @@ export const routes: Record<string, RouteHandler> = {
       const caller = await fetchSupabaseUser(request, env);
       if (!caller?.id) {
         response = jsonResponse({ success: false, error: 'Nao autenticado.' }, 401);
-      } else if (!(await hasQuizPasskeyGrant(request, env, caller))) {
+      } else if (!(await hasQuizAdminAccess(request, env, caller))) {
         response = jsonResponse({ success: false, error: 'Sem permissao.' }, 403);
       } else {
         response = jsonResponse({ success: true, user: { id: caller.id } });

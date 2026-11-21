@@ -15,7 +15,7 @@ const queryFor = (endpoint: string) => endpoint === 'display/rounds' ? '' : `?ro
 const request = (endpoint: string, query = queryFor(endpoint)) => new Request(`https://gateway.test/v1/admin/quiz/${endpoint}${query}`, { headers: { authorization: `Bearer ${token}`, 'x-user-id': 'forged' } });
 const invoke = (endpoint: string, query?: string, config = env) => routes[`GET /v1/admin/quiz/${endpoint}`](request(endpoint, query), config as never);
 
-function setup(options: { grant?: boolean; data?: unknown; status?: number } = {}) {
+function setup(options: { active?: boolean; data?: unknown; status?: number } = {}) {
   vi.stubGlobal('crypto', webcrypto);
   const mock = vi.fn(async (input: string, init: RequestInit = {}) => {
     const url = new URL(input);
@@ -23,8 +23,7 @@ function setup(options: { grant?: boolean; data?: unknown; status?: number } = {
       if (url.pathname.endsWith('/auth/v1/user')) return json({ id: user });
       if (url.pathname.endsWith('/user_roles')) return json([{ role: 'super_admin' }]);
       if (url.pathname.endsWith('/super_admin_accounts')) return json([{ id: 'account', ativo: true, bloqueado: false }]);
-      if (url.pathname.endsWith('/is_active_quiz_super_admin_session')) return json(true);
-      if (url.pathname.endsWith('/quiz_passkey_grants')) return json(options.grant === false ? [] : [{ account_id: 'account', auth_user_id: user, auth_session_id: session, expires_at: new Date(Date.now() + 60000).toISOString(), passkey_id: 'key', super_admin_passkeys: { id: 'key', account_id: 'account', revoked_at: null } }]);
+      if (url.pathname.endsWith('/is_active_quiz_super_admin_session')) return json(options.active !== false);
     }
     if (url.origin === env.QUIZ_SUPABASE_URL) return json('data' in options ? options.data : [], options.status ?? 200);
     throw new Error(`unexpected origin ${url.origin}`);
@@ -36,8 +35,8 @@ const quizCalls = (mock: ReturnType<typeof setup>) => mock.mock.calls.filter(([u
 afterEach(() => vi.unstubAllGlobals());
 
 describe('handlers internos de admin quiz', () => {
-  it.each(endpoints)('%s exige grant antes de consultar quiz', async (endpoint) => {
-    const mock = setup({ grant: false });
+  it.each(endpoints)('%s exige sessao ativa antes de consultar quiz', async (endpoint) => {
+    const mock = setup({ active: false });
     const response = await invoke(endpoint);
     expect(response.status).toBe(403);
     expect(response.headers.get('cache-control')).toBe('no-store');
@@ -50,13 +49,13 @@ describe('handlers internos de admin quiz', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(mock).not.toHaveBeenCalled();
   });
-  it('a habilitação explícita mantém a exigência de passkey na rota pública', async () => {
-    const mock = setup({ grant: false });
+  it('a rota pública rejeita sessão inativa', async () => {
+    const mock = setup({ active: false });
     const response = await gateway.fetch(request('contacts'), { ...env, QUIZ_ADMIN_ENABLED: 'true' });
     expect(response.status).toBe(403);
     expect(quizCalls(mock)).toHaveLength(0);
   });
-  it('com grant válido encaminha a consulta de contatos pela rota pública', async () => {
+  it('com sessão válida encaminha contatos sem passkey', async () => {
     const mock = setup({ data: [] });
     const response = await gateway.fetch(request('contacts'), { ...env, QUIZ_ADMIN_ENABLED: 'true' });
     expect(response.status).toBe(200);
